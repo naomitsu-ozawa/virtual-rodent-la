@@ -32,13 +32,15 @@ app.innerHTML = `
   </main>
 `;
 
-const viewport = document.querySelector<HTMLDivElement>('#viewport');
-const status = document.querySelector<HTMLDivElement>('#gpu-status');
+const viewportElement = document.querySelector<HTMLDivElement>('#viewport');
+const statusElement = document.querySelector<HTMLDivElement>('#gpu-status');
 
-if (!viewport || !status) {
+if (!viewportElement || !statusElement) {
   throw new Error('Viewer UI was not initialized.');
 }
 
+const viewport: HTMLDivElement = viewportElement;
+const status: HTMLDivElement = statusElement;
 const hasWebGPU = 'gpu' in navigator;
 
 if (!hasWebGPU) {
