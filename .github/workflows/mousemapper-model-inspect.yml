@@ -15,17 +15,14 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          export GIT_LFS_SKIP_SMUDGE=1
-          git clone --depth 1 https://github.com/erturklab/mouseMapper.git /tmp/mouseMapper
-          cd /tmp/mouseMapper
-          git lfs install
-          git lfs pull --include="models/Tissue_model.zip" --exclude=""
-          ls -lh models/Tissue_model.zip
-          unzip -l models/Tissue_model.zip | tail -n 40
           mkdir -p /tmp/modelmeta
+          url="https://media.githubusercontent.com/media/erturklab/mouseMapper/7fe04a9ccf37664d76fe548ae226147c0023ceb7/models/Tissue_model.zip"
+          curl -L --retry 4 --fail "$url" -o /tmp/Tissue_model.zip
+          ls -lh /tmp/Tissue_model.zip
+          unzip -l /tmp/Tissue_model.zip | tail -n 40
           python - <<'PY'
           import zipfile, os
-          z=zipfile.ZipFile('/tmp/mouseMapper/models/Tissue_model.zip')
+          z=zipfile.ZipFile('/tmp/Tissue_model.zip')
           names=z.namelist()
           wanted=[n for n in names if n.endswith('dataset.json') or n.endswith('plans.json')]
           print('META_FILES=',wanted)
