@@ -12,7 +12,7 @@ export const RAW_PI_URLS = [
 
 export const tissues = [
   { id: -1, key: 'body', label: '全体外形（参考）', color: 0xd7beaa, opacity: 0.08, defaultVisible: false },
-  { id: 32, key: 'bone', label: '骨格（同一個体PI/AF由来）', color: 0xeee7cf, opacity: 1, defaultVisible: true, source: 'same-mouse-pi' },
+  { id: 32, key: 'bone', label: '骨格（同一個体Tissueモデル待ち）', color: 0xeee7cf, opacity: 1, defaultVisible: false, source: 'unavailable' },
   { id: 33, key: 'bone_marrow', label: '骨髄', color: 0xc77972, opacity: 0.65, defaultVisible: false },
   { id: 5, key: 'brain', label: '脳', color: 0xd895a8, opacity: 1, defaultVisible: true },
   { id: 17, key: 'spinal_cord', label: '脊髄', color: 0xe5b3bd, opacity: 1, defaultVisible: false },
