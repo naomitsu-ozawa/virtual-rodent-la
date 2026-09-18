@@ -35,7 +35,7 @@ app.innerHTML = `
     </section>
 
     <footer>
-      <span>Digimouse由来の低解像度プレビューです。</span>
+      <span>Digimouse FEM mesh由来の解剖モデルです。</span>
     </footer>
   </main>
 `;
@@ -59,11 +59,11 @@ if (!('gpu' in navigator)) {
 }
 
 async function loadEmbeddedGlb() {
-  const partUrls = [
-    './models/digimouse_micro3.part0.txt?v=3',
-    './models/digimouse_micro3.part1.txt?v=3',
-    './models/digimouse_micro3.part2.txt?v=3',
-  ];
+  const partUrls = Array.from(
+    { length: 15 },
+    (_, index) =>
+      `./models/full_model_parts/part_${String(index).padStart(2, '0')}.b64?v=4`,
+  );
 
   const responses = await Promise.all(
     partUrls.map((url) => fetch(url, { cache: 'no-store' })),
@@ -80,24 +80,36 @@ async function loadEmbeddedGlb() {
     .join('');
 
   const raw = atob(encoded);
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+  const compressed = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) {
+    compressed[i] = raw.charCodeAt(i);
+  }
 
-  if (bytes.length < 12) throw new Error('Model payload is too short.');
-  const view = new DataView(bytes.buffer);
-  const magic = String.fromCharCode(...bytes.slice(0, 4));
+  if (!('DecompressionStream' in window)) {
+    throw new Error('This browser does not support gzip decompression.');
+  }
+
+  const stream = new Blob([compressed])
+    .stream()
+    .pipeThrough(new DecompressionStream('gzip'));
+  const glb = await new Response(stream).arrayBuffer();
+
+  if (glb.byteLength < 12) throw new Error('Model payload is too short.');
+  const view = new DataView(glb);
+  const bytes = new Uint8Array(glb, 0, 4);
+  const magic = String.fromCharCode(...bytes);
   const declaredLength = view.getUint32(8, true);
 
   if (magic !== 'glTF') throw new Error('Model payload is not a GLB file.');
-  if (declaredLength !== bytes.length) {
+  if (declaredLength !== glb.byteLength) {
     throw new Error(
-      `GLB length mismatch: declared ${declaredLength}, actual ${bytes.length}`,
+      `GLB length mismatch: declared ${declaredLength}, actual ${glb.byteLength}`,
     );
   }
 
   const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
-    loader.parse(bytes.buffer, '', resolve, reject);
+    loader.parse(glb, '', resolve, reject);
   });
 }
 
