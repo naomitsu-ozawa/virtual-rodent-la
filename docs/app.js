@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import {MODEL_URL,RAW_AF_URL,RAW_PI_URL,tissues} from './highres/tissues.js?v=mousemapper-8';
+import {MODEL_URL,RAW_AF_URL,RAW_PI_URL,tissues} from './highres/tissues.js?v=mousemapper-9';
 import {loadNiftiGz,scanLabelStats,unionStats} from './highres/nifti.js';
 import {buildTissueGeometry} from './highres/geometry.js';
-import {buildSameMouseBoneGeometry} from './highres/same-source-bone.js?v=mousemapper-8';
+import {buildSameMouseBoneGeometry} from './highres/same-source-bone.js?v=mousemapper-9';
 
 const app=document.querySelector('#app');if(!app)throw new Error('Application root not found.');
 const rows=tissues.map(t=>`<label data-row="${t.key}"><input type="checkbox" data-layer="${t.key}" ${t.defaultVisible?'checked':''}><span>${t.label}</span><small data-state="${t.key}"></small></label>`).join('');
