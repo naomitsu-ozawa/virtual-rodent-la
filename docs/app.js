@@ -89,8 +89,8 @@ if (!('gpu' in navigator)) {
 
 async function loadEmbeddedGlb() {
   const partUrls = Array.from(
-    { length: 12 },
-    (_, index) => `./models/face_model_parts/part_${String(index).padStart(2, '0')}.b64?v=5`,
+    { length: 15 },
+    (_, index) => `./models/face_normals_parts/part_${String(index).padStart(2, '0')}.b64?v=6`,
   );
 
   const responses = await Promise.all(
@@ -192,12 +192,13 @@ async function startDemo() {
     const transparent = tissue.opacity < 1;
     object.material = new THREE.MeshStandardMaterial({
       color: tissue.color,
-      roughness: tissue.key === 'skeleton' ? 0.8 : 0.66,
+      roughness: tissue.key === 'skeleton' ? 0.92 : 0.82,
       metalness: 0,
       transparent,
       opacity: tissue.opacity,
       depthWrite: tissue.key !== 'skin',
       side: THREE.DoubleSide,
+      flatShading: false,
     });
     meshByTissue.set(tissue.key, object);
   });
