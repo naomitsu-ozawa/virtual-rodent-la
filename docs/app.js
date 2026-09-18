@@ -59,7 +59,7 @@ if (!('gpu' in navigator)) {
 }
 
 async function loadEmbeddedGlb() {
-  const response = await fetch('./models/digimouse_micro.b64?v=1', { cache: 'no-store' });
+  const response = await fetch('./models/digimouse_micro.b64?v=2', { cache: 'no-store' });
   if (!response.ok) throw new Error(`Model fetch failed: ${response.status}`);
   const encoded = (await response.text()).trim();
   const raw = atob(encoded);
