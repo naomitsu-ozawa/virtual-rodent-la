@@ -67,3 +67,52 @@ footer { color: #7a736c; font-size: 12px; }
 }
 .layer-list small { margin-left: auto; font-size: 9px; color: #8a675f; }
 .layer-missing { opacity: .4; }
+
+.bone-adjust-panel {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 4;
+  width: min(320px, calc(100% - 250px));
+  padding: 12px;
+  border-radius: 15px;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(0,0,0,.07);
+  box-shadow: 0 12px 28px rgba(55,45,35,.12);
+}
+.bone-adjust-panel[hidden] { display: none; }
+.bone-adjust-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.bone-adjust-title strong { font-size: 12px; color: #403b37; }
+.bone-adjust-title button,
+.bone-adjust-actions button,
+.viewer-help button {
+  appearance: none;
+  border: 1px solid rgba(0,0,0,.08);
+  background: rgba(255,255,255,.86);
+  color: #5f5953;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+}
+.bone-adjust-title button { width: 25px; height: 25px; padding: 0; font-size: 16px; line-height: 1; }
+.bone-adjust-panel p { margin: 0 0 9px; font-size: 10px; line-height: 1.45; color: #746d66; }
+.bone-adjust-panel > label {
+  display: grid;
+  grid-template-columns: 50px minmax(80px,1fr) 48px;
+  align-items: center;
+  gap: 7px;
+  min-height: 29px;
+  font-size: 11px;
+  color: #4a4540;
+}
+.bone-adjust-panel input[type="range"] { width: 100%; }
+.bone-adjust-panel output { text-align: right; font-variant-numeric: tabular-nums; color: #746d66; }
+.bone-adjust-actions { display: flex; justify-content: flex-end; margin-top: 7px; }
+.bone-adjust-actions button { padding: 6px 10px; font-size: 10px; }
+.viewer-help button { padding: 7px 10px; background: rgba(255,255,255,.78); font-size: 12px; pointer-events: auto; }
+@media (max-width: 640px) {
+  .bone-adjust-panel { left: 10px; top: 10px; width: calc(100% - 195px); min-width: 210px; }
+  .bone-adjust-panel > label { grid-template-columns: 42px minmax(70px,1fr) 42px; gap: 5px; }
+  .viewer-help button { font-size: 11px; }
+}
