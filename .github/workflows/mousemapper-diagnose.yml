@@ -1,0 +1,58 @@
+name: MouseMapper diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/mousemapper-diagnose.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout viewer
+        uses: actions/checkout@v4
+
+      - name: Download same-animal MouseMapper sample
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/mm
+          base="https://raw.githubusercontent.com/erturklab/mouseMapper/7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample"
+          curl -L --retry 4 --fail "$base/segmentation/CD68_chow_7790.nii.gz" -o /tmp/mm/organs.nii.gz
+          curl -L --retry 4 --fail "$base/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0000.nii.gz" -o /tmp/mm/af.nii.gz
+          curl -L --retry 4 --fail "$base/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0001.nii.gz" -o /tmp/mm/pi.nii.gz
+
+      - name: Inspect grids and labels
+        shell: bash
+        run: |
+          python -m pip install --quiet nibabel numpy
+          python - <<'PY'
+          import json
+          import nibabel as nib
+          import numpy as np
+          out={}
+          for name in ("organs","af","pi"):
+              img=nib.load(f"/tmp/mm/{name}.nii.gz")
+              data=np.asanyarray(img.dataobj)
+              out[name]={
+                  "shape": list(data.shape),
+                  "zooms": list(map(float,img.header.get_zooms()[:3])),
+                  "dtype": str(data.dtype),
+                  "min": float(np.min(data)),
+                  "max": float(np.max(data)),
+              }
+              if name=="organs":
+                  vals,counts=np.unique(data,return_counts=True)
+                  out[name]["labels"]={str(int(v)):int(c) for v,c in zip(vals,counts)}
+          print("MOUSEMAPPER_DIAGNOSTIC="+json.dumps(out,sort_keys=True))
+          with open("mousemapper_diagnostic.json","w") as f:
+              json.dump(out,f,indent=2,sort_keys=True)
+          PY
+
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: mousemapper-diagnostic
+          path: mousemapper_diagnostic.json
