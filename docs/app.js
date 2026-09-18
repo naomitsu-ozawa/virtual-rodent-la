@@ -54,17 +54,46 @@ if (!('gpu' in navigator)) {
     console.error(error);
     status.textContent = 'MODEL LOAD FAILED';
     status.className = 'status status-error';
-    viewport.innerHTML = '<div class="error-panel"><strong>3Dデータの読み込みに失敗しました。</strong><span>ページを再読み込みしてください。</span></div>';
+    viewport.innerHTML = `<div class="error-panel"><strong>3Dデータの読み込みに失敗しました。</strong><span>${error?.message ?? 'Unknown error'}</span></div>`;
   });
 }
 
 async function loadEmbeddedGlb() {
-  const response = await fetch('./models/digimouse_micro.b64?v=2', { cache: 'no-store' });
-  if (!response.ok) throw new Error(`Model fetch failed: ${response.status}`);
-  const encoded = (await response.text()).trim();
+  const partUrls = [
+    './models/digimouse_micro3.part0.txt?v=3',
+    './models/digimouse_micro3.part1.txt?v=3',
+    './models/digimouse_micro3.part2.txt?v=3',
+  ];
+
+  const responses = await Promise.all(
+    partUrls.map((url) => fetch(url, { cache: 'no-store' })),
+  );
+
+  responses.forEach((response, index) => {
+    if (!response.ok) {
+      throw new Error(`Model part ${index} fetch failed: ${response.status}`);
+    }
+  });
+
+  const encoded = (await Promise.all(responses.map((response) => response.text())))
+    .map((part) => part.trim())
+    .join('');
+
   const raw = atob(encoded);
   const bytes = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+
+  if (bytes.length < 12) throw new Error('Model payload is too short.');
+  const view = new DataView(bytes.buffer);
+  const magic = String.fromCharCode(...bytes.slice(0, 4));
+  const declaredLength = view.getUint32(8, true);
+
+  if (magic !== 'glTF') throw new Error('Model payload is not a GLB file.');
+  if (declaredLength !== bytes.length) {
+    throw new Error(
+      `GLB length mismatch: declared ${declaredLength}, actual ${bytes.length}`,
+    );
+  }
 
   const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
