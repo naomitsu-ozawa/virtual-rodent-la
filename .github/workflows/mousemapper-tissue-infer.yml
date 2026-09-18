@@ -42,6 +42,21 @@ jobs:
           python -m pip install --quiet --upgrade pip
           python -m pip install --quiet nnunetv2 nibabel
 
+      - name: Add MouseMapper trainer compatibility alias
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import nnunetv2.training.nnUNetTrainer as pkg
+          target = Path(pkg.__file__).parent / 'nnUNetTrainerv2.py'
+          target.write_text(
+              "from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer\n"
+              "class nnUNetTrainerv2(nnUNetTrainer):\n"
+              "    pass\n"
+          )
+          print(target)
+          PY
+
       - name: Run official Tissue Module fold 0 on example
         shell: bash
         env:
