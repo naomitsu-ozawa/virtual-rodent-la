@@ -1,0 +1,44 @@
+name: MouseMapper model inspect
+
+on:
+  push:
+    paths:
+      - '.github/workflows/mousemapper-model-inspect.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Fetch Tissue model
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export GIT_LFS_SKIP_SMUDGE=1
+          git clone --depth 1 https://github.com/erturklab/mouseMapper.git /tmp/mouseMapper
+          cd /tmp/mouseMapper
+          git lfs install
+          git lfs pull --include="models/Tissue_model.zip" --exclude=""
+          ls -lh models/Tissue_model.zip
+          unzip -l models/Tissue_model.zip | tail -n 40
+          mkdir -p /tmp/modelmeta
+          python - <<'PY'
+          import zipfile, os
+          z=zipfile.ZipFile('/tmp/mouseMapper/models/Tissue_model.zip')
+          names=z.namelist()
+          wanted=[n for n in names if n.endswith('dataset.json') or n.endswith('plans.json')]
+          print('META_FILES=',wanted)
+          for n in wanted:
+              print('\n===== '+n+' =====')
+              data=z.read(n).decode('utf-8','replace')
+              print(data[:30000])
+              out='/tmp/modelmeta/'+n.replace('/','__')
+              open(out,'w').write(data)
+          PY
+
+      - name: Upload model metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: mousemapper-model-metadata
+          path: /tmp/modelmeta
