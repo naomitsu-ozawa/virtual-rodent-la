@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 
-const STORAGE_KEY = 'virtual-rodent-bone-registration-v3';
+const STORAGE_KEY = 'virtual-rodent-bone-registration-v4';
 const DEFAULT_ADJUST = Object.freeze({
   offsetX: 0,
   offsetY: 0,
@@ -10,6 +10,8 @@ const DEFAULT_ADJUST = Object.freeze({
   rotX: 0,
   rotY: 0,
   rotZ: 0,
+  flipLR: false,
+  flipUD: false,
 });
 
 function physicalBoxFromStat(nifti, stat) {
@@ -272,25 +274,46 @@ export function createBoneAdjustmentController({ container, help, target, onChan
   panel.className = 'bone-adjust-panel';
   panel.hidden = true;
   panel.innerHTML =
-    '<div class="bone-adjust-title"><strong>骨格位置調整</strong><button type="button" data-bone-close aria-label="閉じる">×</button></div>' +
-    '<p>脳・胸郭・腹部・骨盤の中心線へ骨格を自動フィットしています。必要な場合だけ微調整してください。</p>' +
-    sliderRow('X', 'offsetX', -0.18, 0.18, 0.005) +
-    sliderRow('Y', 'offsetY', -0.18, 0.18, 0.005) +
-    sliderRow('Z', 'offsetZ', -0.18, 0.18, 0.005) +
-    sliderRow('拡大率', 'scale', 0.80, 1.20, 0.005) +
-    sliderRow('回転X', 'rotX', -25, 25, 0.5) +
-    sliderRow('回転Y', 'rotY', -25, 25, 0.5) +
-    sliderRow('回転Z', 'rotZ', -25, 25, 0.5) +
+    '<div class="bone-adjust-title"><strong>骨格向き・位置調整</strong><button type="button" data-bone-close aria-label="閉じる">×</button></div>' +
+    '<p>回転・左右反転・上下反転で骨格の向きを合わせ、その後に位置を微調整できます。値はこのブラウザに保存されます。</p>' +
+    '<div class="bone-orient-actions">' +
+      '<button type="button" data-rotate-axis="x" data-rotate-delta="-90">X −90°</button>' +
+      '<button type="button" data-rotate-axis="x" data-rotate-delta="90">X +90°</button>' +
+      '<button type="button" data-rotate-axis="y" data-rotate-delta="-90">Y −90°</button>' +
+      '<button type="button" data-rotate-axis="y" data-rotate-delta="90">Y +90°</button>' +
+      '<button type="button" data-rotate-axis="z" data-rotate-delta="-90">Z −90°</button>' +
+      '<button type="button" data-rotate-axis="z" data-rotate-delta="90">Z +90°</button>' +
+    '</div>' +
+    '<div class="bone-flip-actions">' +
+      '<button type="button" data-flip-key="flipLR">左右反転</button>' +
+      '<button type="button" data-flip-key="flipUD">上下反転</button>' +
+    '</div>' +
+    sliderRow('位置X', 'offsetX', -0.25, 0.25, 0.005) +
+    sliderRow('位置Y', 'offsetY', -0.25, 0.25, 0.005) +
+    sliderRow('位置Z', 'offsetZ', -0.25, 0.25, 0.005) +
+    sliderRow('拡大率', 'scale', 0.70, 1.30, 0.005) +
+    sliderRow('回転X', 'rotX', -180, 180, 1) +
+    sliderRow('回転Y', 'rotY', -180, 180, 1) +
+    sliderRow('回転Z', 'rotZ', -180, 180, 1) +
     '<div class="bone-adjust-actions"><button type="button" data-bone-reset>自動位置に戻す</button></div>';
   container.appendChild(panel);
 
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'bone-adjust-toggle';
-  toggle.textContent = '骨格位置調整';
+  toggle.textContent = '骨格向き調整';
   help.appendChild(toggle);
 
   const ranges = [...panel.querySelectorAll('[data-bone-adjust]')];
+  const rotateButtons = [...panel.querySelectorAll('[data-rotate-axis]')];
+  const flipButtons = [...panel.querySelectorAll('[data-flip-key]')];
+
+  const clampAngle = (value) => {
+    let angle = Number(value) % 360;
+    if (angle > 180) angle -= 360;
+    if (angle < -180) angle += 360;
+    return angle;
+  };
 
   const updateUI = () => {
     for (const range of ranges) {
@@ -299,16 +322,46 @@ export function createBoneAdjustmentController({ container, help, target, onChan
       const output = panel.querySelector('[data-bone-output="' + key + '"]');
       if (output) {
         output.value = key.startsWith('rot')
-          ? Number(adjust[key]).toFixed(1) + '°'
+          ? Number(adjust[key]).toFixed(0) + '°'
           : Number(adjust[key]).toFixed(3);
       }
+    }
+    for (const button of flipButtons) {
+      const key = button.dataset.flipKey;
+      const active = Boolean(adjust[key]);
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
     }
   };
 
   for (const range of ranges) {
     range.addEventListener('input', () => {
       const key = range.dataset.boneAdjust;
-      adjust[key] = Number(range.value);
+      adjust[key] = key.startsWith('rot')
+        ? clampAngle(Number(range.value))
+        : Number(range.value);
+      saveAdjust(adjust);
+      updateUI();
+      onChange();
+    });
+  }
+
+  for (const button of rotateButtons) {
+    button.addEventListener('click', () => {
+      const axis = button.dataset.rotateAxis;
+      const delta = Number(button.dataset.rotateDelta);
+      const key = axis === 'x' ? 'rotX' : axis === 'y' ? 'rotY' : 'rotZ';
+      adjust[key] = clampAngle(adjust[key] + delta);
+      saveAdjust(adjust);
+      updateUI();
+      onChange();
+    });
+  }
+
+  for (const button of flipButtons) {
+    button.addEventListener('click', () => {
+      const key = button.dataset.flipKey;
+      adjust[key] = !adjust[key];
       saveAdjust(adjust);
       updateUI();
       onChange();
@@ -338,7 +391,11 @@ export function createBoneAdjustmentController({ container, help, target, onChan
         target.brain.y + adjust.offsetY * target.size.y,
         target.brain.z + adjust.offsetZ * target.size.z,
       );
-      mesh.scale.setScalar(adjust.scale);
+      mesh.scale.set(
+        (adjust.flipLR ? -1 : 1) * adjust.scale,
+        (adjust.flipUD ? -1 : 1) * adjust.scale,
+        adjust.scale,
+      );
       mesh.rotation.set(
         THREE.MathUtils.degToRad(adjust.rotX),
         THREE.MathUtils.degToRad(adjust.rotY),
