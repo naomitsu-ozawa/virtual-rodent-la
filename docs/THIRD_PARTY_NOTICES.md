@@ -18,3 +18,12 @@ Copyright (c) 2012-2014 Mikola Lysenko. MIT License.
 ## Three.js
 Three.js is used for WebGPU rendering and is distributed under the MIT License:
 https://github.com/mrdoob/three.js
+
+
+## Basbaum Lab murine microCT skeleton
+Source: https://github.com/basbaumlab/spinal_cord_imaging
+
+The viewer loads the full-body C57BL6 mouse microCT skeleton file
+`data/microCT/microCT_mouse_fullbody_scan_processed.stl` from pinned revision
+`bd15437aaf861c96cb4443562e5698d05da283d0`.
+The upstream repository is distributed under GPL-3.0; the original repository and license are the authoritative source.
