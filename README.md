@@ -4,7 +4,9 @@ An early WebGPU prototype for virtual mouse and rat anatomy / dissection trainin
 
 ## Current demo
 
-The first milestone is intentionally small. It verifies that a Three.js WebGPU scene can run in Safari and provides a procedural placeholder rodent that can be rotated and zoomed. No anatomical dataset is included yet.
+The first milestone is intentionally small. It verifies that a Three.js WebGPU scene can run in Safari and provides a procedural placeholder rodent that can be rotated and zoomed.
+
+No anatomical dataset is included yet.
 
 ### Controls
 
@@ -13,31 +15,35 @@ The first milestone is intentionally small. It verifies that a Three.js WebGPU s
 
 The page displays the renderer backend. `WEBGPU ACTIVE` indicates that Three.js initialized a WebGPU backend.
 
+## GitHub Pages demo
+
+The public demo is a no-build static site in `docs/`.
+
+It intentionally does **not** use GitHub Actions.
+
+GitHub Pages should be configured once as:
+
+- Source: **Deploy from a branch**
+- Branch: **main**
+- Folder: **/docs**
+
+After that, updates to files under `docs/` are served directly by GitHub Pages without consuming GitHub Actions minutes.
+
+The demo loads Three.js WebGPU from jsDelivr at runtime.
+
 ## Local development
+
+A Vite + TypeScript development setup is also kept in the repository for future development.
 
 Requirements:
 
-- Node.js (current LTS recommended)
+- Node.js
 - A WebGPU-capable browser such as Safari 26+
 
 ```bash
 npm install
 npm run dev
 ```
-
-Then open the local URL shown by Vite.
-
-## Build
-
-```bash
-npm run build
-```
-
-The static site is generated in `dist/`.
-
-## GitHub Pages
-
-A deployment workflow is included for GitHub Pages. The repository owner may need to enable **Settings → Pages → Build and deployment → GitHub Actions** once before the first deployment.
 
 ## Project status
 
