@@ -1,11 +1,20 @@
 # Third-party notices
 
-## MouseMapper whole-body mouse segmentation
+## MouseMapper whole-body mouse data
 Source: https://github.com/erturklab/mouseMapper
 
-The high-resolution viewer reads the example whole-body segmentation
-`Tissue_Module/example_data/organ_segmentation_sample/segmentation/CD68_chow_7790.nii.gz`
-from the pinned MouseMapper revision `7fe04a9ccf37664d76fe548ae226147c0023ceb7`.
+The viewer uses only data from the same MouseMapper animal, `CD68_chow_7790`:
+- organ segmentation:
+  `Tissue_Module/example_data/organ_segmentation_sample/segmentation/CD68_chow_7790.nii.gz`
+- autofluorescence input:
+  `Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0000.nii.gz`
+- propidium iodide input:
+  `Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0001.nii.gz`
+
+All three files are pinned to MouseMapper revision
+`7fe04a9ccf37664d76fe548ae226147c0023ceb7`.
+
+The skeleton shown by this demo is derived in-browser from the same animal's PI/autofluorescence volumes after excluding voxels already assigned to organ labels. No external-animal skeleton is used.
 
 MouseMapper is distributed under the Apache License 2.0. The original repository and its license remain the authoritative source for the upstream material.
 
@@ -18,12 +27,3 @@ Copyright (c) 2012-2014 Mikola Lysenko. MIT License.
 ## Three.js
 Three.js is used for WebGPU rendering and is distributed under the MIT License:
 https://github.com/mrdoob/three.js
-
-
-## Basbaum Lab murine microCT skeleton
-Source: https://github.com/basbaumlab/spinal_cord_imaging
-
-The viewer loads the full-body C57BL6 mouse microCT skeleton file
-`data/microCT/microCT_mouse_fullbody_scan_processed.stl` from pinned revision
-`bd15437aaf861c96cb4443562e5698d05da283d0`.
-The upstream repository is distributed under GPL-3.0; the original repository and license are the authoritative source.
