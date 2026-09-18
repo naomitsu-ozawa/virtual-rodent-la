@@ -48,3 +48,22 @@ footer { color: #7a736c; font-size: 12px; }
   .layer-list label { font-size: 11px; }
   footer { font-size: 10px; }
 }
+.loading-panel {
+  position: absolute; inset: 0; z-index: 2;
+  display: grid; place-content: center; justify-items: center; gap: 10px;
+  padding: 28px; text-align: center;
+  background: rgba(244,241,235,.94); color: #5d5650;
+  pointer-events: none;
+}
+.loading-panel strong { font-size: 16px; color: #332f2b; }
+.loading-panel span { font-size: 12px; }
+.progress-track {
+  width: min(320px,72vw); height: 6px; overflow: hidden;
+  border-radius: 999px; background: rgba(0,0,0,.08);
+}
+.progress-bar {
+  width: 0; height: 100%; border-radius: inherit;
+  background: #756e67; transition: width .2s ease;
+}
+.layer-list small { margin-left: auto; font-size: 9px; color: #8a675f; }
+.layer-missing { opacity: .4; }
