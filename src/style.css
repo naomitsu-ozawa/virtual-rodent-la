@@ -1,0 +1,178 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #262321;
+  background: #ede9e2;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+.app-shell {
+  width: 100%;
+  height: 100dvh;
+  padding: 20px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #756e67;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(26px, 4vw, 40px);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: #6c655e;
+  font-size: 14px;
+}
+
+.status {
+  flex: none;
+  margin-top: 2px;
+  padding: 8px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.status-checking {
+  background: #e6e1d8;
+}
+
+.status-ok {
+  background: #d9eadc;
+  color: #254e2e;
+}
+
+.status-warning {
+  background: #f5e6c8;
+  color: #75510c;
+}
+
+.status-error {
+  background: #f3d6d2;
+  color: #7a2720;
+}
+
+.viewer-card {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 22px;
+  background: #f4f1eb;
+  border: 1px solid rgba(42, 37, 32, 0.08);
+  box-shadow: 0 18px 50px rgba(54, 45, 36, 0.08);
+}
+
+.viewport {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  touch-action: none;
+}
+
+.viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.viewport canvas:active {
+  cursor: grabbing;
+}
+
+.viewer-help {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+
+.viewer-help span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  color: #5f5953;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.error-panel {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  text-align: center;
+  color: #6d2b24;
+  padding: 28px;
+}
+
+footer {
+  color: #7a736c;
+  font-size: 12px;
+}
+
+footer p {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .topbar {
+    align-items: center;
+  }
+
+  .subtitle {
+    display: none;
+  }
+
+  .status {
+    font-size: 10px;
+  }
+}
