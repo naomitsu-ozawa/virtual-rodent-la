@@ -1,13 +1,10 @@
 export const MODEL_URL = 'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/segmentation/CD68_chow_7790.nii.gz';
-export const BONE_STL_URLS = [
-  'https://raw.githubusercontent.com/basbaumlab/spinal_cord_imaging/bd15437aaf861c96cb4443562e5698d05da283d0/data/microCT/microCT_mouse_fullbody_scan_processed.stl',
-  'https://media.githubusercontent.com/media/basbaumlab/spinal_cord_imaging/bd15437aaf861c96cb4443562e5698d05da283d0/data/microCT/microCT_mouse_fullbody_scan_processed.stl',
-  'https://github.com/basbaumlab/spinal_cord_imaging/raw/bd15437aaf861c96cb4443562e5698d05da283d0/data/microCT/microCT_mouse_fullbody_scan_processed.stl'
-];
+export const RAW_AF_URL = 'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0000.nii.gz';
+export const RAW_PI_URL = 'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0001.nii.gz';
 
 export const tissues = [
   { id: -1, key: 'body', label: '全体外形（参考）', color: 0xd7beaa, opacity: 0.08, defaultVisible: false },
-  { id: 32, key: 'bone', label: '骨格', color: 0xeee7cf, opacity: 1, defaultVisible: true, source: 'stl' },
+  { id: 32, key: 'bone', label: '骨格（同一個体）', color: 0xeee7cf, opacity: 1, defaultVisible: true, source: 'same-mouse-pi' },
   { id: 33, key: 'bone_marrow', label: '骨髄', color: 0xc77972, opacity: 0.65, defaultVisible: false },
   { id: 5, key: 'brain', label: '脳', color: 0xd895a8, opacity: 1, defaultVisible: true },
   { id: 17, key: 'spinal_cord', label: '脊髄', color: 0xe5b3bd, opacity: 1, defaultVisible: false },
