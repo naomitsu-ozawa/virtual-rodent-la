@@ -1,5 +1,9 @@
 export const MODEL_URL = 'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/segmentation/CD68_chow_7790.nii.gz';
-export const BONE_STL_URL = 'https://cdn.jsdelivr.net/gh/basbaumlab/spinal_cord_imaging@bd15437aaf861c96cb4443562e5698d05da283d0/data/microCT/microCT_mouse_fullbody_scan_processed.stl';
+export const BONE_STL_URLS = [
+  'https://raw.githubusercontent.com/basbaumlab/spinal_cord_imaging/bd15437aaf861c96cb4443562e5698d05da283d0/data/microCT/microCT_mouse_fullbody_scan_processed.stl',
+  'https://media.githubusercontent.com/media/basbaumlab/spinal_cord_imaging/bd15437aaf861c96cb4443562e5698d05da283d0/data/microCT/microCT_mouse_fullbody_scan_processed.stl',
+  'https://github.com/basbaumlab/spinal_cord_imaging/raw/bd15437aaf861c96cb4443562e5698d05da283d0/data/microCT/microCT_mouse_fullbody_scan_processed.stl'
+];
 
 export const tissues = [
   { id: -1, key: 'body', label: '全体外形（参考）', color: 0xd7beaa, opacity: 0.08, defaultVisible: false },
