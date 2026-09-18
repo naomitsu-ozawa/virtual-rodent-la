@@ -15,7 +15,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p /tmp/mm/model /tmp/mm/raw /tmp/mm/crops /tmp/mm/out /tmp/nnUNet_results
+          mkdir -p /tmp/mm/model /tmp/mm/raw /tmp/mm/crops /tmp/mm/org_crops /tmp/mm/out /tmp/nnUNet_results
           curl -L --retry 4 --fail "https://media.githubusercontent.com/media/erturklab/mouseMapper/7fe04a9ccf37664d76fe548ae226147c0023ceb7/models/Tissue_model.zip" -o /tmp/Tissue_model.zip
           python - <<'PY'
           import zipfile, os, shutil
@@ -82,7 +82,7 @@ jobs:
               aff=np.eye(4)
               nib.save(nib.Nifti1Image(af[sl].astype(np.float32),aff),f'{outdir}/{name}_0000.nii.gz')
               nib.save(nib.Nifti1Image(pi[sl].astype(np.float32),aff),f'{outdir}/{name}_0001.nii.gz')
-              nib.save(nib.Nifti1Image(org[sl].astype(np.uint8),aff),f'{outdir}/{name}_organs.nii.gz')
+              nib.save(nib.Nifti1Image(org[sl].astype(np.uint8),aff),f'/tmp/mm/org_crops/{name}_organs.nii.gz')
               manifest[name]={'center':c.tolist(),'start':start.tolist(),'end':end.tolist()}
           open('/tmp/mm/crop_manifest.json','w').write(json.dumps(manifest,indent=2))
           print('CROPS',json.dumps(manifest))
@@ -129,7 +129,7 @@ jobs:
           result={}
           for name in ['head','thorax']:
               pred=np.asanyarray(nib.load(f'/tmp/mm/out/{name}/{name}.nii.gz').dataobj).astype(np.uint8)
-              org=np.asanyarray(nib.load(f'/tmp/mm/crops/{name}/{name}_organs.nii.gz').dataobj).astype(np.uint8)
+              org=np.asanyarray(nib.load(f'/tmp/mm/org_crops/{name}_organs.nii.gz').dataobj).astype(np.uint8)
               vals,counts=np.unique(pred,return_counts=True)
               d={'labels':{str(int(v)):int(c) for v,c in zip(vals,counts)}}
               bone=pred==3; marrow=pred==4
