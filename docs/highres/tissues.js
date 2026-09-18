@@ -1,6 +1,14 @@
 export const MODEL_URL = 'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/segmentation/CD68_chow_7790.nii.gz';
-export const RAW_AF_URL = 'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0000.nii.gz';
-export const RAW_PI_URL = 'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0001.nii.gz';
+export const RAW_AF_URLS = [
+  'https://raw.githubusercontent.com/erturklab/mouseMapper/7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0000.nii.gz',
+  'https://media.githubusercontent.com/media/erturklab/mouseMapper/7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0000.nii.gz',
+  'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0000.nii.gz'
+];
+export const RAW_PI_URLS = [
+  'https://raw.githubusercontent.com/erturklab/mouseMapper/7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0001.nii.gz',
+  'https://media.githubusercontent.com/media/erturklab/mouseMapper/7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0001.nii.gz',
+  'https://cdn.jsdelivr.net/gh/erturklab/mouseMapper@7fe04a9ccf37664d76fe548ae226147c0023ceb7/Tissue_Module/example_data/organ_segmentation_sample/pipeline_test/CD68_chow_7790_fused_whole_arivis_exportC01xy10z10_0001.nii.gz'
+];
 
 export const tissues = [
   { id: -1, key: 'body', label: '全体外形（参考）', color: 0xd7beaa, opacity: 0.08, defaultVisible: false },
