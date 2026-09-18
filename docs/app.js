@@ -90,7 +90,7 @@ if (!('gpu' in navigator)) {
 async function loadEmbeddedGlb() {
   const partUrls = Array.from(
     { length: 15 },
-    (_, index) => `./models/face_normals_parts/part_${String(index).padStart(2, '0')}.b64?v=6`,
+    (_, index) => `./models/face_winding_parts/part_${String(index).padStart(2, '0')}.b64?v=7`,
   );
 
   const responses = await Promise.all(
