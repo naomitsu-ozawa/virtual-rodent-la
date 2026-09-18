@@ -14,7 +14,7 @@ The viewer uses only data from the same MouseMapper animal, `CD68_chow_7790`:
 All three files are pinned to MouseMapper revision
 `7fe04a9ccf37664d76fe548ae226147c0023ceb7`.
 
-The skeleton shown by this demo is derived in-browser from the same animal's PI/autofluorescence volumes after excluding voxels already assigned to organ labels. No external-animal skeleton is used.
+The demo does not currently render a skeleton. A prior experimental PI/autofluorescence threshold approximation was removed because it did not constitute a valid bone segmentation. A skeleton will only be re-enabled when a same-animal MouseMapper Tissue Module bone label is available. No external-animal skeleton is used.
 
 MouseMapper is distributed under the Apache License 2.0. The original repository and its license remain the authoritative source for the upstream material.
 
