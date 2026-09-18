@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {STLLoader} from 'three/addons/loaders/STLLoader.js';
-import {MODEL_URL,BONE_STL_URL,tissues} from './highres/tissues.js?v=mousemapper-2';
+import {MODEL_URL,BONE_STL_URLS,tissues} from './highres/tissues.js?v=mousemapper-3';
 import {loadNiftiGz,scanLabelStats,unionStats} from './highres/nifti.js';
 import {buildTissueGeometry} from './highres/geometry.js';
 
@@ -20,9 +20,10 @@ async function start(){
  const mouse=new THREE.Group();scene.add(mouse);configureAnatomyTransform(mouse,sourceBox,4.6);
  const controls=new OrbitControls(camera,canvas);controls.enableDamping=true;controls.dampingFactor=.08;controls.screenSpacePanning=true;controls.enablePan=true;controls.minDistance=2.2;controls.maxDistance=28;controls.mouseButtons.LEFT=THREE.MOUSE.ROTATE;controls.mouseButtons.MIDDLE=THREE.MOUSE.DOLLY;controls.mouseButtons.RIGHT=THREE.MOUSE.PAN;controls.touches.ONE=THREE.TOUCH.ROTATE;controls.touches.TWO=THREE.TOUCH.DOLLY_PAN;
  const meshes=new Map(),pending=new Map(),byKey=new Map(tissues.map(t=>[t.key,t])); const ensure=async t=>{if(meshes.has(t.key))return meshes.get(t.key);if(pending.has(t.key))return pending.get(t.key);const state=document.querySelector(`[data-state="${t.key}"]`);if(state)state.textContent='生成中';const job=(async()=>{await frame();const g=t.source==='stl'?await loadAndRegisterSkeleton(sourceBox):buildTissueGeometry(nifti,stats,t),mat=new THREE.MeshStandardMaterial({color:t.color,roughness:t.key==='bone'?.9:.78,metalness:0,transparent:t.opacity<1,opacity:t.opacity,depthWrite:t.key!=='body'&&t.opacity>=.25,side:THREE.DoubleSide});const m=new THREE.Mesh(g,mat);m.name=`anatomy_${t.key}`;mouse.add(m);meshes.set(t.key,m);if(state)state.textContent='';return m})().finally(()=>pending.delete(t.key));pending.set(t.key,job);return job};
- const defaults=tissues.filter(t=>t.defaultVisible&&(t.source==='stl'||t.id===-1||present.has(t.id)));for(let i=0;i<defaults.length;i++){const t=defaults[i];progress('3D解剖モデルを生成中',`${t.label} (${i+1}/${defaults.length})`,.18+.78*((i+1)/defaults.length));(await ensure(t)).visible=true}
+ const defaults=tissues.filter(t=>t.defaultVisible&&(t.source==='stl'||t.id===-1||present.has(t.id))),failedDefaults=[];
+ for(let i=0;i<defaults.length;i++){const t=defaults[i];progress('3D解剖モデルを生成中',`${t.label} (${i+1}/${defaults.length})`,.18+.78*((i+1)/defaults.length));try{(await ensure(t)).visible=true}catch(e){console.error(`Layer load failed: ${t.key}`,e);failedDefaults.push(t.key);const input=document.querySelector(`[data-layer="${t.key}"]`),state=document.querySelector(`[data-state="${t.key}"]`);if(input){input.checked=false;input.disabled=false}if(state)state.textContent='失敗'}}
  for(const input of inputs)input.addEventListener('change',async()=>{const t=byKey.get(input.dataset.layer);if(!t)return;try{if(input.checked){input.disabled=true;(await ensure(t)).visible=true;input.disabled=false}else{const m=meshes.get(t.key);if(m)m.visible=false}}catch(e){console.error(e);input.checked=false;input.disabled=false;const state=document.querySelector(`[data-state="${t.key}"]`);if(state)state.textContent='失敗'}});
- fitCameraToModel(mouse,camera,controls,viewport,1.38);progress('高解像度モデルを表示します',`${defaults.length}組織を生成しました。`,1);panel?.remove();
+ fitCameraToModel(mouse,camera,controls,viewport,1.38);if(failedDefaults.length){status.textContent='WEBGPU / PARTIAL';status.className='status status-warning';progress('高解像度モデルを表示します',`${defaults.length-failedDefaults.length}組織を生成しました。読み込めない組織: ${failedDefaults.join(', ')}`,1)}else{progress('高解像度モデルを表示します',`${defaults.length}組織を生成しました。`,1)}panel?.remove();
  canvas.addEventListener('dblclick',()=>fitCameraToModel(mouse,camera,controls,viewport,1.38));
  const resize=()=>{camera.aspect=viewport.clientWidth/Math.max(viewport.clientHeight,1);camera.updateProjectionMatrix();renderer.setSize(viewport.clientWidth,viewport.clientHeight,false)};new ResizeObserver(resize).observe(viewport);resize();renderer.setAnimationLoop(()=>{controls.update();renderer.render(scene,camera)});
 
@@ -30,5 +31,19 @@ async function start(){
 function physicalBoxFromStats(nifti,stats){const min=new THREE.Vector3(stats.min[0]*nifti.pixdim[0],stats.min[1]*nifti.pixdim[1],stats.min[2]*nifti.pixdim[2]),max=new THREE.Vector3((stats.max[0]+1)*nifti.pixdim[0],(stats.max[1]+1)*nifti.pixdim[1],(stats.max[2]+1)*nifti.pixdim[2]);return new THREE.Box3(min,max)}
 function configureAnatomyTransform(mouse,sourceBox,targetMaxSize){mouse.position.set(0,0,0);mouse.rotation.set(0,0,-Math.PI/2);mouse.scale.setScalar(1);mouse.updateMatrix();const oriented=sourceBox.clone().applyMatrix4(mouse.matrix),size=oriented.getSize(new THREE.Vector3()),center=oriented.getCenter(new THREE.Vector3()),scale=targetMaxSize/Math.max(size.x,size.y,size.z);mouse.scale.setScalar(scale);mouse.position.copy(center).multiplyScalar(-scale);mouse.updateMatrixWorld(true)}
 function fitCameraToModel(mouse,camera,controls,viewport,margin=1.35){mouse.updateMatrixWorld(true);const box=new THREE.Box3().setFromObject(mouse);if(box.isEmpty())return;const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3()),aspect=Math.max(viewport.clientWidth/Math.max(viewport.clientHeight,1),.1),vFov=THREE.MathUtils.degToRad(camera.fov),hFov=2*Math.atan(Math.tan(vFov/2)*aspect),distY=size.y/(2*Math.tan(vFov/2)),distX=size.x/(2*Math.tan(hFov/2)),distance=Math.max(distX,distY,size.z*.7)*margin;camera.position.set(center.x,center.y+size.y*.06,center.z+distance);camera.near=Math.max(.01,distance/1000);camera.far=Math.max(100,distance*30);camera.updateProjectionMatrix();controls.target.copy(center);controls.update()}
-async function loadAndRegisterSkeleton(targetBox){const g=await new STLLoader().loadAsync(BONE_STL_URL);g.computeBoundingBox();const sb=g.boundingBox,sc=sb.getCenter(new THREE.Vector3()),ss=sb.getSize(new THREE.Vector3()),tc=targetBox.getCenter(new THREE.Vector3()),ts=targetBox.getSize(new THREE.Vector3()),so=[0,1,2].sort((a,b)=>ss.getComponent(b)-ss.getComponent(a)),to=[0,1,2].sort((a,b)=>ts.getComponent(b)-ts.getComponent(a)),map=[0,0,0];for(let r=0;r<3;r++)map[to[r]]=so[r];const p=g.getAttribute('position'),v=new THREE.Vector3(),c=new THREE.Vector3(),m=new THREE.Vector3(),inset=.94;for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i);c.copy(v).sub(sc);for(let a=0;a<3;a++){const sa=map[a],den=Math.max(ss.getComponent(sa),1e-6),n=c.getComponent(sa)/den;m.setComponent(a,tc.getComponent(a)+n*ts.getComponent(a)*inset)}p.setXYZ(i,m.x,m.y,m.z)}p.needsUpdate=true;g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();return g}
+async function loadAndRegisterSkeleton(targetBox){
+ let lastError=null;
+ for(const url of BONE_STL_URLS){
+  try{
+   const g=await new STLLoader().loadAsync(url);
+   g.computeBoundingBox();
+   const sb=g.boundingBox,sc=sb.getCenter(new THREE.Vector3()),ss=sb.getSize(new THREE.Vector3()),tc=targetBox.getCenter(new THREE.Vector3()),ts=targetBox.getSize(new THREE.Vector3()),so=[0,1,2].sort((a,b)=>ss.getComponent(b)-ss.getComponent(a)),to=[0,1,2].sort((a,b)=>ts.getComponent(b)-ts.getComponent(a)),map=[0,0,0];
+   for(let r=0;r<3;r++)map[to[r]]=so[r];
+   const p=g.getAttribute('position'),v=new THREE.Vector3(),c=new THREE.Vector3(),m=new THREE.Vector3(),inset=.94;
+   for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i);c.copy(v).sub(sc);for(let a=0;a<3;a++){const sa=map[a],den=Math.max(ss.getComponent(sa),1e-6),n=c.getComponent(sa)/den;m.setComponent(a,tc.getComponent(a)+n*ts.getComponent(a)*inset)}p.setXYZ(i,m.x,m.y,m.z)}
+   p.needsUpdate=true;g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();return g;
+  }catch(e){lastError=e;console.warn('Skeleton source failed',url,e)}
+ }
+ throw lastError||new Error('骨格データを取得できませんでした。');
+}
 const frame=()=>new Promise(r=>requestAnimationFrame(r));const esc=v=>String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
