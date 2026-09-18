@@ -1,8 +1,42 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+const tissues = [
+  { id: 1, key: 'skin', label: '皮膚', color: 0xd7beaa, opacity: 0.18 },
+  { id: 2, key: 'skeleton', label: '骨格', color: 0xebe6d0, opacity: 1 },
+  { id: 3, key: 'eye', label: '眼球', color: 0x5f8fb5, opacity: 1 },
+  { id: 4, key: 'medulla', label: '延髄', color: 0xe3a7b3, opacity: 1 },
+  { id: 5, key: 'cerebellum', label: '小脳', color: 0xdc91a7, opacity: 1 },
+  { id: 6, key: 'olfactory_bulbs', label: '嗅球', color: 0xe8b3bf, opacity: 1 },
+  { id: 7, key: 'external_cerebrum', label: '大脳（外側）', color: 0xd38c9f, opacity: 1 },
+  { id: 8, key: 'striatum', label: '線条体', color: 0xb76f89, opacity: 1 },
+  { id: 9, key: 'heart', label: '心臓', color: 0xaa3c41, opacity: 1 },
+  { id: 10, key: 'rest_of_brain', label: 'その他の脳', color: 0xc9829a, opacity: 1 },
+  { id: 11, key: 'masseter_muscles', label: '咬筋', color: 0xad625e, opacity: 1 },
+  { id: 12, key: 'lachrymal_glands', label: '涙腺', color: 0xd29f96, opacity: 1 },
+  { id: 13, key: 'bladder', label: '膀胱', color: 0xd9ad7d, opacity: 1 },
+  { id: 14, key: 'testis', label: '精巣', color: 0xd2b98f, opacity: 1 },
+  { id: 15, key: 'stomach', label: '胃', color: 0xd09b87, opacity: 1 },
+  { id: 16, key: 'spleen', label: '脾臓', color: 0x90465a, opacity: 1 },
+  { id: 17, key: 'pancreas', label: '膵臓', color: 0xdcb078, opacity: 1 },
+  { id: 18, key: 'liver', label: '肝臓', color: 0x91463d, opacity: 1 },
+  { id: 19, key: 'kidneys', label: '腎臓', color: 0x7d4b37, opacity: 1 },
+  { id: 20, key: 'adrenal_glands', label: '副腎', color: 0xc79b61, opacity: 1 },
+  { id: 21, key: 'lungs', label: '肺', color: 0xdc919b, opacity: 0.95 },
+];
+
 const app = document.querySelector('#app');
 if (!app) throw new Error('Application root was not found.');
+
+const layerMarkup = tissues
+  .map(
+    (tissue) => `
+      <label>
+        <input type="checkbox" data-layer="${tissue.key}" checked>
+        <span>${tissue.label}</span>
+      </label>`,
+  )
+  .join('');
 
 app.innerHTML = `
   <main class="app-shell">
@@ -10,7 +44,7 @@ app.innerHTML = `
       <div>
         <p class="eyebrow">DIGIMOUSE ANATOMY DEMO</p>
         <h1>Virtual Rodent Lab</h1>
-        <p class="subtitle">Digimouse由来の解剖レイヤーをWebGPUで表示</p>
+        <p class="subtitle">Digimouse FEM meshの全21組織をWebGPUで表示</p>
       </div>
       <div id="gpu-status" class="status status-checking">WEBGPU CHECKING</div>
     </header>
@@ -19,13 +53,8 @@ app.innerHTML = `
       <div id="viewport" class="viewport"></div>
 
       <aside class="layer-panel" aria-label="Anatomy layers">
-        <div class="panel-title">表示する組織</div>
-        <label><input type="checkbox" data-layer="skin" checked>皮膚</label>
-        <label><input type="checkbox" data-layer="skeleton" checked>骨格</label>
-        <label><input type="checkbox" data-layer="heart" checked>心臓</label>
-        <label><input type="checkbox" data-layer="liver" checked>肝臓</label>
-        <label><input type="checkbox" data-layer="kidneys" checked>腎臓</label>
-        <label><input type="checkbox" data-layer="lungs" checked>肺</label>
+        <div class="panel-title">表示する組織（21）</div>
+        <div class="layer-list">${layerMarkup}</div>
       </aside>
 
       <div class="viewer-help">
@@ -35,7 +64,7 @@ app.innerHTML = `
     </section>
 
     <footer>
-      <span>Digimouse FEM mesh由来の解剖モデルです。</span>
+      <span>Digimouse FEM Mesh Version 1L の face 表面データを使用しています。</span>
     </footer>
   </main>
 `;
@@ -60,9 +89,8 @@ if (!('gpu' in navigator)) {
 
 async function loadEmbeddedGlb() {
   const partUrls = Array.from(
-    { length: 15 },
-    (_, index) =>
-      `./models/full_model_parts/part_${String(index).padStart(2, '0')}.b64?v=4`,
+    { length: 12 },
+    (_, index) => `./models/face_model_parts/part_${String(index).padStart(2, '0')}.b64?v=5`,
   );
 
   const responses = await Promise.all(
@@ -96,15 +124,12 @@ async function loadEmbeddedGlb() {
 
   if (glb.byteLength < 12) throw new Error('Model payload is too short.');
   const view = new DataView(glb);
-  const bytes = new Uint8Array(glb, 0, 4);
-  const magic = String.fromCharCode(...bytes);
+  const magic = String.fromCharCode(...new Uint8Array(glb, 0, 4));
   const declaredLength = view.getUint32(8, true);
 
   if (magic !== 'glTF') throw new Error('Model payload is not a GLB file.');
   if (declaredLength !== glb.byteLength) {
-    throw new Error(
-      `GLB length mismatch: declared ${declaredLength}, actual ${glb.byteLength}`,
-    );
+    throw new Error(`GLB length mismatch: declared ${declaredLength}, actual ${glb.byteLength}`);
   }
 
   const loader = new GLTFLoader();
@@ -118,7 +143,7 @@ async function startDemo() {
   scene.background = new THREE.Color(0xf4f1eb);
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
-  camera.position.set(0, 1.8, 8.0);
+  camera.position.set(0, 1.6, 8.0);
   camera.lookAt(0, 0, 0);
 
   const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -131,11 +156,11 @@ async function startDemo() {
   status.className = usingWebGPU ? 'status status-ok' : 'status status-warning';
   viewport.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x62594f, 2.2));
-  const keyLight = new THREE.DirectionalLight(0xffffff, 3.1);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x665f57, 2.1));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
   keyLight.position.set(4, 6, 5);
   scene.add(keyLight);
-  const fillLight = new THREE.DirectionalLight(0xddeaff, 1.2);
+  const fillLight = new THREE.DirectionalLight(0xddeaff, 1.1);
   fillLight.position.set(-4, 1, 3);
   scene.add(fillLight);
 
@@ -143,42 +168,46 @@ async function startDemo() {
     new THREE.CylinderGeometry(3.7, 3.7, 0.08, 72),
     new THREE.MeshStandardMaterial({ color: 0xd9d3c9, roughness: 0.95 }),
   );
-  platform.position.y = -1.65;
+  platform.position.y = -1.62;
   scene.add(platform);
 
   const gltf = await loadEmbeddedGlb();
   const mouse = gltf.scene;
-  const tissues = new Map();
-
-  const styles = {
-    skin: { color: 0xd7beaa, opacity: 0.22 },
-    skeleton: { color: 0xebe6d0, opacity: 1 },
-    heart: { color: 0xaa3c41, opacity: 1 },
-    liver: { color: 0x964b41, opacity: 1 },
-    kidneys: { color: 0x7d4b37, opacity: 1 },
-    lungs: { color: 0xdc919b, opacity: 0.95 },
-  };
+  const meshByTissue = new Map();
+  const definitionByKey = new Map(tissues.map((tissue) => [tissue.key, tissue]));
 
   mouse.traverse((object) => {
     if (!object.isMesh) return;
-    const lower = object.name.toLowerCase();
-    const tissue = Object.keys(styles).find((key) => lower.includes(key));
+
+    const match = object.name.match(/^tissue_\d+_(.+)$/i);
+    if (!match) return;
+    const key = match[1].toLowerCase();
+    const tissue = definitionByKey.get(key);
     if (!tissue) return;
 
-    if (!object.geometry.getAttribute('normal')) object.geometry.computeVertexNormals();
-    const style = styles[tissue];
-    const transparent = style.opacity < 1;
+    if (!object.geometry.getAttribute('normal')) {
+      object.geometry.computeVertexNormals();
+    }
+
+    const transparent = tissue.opacity < 1;
     object.material = new THREE.MeshStandardMaterial({
-      color: style.color,
-      roughness: tissue === 'skeleton' ? 0.78 : 0.68,
+      color: tissue.color,
+      roughness: tissue.key === 'skeleton' ? 0.8 : 0.66,
       metalness: 0,
       transparent,
-      opacity: style.opacity,
-      depthWrite: tissue !== 'skin',
+      opacity: tissue.opacity,
+      depthWrite: tissue.key !== 'skin',
       side: THREE.DoubleSide,
     });
-    tissues.set(tissue, object);
+    meshByTissue.set(tissue.key, object);
   });
+
+  if (meshByTissue.size !== tissues.length) {
+    const missing = tissues
+      .filter((tissue) => !meshByTissue.has(tissue.key))
+      .map((tissue) => tissue.key);
+    throw new Error(`Missing tissue meshes: ${missing.join(', ')}`);
+  }
 
   mouse.rotation.z = -Math.PI / 2;
   mouse.updateMatrixWorld(true);
@@ -191,12 +220,12 @@ async function startDemo() {
   bounds = new THREE.Box3().setFromObject(mouse);
   const center = bounds.getCenter(new THREE.Vector3());
   mouse.position.sub(center);
-  mouse.position.y = 0.15;
+  mouse.position.y = 0.12;
   scene.add(mouse);
 
   layerInputs.forEach((input) => {
     input.addEventListener('change', () => {
-      const mesh = tissues.get(input.dataset.layer);
+      const mesh = meshByTissue.get(input.dataset.layer);
       if (mesh) mesh.visible = input.checked;
     });
   });
