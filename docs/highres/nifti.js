@@ -1,8 +1,17 @@
-export async function loadNiftiGz(url){
- const r=await fetch(url,{cache:'force-cache',mode:'cors'}); if(!r.ok)throw new Error(`MouseMapper data: HTTP ${r.status}`);
- if(!r.body||!('DecompressionStream'in window))throw new Error('gzip展開に対応していません。');
- const buf=await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer(); return parseNifti1(buf);
+export async function loadNiftiGz(urlOrUrls){
+ const urls=Array.isArray(urlOrUrls)?urlOrUrls:[urlOrUrls],errors=[];
+ for(const url of urls){
+  try{
+   const r=await fetch(url,{cache:'force-cache',mode:'cors'});
+   if(!r.ok){errors.push(`${hostOf(url)}: HTTP ${r.status}`);continue}
+   if(!r.body||!('DecompressionStream'in window))throw new Error('gzip展開に対応していません。');
+   const buf=await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+   return parseNifti1(buf);
+  }catch(e){errors.push(`${hostOf(url)}: ${e?.message||e}`)}
+ }
+ throw new Error(`MouseMapper data load failed: ${errors.join(' / ')}`);
 }
+function hostOf(url){try{return new URL(url).host}catch{return String(url)}}
 function parseNifti1(buffer){
  const v=new DataView(buffer); let le=true; if(v.getInt32(0,true)!==348){if(v.getInt32(0,false)===348)le=false;else throw new Error('NIfTI-1ではありません。');}
  const dims=[v.getInt16(42,le),v.getInt16(44,le),v.getInt16(46,le)]; const datatype=v.getInt16(70,le),bitpix=v.getInt16(72,le);
