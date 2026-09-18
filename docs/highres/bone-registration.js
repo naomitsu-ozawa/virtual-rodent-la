@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 
-const STORAGE_KEY = 'virtual-rodent-bone-registration-v1';
+const STORAGE_KEY = 'virtual-rodent-bone-registration-v2';
 const DEFAULT_ADJUST = Object.freeze({
   offsetX: 0,
   offsetY: 0,
@@ -36,31 +36,24 @@ export function buildTargetLandmarks(nifti, stats, sourceBox) {
   const center = sourceBox.getCenter(new THREE.Vector3());
   const axes = [0, 1, 2].sort((a, b) => size.getComponent(b) - size.getComponent(a));
   const longAxis = axes[0];
+
   const brain = centerOfLabel(nifti, stats, 5) || center.clone();
+  const thorax =
+    centerOfLabel(nifti, stats, 3) ||
+    centerOfLabel(nifti, stats, 4) ||
+    center.clone();
+  const pelvis =
+    centerOfLabel(nifti, stats, 22) ||
+    centerOfLabel(nifti, stats, 18) ||
+    centerOfLabel(nifti, stats, 2) ||
+    center.clone();
 
-  const posteriorCandidates = [22, 18, 12, 2, 11]
-    .map((id) => centerOfLabel(nifti, stats, id))
-    .filter(Boolean);
-
-  let posterior = null;
-  let bestDistance = -Infinity;
-  for (const point of posteriorCandidates) {
-    const distance = point.distanceToSquared(brain);
-    if (distance > bestDistance) {
-      bestDistance = distance;
-      posterior = point;
-    }
+  let headSign = 1;
+  if (pelvis.getComponent(longAxis) !== brain.getComponent(longAxis)) {
+    headSign = pelvis.getComponent(longAxis) > brain.getComponent(longAxis) ? -1 : 1;
   }
 
-  let headSign;
-  if (posterior) {
-    headSign = posterior.getComponent(longAxis) > brain.getComponent(longAxis) ? -1 : 1;
-  } else {
-    const distToMin = brain.getComponent(longAxis) - sourceBox.min.getComponent(longAxis);
-    const distToMax = sourceBox.max.getComponent(longAxis) - brain.getComponent(longAxis);
-    headSign = distToMin < distToMax ? -1 : 1;
-  }
-
+  const frame = makeAnatomicalFrame(brain, thorax, pelvis);
   return {
     box: sourceBox.clone(),
     size,
@@ -68,8 +61,10 @@ export function buildTargetLandmarks(nifti, stats, sourceBox) {
     axes,
     longAxis,
     brain,
-    posterior,
+    thorax,
+    pelvis,
     headSign,
+    frame,
   };
 }
 
@@ -78,7 +73,7 @@ export async function loadRegisteredSkeleton(urls, target) {
   for (const url of urls) {
     try {
       const geometry = await new STLLoader().loadAsync(url);
-      registerSkeletonToBrain(geometry, target);
+      registerSkeletonByLandmarks(geometry, target);
       return geometry;
     } catch (error) {
       lastError = error;
@@ -88,43 +83,53 @@ export async function loadRegisteredSkeleton(urls, target) {
   throw lastError || new Error('骨格データを取得できませんでした。');
 }
 
-function registerSkeletonToBrain(geometry, target) {
+function registerSkeletonByLandmarks(geometry, target) {
   geometry.computeBoundingBox();
+  const position = geometry.getAttribute('position');
   const sourceBox = geometry.boundingBox.clone();
   const sourceSize = sourceBox.getSize(new THREE.Vector3());
   const sourceAxes = [0, 1, 2].sort((a, b) => sourceSize.getComponent(b) - sourceSize.getComponent(a));
-  const sourceLongAxis = sourceAxes[0];
-  const sourceHead = detectSourceHead(geometry.getAttribute('position'), sourceBox, sourceLongAxis);
+  const longAxis = sourceAxes[0];
 
-  const mapTargetToSource = [0, 0, 0];
-  for (let rank = 0; rank < 3; rank += 1) {
-    mapTargetToSource[target.axes[rank]] = sourceAxes[rank];
-  }
+  const endA = regionLandmark(position, sourceBox, longAxis, 'min', 0.01, 0.19);
+  const endB = regionLandmark(position, sourceBox, longAxis, 'max', 0.01, 0.19);
+  const head = endA.score >= endB.score ? endA : endB;
+  const headSide = head.side;
 
-  const targetLength = target.size.getComponent(target.longAxis);
-  const sourceLength = Math.max(sourceSize.getComponent(sourceLongAxis), 1e-6);
-  const scale = (targetLength / sourceLength) * 0.965;
+  const thorax = regionLandmark(position, sourceBox, longAxis, headSide, 0.22, 0.46);
+  const pelvis = regionLandmark(position, sourceBox, longAxis, headSide, 0.56, 0.79);
 
-  const targetHeadIsMax = target.headSign > 0;
-  const sourceHeadIsMax = sourceHead.side === 'max';
-  const longSign = targetHeadIsMax === sourceHeadIsMax ? 1 : -1;
-  const axisSign = [1, 1, 1];
-  axisSign[target.longAxis] = longSign;
+  const sourceFrame = makeAnatomicalFrame(head.anchor, thorax.anchor, pelvis.anchor);
+  const targetFrame = target.frame;
 
-  const position = geometry.getAttribute('position');
+  const sourceHeadPelvis = head.anchor.distanceTo(pelvis.anchor);
+  const targetHeadPelvis = target.brain.distanceTo(target.pelvis);
+  const sourceHeadThorax = head.anchor.distanceTo(thorax.anchor);
+  const targetHeadThorax = target.brain.distanceTo(target.thorax);
+
+  const ratios = [];
+  if (sourceHeadPelvis > 1e-6 && targetHeadPelvis > 1e-6) ratios.push(targetHeadPelvis / sourceHeadPelvis);
+  if (sourceHeadThorax > 1e-6 && targetHeadThorax > 1e-6) ratios.push(targetHeadThorax / sourceHeadThorax);
+  let scale = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 1;
+  scale *= 0.985;
+
   const original = new THREE.Vector3();
   const delta = new THREE.Vector3();
   const mapped = new THREE.Vector3();
 
   for (let i = 0; i < position.count; i += 1) {
     original.fromBufferAttribute(position, i);
-    delta.copy(original).sub(sourceHead.anchor);
+    delta.copy(original).sub(head.anchor);
 
-    for (let targetAxis = 0; targetAxis < 3; targetAxis += 1) {
-      const sourceAxis = mapTargetToSource[targetAxis];
-      const value = delta.getComponent(sourceAxis) * axisSign[targetAxis] * scale;
-      mapped.setComponent(targetAxis, target.brain.getComponent(targetAxis) + value);
-    }
+    const x = delta.dot(sourceFrame.x) * scale;
+    const y = delta.dot(sourceFrame.y) * scale;
+    const z = delta.dot(sourceFrame.z) * scale;
+
+    mapped.copy(target.brain)
+      .addScaledVector(targetFrame.x, x)
+      .addScaledVector(targetFrame.y, y)
+      .addScaledVector(targetFrame.z, z);
+
     position.setXYZ(i, mapped.x, mapped.y, mapped.z);
   }
 
@@ -133,64 +138,112 @@ function registerSkeletonToBrain(geometry, target) {
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
 
-  // Use the target brain centre as the pivot for small manual corrections.
+  // Keep the brain position as the pivot for fine correction.
   geometry.translate(-target.brain.x, -target.brain.y, -target.brain.z);
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
 }
 
-function detectSourceHead(position, sourceBox, longAxis) {
-  const min = sourceBox.min.getComponent(longAxis);
-  const max = sourceBox.max.getComponent(longAxis);
-  const length = Math.max(max - min, 1e-6);
-  const sourceSize = sourceBox.getSize(new THREE.Vector3());
-  const otherAxes = [0, 1, 2].filter((axis) => axis !== longAxis);
+function makeAnatomicalFrame(head, thorax, pelvis) {
+  const x = pelvis.clone().sub(head);
+  if (x.lengthSq() < 1e-8) x.set(1, 0, 0);
+  x.normalize();
 
-  const summarize = (side) => {
-    const centroid = new THREE.Vector3();
-    const lo = [Infinity, Infinity, Infinity];
-    const hi = [-Infinity, -Infinity, -Infinity];
-    let count = 0;
-    const vertex = new THREE.Vector3();
+  const headToThorax = thorax.clone().sub(head);
+  const projection = x.clone().multiplyScalar(headToThorax.dot(x));
+  const y = headToThorax.sub(projection);
 
-    for (let i = 0; i < position.count; i += 1) {
-      vertex.fromBufferAttribute(position, i);
-      const rel = (vertex.getComponent(longAxis) - min) / length;
-      const inside = side === 'min' ? rel <= 0.24 : rel >= 0.76;
-      if (!inside) continue;
-
-      centroid.add(vertex);
-      count += 1;
-      for (const axis of otherAxes) {
-        lo[axis] = Math.min(lo[axis], vertex.getComponent(axis));
-        hi[axis] = Math.max(hi[axis], vertex.getComponent(axis));
-      }
-    }
-
-    if (count) centroid.multiplyScalar(1 / count);
-    const spanA = count
-      ? Math.max(hi[otherAxes[0]] - lo[otherAxes[0]], sourceSize.getComponent(otherAxes[0]) * 0.01)
-      : 0;
-    const spanB = count
-      ? Math.max(hi[otherAxes[1]] - lo[otherAxes[1]], sourceSize.getComponent(otherAxes[1]) * 0.01)
-      : 0;
-    return {
-      side,
-      anchor: centroid,
-      count,
-      score: count * Math.sqrt(spanA * spanB),
-    };
-  };
-
-  const minEnd = summarize('min');
-  const maxEnd = summarize('max');
-  const result = minEnd.score >= maxEnd.score ? minEnd : maxEnd;
-
-  if (!result.count) {
-    result.anchor.copy(sourceBox.getCenter(new THREE.Vector3()));
-    result.anchor.setComponent(longAxis, result.side === 'min' ? min : max);
+  if (y.lengthSq() < 1e-8) {
+    const fallback = Math.abs(x.y) < 0.9
+      ? new THREE.Vector3(0, 1, 0)
+      : new THREE.Vector3(0, 0, 1);
+    y.copy(fallback).addScaledVector(x, -fallback.dot(x));
   }
-  return result;
+  y.normalize();
+
+  const z = new THREE.Vector3().crossVectors(x, y);
+  if (z.lengthSq() < 1e-8) z.set(0, 0, 1);
+  z.normalize();
+
+  // Re-orthogonalize to prevent accumulated skew.
+  y.crossVectors(z, x).normalize();
+
+  return { x, y, z };
+}
+
+function regionLandmark(position, box, longAxis, headSide, fromHead, toHead) {
+  const min = box.min.getComponent(longAxis);
+  const max = box.max.getComponent(longAxis);
+  const length = Math.max(max - min, 1e-6);
+  const bins = 72;
+  const bucket = Array.from({ length: bins }, () => ({
+    count: 0,
+    sum: new THREE.Vector3(),
+    minA: Infinity,
+    maxA: -Infinity,
+    minB: Infinity,
+    maxB: -Infinity,
+  }));
+  const otherAxes = [0, 1, 2].filter((axis) => axis !== longAxis);
+  const v = new THREE.Vector3();
+
+  for (let i = 0; i < position.count; i += 1) {
+    v.fromBufferAttribute(position, i);
+    let t = (v.getComponent(longAxis) - min) / length;
+    if (headSide === 'max') t = 1 - t;
+    if (t < fromHead || t > toHead) continue;
+
+    const local = (t - fromHead) / Math.max(toHead - fromHead, 1e-6);
+    const index = Math.max(0, Math.min(bins - 1, Math.floor(local * bins)));
+    const b = bucket[index];
+    b.count += 1;
+    b.sum.add(v);
+    const a = v.getComponent(otherAxes[0]);
+    const c = v.getComponent(otherAxes[1]);
+    b.minA = Math.min(b.minA, a);
+    b.maxA = Math.max(b.maxA, a);
+    b.minB = Math.min(b.minB, c);
+    b.maxB = Math.max(b.maxB, c);
+  }
+
+  let bestIndex = 0;
+  let bestScore = -Infinity;
+  for (let i = 0; i < bins; i += 1) {
+    const b = bucket[i];
+    if (!b.count) continue;
+    const spanA = Math.max(b.maxA - b.minA, 1e-6);
+    const spanB = Math.max(b.maxB - b.minB, 1e-6);
+    const score = b.count * Math.sqrt(spanA * spanB);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+
+  const anchor = new THREE.Vector3();
+  let total = 0;
+  let score = 0;
+  for (let i = Math.max(0, bestIndex - 2); i <= Math.min(bins - 1, bestIndex + 2); i += 1) {
+    const b = bucket[i];
+    if (!b.count) continue;
+    anchor.add(b.sum);
+    total += b.count;
+    const spanA = Math.max(b.maxA - b.minA, 1e-6);
+    const spanB = Math.max(b.maxB - b.minB, 1e-6);
+    score += b.count * Math.sqrt(spanA * spanB);
+  }
+
+  if (total) {
+    anchor.multiplyScalar(1 / total);
+  } else {
+    anchor.copy(box.getCenter(new THREE.Vector3()));
+  }
+
+  return {
+    anchor,
+    score,
+    side: headSide,
+  };
 }
 
 function readAdjust() {
@@ -214,7 +267,7 @@ export function createBoneAdjustmentController({ container, help, target, onChan
   panel.hidden = true;
   panel.innerHTML =
     '<div class="bone-adjust-title"><strong>骨格位置調整</strong><button type="button" data-bone-close aria-label="閉じる">×</button></div>' +
-    '<p>頭蓋を脳の位置へ自動整列した後の微調整です。値はこのブラウザに保存されます。</p>' +
+    '<p>脳・胸郭・骨盤の3点で自動整列しています。ここでは微調整だけ行えます。値はこのブラウザに保存されます。</p>' +
     sliderRow('X', 'offsetX', -0.18, 0.18, 0.005) +
     sliderRow('Y', 'offsetY', -0.18, 0.18, 0.005) +
     sliderRow('Z', 'offsetZ', -0.18, 0.18, 0.005) +
