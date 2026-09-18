@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {STLLoader} from 'three/addons/loaders/STLLoader.js';
-import {MODEL_URL,BONE_STL_URLS,tissues} from './highres/tissues.js?v=mousemapper-4';
+import {MODEL_URL,BONE_STL_URLS,tissues} from './highres/tissues.js?v=mousemapper-5';
 import {loadNiftiGz,scanLabelStats,unionStats} from './highres/nifti.js';
 import {buildTissueGeometry} from './highres/geometry.js';
-import {buildTargetLandmarks,loadRegisteredSkeleton,createBoneAdjustmentController} from './highres/bone-registration.js?v=mousemapper-4';
+import {buildTargetLandmarks,loadRegisteredSkeleton,createBoneAdjustmentController} from './highres/bone-registration.js?v=mousemapper-5';
 
 const app=document.querySelector('#app');if(!app)throw new Error('Application root not found.');
 const rows=tissues.map(t=>`<label data-row="${t.key}"><input type="checkbox" data-layer="${t.key}" ${t.defaultVisible?'checked':''}><span>${t.label}</span><small data-state="${t.key}"></small></label>`).join('');
