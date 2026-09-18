@@ -116,3 +116,33 @@ footer { color: #7a736c; font-size: 12px; }
   .bone-adjust-panel > label { grid-template-columns: 42px minmax(70px,1fr) 42px; gap: 5px; }
   .viewer-help button { font-size: 11px; }
 }
+
+.bone-orient-actions,
+.bone-flip-actions {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+.bone-orient-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bone-flip-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bone-orient-actions button,
+.bone-flip-actions button {
+  appearance: none;
+  border: 1px solid rgba(0,0,0,.10);
+  background: rgba(255,255,255,.95);
+  color: #4f4943;
+  border-radius: 9px;
+  padding: 7px 6px;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.bone-orient-actions button:hover,
+.bone-flip-actions button:hover {
+  background: #f4f0ea;
+}
+.bone-flip-actions button.active {
+  background: #315f48;
+  border-color: #315f48;
+  color: #fff;
+}
