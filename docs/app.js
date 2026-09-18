@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {STLLoader} from 'three/addons/loaders/STLLoader.js';
-import {MODEL_URL,BONE_STL_URL,tissues} from './highres/tissues.js';
+import {MODEL_URL,BONE_STL_URL,tissues} from './highres/tissues.js?v=mousemapper-2';
 import {loadNiftiGz,scanLabelStats,unionStats} from './highres/nifti.js';
 import {buildTissueGeometry} from './highres/geometry.js';
 
