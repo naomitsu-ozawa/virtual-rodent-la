@@ -61,13 +61,47 @@ resetFilterBtn.onclick=()=>resetProcessing();
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>renderPlane(p);installMprTouch(p)}
 
 async function loadDemo(){
- const r=await fetch(DEMO_URL,{mode:'cors',credentials:'omit'});if(!r.ok)throw new Error('Demo download failed: HTTP '+r.status);
+ let r=null,fromCache=false;
+ if('caches' in window){
+  try{
+   const cache=await caches.open('virtual-rodent-demo-v1');
+   r=await cache.match(DEMO_URL);
+   if(r){fromCache=true;footer.textContent='公開デモ: キャッシュ済みデータを使用';}
+   else{
+    r=await fetch(DEMO_URL,{mode:'cors',credentials:'omit'});
+    if(!r.ok)throw new Error('Demo download failed: HTTP '+r.status);
+    await cache.put(DEMO_URL,r.clone());
+   }
+  }catch(e){
+   console.warn('Cache Storage unavailable; using network.',e);
+   if(!r)r=await fetch(DEMO_URL,{mode:'cors',credentials:'omit'});
+  }
+ }else{
+  r=await fetch(DEMO_URL,{mode:'cors',credentials:'omit'});
+ }
+ if(!r||!r.ok)throw new Error('Demo download failed: HTTP '+(r?.status??'unknown'));
  const reader=r.body?.getReader();let bytes;
- if(reader){const chunks=[];let n=0;while(true){const q=await reader.read();if(q.done)break;if(!q.value)continue;chunks.push(q.value);n+=q.value.byteLength;byteProgress(n,DEMO_SIZE,'Download')}bytes=new Uint8Array(n);let o=0;for(const c of chunks){bytes.set(c,o);o+=c.byteLength}}else bytes=new Uint8Array(await r.arrayBuffer());
+ if(reader){
+  const chunks=[];let n=0;
+  while(true){const q=await reader.read();if(q.done)break;if(!q.value)continue;chunks.push(q.value);n+=q.value.byteLength;byteProgress(n,DEMO_SIZE,fromCache?'Cache':'Download')}
+  bytes=new Uint8Array(n);let o=0;for(const c of chunks){bytes.set(c,o);o+=c.byteLength}
+ }else{
+  bytes=new Uint8Array(await r.arrayBuffer());byteProgress(bytes.byteLength,bytes.byteLength,fromCache?'Cache':'Download');
+ }
  byteProgress(bytes.byteLength,bytes.byteLength,'Unzip');
- const entries=await new Promise((res,rej)=>unzip(bytes,(e,f)=>e?rej(e):res(f)));const out=[];for(const [path,b] of Object.entries(entries)){if(path.endsWith('/')||!b.byteLength)continue;out.push(new File([b],path.split('/').pop()||path))}return out;
+ const entries=await new Promise((res,rej)=>unzip(bytes,(e,f)=>e?rej(e):res(f)));
+ const out=[];for(const [path,b] of Object.entries(entries)){if(path.endsWith('/')||!b.byteLength)continue;out.push(new File([b],path.split('/').pop()||path))}
+ footer.textContent=fromCache?'公開デモ: 端末キャッシュから読み込み':'公開デモ: ダウンロード完了・端末へキャッシュ済み';
+ return out;
 }
-
+async function updateDemoCacheBadge(){
+ if(!('caches' in window))return;
+ try{
+  const cache=await caches.open('virtual-rodent-demo-v1');
+  if(await cache.match(DEMO_URL))demoBtn.textContent='公開マウスCTデモ ✓';
+ }catch{}
+}
+void updateDemoCacheBadge();
 async function inspect(files,auto){
  activeId=null;resetVolume();list.replaceChildren();state.classList.remove('is-hidden');state.innerHTML='<strong>DICOMを確認中…</strong><span>Pixel Dataはまだ展開しません。</span>';prog.classList.remove('is-hidden');busy(true);
  try{const slices=await parseFiles(files,(a,b)=>progress(a,b));const series=groupSeries(slices);if(!series.length){state.innerHTML='<strong>DICOM Seriesを検出できませんでした</strong>';return}state.classList.add('is-hidden');renderSeries(series);if(auto){const ct=series.find(s=>s.modality.toUpperCase()==='CT')||series[0];await selectSeries(ct)}}finally{busy(false);prog.classList.add('is-hidden')}
@@ -194,7 +228,7 @@ function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)
 function installMprTouch(p){const c=planes[p];let id=null,startY=0,start=0;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startY=e.clientY;start=+c.slider.value;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientHeight/(max+1)),next=Math.round(start-(e.clientY-startY)/sens);c.slider.value=Math.max(0,Math.min(max,next));renderPlane(p)};const end=e=>{if(id!==e.pointerId)return;if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null};c.canvas.onpointerup=end;c.canvas.onpointercancel=end}
 
 async function start3D(){
- const scene=new THREE.Scene();scene.background=new THREE.Color(0x090c0e);const camera=new THREE.PerspectiveCamera(38,1,.1,100);camera.position.z=5.2;
+ const scene=new THREE.Scene();scene.background=new THREE.Color(0x090c0e);const camera=new THREE.PerspectiveCamera(38,1,.1,100);camera.position.z=5.2;scene.add(new THREE.HemisphereLight(0xffffff,0x182028,2.0));const keyLight=new THREE.DirectionalLight(0xffffff,2.4);keyLight.position.set(2,3,4);scene.add(keyLight);
  let renderer,backend='WEBGL';
  if('gpu' in navigator){
   try{
@@ -219,12 +253,62 @@ async function start3D(){
  renderer.setAnimationLoop(()=>renderer.render(scene,camera));
 }
 function render3D(v){
- if(!sceneState)return;if(sceneState.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj)}
- const group=new THREE.Group(),n=v.columns*v.rows*v.slices,stride=Math.max(1,Math.ceil(Math.cbrt(n/1800000))),[sx,sy,sz]=v.spacing,px=v.columns*sx,py=v.rows*sy,pz=v.slices*sz,scale=3.3/Math.max(px,py,pz,1);
- const keys=['fat','soft','bone'],arrays={fat:[],soft:[],bone:[]},caps={fat:50000,soft:70000,bone:110000};
- for(let z=0;z<v.slices;z+=stride)for(let y=0;y<v.rows;y+=stride){const base=z*v.rows*v.columns+y*v.columns;for(let x=0;x<v.columns;x+=stride){const value=v.data[base+x];for(const key of keys){const seg=segmentState[key];if(!seg.enabled||value<seg.min||value>seg.max||arrays[key].length/3>=caps[key])continue;arrays[key].push((x*sx-px/2)*scale,-(y*sy-py/2)*scale,(z*sz-pz/2)*scale)}}}
- for(const key of keys){const seg=segmentState[key],pos=arrays[key];if(!seg.enabled||!pos.length)continue;const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));const m=new THREE.PointsMaterial({size:key==='bone'?.019:.024,color:seg.color,transparent:true,opacity:seg.opacity,sizeAttenuation:true,depthWrite:seg.opacity>.55});const pts=new THREE.Points(g,m);pts.name='segment_'+key;group.add(pts)}
- sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · segmented CT'
+ if(!sceneState)return;
+ if(sceneState.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj)}
+ const group=new THREE.Group();
+ const total=v.columns*v.rows*v.slices;
+ const step=Math.max(1,Math.ceil(Math.cbrt(total/300000)));
+ for(const key of ['fat','soft','bone']){
+  const seg=segmentState[key];
+  if(!seg.enabled)continue;
+  const mesh=buildSegmentSurface(v,seg,step,key);
+  if(mesh)group.add(mesh);
+ }
+ sceneState.obj=group;sceneState.scene.add(group);
+ threeLabel.textContent=(sceneState.backend||'3D')+' · surface mesh';
+}
+function buildSegmentSurface(v,seg,step,key){
+ const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing;
+ const positions=[],indices=[],vertexMap=new Map();
+ const px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
+ const inside=(x,y,z)=>{
+  if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return false;
+  const value=v.data[z*h*w+y*w+x];
+  return value>=seg.min&&value<=seg.max;
+ };
+ const vertex=(gx,gy,gz)=>{
+  const k=gx+','+gy+','+gz;
+  let id=vertexMap.get(k);if(id!==undefined)return id;
+  id=positions.length/3;vertexMap.set(k,id);
+  positions.push((gx*sx-px/2)*scale,-(gy*sy-py/2)*scale,(gz*sz-pz/2)*scale);
+  return id;
+ };
+ const face=(a,b,c,dv)=>{
+  const ia=vertex(...a),ib=vertex(...b),ic=vertex(...c),id=vertex(...dv);
+  indices.push(ia,ib,ic,ia,ic,id);
+ };
+ const maxFaces=key==='bone'?180000:100000;let faces=0;
+ outer:for(let z=0;z<d;z+=step)for(let y=0;y<h;y+=step)for(let x=0;x<w;x+=step){
+  if(!inside(x,y,z))continue;
+  const x1=Math.min(w,x+step),y1=Math.min(h,y+step),z1=Math.min(d,z+step);
+  const nx=x-step,ny=y-step,nz=z-step,pxn=x+step,pyn=y+step,pzn=z+step;
+  if(!inside(nx,y,z)){face([x,y,z],[x,y,z1],[x,y1,z1],[x,y1,z]);if(++faces>=maxFaces)break outer}
+  if(!inside(pxn,y,z)){face([x1,y,z],[x1,y1,z],[x1,y1,z1],[x1,y,z1]);if(++faces>=maxFaces)break outer}
+  if(!inside(x,ny,z)){face([x,y,z],[x1,y,z],[x1,y,z1],[x,y,z1]);if(++faces>=maxFaces)break outer}
+  if(!inside(x,pyn,z)){face([x,y1,z],[x,y1,z1],[x1,y1,z1],[x1,y1,z]);if(++faces>=maxFaces)break outer}
+  if(!inside(x,y,nz)){face([x,y,z],[x,y1,z],[x1,y1,z],[x1,y,z]);if(++faces>=maxFaces)break outer}
+  if(!inside(x,y,pzn)){face([x,y,z1],[x1,y,z1],[x1,y1,z1],[x,y1,z1]);if(++faces>=maxFaces)break outer}
+ }
+ if(!indices.length)return null;
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+ geometry.setIndex(indices);geometry.computeVertexNormals();geometry.computeBoundingSphere();
+ const material=new THREE.MeshStandardMaterial({
+  color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,
+  roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,
+  depthWrite:seg.opacity>.55
+ });
+ const mesh=new THREE.Mesh(geometry,material);mesh.name='segment_'+key;return mesh;
 }
 
 function resetVolume(){volume=null;sourceVolume=null;enableProcessingControls(false);wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
