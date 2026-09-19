@@ -88,3 +88,24 @@ Research / feasibility prototype under active development.
 ## Third-party material
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+
+## Public mouse CT demo
+
+The development branch includes a `公開マウスCTデモ` button.
+
+It retrieves `PET-CT.zip` (20.8 MB) from Zenodo record 12761093 on demand. The associated study used a Siemens Inveon micro-PET/CT scanner in mice and reports DICOM-based image analysis.
+
+The DICOM archive is not stored in this Git repository.
+
+Current demo path:
+
+1. Download the small public archive.
+2. Expand it in browser memory.
+3. Detect DICOM Series.
+4. Select the CT Series.
+5. Decode pixels and apply RescaleSlope / RescaleIntercept.
+6. Show Axial / Coronal / Sagittal views.
+7. Show a WebGPU 3D high-density CT preview.
+
+The 3D preview is intentionally lightweight. Full volume rendering and segmentation surfaces are the next rendering milestone.
