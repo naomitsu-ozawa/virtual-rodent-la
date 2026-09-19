@@ -524,3 +524,75 @@ footer {
   background: #421f25 !important;
   color: #f1a5ad !important;
 }
+
+
+/* Touch / iPhone interaction */
+.viewport-3d,
+.viewport-3d canvas,
+.mpr-canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.primary-button,
+.secondary-button,
+.tool-chip,
+.slice-slider,
+.range-row input[type="range"] {
+  min-height: 44px;
+}
+
+@media (pointer: coarse) {
+  .primary-button,
+  .secondary-button {
+    padding: 12px 14px;
+  }
+
+  .slice-slider {
+    bottom: 4px;
+    height: 34px;
+  }
+
+  .range-row input[type="range"] {
+    height: 34px;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .status {
+    width: 100%;
+    text-align: center;
+  }
+
+  .primary-button,
+  .secondary-button {
+    flex: 1 1 calc(50% - 4px);
+    margin-left: 0;
+  }
+
+  .viewport-card-main {
+    min-height: 56dvh;
+  }
+
+  .mpr-column {
+    gap: 10px;
+  }
+
+  .mpr-card {
+    min-height: 240px;
+  }
+
+  .selected-series-overlay {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    max-width: none;
+  }
+}
