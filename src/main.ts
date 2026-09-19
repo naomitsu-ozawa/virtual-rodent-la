@@ -208,10 +208,14 @@ demoButton.addEventListener('click', async () => {
 });
 
 for (const plane of Object.keys(planeControls) as Plane[]) {
-  planeControls[plane].slider.addEventListener('input', () => {
+  const control = planeControls[plane];
+
+  control.slider.addEventListener('input', () => {
     if (!currentVolume) return;
     renderPlane(plane);
   });
+
+  installMprTouchNavigation(plane);
 }
 
 windowCenterInput.addEventListener('input', renderAllPlanes);
@@ -454,6 +458,42 @@ function planeControl(plane: Plane) {
   };
 }
 
+function installMprTouchNavigation(plane: Plane): void {
+  const control = planeControls[plane];
+  let pointerId: number | null = null;
+  let startY = 0;
+  let startIndex = 0;
+
+  control.canvas.addEventListener('pointerdown', (event) => {
+    if (!currentVolume || control.slider.disabled) return;
+    pointerId = event.pointerId;
+    startY = event.clientY;
+    startIndex = Number(control.slider.value);
+    control.canvas.setPointerCapture(event.pointerId);
+  });
+
+  control.canvas.addEventListener('pointermove', (event) => {
+    if (pointerId !== event.pointerId || !currentVolume) return;
+    const dy = event.clientY - startY;
+    const max = Number(control.slider.max);
+    const sensitivity = Math.max(1, control.canvas.clientHeight / Math.max(max + 1, 1));
+    const next = Math.round(startIndex - dy / sensitivity);
+    control.slider.value = String(Math.max(0, Math.min(max, next)));
+    renderPlane(plane);
+  });
+
+  const finish = (event: PointerEvent) => {
+    if (pointerId !== event.pointerId) return;
+    if (control.canvas.hasPointerCapture(event.pointerId)) {
+      control.canvas.releasePointerCapture(event.pointerId);
+    }
+    pointerId = null;
+  };
+
+  control.canvas.addEventListener('pointerup', finish);
+  control.canvas.addEventListener('pointercancel', finish);
+}
+
 function clearLoadedVolume(): void {
   currentVolume = null;
   windowCenterInput.disabled = true;
@@ -537,39 +577,84 @@ async function startWebGpuViewport(): Promise<void> {
   grid.position.z = -1.8;
   scene.add(grid);
 
-  let dragging = false;
-  let lastX = 0;
-  let lastY = 0;
+  const pointers = new Map<number, { x: number; y: number }>();
   let distance = 5.2;
+  let lastPinchDistance = 0;
+  let lastPinchCenter: { x: number; y: number } | null = null;
+
+  renderer.domElement.addEventListener('contextmenu', (event) => event.preventDefault());
 
   renderer.domElement.addEventListener('pointerdown', (event) => {
-    dragging = true;
-    lastX = event.clientX;
-    lastY = event.clientY;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     renderer.domElement.setPointerCapture(event.pointerId);
+
+    if (pointers.size >= 2) {
+      const [a, b] = [...pointers.values()];
+      lastPinchDistance = Math.hypot(b.x - a.x, b.y - a.y);
+      lastPinchCenter = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
   });
 
   renderer.domElement.addEventListener('pointermove', (event) => {
-    if (!dragging || !webGpuScene?.volumeObject) return;
-    const dx = event.clientX - lastX;
-    const dy = event.clientY - lastY;
-    lastX = event.clientX;
-    lastY = event.clientY;
+    const previous = pointers.get(event.pointerId);
+    if (!previous) return;
 
-    webGpuScene.volumeObject.rotation.y += dx * 0.008;
-    webGpuScene.volumeObject.rotation.x += dy * 0.008;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (!webGpuScene?.volumeObject) return;
+
+    if (pointers.size === 1) {
+      const dx = event.clientX - previous.x;
+      const dy = event.clientY - previous.y;
+      webGpuScene.volumeObject.rotation.y += dx * 0.008;
+      webGpuScene.volumeObject.rotation.x += dy * 0.008;
+      return;
+    }
+
+    const [a, b] = [...pointers.values()];
+    const pinchDistance = Math.hypot(b.x - a.x, b.y - a.y);
+    const pinchCenter = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+    if (lastPinchDistance > 0) {
+      const ratio = lastPinchDistance / Math.max(pinchDistance, 1);
+      distance = THREE.MathUtils.clamp(distance * ratio, 2.2, 12);
+      camera.position.z = distance;
+    }
+
+    if (lastPinchCenter) {
+      const dx = pinchCenter.x - lastPinchCenter.x;
+      const dy = pinchCenter.y - lastPinchCenter.y;
+      const panScale = distance * 0.0015;
+      webGpuScene.volumeObject.position.x += dx * panScale;
+      webGpuScene.volumeObject.position.y -= dy * panScale;
+    }
+
+    lastPinchDistance = pinchDistance;
+    lastPinchCenter = pinchCenter;
   });
 
-  renderer.domElement.addEventListener('pointerup', (event) => {
-    dragging = false;
-    renderer.domElement.releasePointerCapture(event.pointerId);
+  const releasePointer = (event: PointerEvent) => {
+    pointers.delete(event.pointerId);
+    if (renderer.domElement.hasPointerCapture(event.pointerId)) {
+      renderer.domElement.releasePointerCapture(event.pointerId);
+    }
+
+    if (pointers.size < 2) {
+      lastPinchDistance = 0;
+      lastPinchCenter = null;
+    }
+  };
+
+  renderer.domElement.addEventListener('pointerup', releasePointer);
+  renderer.domElement.addEventListener('pointercancel', releasePointer);
+  renderer.domElement.addEventListener('pointerleave', (event) => {
+    if (event.pointerType === 'mouse') releasePointer(event);
   });
 
   renderer.domElement.addEventListener(
     'wheel',
     (event) => {
       event.preventDefault();
-      distance = THREE.MathUtils.clamp(distance + event.deltaY * 0.004, 2.5, 10);
+      distance = THREE.MathUtils.clamp(distance + event.deltaY * 0.004, 2.2, 12);
       camera.position.z = distance;
     },
     { passive: false },
