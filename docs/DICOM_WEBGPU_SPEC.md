@@ -248,3 +248,28 @@ Each stage should be toggleable or resettable without destroying the original DI
 8. Thin-bone pipeline
 9. Spike/Hole Corrector
 10. Manual segmentation correction
+
+
+## Public demo dataset
+
+The browser demo uses a small public mouse PET/CT archive hosted outside GitHub.
+
+- Dataset: Bidirectional Regulation of Motor Circuits Using Magnetogenetic Gene Therapy
+- Provider: Zenodo
+- Record: https://zenodo.org/records/12761093
+- Demo archive: PET-CT.zip
+- Archive size: 20.8 MB
+- Animal: mouse
+- Scanner: Siemens Inveon micro-PET/CT
+- Analysis format reported by the associated publication: DICOM
+
+The application downloads the archive only when the user chooses the public demo. The archive is expanded in browser memory and passed through the same DICOM parser, CT calibration and viewer pipeline used for local data.
+
+### Demo data policy
+
+- DICOM pixel data is not committed to Git.
+- The public archive remains hosted by Zenodo.
+- Download size is shown before and during transfer.
+- Local-directory loading remains the primary workflow.
+- Demo data and local data share the same viewer code path.
+- The original calibrated CT-value volume remains immutable.
