@@ -61,44 +61,70 @@ resetFilterBtn.onclick=()=>resetProcessing();
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>renderPlane(p);installMprTouch(p)}
 
 async function loadDemo(){
- let r=null,fromCache=false;
+ let response=null,fromCache=false,cache=null;
+ progLabel.textContent='Cache check…';
+ bar.style.width='0%';
+
  if('caches' in window){
   try{
-   const cache=await caches.open('virtual-rodent-demo-v1');
-   r=await cache.match(DEMO_URL);
-   if(r){fromCache=true;footer.textContent='公開デモ: キャッシュ済みデータを使用';}
-   else{
-    r=await fetch(DEMO_URL,{mode:'cors',credentials:'omit'});
-    if(!r.ok)throw new Error('Demo download failed: HTTP '+r.status);
-    await cache.put(DEMO_URL,r.clone());
+   cache=await withTimeout(caches.open('virtual-rodent-demo-v2'),1200,null);
+   if(cache){
+    response=await withTimeout(cache.match(DEMO_URL),1200,null);
+    if(response){fromCache=true;footer.textContent='公開デモ: キャッシュ済みデータを使用';}
    }
   }catch(e){
-   console.warn('Cache Storage unavailable; using network.',e);
-   if(!r)r=await fetch(DEMO_URL,{mode:'cors',credentials:'omit'});
+   console.warn('Cache lookup skipped.',e);
   }
- }else{
-  r=await fetch(DEMO_URL,{mode:'cors',credentials:'omit'});
  }
- if(!r||!r.ok)throw new Error('Demo download failed: HTTP '+(r?.status??'unknown'));
- const reader=r.body?.getReader();let bytes;
+
+ if(!response){
+  progLabel.textContent='接続中…';
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),20000);
+  try{
+   response=await fetch(DEMO_URL,{mode:'cors',credentials:'omit',signal:controller.signal,cache:'no-store'});
+  }finally{
+   clearTimeout(timeout);
+  }
+ }
+
+ if(!response||!response.ok)throw new Error('Demo download failed: HTTP '+(response?.status??'unknown'));
+
+ const reader=response.body?.getReader();let bytes;
  if(reader){
   const chunks=[];let n=0;
-  while(true){const q=await reader.read();if(q.done)break;if(!q.value)continue;chunks.push(q.value);n+=q.value.byteLength;byteProgress(n,DEMO_SIZE,fromCache?'Cache':'Download')}
+  while(true){
+   const q=await reader.read();if(q.done)break;if(!q.value)continue;
+   chunks.push(q.value);n+=q.value.byteLength;
+   byteProgress(n,DEMO_SIZE,fromCache?'Cache':'Download');
+  }
   bytes=new Uint8Array(n);let o=0;for(const c of chunks){bytes.set(c,o);o+=c.byteLength}
  }else{
-  bytes=new Uint8Array(await r.arrayBuffer());byteProgress(bytes.byteLength,bytes.byteLength,fromCache?'Cache':'Download');
+  bytes=new Uint8Array(await response.arrayBuffer());
+  byteProgress(bytes.byteLength,bytes.byteLength,fromCache?'Cache':'Download');
  }
+
+ if(!fromCache&&cache){
+  const copy=bytes.slice();
+  cache.put(DEMO_URL,new Response(copy,{headers:{'Content-Type':'application/zip','Content-Length':String(copy.byteLength)}}))
+   .then(()=>updateDemoCacheBadge())
+   .catch(e=>console.warn('Demo cache save failed.',e));
+ }
+
  byteProgress(bytes.byteLength,bytes.byteLength,'Unzip');
  const entries=await new Promise((res,rej)=>unzip(bytes,(e,f)=>e?rej(e):res(f)));
  const out=[];for(const [path,b] of Object.entries(entries)){if(path.endsWith('/')||!b.byteLength)continue;out.push(new File([b],path.split('/').pop()||path))}
- footer.textContent=fromCache?'公開デモ: 端末キャッシュから読み込み':'公開デモ: ダウンロード完了・端末へキャッシュ済み';
+ footer.textContent=fromCache?'公開デモ: 端末キャッシュから読み込み':'公開デモ: ダウンロード完了。端末キャッシュへ保存中';
  return out;
+}
+function withTimeout(promise,ms,fallback){
+ return Promise.race([promise,new Promise(resolve=>setTimeout(()=>resolve(fallback),ms))]);
 }
 async function updateDemoCacheBadge(){
  if(!('caches' in window))return;
  try{
-  const cache=await caches.open('virtual-rodent-demo-v1');
-  if(await cache.match(DEMO_URL))demoBtn.textContent='公開マウスCTデモ ✓';
+  const cache=await withTimeout(caches.open('virtual-rodent-demo-v2'),1200,null);
+  if(cache&&await withTimeout(cache.match(DEMO_URL),1200,null))demoBtn.textContent='公開マウスCTデモ ✓';
  }catch{}
 }
 void updateDemoCacheBadge();
