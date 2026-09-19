@@ -464,3 +464,63 @@ footer {
     grid-template-rows: repeat(3, 210px);
   }
 }
+
+
+.secondary-button {
+  border: 1px solid #3b4850;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #1a2024;
+  color: #d4e0e5;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.secondary-button:hover { background: #232c31; border-color: #59707c; }
+.secondary-button:disabled { opacity: 0.55; cursor: wait; }
+
+.range-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #a7b5bb;
+}
+
+.range-row output {
+  color: #d8e6ec;
+  font-variant-numeric: tabular-nums;
+}
+
+.range-row input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.mpr-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: auto;
+  background: #020304;
+}
+
+.slice-slider {
+  position: absolute;
+  z-index: 5;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  width: calc(100% - 24px);
+  opacity: 0.82;
+}
+
+.ready-badge-error {
+  background: #421f25 !important;
+  color: #f1a5ad !important;
+}
