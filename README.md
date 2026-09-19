@@ -1,44 +1,80 @@
 # Virtual Rodent Lab
 
-An early WebGPU prototype for virtual mouse and rat anatomy / dissection training.
+WebGPU-first browser application for small-animal DICOM CT visualization, segmentation, and image processing.
 
-## Current demo
+## Current development branch
 
-The first milestone is intentionally small. It verifies that a Three.js WebGPU scene can run in Safari and provides a procedural placeholder rodent that can be rotated and zoomed.
+The active DICOM viewer work is on:
 
-No anatomical dataset is included yet.
+`feature/dicom-webgpu-viewer`
 
-### Controls
+Current milestone:
 
-- Drag: rotate the placeholder rodent
-- Mouse wheel: zoom
+- Local DICOM directory selection
+- Browser-side metadata parsing
+- Series grouping
+- Dataset size / voxel metadata inspection before full-volume work
+- WebGPU viewer shell with 3D + Axial / Coronal / Sagittal layout
 
-The page displays the renderer backend. `WEBGPU ACTIVE` indicates that Three.js initialized a WebGPU backend.
+The next step is decoding the selected series into an immutable calibrated CT-value volume.
 
-## GitHub Pages demo
+## Target workflow
 
-The public demo is a no-build static site in `docs/`.
+1. Select a DICOM directory.
+2. Inspect detected Series and expected memory cost.
+3. Select one Series.
+4. Build a calibrated 3D CT volume locally in the browser.
+5. View synchronized axial, coronal, sagittal, and interactive WebGPU 3D views.
+6. Segment bone, soft tissue, and fat.
+7. Adjust segment color, opacity, visibility, and thresholds.
+8. Apply non-destructive image-processing filters.
 
-It intentionally does **not** use GitHub Actions.
+## Planned image-processing tools
 
-GitHub Pages should be configured once as:
+- Gaussian
+- 3D Median
+- Bilateral
+- Non-Local Means
+- Anisotropic Diffusion
+- Total Variation
+- Window / Level
+- Gamma
+- Sigmoid
+- Tanh
+- CLAHE
+- Histogram Equalization
+- Opening / Closing
+- Opening / Closing by reconstruction
+- Hole filling
+- Small-hole removal
+- Small-object removal
+- Voting hole filling
 
-- Source: **Deploy from a branch**
-- Branch: **main**
-- Folder: **/docs**
+A dedicated local Spike / Hole Corrector is planned for thin-bone CT. It will use local 3D statistics to repair isolated high and low CT-value outliers while preserving genuine edges.
 
-After that, updates to files under `docs/` are served directly by GitHub Pages without consuming GitHub Actions minutes.
+See:
 
-The demo loads Three.js WebGPU from jsDelivr at runtime.
+- [DICOM WebGPU viewer specification](docs/DICOM_WEBGPU_SPEC.md)
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
+
+## Technical direction
+
+- Browser-first
+- TypeScript
+- Vite
+- Three.js WebGPU
+- Local DICOM directory input
+- Web Workers for heavy CPU work
+- WebGPU compute where it provides a clear benefit
+- WASM/CPU fallback where appropriate
+- No mandatory server-side DICOM upload
 
 ## Local development
-
-A Vite + TypeScript development setup is also kept in the repository for future development.
 
 Requirements:
 
 - Node.js
-- A WebGPU-capable browser such as Safari 26+
+- A WebGPU-capable browser
 
 ```bash
 npm install
@@ -47,10 +83,8 @@ npm run dev
 
 ## Project status
 
-This is a research / feasibility prototype. The procedural rodent is only a placeholder for interaction testing and must not be interpreted as anatomical reference data.
+Research / feasibility prototype under active development.
 
 ## Third-party material
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-No license is currently granted for the project's original source code. Third-party components and future third-party anatomical assets remain subject to their respective licenses.
