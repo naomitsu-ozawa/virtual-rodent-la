@@ -4,7 +4,7 @@ export const PUBLIC_MOUSE_DEMO = {
   title: 'Public Mouse PET/CT demo',
   source:
     'Unda et al., Bidirectional regulation of motor circuits using magnetogenetic gene therapy',
-  archiveUrl: 'https://zenodo.org/records/12761093/files/PET-CT.zip?download=1',
+  archiveUrl: 'https://zenodo.org/api/records/12761093/files/PET-CT.zip/content',
   archiveSizeBytes: 20_800_000,
   landingPage: 'https://zenodo.org/records/12761093',
 } as const;
@@ -24,7 +24,7 @@ export async function loadPublicMouseDemo(
   });
 
   if (!response.ok) {
-    throw new Error(`Demo download failed: HTTP ${response.status}`);
+    throw new Error(`Demo download failed: HTTP ${response.status} ${response.statusText}`);
   }
 
   const totalHeader = response.headers.get('content-length');
