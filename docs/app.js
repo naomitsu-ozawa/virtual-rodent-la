@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
 
-const DEMO_URL='https://zenodo.org/records/12761093/files/PET-CT.zip?download=1';
+const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
 const app=document.querySelector('#app');
 app.innerHTML=`
@@ -22,7 +22,7 @@ let volume=null,sceneState=null,activeId=null;
 
 folderBtn.onclick=()=>{folderInput.value='';folderInput.click()};
 folderInput.onchange=async()=>{const files=[...(folderInput.files||[])];if(files.length)await inspect(files,false)};
-demoBtn.onclick=async()=>{busy(true);resetVolume();list.replaceChildren();state.classList.remove('is-hidden');prog.classList.remove('is-hidden');state.innerHTML='<strong>公開マウスPET/CTを取得中…</strong><span>20.8MBの公開データです。</span>';try{const files=await loadDemo();await inspect(files,true)}catch(e){console.error(e);state.innerHTML='<strong>公開デモを読み込めませんでした</strong><span>'+esc(e.message||e)+'</span>';footer.textContent=String(e.message||e)}finally{busy(false);prog.classList.add('is-hidden')}};
+demoBtn.onclick=async()=>{busy(true);resetVolume();list.replaceChildren();state.classList.remove('is-hidden');prog.classList.remove('is-hidden');state.innerHTML='<strong>公開マウスPET/CTを取得中…</strong><span>20.8MBの公開データです。</span>';try{const files=await loadDemo();await inspect(files,true)}catch(e){console.error(e);state.innerHTML='<strong>公開デモを読み込めませんでした</strong><span>'+esc(e.message||e)+'</span>';footer.textContent='Demo error: '+String(e.message||e)}finally{busy(false);prog.classList.add('is-hidden')}};
 wc.oninput=ww.oninput=renderAll;
 
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>renderPlane(p);installMprTouch(p)}
