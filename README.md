@@ -21,6 +21,7 @@
 - 非破壊画像処理
   - Spike / Hole correction
   - Fast NLM 3D
+- NLMの探索半径・パッチ半径を調整
   - Anisotropic Diffusion
   - Gaussian 3D / Median 3D（選択式）
   - Sigmoid
@@ -114,6 +115,7 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Surface smoothing
 - Non-destructive filters: Spike / Hole, Fast NLM 3D, Anisotropic Diffusion, selectable Gaussian 3D / Median 3D, and Sigmoid
 - Filter strength controls and reset
+- Adjustable NLM search radius and patch radius
 - Spike / Hole detection threshold
 - Anisotropic Diffusion iteration count
 - Gaussian / Median pass count
