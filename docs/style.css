@@ -177,7 +177,7 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
   backdrop-filter:blur(2px);
   -webkit-backdrop-filter:blur(2px);
   color:#eef5f8;
-  pointer-events:none;
+  pointer-events:all;
 }
 .processing-overlay.is-hidden{display:none}
 .processing-overlay strong{
