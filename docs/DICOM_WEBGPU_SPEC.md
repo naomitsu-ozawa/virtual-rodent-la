@@ -40,8 +40,11 @@ Compressed Transfer Syntax support remains future work.
 - Axial
 - Coronal
 - Sagittal
+
+Plane labels remain in standard English terminology in both UI languages.
 - Slice sliders
-- Touch drag to move through slices
+- Left/right swipe to move through slices on touch devices
+- Mouse wheel to move through slices on desktop
 - Window Center / Window Width
 - Segmentation overlays
 
