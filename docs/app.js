@@ -17,7 +17,7 @@ const I18N={
   selectDataHelp:'ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。',
   display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',
   segmentation:'セグメンテーション',segments:'組織セグメント',
-  bone:'骨',soft:'軟部組織',fat:'脂肪',min:'最小',max:'最大',opacity:'不透明度',
+  bone:'骨',soft:'軟部組織',fat:'脂肪',lung:'肺',min:'最小',max:'最大',opacity:'不透明度',
   surfaceSmooth:'表面平滑化',strength:'強度',resetFilters:'画像フィルターをリセット',
   controls:'1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動',
   seriesUnselected:'シリーズ未選択',selectSeries:'左の一覧からCTシリーズを選択してください。',
@@ -39,7 +39,7 @@ const I18N={
   selectDataHelp:'Use a local folder or the approximately 20.8 MB public mouse PET/CT demo.',
   display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',
   segmentation:'SEGMENTATION',segments:'Tissue segments',
-  bone:'Bone',soft:'Soft tissue',fat:'Fat',min:'Min',max:'Max',opacity:'Opacity',
+  bone:'Bone',soft:'Soft tissue',fat:'Fat',lung:'Lung',min:'Min',max:'Max',opacity:'Opacity',
   surfaceSmooth:'Surface Smooth',strength:'Strength',resetFilters:'Reset image filters',
   controls:'One finger: rotate 3D / Two fingers: zoom and pan / Drag vertically in MPR to change slices',
   seriesUnselected:'No Series selected',selectSeries:'Select a CT Series from the list on the left.',
@@ -82,6 +82,11 @@ app.innerHTML=`
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="fat">—</output><input data-seg-min="fat" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="fat">—</output><input data-seg-max="fat" type="range" min="0" max="1" value="1" disabled></label>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="fat">0.35</output><input data-seg-opacity="fat" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
+</div><div class="segment-card" data-segment="lung">
+<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="lung" disabled><strong data-i18n="lung">肺</strong></label><input class="segment-color" data-seg-color="lung" type="color" value="#6fb8d6" disabled></div>
+<label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="lung">—</output><input data-seg-min="lung" type="range" min="0" max="1" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="lung">—</output><input data-seg-max="lung" type="range" min="0" max="1" value="1" disabled></label>
+<label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="lung">0.35</output><input data-seg-opacity="lung" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
 </div></div><div class="surface-smooth-card">
   <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong data-i18n="surfaceSmooth">表面平滑化</strong></label>
   <label class="segment-range"><span data-i18n="strength">強度</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="1" step="0.05" value="0.60" disabled></label>
@@ -121,7 +126,8 @@ let filterRebuildRevision=0;
 const segmentState={
  bone:{enabled:true,color:'#f3f0e8',opacity:.85,min:0,max:1},
  soft:{enabled:false,color:'#d97f7f',opacity:.28,min:0,max:1},
- fat:{enabled:false,color:'#e7c85d',opacity:.35,min:0,max:1}
+ fat:{enabled:false,color:'#e7c85d',opacity:.35,min:0,max:1},
+ lung:{enabled:false,color:'#6fb8d6',opacity:.35,min:0,max:1}
 };
 let segmentRenderTimer=null;
 
@@ -462,7 +468,7 @@ function configure(v){
 }
 function configureSegments(v){
  const huLike=v.min<=-500&&v.max>=1000;
- const defaults=huLike?{fat:[Math.max(v.min,-250),Math.min(v.max,-50)],soft:[Math.max(v.min,-50),Math.min(v.max,350)],bone:[Math.max(v.min,350),v.max]}:{fat:[v.min,v.min+(v.max-v.min)*.22],soft:[v.min+(v.max-v.min)*.22,v.min+(v.max-v.min)*.58],bone:[v.min+(v.max-v.min)*.58,v.max]};
+ const defaults=huLike?{lung:[Math.max(v.min,-950),Math.min(v.max,-300)],fat:[Math.max(v.min,-250),Math.min(v.max,-50)],soft:[Math.max(v.min,-50),Math.min(v.max,350)],bone:[Math.max(v.min,350),v.max]}:{lung:[v.min+(v.max-v.min)*.03,v.min+(v.max-v.min)*.18],fat:[v.min,v.min+(v.max-v.min)*.22],soft:[v.min+(v.max-v.min)*.22,v.min+(v.max-v.min)*.58],bone:[v.min+(v.max-v.min)*.58,v.max]};
  for(const key of Object.keys(segmentState)){
   const cfg=segmentState[key],d=defaults[key];cfg.min=d[0];cfg.max=d[1];
   const enabled=$('[data-seg-enabled="'+key+'"]'),color=$('[data-seg-color="'+key+'"]'),min=$('[data-seg-min="'+key+'"]'),max=$('[data-seg-max="'+key+'"]'),opacity=$('[data-seg-opacity="'+key+'"]');
@@ -481,7 +487,7 @@ function renderPlane(p){
  if(!volume)return;const c=planes[p],idx=+c.slider.value;c.label.textContent=idx+1;
  const dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],ctx=c.canvas.getContext('2d');c.canvas.width=dims[0];c.canvas.height=dims[1];
  const img=ctx.createImageData(...dims),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);let q=0;
- const segOrder=['fat','soft','bone'];
+ const segOrder=['lung','fat','soft','bone'];
  for(let y=0;y<dims[1];y++)for(let x=0;x<dims[0];x++){
   let v;if(p==='axial')v=volume.data[idx*volume.rows*volume.columns+y*volume.columns+x];else if(p==='coronal'){const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+idx*volume.columns+x]}else{const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+x*volume.columns+idx]}
   const g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
@@ -538,7 +544,7 @@ function render3D(v){
  }
  const total=v.columns*v.rows*v.slices;
  const step=Math.max(1,Math.ceil(Math.cbrt(total/300000)));
- for(const key of ['fat','soft','bone']){
+ for(const key of ['lung','fat','soft','bone']){
   const seg=segmentState[key];
   if(!seg.enabled)continue;
   const mesh=buildSegmentSurface(v,seg,step,key);
