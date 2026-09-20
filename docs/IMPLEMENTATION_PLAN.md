@@ -44,10 +44,11 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 
 ### Image processing
 
-- [x] Gaussian 3D
 - [x] Spike / Hole correction
 - [x] Fast NLM 3D
 - [x] Anisotropic Diffusion
+- [x] Gaussian 3D
+- [x] Sigmoid
 - [x] Per-filter strength control
 - [x] Non-destructive reset to the original calibrated CT volume
 
