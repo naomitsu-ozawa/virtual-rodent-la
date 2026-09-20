@@ -31,3 +31,16 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .error-panel{width:100%;height:100%;display:grid;place-content:center;gap:8px;text-align:center;padding:28px;color:#e5a0a5}footer{color:#64747c;font-size:11px}
 @media(max-width:900px){body{overflow:auto}.app-shell{height:auto;min-height:100dvh}.workspace,.viewer-grid{grid-template-columns:1fr}.sidebar{grid-template-rows:auto auto}.series-list{max-height:360px}.mpr-column{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:none}.mpr-canvas{min-height:180px}}
 @media(max-width:640px){.app-shell{padding:9px}.topbar{align-items:flex-start;flex-direction:column}.topbar-actions{width:100%;flex-wrap:wrap;gap:8px}.status{width:100%;text-align:center}.primary-button,.secondary-button{flex:1 1 calc(50% - 4px)}.subtitle{display:none}.viewport-card-main{min-height:56dvh}.mpr-column{grid-template-columns:1fr;grid-template-rows:repeat(3,240px);gap:10px}.mpr-card{min-height:240px}.selected-series-overlay{left:8px;right:8px;bottom:8px;max-width:none}footer{font-size:10px}}
+.filter-stack{display:grid;gap:8px;margin-top:4px}
+.filter-control{padding:9px 10px;border:1px solid #293237;border-radius:9px;background:#151a1d}
+.filter-toggle-row{display:flex;align-items:center;gap:8px;min-height:30px;font-size:12px;font-weight:700;color:#cbd6db;cursor:pointer}
+.filter-toggle-row input[type=checkbox]{width:18px;height:18px;accent-color:#68b6d6}
+.filter-toggle-row small{margin-left:auto;color:#75858c;font-size:9px}
+.filter-strength-row{margin-top:6px;display:grid;grid-template-columns:1fr auto;gap:4px 8px;align-items:center;font-size:10px;color:#74858d}
+.filter-strength-row output{color:#b8c8cf;font-variant-numeric:tabular-nums}
+.filter-strength-row input[type=range]{grid-column:1/-1;width:100%;min-height:30px}
+.filter-strength-row input:disabled{opacity:.35}
+.filter-control.is-pending{opacity:.65}
+.processing-actions{margin-top:9px;display:flex;align-items:center;gap:9px}
+.processing-reset{padding:7px 10px;min-height:34px}
+.processing-status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#88a1ad;font-size:10px}
