@@ -11,7 +11,7 @@
 - RescaleSlope / RescaleInterceptによるCT値キャリブレーション
 - Axial / Coronal / Sagittal の3面MPR（断面名は英語表記）
 - WebGPU優先、WebGLフォールバック対応のインタラクティブ3D表示
-- 骨・軟部組織・脂肪・肺の閾値セグメンテーション
+- 組織セグメントを必要時に追加（骨・軟部組織・脂肪・肺をプリセットとして収録）
 - セグメントごとの表示ON/OFF、色、不透明度、CT値範囲調整
 - MPRへのセグメンテーション重畳
 - セグメントの3Dサーフェスメッシュ表示
@@ -101,7 +101,7 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - CT calibration using RescaleSlope / RescaleIntercept
 - Axial / Coronal / Sagittal MPR
 - Interactive 3D rendering with WebGPU and WebGL fallback
-- Bone / soft-tissue / fat / lung threshold segmentation
+- Add tissue segments as needed, with Bone / soft tissue / fat / lung presets
 - Per-segment visibility, color, opacity, and CT-range controls
 - Segmentation overlays in MPR
 - 3D segment surface meshes
