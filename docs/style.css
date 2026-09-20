@@ -65,3 +65,5 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
  .filter-control-card{padding:10px}
  .filter-control-head strong{font-size:13px}
 }
+
+.filter-auto{display:inline-flex;align-items:center;justify-content:center;min-width:58px;opacity:.75;pointer-events:none}
