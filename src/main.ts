@@ -87,7 +87,7 @@ app.innerHTML = `
             ${filterControl('gaussian', 'Gaussian 3D', 0.5, 3, 0.5, 1)}
             ${filterControl('spike-hole', 'Spike / Hole', 0.25, 3, 0.25, 1)}
             ${filterControl('nlm', 'Non-Local Means', 0.5, 3, 0.5, 1, true)}
-            ${filterControl('anisotropic', 'Anisotropic Diffusion', 0.5, 3, 0.5, 1, true)}
+            ${filterControl('anisotropic', 'Anisotropic Diffusion', 0.5, 3, 0.5, 1)}
           </div>
 
           <div class="processing-actions">
@@ -650,6 +650,7 @@ function processingControl(id: string) {
 function enableProcessingControls(): void {
   filterControls.gaussian.enabled.disabled = false;
   filterControls.spikeHole.enabled.disabled = false;
+  filterControls.anisotropic.enabled.disabled = false;
   resetProcessingButton.disabled = false;
   syncProcessingControls();
 }
@@ -683,6 +684,9 @@ function setProcessingBusy(busy: boolean): void {
     busy || !sourceVolume || !processingSettings.gaussian.enabled;
   filterControls.spikeHole.strength.disabled =
     busy || !sourceVolume || !processingSettings.spikeHole.enabled;
+  filterControls.anisotropic.enabled.disabled = busy || !sourceVolume;
+  filterControls.anisotropic.strength.disabled =
+    busy || !sourceVolume || !processingSettings.anisotropic.enabled;
   resetProcessingButton.disabled = busy || !sourceVolume;
 }
 
