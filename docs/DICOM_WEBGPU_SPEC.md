@@ -130,3 +130,10 @@ Legacy Digimouse atlas experiments, MouseMapper inference workflows, generated a
 - 骨 / 軟部組織 / 脂肪 / 肺をプリセットとして選択し、必要なものだけ追加する
 - 追加後は表示ON/OFF、色、不透明度、CT値範囲、STL書き出し、3D体積解析を利用できる
 - セグメントは個別に削除できる
+
+## Sigmoid center
+
+- Sigmoid は強度と中心CT値を個別に調整できる
+- Strength はS字カーブの急峻さを制御する
+- Center は変曲点となるCT値を指定する
+- 初期値は読み込んだボリュームのCT値レンジ中央
