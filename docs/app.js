@@ -551,16 +551,62 @@ async function start3D(){
  }
  status.textContent=backend+' ACTIVE';status.className=backend==='WEBGPU'?'status status-ok':'status status-warning';threeLabel.textContent=backend;
  viewport.appendChild(renderer.domElement);sceneState={scene,camera,renderer,obj:null,backend};
- const pointers=new Map();let distance=5.2,lastPinch=0,lastCenter=null;
+ const pointers=new Map();const pointerStarts=new Map();let distance=5.2,lastPinch=0,lastCenter=null;
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
- renderer.domElement.onpointerdown=e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
+ renderer.domElement.onpointerdown=e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY});renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
  renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId);if(!prev)return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),2.2,12);camera.position.z=distance}if(lastCenter){const ps=distance*.0015;sceneState.obj.position.x+=(center.x-lastCenter.x)*ps;sceneState.obj.position.y-=(center.y-lastCenter.y)*ps}lastPinch=d;lastCenter=center};
- const endPointer=e=>{pointers.delete(e.pointerId);if(renderer.domElement.hasPointerCapture(e.pointerId))renderer.domElement.releasePointerCapture(e.pointerId);if(pointers.size<2){lastPinch=0;lastCenter=null}};
+ const endPointer=e=>{const start=pointerStarts.get(e.pointerId);const wasSingle=pointers.size===1;pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(renderer.domElement.hasPointerCapture(e.pointerId))renderer.domElement.releasePointerCapture(e.pointerId);if(pointers.size<2){lastPinch=0;lastCenter=null}if(e.type==='pointerup'&&wasSingle&&start&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,2.2,12);camera.position.z=distance},{passive:false});
  const resize=()=>{camera.aspect=viewport.clientWidth/Math.max(viewport.clientHeight,1);camera.updateProjectionMatrix();renderer.setSize(viewport.clientWidth,viewport.clientHeight,false)};new ResizeObserver(resize).observe(viewport);resize();
  renderer.setAnimationLoop(()=>renderer.render(scene,camera));
 }
+async function analyzeVolumeAtPointer(event,canvas,camera){
+ if(!volume||!sceneState?.obj)return;
+ volumeAnalysisBusy=true;
+ volumeAnalysisResult.classList.remove('is-hidden');
+ volumeAnalysisResult.textContent=currentLanguage==='ja'?'解析中…':'Analyzing…';
+ try{
+  const rect=canvas.getBoundingClientRect();
+  const mouse=new THREE.Vector2(((event.clientX-rect.left)/rect.width)*2-1,-((event.clientY-rect.top)/rect.height)*2+1);
+  const raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
+  const hit=raycaster.intersectObjects(sceneState.obj.children,true).find(h=>h.object?.userData?.segmentKey);
+  if(!hit){volumeAnalysisResult.textContent=tr('volumeHint');return}
+  const key=hit.object.userData.segmentKey,seg=segmentState[key],scale=hit.object.userData.displayScale;
+  const local=hit.object.worldToLocal(hit.point.clone());
+  const [vx,vy,vz]=volume.spacing,w=volume.columns,h=volume.rows,d=volume.slices;
+  const px=w*vx,py=h*vy,pz=d*vz;
+  let x=Math.round((local.x/scale+px/2)/vx),y=Math.round((-local.y/scale+py/2)/vy),z=Math.round((local.z/scale+pz/2)/vz);
+  const inside=(ix,iy,iz)=>ix>=0&&iy>=0&&iz>=0&&ix<w&&iy<h&&iz<d&&volume.data[iz*h*w+iy*w+ix]>=seg.min&&volume.data[iz*h*w+iy*w+ix]<=seg.max;
+  if(!inside(x,y,z)){
+   let found=null;
+   for(let r=1;r<=2&&!found;r++)for(let dz=-r;dz<=r&&!found;dz++)for(let dy=-r;dy<=r&&!found;dy++)for(let dx=-r;dx<=r;dx++){const ix=x+dx,iy=y+dy,iz=z+dz;if(inside(ix,iy,iz)){found=[ix,iy,iz];break}}
+   if(!found){volumeAnalysisResult.textContent=currentLanguage==='ja'?'選択位置から領域を特定できませんでした':'Could not identify a component at the selected point';return}
+   [x,y,z]=found;
+  }
+  const result=await connectedComponentVolume(volume,seg,x,y,z);
+  const labels={bone:currentLanguage==='ja'?'骨':'Bone',soft:currentLanguage==='ja'?'軟部組織':'Soft tissue',fat:currentLanguage==='ja'?'脂肪':'Fat',lung:currentLanguage==='ja'?'肺':'Lung'};
+  volumeAnalysisResult.innerHTML='<strong>'+labels[key]+'</strong><span>'+result.mm3.toFixed(2)+' mm³</span><span>'+result.mm3.toFixed(2)+' µL · '+result.voxels.toLocaleString()+' voxels</span>';
+ }catch(e){
+  console.error(e);volumeAnalysisResult.textContent=(currentLanguage==='ja'?'体積解析エラー: ':'Volume analysis error: ')+String(e.message||e);
+ }finally{volumeAnalysisBusy=false}
+}
+async function connectedComponentVolume(v,seg,x0,y0,z0){
+ const w=v.columns,h=v.rows,d=v.slices,n=w*h*d,data=v.data,visited=new Uint8Array(n);
+ let queue=new Int32Array(65536),head=0,tail=0;
+ const grow=()=>{const next=new Int32Array(queue.length*2);next.set(queue);queue=next};
+ const start=z0*h*w+y0*w+x0;queue[tail++]=start;visited[start]=1;
+ let count=0,steps=0;
+ const tryPush=i=>{if(i<0||i>=n||visited[i])return;const value=data[i];if(value<seg.min||value>seg.max)return;visited[i]=1;if(tail>=queue.length)grow();queue[tail++]=i};
+ while(head<tail){
+  const i=queue[head++];count++;
+  const z=Math.floor(i/(h*w)),rem=i-z*h*w,y=Math.floor(rem/w),x=rem-y*w;
+  if(x>0)tryPush(i-1);if(x<w-1)tryPush(i+1);if(y>0)tryPush(i-w);if(y<h-1)tryPush(i+w);if(z>0)tryPush(i-h*w);if(z<d-1)tryPush(i+h*w);
+  if((++steps&0x3ffff)===0)await frameYield();
+ }
+ return{voxels:count,mm3:count*v.spacing[0]*v.spacing[1]*v.spacing[2]};
+}
+
 function render3D(v){
  if(!sceneState)return;
  let savedTransform=null;
@@ -633,7 +679,7 @@ function buildSegmentSurface(v,seg,step,key){
  if(surfaceSmoothEnabled.checked){
   taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
  }
- const mesh=new THREE.Mesh(geometry,material);mesh.name='segment_'+key;return mesh;
+ const mesh=new THREE.Mesh(geometry,material);mesh.name='segment_'+key;mesh.userData.segmentKey=key;mesh.userData.displayScale=scale;return mesh;
 }
 
 
