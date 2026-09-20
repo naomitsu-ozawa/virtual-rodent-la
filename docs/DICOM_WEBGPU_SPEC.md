@@ -145,3 +145,10 @@ Legacy Digimouse atlas experiments, MouseMapper inference workflows, generated a
 - Anisotropic Diffusion: Strength + iteration count
 - Gaussian 3D / Median 3D: Strength + pass count
 - Sigmoid: Strength + center CT value
+
+## NLM search radius / patch radius
+
+- Fast NLM 3D は Strength / Search Radius / Patch Radius を個別に調整できる
+- Search Radius は比較候補となる近傍探索範囲を制御する
+- Patch Radius は類似度計算に使う中心＋各軸方向のパッチ範囲を制御する
+- Search Radius は 1〜2、Patch Radius は 0〜2
