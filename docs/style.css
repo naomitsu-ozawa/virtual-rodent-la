@@ -107,3 +107,19 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
     overscroll-behavior:contain;
   }
 }
+
+
+/* Tablet landscape and desktop: the controls sidebar scrolls independently. */
+@media(min-width:901px){
+  .sidebar{
+    grid-template-rows:auto auto;
+    overflow-y:auto;
+    overflow-x:hidden;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    padding-right:2px;
+  }
+  .series-list{
+    max-height:32vh;
+  }
+}
