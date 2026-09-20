@@ -14,6 +14,11 @@ import {
   type CtVolume,
   type Plane,
 } from './volume';
+import {
+  DEFAULT_PROCESSING_SETTINGS,
+  processVolume,
+  type ProcessingSettings,
+} from './processing';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 
@@ -78,15 +83,18 @@ app.innerHTML = `
             <input id="window-width" type="range" min="1" max="8000" value="3000" disabled />
           </label>
 
-          <div class="tool-grid">
-            <button class="tool-chip" disabled>NLM</button>
-            <button class="tool-chip" disabled>Anisotropic Diffusion</button>
-            <button class="tool-chip" disabled>Spike / Hole</button>
-            <button class="tool-chip" disabled>Bone</button>
-            <button class="tool-chip" disabled>Soft tissue</button>
-            <button class="tool-chip" disabled>Fat</button>
+          <div class="filter-stack" id="filter-stack">
+            ${filterControl('gaussian', 'Gaussian 3D', 0.5, 3, 0.5, 1)}
+            ${filterControl('spike-hole', 'Spike / Hole', 0.25, 3, 0.25, 1)}
+            ${filterControl('nlm', 'Non-Local Means', 0.5, 3, 0.5, 1, true)}
+            ${filterControl('anisotropic', 'Anisotropic Diffusion', 0.5, 3, 0.5, 1, true)}
           </div>
-          <p class="hint">フィルター実装は次段階。CT値ボリュームは元データを保持します。</p>
+
+          <div class="processing-actions">
+            <button id="reset-processing" class="secondary-button processing-reset" type="button" disabled>Reset</button>
+            <span id="processing-status" class="processing-status">Original</span>
+          </div>
+          <p class="hint">チェックした処理だけを元のCT値ボリュームから固定順で再計算します。</p>
         </section>
       </aside>
 
@@ -116,6 +124,31 @@ app.innerHTML = `
     </footer>
   </main>
 `;
+
+function filterControl(
+  id: string,
+  label: string,
+  min: number,
+  max: number,
+  step: number,
+  value: number,
+  pending = false,
+): string {
+  return `
+    <div class="filter-control ${pending ? 'is-pending' : ''}">
+      <label class="filter-toggle-row">
+        <input id="${id}-enabled" type="checkbox" disabled ${pending ? 'data-pending="true"' : ''} />
+        <span>${label}</span>
+        ${pending ? '<small>準備中</small>' : ''}
+      </label>
+      <label class="filter-strength-row">
+        <span>Strength</span>
+        <output id="${id}-strength-value">${value}</output>
+        <input id="${id}-strength" type="range" min="${min}" max="${max}" step="${step}" value="${value}" disabled />
+      </label>
+    </div>
+  `;
+}
 
 function mprCard(id: Plane, label: string): string {
   return `
@@ -147,6 +180,15 @@ const windowCenterInput = mustElement<HTMLInputElement>('#window-center');
 const windowWidthInput = mustElement<HTMLInputElement>('#window-width');
 const windowCenterValue = mustElement<HTMLOutputElement>('#window-center-value');
 const windowWidthValue = mustElement<HTMLOutputElement>('#window-width-value');
+const resetProcessingButton = mustElement<HTMLButtonElement>('#reset-processing');
+const processingStatus = mustElement<HTMLSpanElement>('#processing-status');
+
+const filterControls = {
+  gaussian: processingControl('gaussian'),
+  spikeHole: processingControl('spike-hole'),
+  nlm: processingControl('nlm'),
+  anisotropic: processingControl('anisotropic'),
+};
 
 const planeControls = {
   axial: planeControl('axial'),
@@ -156,7 +198,10 @@ const planeControls = {
 
 let activeSeriesId: string | null = null;
 let seriesSummaries: DicomSeriesSummary[] = [];
+let sourceVolume: CtVolume | null = null;
 let currentVolume: CtVolume | null = null;
+let processingSettings: ProcessingSettings = structuredClone(DEFAULT_PROCESSING_SETTINGS);
+let processingRevision = 0;
 let webGpuScene: {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -220,6 +265,36 @@ for (const plane of Object.keys(planeControls) as Plane[]) {
 
 windowCenterInput.addEventListener('input', renderAllPlanes);
 windowWidthInput.addEventListener('input', renderAllPlanes);
+
+for (const [key, control] of Object.entries(filterControls) as Array<
+  [keyof typeof filterControls, ReturnType<typeof processingControl>]
+>) {
+  if (control.enabled.dataset.pending === 'true') continue;
+
+  control.enabled.addEventListener('change', () => {
+    processingSettings[key].enabled = control.enabled.checked;
+    control.strength.disabled = !control.enabled.checked || !sourceVolume;
+    void rebuildProcessingPipeline();
+  });
+
+  control.strength.addEventListener('input', () => {
+    const value = Number(control.strength.value);
+    processingSettings[key].strength = value;
+    control.output.value = value.toFixed(value % 1 === 0 ? 0 : 2);
+    if (control.enabled.checked) void rebuildProcessingPipeline();
+  });
+}
+
+resetProcessingButton.addEventListener('click', () => {
+  processingSettings = structuredClone(DEFAULT_PROCESSING_SETTINGS);
+  syncProcessingControls();
+  if (!sourceVolume) return;
+  currentVolume = sourceVolume;
+  processingRevision += 1;
+  processingStatus.textContent = 'Original';
+  renderAllPlanes();
+  renderVolumePointCloud(currentVolume);
+});
 
 async function inspectFiles(files: File[], fromDemo: boolean): Promise<void> {
   activeSeriesId = null;
@@ -371,11 +446,14 @@ async function selectSeries(summary: DicomSeriesSummary): Promise<void> {
   setBusy(true);
 
   try {
-    currentVolume = await decodeSeriesToCtVolume(summary, (completed, total) => {
+    sourceVolume = await decodeSeriesToCtVolume(summary, (completed, total) => {
       updateProgress(completed, total);
     });
+    currentVolume = sourceVolume;
 
     configureVolumeControls(currentVolume);
+    enableProcessingControls();
+    syncProcessingControls();
     renderAllPlanes();
     renderVolumePointCloud(currentVolume);
 
@@ -495,7 +573,12 @@ function installMprTouchNavigation(plane: Plane): void {
 }
 
 function clearLoadedVolume(): void {
+  sourceVolume = null;
   currentVolume = null;
+  processingRevision += 1;
+  processingSettings = structuredClone(DEFAULT_PROCESSING_SETTINGS);
+  syncProcessingControls();
+  disableProcessingControls();
   windowCenterInput.disabled = true;
   windowWidthInput.disabled = true;
   windowCenterValue.value = '—';
@@ -515,6 +598,92 @@ function clearLoadedVolume(): void {
   }
 
   threeDLabel.textContent = 'WebGPU';
+}
+
+async function rebuildProcessingPipeline(): Promise<void> {
+  if (!sourceVolume) return;
+
+  const revision = ++processingRevision;
+  processingStatus.textContent = 'Processing…';
+  setProcessingBusy(true);
+
+  try {
+    const next = await processVolume(sourceVolume, processingSettings, (stage, completed, total) => {
+      if (revision !== processingRevision) return;
+      processingStatus.textContent = `${stage} ${completed}/${total}`;
+    });
+
+    if (revision !== processingRevision) return;
+
+    currentVolume = next;
+    processingStatus.textContent = activeFilterSummary();
+    renderAllPlanes();
+    renderVolumePointCloud(next);
+  } catch (error) {
+    console.error(error);
+    if (revision === processingRevision) {
+      processingStatus.textContent = 'Processing error';
+      footerStatus.textContent = error instanceof Error ? error.message : String(error);
+    }
+  } finally {
+    if (revision === processingRevision) setProcessingBusy(false);
+  }
+}
+
+function activeFilterSummary(): string {
+  const active: string[] = [];
+  if (processingSettings.gaussian.enabled) active.push('Gaussian');
+  if (processingSettings.spikeHole.enabled) active.push('Spike/Hole');
+  if (processingSettings.nlm.enabled) active.push('NLM');
+  if (processingSettings.anisotropic.enabled) active.push('Anisotropic');
+  return active.length > 0 ? active.join(' → ') : 'Original';
+}
+
+function processingControl(id: string) {
+  return {
+    enabled: mustElement<HTMLInputElement>(`#${id}-enabled`),
+    strength: mustElement<HTMLInputElement>(`#${id}-strength`),
+    output: mustElement<HTMLOutputElement>(`#${id}-strength-value`),
+  };
+}
+
+function enableProcessingControls(): void {
+  filterControls.gaussian.enabled.disabled = false;
+  filterControls.spikeHole.enabled.disabled = false;
+  resetProcessingButton.disabled = false;
+  syncProcessingControls();
+}
+
+function disableProcessingControls(): void {
+  for (const control of Object.values(filterControls)) {
+    control.enabled.disabled = true;
+    control.strength.disabled = true;
+  }
+  resetProcessingButton.disabled = true;
+  processingStatus.textContent = 'Original';
+}
+
+function syncProcessingControls(): void {
+  for (const [key, control] of Object.entries(filterControls) as Array<
+    [keyof typeof filterControls, ReturnType<typeof processingControl>]
+  >) {
+    const state = processingSettings[key];
+    control.enabled.checked = state.enabled;
+    control.strength.value = String(state.strength);
+    control.output.value = String(state.strength);
+    control.strength.disabled =
+      !sourceVolume || !state.enabled || control.enabled.dataset.pending === 'true';
+  }
+}
+
+function setProcessingBusy(busy: boolean): void {
+  filterControls.gaussian.enabled.disabled = busy || !sourceVolume;
+  filterControls.spikeHole.enabled.disabled = busy || !sourceVolume;
+  filterControls.gaussian.strength.disabled =
+    busy || !sourceVolume || !processingSettings.gaussian.enabled;
+  filterControls.spikeHole.strength.disabled =
+    busy || !sourceVolume || !processingSettings.spikeHole.enabled;
+  resetProcessingButton.disabled = busy || !sourceVolume;
 }
 
 function setBusy(busy: boolean): void {
