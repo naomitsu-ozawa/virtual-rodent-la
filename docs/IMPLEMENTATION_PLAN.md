@@ -6,17 +6,17 @@
 - [x] DICOM metadata parsing in the browser
 - [x] Group files by SeriesInstanceUID
 - [x] Show modality, slice count, matrix, spacing, calibration and estimated volume memory before full decode
-- [ ] Decode selected series to calibrated scalar volume
+- [x] Decode selected series to calibrated scalar volume
 - [ ] Validate slice ordering/orientation
 
 ## Milestone 2 — Viewer layout
 
-- [ ] Axial viewport
-- [ ] Coronal viewport
-- [ ] Sagittal viewport
-- [ ] WebGPU 3D viewport
+- [x] Axial viewport
+- [x] Coronal viewport
+- [x] Sagittal viewport
+- [x] WebGPU 3D viewport
 - [ ] Synchronized crosshair
-- [ ] Zoom / pan / rotate
+- [x] Zoom / pan / rotate
 
 ## Milestone 3 — Basic segmentation
 
@@ -30,13 +30,13 @@
 
 ## Milestone 4 — General image-processing toolbox
 
-- [ ] Gaussian
+- [x] Gaussian
 - [ ] 3D Median
 - [ ] Bilateral
 - [ ] Non-Local Means
-- [ ] Anisotropic Diffusion
+- [x] Anisotropic Diffusion
 - [ ] Total Variation
-- [ ] Window / Level
+- [x] Window / Level
 - [ ] Gamma
 - [ ] Sigmoid
 - [ ] Tanh
@@ -55,12 +55,12 @@
 
 ## Milestone 6 — Spike / Hole Corrector
 
-- [ ] 3D neighborhood analysis
-- [ ] Local median
-- [ ] Local variance / edge guard
-- [ ] Spike correction
-- [ ] Hole correction
-- [ ] Maximum correction cap
+- [x] 3D neighborhood analysis
+- [x] Local median
+- [x] Local variance / edge guard
+- [x] Spike correction
+- [x] Hole correction
+- [x] Maximum correction cap
 - [ ] Correction overlay
 - [ ] Before/after preview
 
@@ -79,3 +79,14 @@
 - Heavy work moves off the main UI thread.
 - Dataset scale is shown before full-volume allocation or processing.
 - Avoid duplicate full-volume buffers where possible.
+
+
+## Processing UI behavior
+
+- [x] Filters use checkboxes for enable/disable.
+- [x] Strength sliders are active only while the corresponding filter is enabled.
+- [x] Processing always rebuilds from the immutable calibrated source CT volume.
+- [x] Reset returns directly to the original CT volume.
+- [x] Processing order is deterministic: Gaussian -> Spike/Hole -> Anisotropic.
+- [ ] Move CPU filters to a Web Worker so large CT volumes do not block the UI.
+- [ ] Implement NLM with a worker or WebGPU compute path.
