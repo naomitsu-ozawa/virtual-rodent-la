@@ -26,12 +26,16 @@ app.innerHTML=`
 <label class="segment-range"><span>Min</span><output data-seg-min-out="fat">—</output><input data-seg-min="fat" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span>Max</span><output data-seg-max-out="fat">—</output><input data-seg-max="fat" type="range" min="0" max="1" value="1" disabled></label>
 <label class="segment-range"><span>Opacity</span><output data-seg-opacity-out="fat">0.35</output><input data-seg-opacity="fat" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
-</div></div><div class="tool-grid filter-grid"><button id="filter-gaussian" class="tool-chip" disabled>Gaussian 3D</button><button id="filter-spike-hole" class="tool-chip" disabled>Spike / Hole</button><button id="filter-reset" class="tool-chip" disabled>Reset</button><button class="tool-chip" disabled>NLM</button><button class="tool-chip" disabled>Anisotropic Diffusion</button></div><p class="hint">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></aside>
+</div></div><div class="surface-smooth-card">
+  <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong>Surface Smooth</strong></label>
+  <label class="segment-range"><span>Strength</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="1" step="0.05" value="0.60" disabled></label>
+</div>
+<div class="tool-grid filter-grid"><button id="filter-gaussian" class="tool-chip" disabled>Gaussian 3D</button><button id="filter-spike-hole" class="tool-chip" disabled>Spike / Hole</button><button id="filter-reset" class="tool-chip" disabled>Reset</button><button class="tool-chip" disabled>NLM</button><button class="tool-chip" disabled>Anisotropic Diffusion</button></div><p class="hint">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></aside>
 <section class="viewer-grid"><section class="viewport-card viewport-card-main"><div class="viewport-label"><strong>3D</strong><span id="three-label">WebGPU</span></div><div id="viewport-3d" class="viewport viewport-3d"></div><div id="selected" class="selected-series-overlay"><strong>Series未選択</strong><span>左の一覧からCT Seriesを選択してください。</span></div></section><section class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<article class="viewport-card mpr-card"><div class="viewport-label"><strong>${p}</strong><span id="${p}-label">—</span></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article>`).join('')}</section></section></section>
 <footer><span id="footer">Original calibrated CT values are preserved.</span></footer></main>`;
 
 const $=s=>document.querySelector(s);
-const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset');
+const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]));
 let volume=null,sourceVolume=null,sceneState=null,activeId=null;
 const segmentState={
@@ -53,6 +57,8 @@ for(const key of Object.keys(segmentState)){
  max.oninput=()=>{segmentState[key].max=Math.max(+max.value,segmentState[key].min);max.value=segmentState[key].max;updateSegmentOutputs(key);renderAll();scheduleSegment3D()};
  opacity.oninput=()=>{segmentState[key].opacity=+opacity.value;updateSegmentOutputs(key);renderAll();scheduleSegment3D()};
 }
+surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;scheduleSegment3D()};
+surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);scheduleSegment3D()};
 gaussianBtn.onclick=()=>void applyGaussian3D();
 spikeHoleBtn.onclick=()=>void applySpikeHole();
 resetFilterBtn.onclick=()=>resetProcessing();
@@ -147,6 +153,8 @@ async function decode(s,onProgress){const count=s.columns*s.rows*s.slices.length
 
 function enableProcessingControls(enabled){
  gaussianBtn.disabled=!enabled;spikeHoleBtn.disabled=!enabled;resetFilterBtn.disabled=!enabled;
+ surfaceSmoothEnabled.disabled=!enabled;
+ surfaceSmoothStrength.disabled=!enabled||!surfaceSmoothEnabled.checked;
 }
 function cloneVolumeWithData(base,data){
  return{data,columns:base.columns,rows:base.rows,slices:base.slices,spacing:[...base.spacing],min:base.min,max:base.max};
@@ -334,10 +342,48 @@ function buildSegmentSurface(v,seg,step,key){
   roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,
   depthWrite:seg.opacity>.55
  });
+ if(surfaceSmoothEnabled.checked){
+  taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
+ }
  const mesh=new THREE.Mesh(geometry,material);mesh.name='segment_'+key;return mesh;
 }
 
-function resetVolume(){volume=null;sourceVolume=null;enableProcessingControls(false);wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
+function taubinSmoothGeometry(geometry,strength){
+ const pos=geometry.getAttribute('position');
+ const index=geometry.index;
+ if(!pos||!index||strength<=0)return;
+ const vertexCount=pos.count;
+ const neighbors=Array.from({length:vertexCount},()=>new Set());
+ const idx=index.array;
+ for(let i=0;i<idx.length;i+=3){
+  const a=idx[i],b=idx[i+1],c=idx[i+2];
+  neighbors[a].add(b);neighbors[a].add(c);
+  neighbors[b].add(a);neighbors[b].add(c);
+  neighbors[c].add(a);neighbors[c].add(b);
+ }
+ const coords=new Float32Array(pos.array);
+ const tmp=new Float32Array(coords.length);
+ const lambda=.34*strength,mu=-.36*strength;
+ const pass=(src,dst,factor)=>{
+  for(let i=0;i<vertexCount;i++){
+   const ns=neighbors[i];
+   if(ns.size===0){dst[i*3]=src[i*3];dst[i*3+1]=src[i*3+1];dst[i*3+2]=src[i*3+2];continue}
+   let ax=0,ay=0,az=0;
+   for(const j of ns){ax+=src[j*3];ay+=src[j*3+1];az+=src[j*3+2]}
+   const inv=1/ns.size;ax*=inv;ay*=inv;az*=inv;
+   const o=i*3;dst[o]=src[o]+factor*(ax-src[o]);dst[o+1]=src[o+1]+factor*(ay-src[o+1]);dst[o+2]=src[o+2]+factor*(az-src[o+2]);
+  }
+ };
+ const iterations=Math.max(1,Math.round(2+strength*4));
+ let a=coords,b=tmp;
+ for(let k=0;k<iterations;k++){
+  pass(a,b,lambda);[a,b]=[b,a];
+  pass(a,b,mu);[a,b]=[b,a];
+ }
+ pos.array.set(a);pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
+}
+
+function resetVolume(){volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
 function dispose(o){o.traverse(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
