@@ -1249,49 +1249,64 @@ function thresholdSourceMask(data,seg){
 }
 async function render3DSourceBacked(v){
  if(!sceneState||!v.series)return;
- const revision=++sourceRenderRevision,series=v.series;
- let savedTransform=null;
- if(sceneState.obj){
-  savedTransform={position:sceneState.obj.position.clone(),quaternion:sceneState.obj.quaternion.clone(),scale:sceneState.obj.scale.clone()};
-  sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);
- }
+ const revision=++sourceRenderRevision,series=v.series,previous=sceneState.obj;
  const group=new THREE.Group();
- if(savedTransform){group.position.copy(savedTransform.position);group.quaternion.copy(savedTransform.quaternion);group.scale.copy(savedTransform.scale)}
- sceneState.obj=group;sceneState.scene.add(group);
- const active=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active&&segmentState[key].enabled);
- threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';
- if(!active.length)return;
- const chunkDepth=8;
- for(const key of active){
-  const seg=segmentState[key],materialParams={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55};
-  let prev=null,curr=thresholdSourceMask(await decodeSourceSlice(series.slices[0]),seg);
-  let next=series.slices.length>1?thresholdSourceMask(await decodeSourceSlice(series.slices[1]),seg):null;
-  let positions=[];
-  for(let z=0;z<series.slices.length;z++){
-   if(revision!==sourceRenderRevision)return;
-   appendSourceSliceFaces(positions,series,z,prev,curr,next);
-   const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
-   if(flush){
-    const geometry=geometryFromSourcePositions(positions);
-    if(geometry){
-     const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParams));
-     mesh.name='segment_'+key+'_full_'+z;
-     mesh.userData.segmentKey=key;
-     mesh.userData.displayScale=3.3/Math.max(series.columns*series.spacingX,series.rows*series.spacingY,series.slices.length*series.spacingZ,1);
-     group.add(mesh);
-    }
-    positions=[];
-    footer.textContent='3D full resolution · '+key+' · '+(z+1)+' / '+series.slices.length;
-    await frameYield();
-   }
-   prev=curr;curr=next;
-   const nz=z+2;
-   next=nz<series.slices.length?thresholdSourceMask(await decodeSourceSlice(series.slices[nz]),seg):null;
-  }
+ if(previous){
+  group.position.copy(previous.position);
+  group.quaternion.copy(previous.quaternion);
+  group.scale.copy(previous.scale);
  }
- if(revision===sourceRenderRevision){
+ const active=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active&&segmentState[key].enabled);
+ threeLabel.textContent=(sceneState.backend||'3D')+' · building…';
+ if(!active.length){
+  if(revision!==sourceRenderRevision){dispose(group);return}
+  if(previous){sceneState.scene.remove(previous);dispose(previous)}
+  sceneState.obj=group;sceneState.scene.add(group);
+  threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';
+  return;
+ }
+ const chunkDepth=8;
+ try{
+  for(const key of active){
+   const seg=segmentState[key],materialParams={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55};
+   let prev=null,curr=thresholdSourceMask(await decodeSourceSlice(series.slices[0]),seg);
+   let next=series.slices.length>1?thresholdSourceMask(await decodeSourceSlice(series.slices[1]),seg):null;
+   let positions=[];
+   for(let z=0;z<series.slices.length;z++){
+    if(revision!==sourceRenderRevision){dispose(group);return}
+    appendSourceSliceFaces(positions,series,z,prev,curr,next);
+    const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
+    if(flush){
+     const geometry=geometryFromSourcePositions(positions);
+     if(geometry){
+      const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParams));
+      mesh.name='segment_'+key+'_full_'+z;
+      mesh.userData.segmentKey=key;
+      mesh.userData.displayScale=3.3/Math.max(series.columns*series.spacingX,series.rows*series.spacingY,series.slices.length*series.spacingZ,1);
+      group.add(mesh);
+     }
+     positions=[];
+     footer.textContent='3D building · '+key+' · '+(z+1)+' / '+series.slices.length;
+     await frameYield();
+    }
+    prev=curr;curr=next;
+    const nz=z+2;
+    next=nz<series.slices.length?thresholdSourceMask(await decodeSourceSlice(series.slices[nz]),seg):null;
+   }
+  }
+  if(revision!==sourceRenderRevision){dispose(group);return}
+  if(previous){sceneState.scene.remove(previous);dispose(previous)}
+  sceneState.obj=group;
+  sceneState.scene.add(group);
   threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';
   footer.textContent='3D full resolution · source DICOM · no resampling';
+ }catch(e){
+  dispose(group);
+  if(revision===sourceRenderRevision){
+   threeLabel.textContent=(sceneState.backend||'3D')+' · build error';
+   footer.textContent='3D build error: '+String(e.message||e);
+  }
+  console.error(e);
  }
 }
 
