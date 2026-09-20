@@ -288,8 +288,21 @@ async function start3D(){
 }
 function render3D(v){
  if(!sceneState)return;
- if(sceneState.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj)}
+ let savedTransform=null;
+ if(sceneState.obj){
+  savedTransform={
+   position:sceneState.obj.position.clone(),
+   quaternion:sceneState.obj.quaternion.clone(),
+   scale:sceneState.obj.scale.clone()
+  };
+  sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj)
+ }
  const group=new THREE.Group();
+ if(savedTransform){
+  group.position.copy(savedTransform.position);
+  group.quaternion.copy(savedTransform.quaternion);
+  group.scale.copy(savedTransform.scale);
+ }
  const total=v.columns*v.rows*v.slices;
  const step=Math.max(1,Math.ceil(Math.cbrt(total/300000)));
  for(const key of ['fat','soft','bone']){
