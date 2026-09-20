@@ -156,3 +156,5 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 
 .filter-select{min-height:34px;border:1px solid #3b4850;border-radius:8px;background:#11171a;color:#d8e4e9;padding:5px 8px;font-size:11px}
 .filter-select:disabled{opacity:.45}
+
+.filter-reorder-controls{display:inline-flex;align-items:center;gap:4px;margin-left:auto}.filter-order-button{width:24px;height:24px;border:1px solid #3b4850;border-radius:6px;background:#11171a;color:#d8e4e9;line-height:1;cursor:pointer}.filter-order-button:disabled{opacity:.28;cursor:default}.filter-drag-handle{padding:2px 4px;cursor:grab;user-select:none;touch-action:none;opacity:.75}.filter-control-card.is-dragging{opacity:.5}
