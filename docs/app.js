@@ -207,6 +207,8 @@ const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid'
 let filterOrder=[];
 let filterRebuildTimer=null;
 let filterRebuildRevision=0;
+let filterRebuildFinalize3D=true;
+const filterWorkerState={worker:null,source:null,ready:false,initPromise:null,resolveInit:null,rejectInit:null,nextId:0,pending:new Map(),disabled:false};
 const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
 const segmentState={
  bone:{active:false,enabled:false,color:'#f3f0e8',opacity:.85,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,_maskCache:null,_maskCacheKey:''},
@@ -306,6 +308,101 @@ function bindLiveSlider(input,output,key,fn){
  });
  input.addEventListener('change',()=>finishLiveFilter(key,fn));
 }
+
+function filterStageDescriptor(key){
+ let params;
+ if(key==='spikeHole')params={strength:+spikeHoleStrength.value,threshold:+spikeHoleThreshold.value};
+ else if(key==='nlm')params={strength:+nlmStrength.value,searchRadius:+nlmSearchRadius.value,patchRadius:+nlmPatchRadius.value};
+ else if(key==='anisotropic')params={strength:+anisotropicStrength.value,iterations:+anisotropicIterations.value};
+ else if(key==='gaussian')params={mode:smoothingType.value,strength:+gaussianStrength.value,passes:+spatialPasses.value};
+ else if(key==='sigmoid')params={strength:+sigmoidStrength.value,center:+sigmoidCenter.value};
+ else if(key==='bilateral')params={strength:+bilateralStrength.value,spatialSigma:+bilateralSpatial.value,intensitySigma:+bilateralIntensity.value,passes:+bilateralPasses.value};
+ else if(key==='tv')params={weight:+tvWeight.value,iterations:+tvIterations.value};
+ else if(key==='unsharp')params={radius:+unsharpRadius.value,amount:+unsharpAmount.value,threshold:+unsharpThreshold.value};
+ else params={};
+ return{key,params,signature:key+':'+JSON.stringify(params)};
+}
+function activeFilterStages(){return filterOrder.filter(key=>filterState[key]).map(filterStageDescriptor)}
+function setFilterWorkerBusy(busyState,label='Filters'){
+ if(processingOverlay){
+  processingOverlay.classList.toggle('is-hidden',!busyState);
+  processingOverlay.setAttribute('aria-busy',busyState?'true':'false');
+ }
+ if(processingOverlayLabel)processingOverlayLabel.textContent=busyState?label+' · 処理中…':'';
+ prog.classList.toggle('is-hidden',!busyState);
+ if(busyState){bar.style.width='0%';progLabel.textContent=label}
+}
+function rejectFilterWorkerPending(reason){
+ for(const pending of filterWorkerState.pending.values())pending.reject(reason);
+ filterWorkerState.pending.clear();
+}
+function disposeFilterWorker(resetDisabled=true){
+ rejectFilterWorkerPending(new Error('__SUPERSEDED__'));
+ try{filterWorkerState.worker?.terminate()}catch{}
+ filterWorkerState.worker=null;filterWorkerState.source=null;filterWorkerState.ready=false;filterWorkerState.initPromise=null;filterWorkerState.resolveInit=null;filterWorkerState.rejectInit=null;
+ if(resetDisabled)filterWorkerState.disabled=false;
+}
+function resetFilterWorkerCache(){
+ rejectFilterWorkerPending(new Error('__SUPERSEDED__'));
+ try{filterWorkerState.worker?.postMessage({type:'reset'})}catch{}
+}
+async function ensureFilterWorker(){
+ if(!sourceVolume||sourceVolume.sourceBacked||!sourceVolume.data||filterWorkerState.disabled||typeof Worker==='undefined')return false;
+ if(filterWorkerState.worker&&filterWorkerState.source===sourceVolume&&filterWorkerState.ready)return true;
+ if(filterWorkerState.worker&&filterWorkerState.source===sourceVolume&&filterWorkerState.initPromise)return filterWorkerState.initPromise;
+ disposeFilterWorker(false);
+ const worker=new Worker(new URL('./filter-worker.js?v=filter-worker-2',import.meta.url));
+ filterWorkerState.worker=worker;filterWorkerState.source=sourceVolume;
+ filterWorkerState.initPromise=new Promise((resolve,reject)=>{filterWorkerState.resolveInit=resolve;filterWorkerState.rejectInit=reject});
+ worker.onmessage=e=>{
+  const msg=e.data||{};
+  if(msg.type==='ready'){
+   filterWorkerState.ready=true;
+   filterWorkerState.resolveInit?.(true);
+   filterWorkerState.resolveInit=null;filterWorkerState.rejectInit=null;
+   return;
+  }
+  if(msg.type==='progress'){
+   if(filterWorkerState.pending.has(msg.id)){
+    progress(msg.done,msg.total);
+    if(msg.label)progLabel.textContent=msg.label+' · '+msg.done+' / '+msg.total;
+   }
+   return;
+  }
+  if(msg.type==='result'){
+   const pending=filterWorkerState.pending.get(msg.id);if(!pending)return;
+   filterWorkerState.pending.delete(msg.id);
+   pending.resolve({data:new Float32Array(msg.buffer),cacheStages:msg.cacheStages||0,cacheBytes:msg.cacheBytes||0});
+   return;
+  }
+  if(msg.type==='error'){
+   const pending=filterWorkerState.pending.get(msg.id);if(!pending)return;
+   filterWorkerState.pending.delete(msg.id);pending.reject(new Error(msg.message||'Filter worker error'));
+  }
+ };
+ worker.onerror=e=>{
+  const error=new Error(e.message||'Filter worker failed');
+  filterWorkerState.disabled=true;
+  filterWorkerState.rejectInit?.(error);
+  rejectFilterWorkerPending(error);
+ };
+ const Ctor=sourceVolume.data.constructor,copy=new Ctor(sourceVolume.data.length);copy.set(sourceVolume.data);
+ const isIOS=/iPad|iPhone|iPod/.test(navigator.platform)||(navigator.maxTouchPoints>2&&navigator.platform.includes('MacIntel'));
+ const cacheLimit=isIOS?Math.min(128*1024*1024,Math.max(copy.byteLength,48*1024*1024)):Math.min(384*1024*1024,Math.max(copy.byteLength*2,96*1024*1024));
+ worker.postMessage({type:'init',meta:{w:sourceVolume.columns,h:sourceVolume.rows,d:sourceVolume.slices,min:sourceVolume.min,max:sourceVolume.max},data:copy,cacheLimit},[copy.buffer]);
+ try{return await filterWorkerState.initPromise}catch(e){filterWorkerState.disabled=true;return false}
+}
+function runFilterWorker(stages){
+ const worker=filterWorkerState.worker;
+ if(!worker||!filterWorkerState.ready)return Promise.reject(new Error('Filter worker unavailable'));
+ rejectFilterWorkerPending(new Error('__SUPERSEDED__'));
+ const id=++filterWorkerState.nextId;
+ return new Promise((resolve,reject)=>{
+  filterWorkerState.pending.set(id,{resolve,reject});
+  worker.postMessage({type:'run',id,stages});
+ });
+}
+
 function renderFilterOrder(){
  if(!filterControlList)return;
  const active=new Set(filterOrder);
@@ -398,61 +495,87 @@ function syncFilterControls(){
  gaussianBtn.checked=filterState.gaussian;spikeHoleBtn.checked=filterState.spikeHole;nlmBtn.checked=filterState.nlm;anisotropicBtn.checked=filterState.anisotropic;sigmoidBtn.checked=filterState.sigmoid;bilateralBtn.checked=filterState.bilateral;tvBtn.checked=filterState.tv;unsharpBtn.checked=filterState.unsharp;
  resetFilterBtn.disabled=!sourceVolume||filterOrder.length===0;
 }
-function scheduleFilterRebuild(delay=120){
+function scheduleFilterRebuild(delay=120,finalize3D=true){
  clearTimeout(filterRebuildTimer);
- filterRebuildTimer=setTimeout(()=>{filterRebuildTimer=null;void rebuildActiveFilters()},delay);
+ filterRebuildFinalize3D=finalize3D;
+ filterRebuildTimer=setTimeout(()=>{filterRebuildTimer=null;void rebuildActiveFilters(filterRebuildFinalize3D)},delay);
 }
-async function rebuildActiveFilters(){
+async function rebuildActiveFiltersLegacy(revision){
+ let base=sourceVolume;
+ for(const key of filterOrder){
+  if(!filterState[key])continue;
+  if(key==='spikeHole')await applySpikeHole(base);
+  else if(key==='nlm')await applyNlm3D(base);
+  else if(key==='anisotropic')await applyAnisotropicDiffusion(base);
+  else if(key==='gaussian'){if(smoothingType.value==='median')await applyMedian3D(base);else await applyGaussian3D(base)}
+  else if(key==='sigmoid')await applySigmoid(base);
+  else if(key==='bilateral')await applyBilateral3D(base);
+  else if(key==='tv')await applyTvDenoising3D(base);
+  else if(key==='unsharp')await applyUnsharpMask3D(base);
+  if(revision!==filterRebuildRevision)return;
+  base=volume;
+ }
+}
+async function rebuildActiveFilters(finalize3D=true){
  if(!sourceVolume)return;
  const revision=++filterRebuildRevision;
  clearTimeout(liveFilterState.timer);liveFilterState.base=null;liveFilterState.key=null;
- let base=sourceVolume;
+ const stages=activeFilterStages();
+ if(!stages.length){
+  resetFilterWorkerCache();volume=sourceVolume;renderAll();if(finalize3D)render3D(volume);footer.textContent=tr('original');syncFilterControls();return;
+ }
+ setFilterWorkerBusy(true,'Filters');
  try{
-  for(const key of filterOrder){
-   if(!filterState[key])continue;
-   if(key==='spikeHole')await applySpikeHole(base);
-   else if(key==='nlm')await applyNlm3D(base);
-   else if(key==='anisotropic')await applyAnisotropicDiffusion(base);
-   else if(key==='gaussian'){if(smoothingType.value==='median')await applyMedian3D(base);else await applyGaussian3D(base)}
-   else if(key==='sigmoid')await applySigmoid(base);
-   else if(key==='bilateral')await applyBilateral3D(base);
-   else if(key==='tv')await applyTvDenoising3D(base);
-   else if(key==='unsharp')await applyUnsharpMask3D(base);
+  const workerReady=await ensureFilterWorker();
+  if(revision!==filterRebuildRevision)return;
+  if(workerReady){
+   const result=await runFilterWorker(stages);
    if(revision!==filterRebuildRevision)return;
-   base=volume;
+   volume=cloneVolumeWithData(sourceVolume,result.data);
+   renderAll();
+   if(finalize3D)render3D(volume);
+   footer.textContent='Filter stack · '+stages.length+' · worker · cache '+result.cacheStages+' ('+fmt(result.cacheBytes)+')';
+  }else{
+   await rebuildActiveFiltersLegacy(revision);
   }
-  if(!filterOrder.length){
-   volume=sourceVolume;renderAll();render3D(volume);footer.textContent=tr('original');
+ }catch(e){
+  if(String(e.message||e)!=='__SUPERSEDED__'){
+   console.warn('Filter worker fallback.',e);
+   filterWorkerState.disabled=true;
+   if(revision===filterRebuildRevision)await rebuildActiveFiltersLegacy(revision);
   }
- }finally{syncFilterControls()}
+ }finally{
+  if(revision===filterRebuildRevision)setFilterWorkerBusy(false);
+  syncFilterControls();
+ }
 }
 smoothingType.onchange=()=>{if(filterState.gaussian)scheduleFilterRebuild(0)};
 for(const [input,output,key] of [[spikeHoleStrength,spikeHoleStrengthValue,'spikeHole'],[nlmStrength,nlmStrengthValue,'nlm'],[anisotropicStrength,anisotropicStrengthValue,'anisotropic'],[gaussianStrength,gaussianStrengthValue,'gaussian'],[sigmoidStrength,sigmoidStrengthValue,'sigmoid']]){
- input.oninput=()=>{output.value=(+input.value).toFixed(2);if(filterState[key])scheduleFilterRebuild(160)};
+ input.oninput=()=>{output.value=(+input.value).toFixed(2);if(filterState[key])scheduleFilterRebuild(160,false)};
  input.onchange=()=>{if(filterState[key])scheduleFilterRebuild(0)};
 }
-sigmoidCenter.oninput=()=>{sigmoidCenterValue.value=Math.round(+sigmoidCenter.value);if(filterState.sigmoid)scheduleFilterRebuild(160)};
+sigmoidCenter.oninput=()=>{sigmoidCenterValue.value=Math.round(+sigmoidCenter.value);if(filterState.sigmoid)scheduleFilterRebuild(160,false)};
 sigmoidCenter.onchange=()=>{if(filterState.sigmoid)scheduleFilterRebuild(0)};
-spikeHoleThreshold.oninput=()=>{spikeHoleThresholdValue.value=(+spikeHoleThreshold.value).toFixed(3);if(filterState.spikeHole)scheduleFilterRebuild(160)};
+spikeHoleThreshold.oninput=()=>{spikeHoleThresholdValue.value=(+spikeHoleThreshold.value).toFixed(3);if(filterState.spikeHole)scheduleFilterRebuild(160,false)};
 spikeHoleThreshold.onchange=()=>{if(filterState.spikeHole)scheduleFilterRebuild(0)};
-anisotropicIterations.oninput=()=>{anisotropicIterationsValue.value=Math.round(+anisotropicIterations.value);if(filterState.anisotropic)scheduleFilterRebuild(160)};
+anisotropicIterations.oninput=()=>{anisotropicIterationsValue.value=Math.round(+anisotropicIterations.value);if(filterState.anisotropic)scheduleFilterRebuild(160,false)};
 anisotropicIterations.onchange=()=>{if(filterState.anisotropic)scheduleFilterRebuild(0)};
-spatialPasses.oninput=()=>{spatialPassesValue.value=Math.round(+spatialPasses.value);if(filterState.gaussian)scheduleFilterRebuild(160)};
+spatialPasses.oninput=()=>{spatialPassesValue.value=Math.round(+spatialPasses.value);if(filterState.gaussian)scheduleFilterRebuild(160,false)};
 spatialPasses.onchange=()=>{if(filterState.gaussian)scheduleFilterRebuild(0)};
-nlmSearchRadius.oninput=()=>{nlmSearchRadiusValue.value=Math.round(+nlmSearchRadius.value);if(filterState.nlm)scheduleFilterRebuild(180)};
+nlmSearchRadius.oninput=()=>{nlmSearchRadiusValue.value=Math.round(+nlmSearchRadius.value);if(filterState.nlm)scheduleFilterRebuild(180,false)};
 nlmSearchRadius.onchange=()=>{if(filterState.nlm)scheduleFilterRebuild(0)};
-nlmPatchRadius.oninput=()=>{nlmPatchRadiusValue.value=Math.round(+nlmPatchRadius.value);if(filterState.nlm)scheduleFilterRebuild(180)};
+nlmPatchRadius.oninput=()=>{nlmPatchRadiusValue.value=Math.round(+nlmPatchRadius.value);if(filterState.nlm)scheduleFilterRebuild(180,false)};
 nlmPatchRadius.onchange=()=>{if(filterState.nlm)scheduleFilterRebuild(0)};
 
 for(const [input,output,key,digits] of [
  [bilateralStrength,bilateralStrengthValue,'bilateral',2],[bilateralSpatial,bilateralSpatialValue,'bilateral',2],[bilateralIntensity,bilateralIntensityValue,'bilateral',2],
  [tvWeight,tvWeightValue,'tv',2],[unsharpAmount,unsharpAmountValue,'unsharp',2],[unsharpThreshold,unsharpThresholdValue,'unsharp',2]
 ]){
- input.oninput=()=>{output.value=(+input.value).toFixed(digits);if(filterState[key])scheduleFilterRebuild(180)};
+ input.oninput=()=>{output.value=(+input.value).toFixed(digits);if(filterState[key])scheduleFilterRebuild(180,false)};
  input.onchange=()=>{if(filterState[key])scheduleFilterRebuild(0)};
 }
 for(const [input,output,key] of [[bilateralPasses,bilateralPassesValue,'bilateral'],[tvIterations,tvIterationsValue,'tv'],[unsharpRadius,unsharpRadiusValue,'unsharp']]){
- input.oninput=()=>{output.value=Math.round(+input.value);if(filterState[key])scheduleFilterRebuild(180)};
+ input.oninput=()=>{output.value=Math.round(+input.value);if(filterState[key])scheduleFilterRebuild(180,false)};
  input.onchange=()=>{if(filterState[key])scheduleFilterRebuild(0)};
 }
 resetFilterBtn.onclick=()=>{filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();syncFilterControls();resetProcessing()};
@@ -912,7 +1035,7 @@ async function applySigmoid(baseVolume=volume){
  finally{setProcessingBusy(false)}
 }
 function resetProcessing(){
- clearTimeout(liveFilterState.timer);clearTimeout(filterRebuildTimer);filterRebuildRevision++;liveFilterState.base=null;liveFilterState.key=null;
+ clearTimeout(liveFilterState.timer);clearTimeout(filterRebuildTimer);filterRebuildRevision++;resetFilterWorkerCache();setFilterWorkerBusy(false);liveFilterState.base=null;liveFilterState.key=null;
  filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;syncFilterControls();
  if(!sourceVolume)return;volume=sourceVolume;renderAll();render3D(volume);footer.textContent=tr('processingReset');
 }
@@ -1459,7 +1582,7 @@ function taubinSmoothGeometry(geometry,strength){
  pos.array.set(a);pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
 }
 
-function resetVolume(){sourceRenderRevision++;activeSeries=null;clearAnalysisHighlight();smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();for(const key of SEGMENT_PRESET_ORDER){segmentState[key].active=false;segmentState[key].enabled=false;const enabled=$('[data-seg-enabled="'+key+'"]');if(enabled)enabled.checked=false}renderSegmentPresets();volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');volumeAnalysisResult.textContent='';filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spatialPasses.disabled=true;spikeHoleStrength.disabled=true;spikeHoleThreshold.disabled=true;nlmStrength.disabled=true;nlmSearchRadius.disabled=true;nlmPatchRadius.disabled=true;anisotropicStrength.disabled=true;anisotropicIterations.disabled=true;bilateralStrength.disabled=true;bilateralSpatial.disabled=true;bilateralIntensity.disabled=true;bilateralPasses.disabled=true;tvWeight.disabled=true;tvIterations.disabled=true;unsharpRadius.disabled=true;unsharpAmount.disabled=true;unsharpThreshold.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity','opening','closing','min-component','hole-fill']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true;const removeBtn=$('[data-seg-remove="'+key+'"]');if(removeBtn)removeBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
+function resetVolume(){sourceRenderRevision++;disposeFilterWorker(true);setFilterWorkerBusy(false);activeSeries=null;clearAnalysisHighlight();smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();for(const key of SEGMENT_PRESET_ORDER){segmentState[key].active=false;segmentState[key].enabled=false;const enabled=$('[data-seg-enabled="'+key+'"]');if(enabled)enabled.checked=false}renderSegmentPresets();volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');volumeAnalysisResult.textContent='';filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spatialPasses.disabled=true;spikeHoleStrength.disabled=true;spikeHoleThreshold.disabled=true;nlmStrength.disabled=true;nlmSearchRadius.disabled=true;nlmPatchRadius.disabled=true;anisotropicStrength.disabled=true;anisotropicIterations.disabled=true;bilateralStrength.disabled=true;bilateralSpatial.disabled=true;bilateralIntensity.disabled=true;bilateralPasses.disabled=true;tvWeight.disabled=true;tvIterations.disabled=true;unsharpRadius.disabled=true;unsharpAmount.disabled=true;unsharpThreshold.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity','opening','closing','min-component','hole-fill']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true;const removeBtn=$('[data-seg-remove="'+key+'"]');if(removeBtn)removeBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
 function dispose(o){o.traverse(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
