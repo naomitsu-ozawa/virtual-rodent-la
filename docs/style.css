@@ -73,15 +73,12 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .filter-enable-label strong{font-size:16px}
 .filter-enable-label:has(input:disabled){opacity:.55;cursor:default}
 
-/* Mobile: keep the large 3D viewport from trapping page scroll. */
+/* Mobile: leave side gutters so page scrolling is easy beside the 3D viewport. */
 @media(max-width:640px){
   .viewport-card-main{
-    min-height:280px;
-    height:clamp(280px,38dvh,360px);
-  }
-  .viewport-card-main .viewport{
-    min-height:0;
-    height:100%;
+    width:calc(100% - 52px);
+    margin-inline:auto;
+    min-height:56dvh;
   }
   .viewport-3d,
   .viewport-3d canvas{
