@@ -30,12 +30,30 @@ app.innerHTML=`
   <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong>Surface Smooth</strong></label>
   <label class="segment-range"><span>Strength</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="1" step="0.05" value="0.60" disabled></label>
 </div>
-<div class="tool-grid filter-grid"><button id="filter-gaussian" class="tool-chip" disabled>Gaussian 3D</button><button id="filter-spike-hole" class="tool-chip" disabled>Spike / Hole</button><button id="filter-reset" class="tool-chip" disabled>Reset</button><button id="filter-nlm" class="tool-chip" disabled>Fast NLM 3D</button><button id="filter-anisotropic" class="tool-chip" disabled>Anisotropic Diffusion</button></div><p class="hint">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></aside>
+<div class="filter-control-list">
+  <div class="filter-control-card">
+    <div class="filter-control-head"><strong>Gaussian 3D</strong><button id="filter-gaussian" class="tool-chip filter-apply" disabled>Apply</button></div>
+    <label class="segment-range"><span>Strength</span><output id="gaussian-strength-value">0.40</output><input id="gaussian-strength" type="range" min="0" max="1" step="0.05" value="0.40" disabled></label>
+  </div>
+  <div class="filter-control-card">
+    <div class="filter-control-head"><strong>Spike / Hole</strong><button id="filter-spike-hole" class="tool-chip filter-apply" disabled>Apply</button></div>
+    <label class="segment-range"><span>Strength</span><output id="spike-hole-strength-value">0.50</output><input id="spike-hole-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
+  </div>
+  <div class="filter-control-card">
+    <div class="filter-control-head"><strong>Fast NLM 3D</strong><button id="filter-nlm" class="tool-chip filter-apply" disabled>Apply</button></div>
+    <label class="segment-range"><span>Strength</span><output id="nlm-strength-value">0.45</output><input id="nlm-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
+  </div>
+  <div class="filter-control-card">
+    <div class="filter-control-head"><strong>Anisotropic Diffusion</strong><button id="filter-anisotropic" class="tool-chip filter-apply" disabled>Apply</button></div>
+    <label class="segment-range"><span>Strength</span><output id="anisotropic-strength-value">0.45</output><input id="anisotropic-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
+  </div>
+  <button id="filter-reset" class="tool-chip filter-reset" disabled>Reset image filters</button>
+</div><p class="hint">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></aside>
 <section class="viewer-grid"><section class="viewport-card viewport-card-main"><div class="viewport-label"><strong>3D</strong><span id="three-label">WebGPU</span></div><div id="viewport-3d" class="viewport viewport-3d"></div><div id="selected" class="selected-series-overlay"><strong>Series未選択</strong><span>左の一覧からCT Seriesを選択してください。</span></div></section><section class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<article class="viewport-card mpr-card"><div class="viewport-label"><strong>${p}</strong><span id="${p}-label">—</span></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article>`).join('')}</section></section></section>
 <footer><span id="footer">Original calibrated CT values are preserved.</span></footer></main>`;
 
 const $=s=>document.querySelector(s);
-const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value');
+const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]));
 let volume=null,sourceVolume=null,sceneState=null,activeId=null;
 const segmentState={
@@ -59,6 +77,10 @@ for(const key of Object.keys(segmentState)){
 }
 surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;scheduleSegment3D()};
 surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);scheduleSegment3D()};
+gaussianStrength.oninput=()=>gaussianStrengthValue.value=(+gaussianStrength.value).toFixed(2);
+spikeHoleStrength.oninput=()=>spikeHoleStrengthValue.value=(+spikeHoleStrength.value).toFixed(2);
+nlmStrength.oninput=()=>nlmStrengthValue.value=(+nlmStrength.value).toFixed(2);
+anisotropicStrength.oninput=()=>anisotropicStrengthValue.value=(+anisotropicStrength.value).toFixed(2);
 gaussianBtn.onclick=()=>void applyGaussian3D();
 spikeHoleBtn.onclick=()=>void applySpikeHole();
 nlmBtn.onclick=()=>void applyNlm3D();
@@ -155,6 +177,7 @@ async function decode(s,onProgress){const count=s.columns*s.rows*s.slices.length
 
 function enableProcessingControls(enabled){
  gaussianBtn.disabled=!enabled;spikeHoleBtn.disabled=!enabled;nlmBtn.disabled=!enabled;anisotropicBtn.disabled=!enabled;resetFilterBtn.disabled=!enabled;
+ gaussianStrength.disabled=!enabled;spikeHoleStrength.disabled=!enabled;nlmStrength.disabled=!enabled;anisotropicStrength.disabled=!enabled;
  surfaceSmoothEnabled.disabled=!enabled;
  surfaceSmoothStrength.disabled=!enabled||!surfaceSmoothEnabled.checked;
 }
@@ -165,9 +188,11 @@ async function applyGaussian3D(){
  if(!volume)return;setProcessingBusy(true,'Gaussian 3D');
  try{
   const {columns:w,rows:h,slices:d}=volume,n=w*h*d,src=volume.data;
+  const strength=+gaussianStrength.value;
   let a=new Float32Array(src),b=new Float32Array(n);
   const axes=[[1,0,0],[0,1,0],[0,0,1]];
-  for(let pass=0;pass<axes.length;pass++){
+  const rounds=Math.max(1,Math.round(1+strength*3));
+  for(let round=0;round<rounds;round++)for(let pass=0;pass<axes.length;pass++){
    const [dx,dy,dz]=axes[pass];
    for(let z=0;z<d;z++){
     for(let y=0;y<h;y++){
@@ -178,10 +203,11 @@ async function applyGaussian3D(){
       const y0=Math.max(0,y-dy),y1=Math.min(h-1,y+dy);
       const z0=Math.max(0,z-dz),z1=Math.min(d-1,z+dz);
       const i0=z0*h*w+y0*w+x0,i1=z1*h*w+y1*w+x1;
-      b[i]=(a[i0]+2*a[i]+a[i1])*.25;
+      const blurred=(a[i0]+2*a[i]+a[i1])*.25;
+      b[i]=a[i]*(1-strength)+blurred*strength;
      }
     }
-    if((z&15)===0){progress(pass*d+z+1,axes.length*d);await frameYield()}
+    if((z&15)===0){progress((round*axes.length+pass)*d+z+1,rounds*axes.length*d);await frameYield()}
    }
    const t=a;a=b;b=t;
   }
@@ -193,7 +219,9 @@ async function applySpikeHole(){
  if(!volume)return;setProcessingBusy(true,'Spike / Hole');
  try{
   const {columns:w,rows:h,slices:d}=volume,src=volume.data,out=new Float32Array(src);
-  const range=Math.max(1,volume.max-volume.min),threshold=range*.07,edgeGuard=threshold*.75;
+  const strength=+spikeHoleStrength.value;
+  const range=Math.max(1,volume.max-volume.min),threshold=range*(.12-.09*strength),edgeGuard=threshold*(.55+.35*strength);
+  const correctionBlend=.20+.75*strength;
   let corrected=0;
   for(let z=1;z<d-1;z++){
    for(let y=1;y<h-1;y++){
@@ -204,7 +232,8 @@ async function applySpikeHole(){
      let sum=0,min=Infinity,max=-Infinity;for(const v of ns){sum+=v;if(v<min)min=v;if(v>max)max=v}
      const mean=sum/6,spread=max-min,diff=c-mean;
      if(spread<=edgeGuard&&Math.abs(diff)>threshold){
-      out[i]=mean+Math.sign(diff)*threshold*.15;corrected++;
+      const target=mean+Math.sign(diff)*threshold*.08;
+      out[i]=c*(1-correctionBlend)+target*correctionBlend;corrected++;
      }
     }
    }
@@ -218,7 +247,8 @@ async function applyNlm3D(){
  if(!volume)return;setProcessingBusy(true,'Fast NLM 3D');
  try{
   const {columns:w,rows:h,slices:d}=volume,src=volume.data,out=new Float32Array(src);
-  const range=Math.max(1,volume.max-volume.min),hParam=range*.045,h2=hParam*hParam;
+  const strength=+nlmStrength.value;
+  const range=Math.max(1,volume.max-volume.min),hParam=range*(.018+.11*strength),h2=hParam*hParam;
   const offsets=[];
   for(let dz=-1;dz<=1;dz++)for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
    if(dx||dy||dz)offsets.push([dx,dy,dz]);
@@ -259,7 +289,8 @@ async function applyAnisotropicDiffusion(){
  try{
   const {columns:w,rows:h,slices:d}=volume,n=w*h*d;
   let a=new Float32Array(volume.data),b=new Float32Array(n);
-  const range=Math.max(1,volume.max-volume.min),kappa=range*.055,kappa2=kappa*kappa,lambda=.14,iterations=4;
+  const strength=+anisotropicStrength.value;
+  const range=Math.max(1,volume.max-volume.min),kappa=range*(.025+.09*strength),kappa2=kappa*kappa,lambda=.06+.14*strength,iterations=Math.max(1,Math.round(1+strength*7));
   for(let iter=0;iter<iterations;iter++){
    b.set(a);
    for(let z=1;z<d-1;z++){
@@ -291,6 +322,7 @@ function resetProcessing(){
 }
 function setProcessingBusy(busyState,label='Processing'){
  gaussianBtn.disabled=busyState||!volume;spikeHoleBtn.disabled=busyState||!volume;nlmBtn.disabled=busyState||!volume;anisotropicBtn.disabled=busyState||!volume;resetFilterBtn.disabled=busyState||!sourceVolume;
+ gaussianStrength.disabled=busyState||!volume;spikeHoleStrength.disabled=busyState||!volume;nlmStrength.disabled=busyState||!volume;anisotropicStrength.disabled=busyState||!volume;
  folderBtn.disabled=demoBtn.disabled=busyState;prog.classList.toggle('is-hidden',!busyState);
  if(busyState){bar.style.width='0%';progLabel.textContent=label}
 }
@@ -470,7 +502,7 @@ function taubinSmoothGeometry(geometry,strength){
  pos.array.set(a);pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
 }
 
-function resetVolume(){volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
+function resetVolume(){volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spikeHoleStrength.disabled=true;nlmStrength.disabled=true;anisotropicStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
 function dispose(o){o.traverse(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}

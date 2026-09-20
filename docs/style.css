@@ -53,3 +53,15 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .surface-smooth-card{border:1px solid #293237;border-radius:10px;padding:10px;background:#14191c;margin:8px 0 10px}
 .surface-smooth-toggle{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px}
 .surface-smooth-toggle input{width:20px;height:20px}
+
+
+.filter-control-list{display:grid;gap:8px;margin-top:6px}
+.filter-control-card{border:1px solid #293237;border-radius:10px;padding:9px;background:#14191c}
+.filter-control-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+.filter-control-head strong{font-size:12px}
+.filter-apply{min-width:72px}
+.filter-reset{width:100%;justify-content:center}
+@media(max-width:640px){
+ .filter-control-card{padding:10px}
+ .filter-control-head strong{font-size:13px}
+}
