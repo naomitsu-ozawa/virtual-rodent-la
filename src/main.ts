@@ -9,6 +9,12 @@ import {
 } from './dicom';
 import { loadPublicMouseDemo, PUBLIC_MOUSE_DEMO } from './demo';
 import {
+  DEFAULT_PROCESSING_SETTINGS,
+  processVolume,
+  type FilterId,
+  type ProcessingSettings,
+} from './processing';
+import {
   decodeSeriesToCtVolume,
   renderPlaneToCanvas,
   type CtVolume,
@@ -150,6 +156,41 @@ function filterControl(
   `;
 }
 
+function filterRow(
+  id: FilterId,
+  label: string,
+  value: string,
+  min: string,
+  max: string,
+  step: string,
+  pending: boolean,
+): string {
+  const disabled = pending ? 'disabled' : '';
+  const pendingLabel = pending ? '<span class="filter-pending">準備中</span>' : '';
+  return `
+    <div class="filter-row" data-filter="${id}">
+      <label class="filter-toggle">
+        <input id="filter-${id}-enabled" type="checkbox" ${disabled} />
+        <span>${label}</span>
+        ${pendingLabel}
+      </label>
+      <div class="filter-strength">
+        <span>Strength</span>
+        <output id="filter-${id}-value">${value}</output>
+        <input
+          id="filter-${id}-strength"
+          type="range"
+          min="${min}"
+          max="${max}"
+          step="${step}"
+          value="${value}"
+          disabled
+        />
+      </div>
+    </div>
+  `;
+}
+
 function mprCard(id: Plane, label: string): string {
   return `
     <article class="viewport-card mpr-card">
@@ -180,6 +221,15 @@ const windowCenterInput = mustElement<HTMLInputElement>('#window-center');
 const windowWidthInput = mustElement<HTMLInputElement>('#window-width');
 const windowCenterValue = mustElement<HTMLOutputElement>('#window-center-value');
 const windowWidthValue = mustElement<HTMLOutputElement>('#window-width-value');
+const resetFiltersButton = mustElement<HTMLButtonElement>('#reset-filters');
+const processingState = mustElement<HTMLSpanElement>('#processing-state');
+
+const filterControls = {
+  gaussian: filterControl('gaussian'),
+  spikeHole: filterControl('spikeHole'),
+  nlm: filterControl('nlm'),
+  anisotropic: filterControl('anisotropic'),
+} satisfies Record<FilterId, ReturnType<typeof filterControl>>;
 const resetProcessingButton = mustElement<HTMLButtonElement>('#reset-processing');
 const processingStatus = mustElement<HTMLSpanElement>('#processing-status');
 
@@ -199,7 +249,11 @@ const planeControls = {
 let activeSeriesId: string | null = null;
 let seriesSummaries: DicomSeriesSummary[] = [];
 let sourceVolume: CtVolume | null = null;
+let sourceVolume: CtVolume | null = null;
 let currentVolume: CtVolume | null = null;
+let processingSettings: ProcessingSettings = structuredClone(DEFAULT_PROCESSING_SETTINGS);
+let processingRequestId = 0;
+let processingTimer: number | null = null;
 let processingSettings: ProcessingSettings = structuredClone(DEFAULT_PROCESSING_SETTINGS);
 let processingRevision = 0;
 let webGpuScene: {
@@ -265,6 +319,36 @@ for (const plane of Object.keys(planeControls) as Plane[]) {
 
 windowCenterInput.addEventListener('input', renderAllPlanes);
 windowWidthInput.addEventListener('input', renderAllPlanes);
+
+for (const id of Object.keys(filterControls) as FilterId[]) {
+  const control = filterControls[id];
+
+  control.enabled.addEventListener('change', () => {
+    processingSettings[id].enabled = control.enabled.checked;
+    control.strength.disabled = !control.enabled.checked || !sourceVolume;
+    scheduleProcessing(0);
+  });
+
+  control.strength.addEventListener('input', () => {
+    const value = Number(control.strength.value);
+    processingSettings[id].strength = value;
+    control.value.value = value.toFixed(2).replace(/\.00$/, '.0').replace(/0$/, '');
+    if (control.enabled.checked) scheduleProcessing(180);
+  });
+}
+
+resetFiltersButton.addEventListener('click', () => {
+  processingSettings = structuredClone(DEFAULT_PROCESSING_SETTINGS);
+  syncFilterUi();
+  if (sourceVolume) {
+    currentVolume = sourceVolume;
+    processingState.textContent = 'Original CT';
+    renderAllPlanes();
+    renderVolumePointCloud(currentVolume);
+    footerStatus.textContent =
+      `Original CT · Float32 working volume: ${formatBytes(currentVolume.data.byteLength)}`;
+  }
+});
 
 for (const [key, control] of Object.entries(filterControls) as Array<
   [keyof typeof filterControls, ReturnType<typeof processingControl>]
@@ -421,7 +505,10 @@ function renderSeriesList(series: DicomSeriesSummary[]): void {
 
 async function selectSeries(summary: DicomSeriesSummary): Promise<void> {
   activeSeriesId = summary.id;
+  sourceVolume = null;
   currentVolume = null;
+  processingSettings = structuredClone(DEFAULT_PROCESSING_SETTINGS);
+  syncFilterUi();
 
   for (const node of seriesList.querySelectorAll<HTMLElement>('.series-card')) {
     node.classList.toggle('is-selected', node.dataset.seriesId === activeSeriesId);
@@ -526,6 +613,104 @@ function renderPlane(plane: Plane): void {
     Number(windowCenterInput.value),
     Number(windowWidthInput.value),
   );
+}
+
+function filterControl(id: FilterId) {
+  return {
+    enabled: mustElement<HTMLInputElement>(`#filter-${id}-enabled`),
+    strength: mustElement<HTMLInputElement>(`#filter-${id}-strength`),
+    value: mustElement<HTMLOutputElement>(`#filter-${id}-value`),
+  };
+}
+
+function setFilterAvailability(available: boolean): void {
+  for (const id of ['gaussian', 'spikeHole'] as FilterId[]) {
+    const control = filterControls[id];
+    control.enabled.disabled = !available;
+    control.strength.disabled = !available || !control.enabled.checked;
+  }
+  resetFiltersButton.disabled = !available;
+}
+
+function syncFilterUi(): void {
+  for (const id of Object.keys(filterControls) as FilterId[]) {
+    const control = filterControls[id];
+    const settings = processingSettings[id];
+    control.enabled.checked = settings.enabled;
+    control.strength.value = String(settings.strength);
+    control.value.value = settings.strength.toFixed(2).replace(/\.00$/, '.0').replace(/0$/, '');
+    control.strength.disabled =
+      control.enabled.disabled || !settings.enabled || !sourceVolume;
+  }
+}
+
+function scheduleProcessing(delayMs: number): void {
+  if (!sourceVolume) return;
+  if (processingTimer != null) window.clearTimeout(processingTimer);
+  processingTimer = window.setTimeout(() => {
+    processingTimer = null;
+    void applyProcessingPipeline();
+  }, delayMs);
+}
+
+async function applyProcessingPipeline(): Promise<void> {
+  if (!sourceVolume) return;
+
+  const requestId = ++processingRequestId;
+  const enabledNames = (Object.keys(processingSettings) as FilterId[]).filter(
+    (id) => processingSettings[id].enabled,
+  );
+
+  if (enabledNames.length === 0) {
+    currentVolume = sourceVolume;
+    processingState.textContent = 'Original CT';
+    renderAllPlanes();
+    renderVolumePointCloud(currentVolume);
+    return;
+  }
+
+  processingState.textContent = 'Processing…';
+  setBusy(true);
+  progressWrap.classList.remove('is-hidden');
+
+  try {
+    const result = await processVolume(sourceVolume, processingSettings, (stage, completed, total) => {
+      updateProgress(completed, total);
+      progressLabel.textContent = `${stage} ${completed.toLocaleString()} / ${total.toLocaleString()}`;
+    });
+
+    if (requestId !== processingRequestId) return;
+
+    currentVolume = result;
+    renderAllPlanes();
+    renderVolumePointCloud(result);
+    processingState.textContent =
+      enabledNames.map((id) => filterLabel(id)).join(' → ');
+    footerStatus.textContent =
+      `Processed from original CT · Float32 working volume: ${formatBytes(result.data.byteLength)}`;
+  } catch (error) {
+    console.error(error);
+    processingState.textContent = 'Processing failed';
+    footerStatus.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (requestId === processingRequestId) {
+      progressWrap.classList.add('is-hidden');
+      setBusy(false);
+    }
+  }
+}
+
+function filterLabel(id: FilterId): string {
+  switch (id) {
+    case 'gaussian':
+      return 'Gaussian 3D';
+    case 'spikeHole':
+      return 'Spike / Hole';
+    case 'nlm':
+      return 'NLM';
+    case 'anisotropic':
+      return 'Anisotropic';
+  }
 }
 
 function planeControl(plane: Plane) {
