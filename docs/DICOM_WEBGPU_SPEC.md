@@ -123,3 +123,10 @@ The archive is expanded in browser memory and passed through the same DICOM pars
 This repository is for the DICOM viewer.
 
 Legacy Digimouse atlas experiments, MouseMapper inference workflows, generated atlas meshes, and unrelated segmentation assets are intentionally excluded from the current tree.
+
+## Tissue segment presets
+
+- 初期状態はセグメントなし
+- 骨 / 軟部組織 / 脂肪 / 肺をプリセットとして選択し、必要なものだけ追加する
+- 追加後は表示ON/OFF、色、不透明度、CT値範囲、STL書き出し、3D体積解析を利用できる
+- セグメントは個別に削除できる
