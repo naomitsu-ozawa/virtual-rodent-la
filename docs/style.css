@@ -200,3 +200,35 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 @media (prefers-reduced-motion:reduce){
   .processing-spinner{animation-duration:1.6s}
 }
+
+.three-busy{
+  position:absolute;
+  inset:0;
+  z-index:8;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  pointer-events:none;
+  background:rgba(5,8,10,.28);
+  color:#eef5f8;
+}
+.three-busy.is-hidden{display:none}
+.three-busy strong{
+  padding:6px 10px;
+  border-radius:8px;
+  background:rgba(10,14,16,.86);
+  border:1px solid #344048;
+  font-size:13px;
+}
+.three-busy-spinner{
+  width:42px;
+  height:42px;
+  border:4px solid rgba(255,255,255,.22);
+  border-top-color:#fff;
+  border-radius:50%;
+  animation:vrl-processing-spin .8s linear infinite;
+}
+
+.viewport-card-main{position:relative}
