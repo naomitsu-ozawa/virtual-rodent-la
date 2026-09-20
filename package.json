@@ -16,6 +16,7 @@
     "@cornerstonejs/core": "5.10.7",
     "@cornerstonejs/dicom-image-loader": "5.10.7",
     "@cornerstonejs/metadata": "5.10.7",
-    "@cornerstonejs/tools": "5.10.7"
+    "@cornerstonejs/tools": "5.10.7",
+    "dicom-parser": "1.8.21"
   }
 }
