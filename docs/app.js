@@ -1247,65 +1247,107 @@ function thresholdSourceMask(data,seg){
  for(let i=0;i<data.length;i++)if(data[i]>=seg.min&&data[i]<=seg.max)mask[i]=1;
  return mask;
 }
+async function decodeSourceSegmentMasks(meta,segments){
+ if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);
+ const bpp=meta.bits===8?1:meta.bits===16?2:0;
+ if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
+ let bytes,offset=meta.pixelOffset;
+ if(offset!=null){
+  bytes=new Uint8Array(await meta.file.slice(offset,offset+meta.rows*meta.columns*bpp).arrayBuffer());
+  offset=0;
+ }else{
+  const all=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(all),el=ds.elements.x7fe00010;
+  if(!el)throw new Error('Pixel Data missing');bytes=all;offset=el.dataOffset;
+ }
+ const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=meta.rows*meta.columns,blockSize=16384;
+ const states=new Map(segments.map(({key,seg})=>[key,{mask:new Uint8Array(n),blocks:[],block:new Uint32Array(blockSize),used:0,min:seg.min,max:seg.max}]));
+ const pushIndex=(state,i)=>{
+  if(state.used===state.block.length){state.blocks.push(state.block);state.block=new Uint32Array(blockSize);state.used=0}
+  state.block[state.used++]=i;
+ };
+ for(let i=0;i<n;i++){
+  let raw;
+  if(meta.bits===8){raw=bytes[offset+i];if(meta.signed&&raw>127)raw-=256}
+  else raw=meta.signed?view.getInt16(offset+i*2,little):view.getUint16(offset+i*2,little);
+  const value=Math.fround(raw*meta.slope+meta.intercept);
+  for(const state of states.values()){
+   if(value>=state.min&&value<=state.max){state.mask[i]=1;pushIndex(state,i)}
+  }
+ }
+ for(const state of states.values()){
+  if(state.used)state.blocks.push(state.block.subarray(0,state.used));
+  state.block=null;delete state.used;delete state.min;delete state.max;
+ }
+ return states;
+}
+function makeSource3DCoordinates(series){
+ const w=series.columns,h=series.rows,d=series.slices.length,sx=series.spacingX,sy=series.spacingY,sz=series.spacingZ,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
+ const xs=new Float64Array(w+1),ys=new Float64Array(h+1),zs=new Float64Array(d+1);
+ for(let x=0;x<=w;x++)xs[x]=(x*sx-px/2)*scale;
+ for(let y=0;y<=h;y++)ys[y]=-(y*sy-py/2)*scale;
+ for(let z=0;z<=d;z++)zs[z]=(z*sz-pz/2)*scale;
+ return{xs,ys,zs,scale};
+}
+function appendSourceSliceFacesFast(positions,series,z,prev,curr,next,coords){
+ const w=series.columns,h=series.rows,m=curr.mask,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1],pm=prev?.mask,nm=next?.mask;
+ for(const block of curr.blocks)for(let bi=0;bi<block.length;bi++){
+  const i=block[bi],y=Math.floor(i/w),x=i-y*w,x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1];
+  if(x===0||!m[i-1])positions.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
+  if(x===w-1||!m[i+1])positions.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
+  if(y===0||!m[i-w])positions.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
+  if(y===h-1||!m[i+w])positions.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
+  if(!pm||!pm[i])positions.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
+  if(!nm||!nm[i])positions.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
+ }
+}
 async function render3DSourceBacked(v){
  if(!sceneState||!v.series)return;
  const revision=++sourceRenderRevision,series=v.series,previous=sceneState.obj;
  const group=new THREE.Group();
- if(previous){
-  group.position.copy(previous.position);
-  group.quaternion.copy(previous.quaternion);
-  group.scale.copy(previous.scale);
- }
- const active=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active&&segmentState[key].enabled);
+ if(previous){group.position.copy(previous.position);group.quaternion.copy(previous.quaternion);group.scale.copy(previous.scale)}
+ const active=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active&&segmentState[key].enabled).map(key=>({key,seg:segmentState[key]}));
  threeLabel.textContent=(sceneState.backend||'3D')+' · building…';
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return}
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
-  sceneState.obj=group;sceneState.scene.add(group);
-  threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';
-  return;
+  sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';return;
  }
- const chunkDepth=8;
+ const chunkDepth=8,coords=makeSource3DCoordinates(series),positionsByKey=new Map(active.map(({key})=>[key,[]]));
+ const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55}]));
+ const flushSegment=(key,z)=>{
+  const positions=positionsByKey.get(key);if(!positions?.length)return;
+  const geometry=geometryFromSourcePositions(positions);
+  if(geometry){
+   const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));
+   mesh.name='segment_'+key+'_full_'+z;mesh.userData.segmentKey=key;mesh.userData.displayScale=coords.scale;group.add(mesh);
+  }
+  positions.length=0;
+ };
  try{
-  for(const key of active){
-   const seg=segmentState[key],materialParams={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55};
-   let prev=null,curr=thresholdSourceMask(await decodeSourceSlice(series.slices[0]),seg);
-   let next=series.slices.length>1?thresholdSourceMask(await decodeSourceSlice(series.slices[1]),seg):null;
-   let positions=[];
-   for(let z=0;z<series.slices.length;z++){
-    if(revision!==sourceRenderRevision){dispose(group);return}
-    appendSourceSliceFaces(positions,series,z,prev,curr,next);
-    const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
-    if(flush){
-     const geometry=geometryFromSourcePositions(positions);
-     if(geometry){
-      const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParams));
-      mesh.name='segment_'+key+'_full_'+z;
-      mesh.userData.segmentKey=key;
-      mesh.userData.displayScale=3.3/Math.max(series.columns*series.spacingX,series.rows*series.spacingY,series.slices.length*series.spacingZ,1);
-      group.add(mesh);
-     }
-     positions=[];
-     footer.textContent='3D building · '+key+' · '+(z+1)+' / '+series.slices.length;
-     await frameYield();
-    }
-    prev=curr;curr=next;
-    const nz=z+2;
-    next=nz<series.slices.length?thresholdSourceMask(await decodeSourceSlice(series.slices[nz]),seg):null;
+  let prev=null,curr=await decodeSourceSegmentMasks(series.slices[0],active);
+  let next=series.slices.length>1?await decodeSourceSegmentMasks(series.slices[1],active):null;
+  for(let z=0;z<series.slices.length;z++){
+   if(revision!==sourceRenderRevision){dispose(group);return}
+   const nz=z+2,nextPromise=nz<series.slices.length?decodeSourceSegmentMasks(series.slices[nz],active):Promise.resolve(null);
+   for(const {key} of active){
+    appendSourceSliceFacesFast(positionsByKey.get(key),series,z,prev?.get(key),curr.get(key),next?.get(key),coords);
    }
+   const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
+   if(flush){
+    for(const {key} of active)flushSegment(key,z);
+    footer.textContent='3D building · '+(z+1)+' / '+series.slices.length;
+    await frameYield();
+   }
+   prev=curr;curr=next;next=await nextPromise;
   }
   if(revision!==sourceRenderRevision){dispose(group);return}
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
-  sceneState.obj=group;
-  sceneState.scene.add(group);
+  sceneState.obj=group;sceneState.scene.add(group);
   threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';
   footer.textContent='3D full resolution · source DICOM · no resampling';
  }catch(e){
   dispose(group);
-  if(revision===sourceRenderRevision){
-   threeLabel.textContent=(sceneState.backend||'3D')+' · build error';
-   footer.textContent='3D build error: '+String(e.message||e);
-  }
+  if(revision===sourceRenderRevision){threeLabel.textContent=(sceneState.backend||'3D')+' · build error';footer.textContent='3D build error: '+String(e.message||e)}
   console.error(e);
  }
 }
