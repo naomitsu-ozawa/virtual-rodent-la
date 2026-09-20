@@ -30,12 +30,12 @@ app.innerHTML=`
   <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong>Surface Smooth</strong></label>
   <label class="segment-range"><span>Strength</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="1" step="0.05" value="0.60" disabled></label>
 </div>
-<div class="tool-grid filter-grid"><button id="filter-gaussian" class="tool-chip" disabled>Gaussian 3D</button><button id="filter-spike-hole" class="tool-chip" disabled>Spike / Hole</button><button id="filter-reset" class="tool-chip" disabled>Reset</button><button class="tool-chip" disabled>NLM</button><button class="tool-chip" disabled>Anisotropic Diffusion</button></div><p class="hint">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></aside>
+<div class="tool-grid filter-grid"><button id="filter-gaussian" class="tool-chip" disabled>Gaussian 3D</button><button id="filter-spike-hole" class="tool-chip" disabled>Spike / Hole</button><button id="filter-reset" class="tool-chip" disabled>Reset</button><button id="filter-nlm" class="tool-chip" disabled>Fast NLM 3D</button><button id="filter-anisotropic" class="tool-chip" disabled>Anisotropic Diffusion</button></div><p class="hint">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></aside>
 <section class="viewer-grid"><section class="viewport-card viewport-card-main"><div class="viewport-label"><strong>3D</strong><span id="three-label">WebGPU</span></div><div id="viewport-3d" class="viewport viewport-3d"></div><div id="selected" class="selected-series-overlay"><strong>Series未選択</strong><span>左の一覧からCT Seriesを選択してください。</span></div></section><section class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<article class="viewport-card mpr-card"><div class="viewport-label"><strong>${p}</strong><span id="${p}-label">—</span></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article>`).join('')}</section></section></section>
 <footer><span id="footer">Original calibrated CT values are preserved.</span></footer></main>`;
 
 const $=s=>document.querySelector(s);
-const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value');
+const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]));
 let volume=null,sourceVolume=null,sceneState=null,activeId=null;
 const segmentState={
@@ -61,6 +61,8 @@ surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmooth
 surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);scheduleSegment3D()};
 gaussianBtn.onclick=()=>void applyGaussian3D();
 spikeHoleBtn.onclick=()=>void applySpikeHole();
+nlmBtn.onclick=()=>void applyNlm3D();
+anisotropicBtn.onclick=()=>void applyAnisotropicDiffusion();
 resetFilterBtn.onclick=()=>resetProcessing();
 
 
@@ -152,7 +154,7 @@ async function selectSeries(s){activeId=s.id;for(const n of list.children)n.clas
 async function decode(s,onProgress){const count=s.columns*s.rows*s.slices.length,data=new Float32Array(count);let min=Infinity,max=-Infinity;for(let z=0;z<s.slices.length;z++){const meta=s.slices[z];if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),el=ds.elements.x7fe00010;if(!el)throw new Error('Pixel Data missing');const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=s.rows*s.columns,off=z*n;for(let i=0;i<n;i++){let raw;if(meta.bits===8){raw=bytes[el.dataOffset+i];if(meta.signed&&raw>127)raw-=256}else if(meta.bits===16){raw=meta.signed?view.getInt16(el.dataOffset+i*2,little):view.getUint16(el.dataOffset+i*2,little)}else throw new Error('Unsupported BitsAllocated='+meta.bits);const v=raw*meta.slope+meta.intercept;data[off+i]=v;if(v<min)min=v;if(v>max)max=v}onProgress?.(z+1,s.slices.length)}return{data,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min,max}}
 
 function enableProcessingControls(enabled){
- gaussianBtn.disabled=!enabled;spikeHoleBtn.disabled=!enabled;resetFilterBtn.disabled=!enabled;
+ gaussianBtn.disabled=!enabled;spikeHoleBtn.disabled=!enabled;nlmBtn.disabled=!enabled;anisotropicBtn.disabled=!enabled;resetFilterBtn.disabled=!enabled;
  surfaceSmoothEnabled.disabled=!enabled;
  surfaceSmoothStrength.disabled=!enabled||!surfaceSmoothEnabled.checked;
 }
@@ -212,11 +214,83 @@ async function applySpikeHole(){
  }catch(e){console.error(e);footer.textContent='Spike/Hole error: '+String(e.message||e)}
  finally{setProcessingBusy(false)}
 }
+async function applyNlm3D(){
+ if(!volume)return;setProcessingBusy(true,'Fast NLM 3D');
+ try{
+  const {columns:w,rows:h,slices:d}=volume,src=volume.data,out=new Float32Array(src);
+  const range=Math.max(1,volume.max-volume.min),hParam=range*.045,h2=hParam*hParam;
+  const offsets=[];
+  for(let dz=-1;dz<=1;dz++)for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+   if(dx||dy||dz)offsets.push([dx,dy,dz]);
+  }
+  const patch=[[0,0,0],[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+  const sample=(x,y,z)=>src[clamp(z,0,d-1)*h*w+clamp(y,0,h-1)*w+clamp(x,0,w-1)];
+  for(let z=0;z<d;z++){
+   for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+     const center=src[z*h*w+y*w+x];
+     let weighted=center,weightSum=1;
+     for(const [dx,dy,dz] of offsets){
+      const nx=x+dx,ny=y+dy,nz=z+dz;
+      if(nx<0||ny<0||nz<0||nx>=w||ny>=h||nz>=d)continue;
+      let dist2=0;
+      for(const [px,py,pz] of patch){
+       const a=sample(x+px,y+py,z+pz),b=sample(nx+px,ny+py,nz+pz),dv=a-b;
+       dist2+=dv*dv;
+      }
+      dist2/=patch.length;
+      const weight=Math.exp(-dist2/Math.max(h2,1e-6));
+      weighted+=weight*src[nz*h*w+ny*w+nx];
+      weightSum+=weight;
+     }
+     out[z*h*w+y*w+x]=weighted/weightSum;
+    }
+   }
+   if((z&3)===0){progress(z+1,d);await frameYield()}
+  }
+  volume=cloneVolumeWithData(volume,out);renderAll();render3D(volume);
+  footer.textContent='Fast NLM 3D applied · Original CT volume preserved';
+ }catch(e){console.error(e);footer.textContent='NLM error: '+String(e.message||e)}
+ finally{setProcessingBusy(false)}
+}
+async function applyAnisotropicDiffusion(){
+ if(!volume)return;setProcessingBusy(true,'Anisotropic Diffusion');
+ try{
+  const {columns:w,rows:h,slices:d}=volume,n=w*h*d;
+  let a=new Float32Array(volume.data),b=new Float32Array(n);
+  const range=Math.max(1,volume.max-volume.min),kappa=range*.055,kappa2=kappa*kappa,lambda=.14,iterations=4;
+  for(let iter=0;iter<iterations;iter++){
+   b.set(a);
+   for(let z=1;z<d-1;z++){
+    for(let y=1;y<h-1;y++){
+     const row=z*h*w+y*w;
+     for(let x=1;x<w-1;x++){
+      const i=row+x,c=a[i];
+      const neighbors=[a[i-1],a[i+1],a[i-w],a[i+w],a[i-w*h],a[i+w*h]];
+      let flux=0;
+      for(const nv of neighbors){
+       const diff=nv-c;
+       const conduct=Math.exp(-(diff*diff)/Math.max(kappa2,1e-6));
+       flux+=conduct*diff;
+      }
+      b[i]=c+lambda*flux;
+     }
+    }
+    if((z&7)===0){progress(iter*d+z+1,iterations*d);await frameYield()}
+   }
+   const t=a;a=b;b=t;
+  }
+  volume=cloneVolumeWithData(volume,a);renderAll();render3D(volume);
+  footer.textContent='Anisotropic Diffusion applied · Original CT volume preserved';
+ }catch(e){console.error(e);footer.textContent='Anisotropic error: '+String(e.message||e)}
+ finally{setProcessingBusy(false)}
+}
 function resetProcessing(){
  if(!sourceVolume)return;volume=sourceVolume;renderAll();render3D(volume);footer.textContent='Processing reset · Original calibrated CT values restored';
 }
 function setProcessingBusy(busyState,label='Processing'){
- gaussianBtn.disabled=busyState||!volume;spikeHoleBtn.disabled=busyState||!volume;resetFilterBtn.disabled=busyState||!sourceVolume;
+ gaussianBtn.disabled=busyState||!volume;spikeHoleBtn.disabled=busyState||!volume;nlmBtn.disabled=busyState||!volume;anisotropicBtn.disabled=busyState||!volume;resetFilterBtn.disabled=busyState||!sourceVolume;
  folderBtn.disabled=demoBtn.disabled=busyState;prog.classList.toggle('is-hidden',!busyState);
  if(busyState){bar.style.width='0%';progLabel.textContent=label}
 }
