@@ -143,6 +143,7 @@ volumeAnalysisToggle.onclick=()=>{
  volumeAnalysisToggle.classList.toggle('is-active',volumeAnalysisMode);
  volumeAnalysisResult.classList.toggle('is-hidden',!volumeAnalysisMode);
  if(volumeAnalysisMode)volumeAnalysisResult.textContent=tr('volumeHint');
+ else clearAnalysisHighlight();
 };
 folderBtn.onclick=()=>{folderInput.value='';folderInput.click()};
 folderInput.onchange=async()=>{const files=[...(folderInput.files||[])];if(files.length)await inspect(files,false)};
@@ -550,7 +551,7 @@ async function start3D(){
   renderer=new WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,2));backend='WEBGL';
  }
  status.textContent=backend+' ACTIVE';status.className=backend==='WEBGPU'?'status status-ok':'status status-warning';threeLabel.textContent=backend;
- viewport.appendChild(renderer.domElement);sceneState={scene,camera,renderer,obj:null,backend};
+ viewport.appendChild(renderer.domElement);sceneState={scene,camera,renderer,obj:null,analysisMesh:null,backend};
  const pointers=new Map();const pointerStarts=new Map();let distance=5.2,lastPinch=0,lastCenter=null;
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
  renderer.domElement.onpointerdown=e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY});renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
@@ -585,6 +586,7 @@ async function analyzeVolumeAtPointer(event,canvas,camera){
    [x,y,z]=found;
   }
   const result=await connectedComponentVolume(volume,seg,x,y,z);
+  showAnalysisHighlight(volume,result.mask,key);
   const labels={bone:currentLanguage==='ja'?'骨':'Bone',soft:currentLanguage==='ja'?'軟部組織':'Soft tissue',fat:currentLanguage==='ja'?'脂肪':'Fat',lung:currentLanguage==='ja'?'肺':'Lung'};
   volumeAnalysisResult.innerHTML='<strong>'+labels[key]+'</strong><span>'+result.mm3.toFixed(2)+' mm³</span><span>'+result.mm3.toFixed(2)+' µL · '+result.voxels.toLocaleString()+' voxels</span>';
  }catch(e){
@@ -604,11 +606,85 @@ async function connectedComponentVolume(v,seg,x0,y0,z0){
   if(x>0)tryPush(i-1);if(x<w-1)tryPush(i+1);if(y>0)tryPush(i-w);if(y<h-1)tryPush(i+w);if(z>0)tryPush(i-h*w);if(z<d-1)tryPush(i+h*w);
   if((++steps&0x3ffff)===0)await frameYield();
  }
- return{voxels:count,mm3:count*v.spacing[0]*v.spacing[1]*v.spacing[2]};
+ return{voxels:count,mm3:count*v.spacing[0]*v.spacing[1]*v.spacing[2],mask:visited};
+}
+
+function clearAnalysisHighlight(){
+ if(!sceneState?.analysisMesh)return;
+ const mesh=sceneState.analysisMesh;
+ if(mesh.parent)mesh.parent.remove(mesh);
+ mesh.geometry?.dispose?.();
+ if(Array.isArray(mesh.material))mesh.material.forEach(m=>m.dispose?.());else mesh.material?.dispose?.();
+ sceneState.analysisMesh=null;
+}
+function showAnalysisHighlight(v,mask,key){
+ clearAnalysisHighlight();
+ if(!sceneState?.obj||!mask)return;
+ const mesh=buildMaskSurface(v,mask,key);
+ if(!mesh)return;
+ sceneState.analysisMesh=mesh;
+ sceneState.obj.add(mesh);
+}
+function buildMaskSurface(v,mask,key){
+ const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing;
+ const positions=[],indices=[],vertexMap=new Map();
+ const px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
+ let count=0;for(let i=0;i<mask.length;i++)if(mask[i])count++;
+ const step=Math.max(1,Math.ceil(Math.cbrt(Math.max(1,count)/180000)));
+ const inside=(x,y,z)=>{
+  if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return false;
+  return mask[z*h*w+y*w+x]===1;
+ };
+ const vertex=(gx,gy,gz)=>{
+  const k=gx+','+gy+','+gz;
+  let id=vertexMap.get(k);if(id!==undefined)return id;
+  id=positions.length/3;vertexMap.set(k,id);
+  positions.push((gx*sx-px/2)*scale,-(gy*sy-py/2)*scale,(gz*sz-pz/2)*scale);
+  return id;
+ };
+ const face=(a,b,c,dv)=>{
+  const ia=vertex(...a),ib=vertex(...b),ic=vertex(...c),id=vertex(...dv);
+  indices.push(ia,ib,ic,ia,ic,id);
+ };
+ const maxFaces=180000;let faces=0;
+ outer:for(let z=0;z<d;z+=step)for(let y=0;y<h;y+=step)for(let x=0;x<w;x+=step){
+  if(!inside(x,y,z))continue;
+  const x1=Math.min(w,x+step),y1=Math.min(h,y+step),z1=Math.min(d,z+step);
+  if(!inside(x-step,y,z)){face([x,y,z],[x,y,z1],[x,y1,z1],[x,y1,z]);if(++faces>=maxFaces)break outer}
+  if(!inside(x+step,y,z)){face([x1,y,z],[x1,y1,z],[x1,y1,z1],[x1,y,z1]);if(++faces>=maxFaces)break outer}
+  if(!inside(x,y-step,z)){face([x,y,z],[x1,y,z],[x1,y,z1],[x,y,z1]);if(++faces>=maxFaces)break outer}
+  if(!inside(x,y+step,z)){face([x,y1,z],[x,y1,z1],[x1,y1,z1],[x1,y1,z]);if(++faces>=maxFaces)break outer}
+  if(!inside(x,y,z-step)){face([x,y,z],[x,y1,z],[x1,y1,z],[x1,y,z]);if(++faces>=maxFaces)break outer}
+  if(!inside(x,y,z+step)){face([x,y,z1],[x1,y,z1],[x1,y1,z1],[x,y1,z1]);if(++faces>=maxFaces)break outer}
+ }
+ if(!indices.length)return null;
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+ geometry.setIndex(indices);geometry.computeVertexNormals();geometry.computeBoundingSphere();
+ if(surfaceSmoothEnabled.checked)taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
+ const material=new THREE.MeshStandardMaterial({
+  color:0x00d8ff,
+  emissive:0x0088aa,
+  emissiveIntensity:.75,
+  transparent:true,
+  opacity:.92,
+  roughness:.35,
+  metalness:0,
+  side:THREE.DoubleSide,
+  depthWrite:false,
+  polygonOffset:true,
+  polygonOffsetFactor:-2,
+  polygonOffsetUnits:-2
+ });
+ const mesh=new THREE.Mesh(geometry,material);
+ mesh.name='analysis_'+key;
+ mesh.renderOrder=20;
+ return mesh;
 }
 
 function render3D(v){
  if(!sceneState)return;
+ sceneState.analysisMesh=null;
  let savedTransform=null;
  if(sceneState.obj){
   savedTransform={
@@ -762,7 +838,7 @@ function taubinSmoothGeometry(geometry,strength){
  pos.array.set(a);pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
 }
 
-function resetVolume(){volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');volumeAnalysisResult.textContent='';filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spikeHoleStrength.disabled=true;nlmStrength.disabled=true;anisotropicStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
+function resetVolume(){clearAnalysisHighlight();volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');volumeAnalysisResult.textContent='';filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spikeHoleStrength.disabled=true;nlmStrength.disabled=true;anisotropicStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
 function dispose(o){o.traverse(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
