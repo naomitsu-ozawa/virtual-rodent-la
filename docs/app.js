@@ -7,54 +7,113 @@ import { unzip } from 'https://esm.sh/fflate@0.8.2';
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
 const app=document.querySelector('#app');
+let currentLanguage='ja';
+const I18N={
+ ja:{
+  subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
+  gpuChecking:'WEBGPU 確認中',
+  demo:'公開マウスCTデモ',openFolder:'DICOMフォルダを開く',
+  dataset:'データセット',series:'DICOMシリーズ',selectData:'データを選択してください',
+  selectDataHelp:'ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。',
+  display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',
+  segmentation:'セグメンテーション',segments:'組織セグメント',
+  bone:'骨',soft:'軟部組織',fat:'脂肪',min:'最小',max:'最大',opacity:'不透明度',
+  surfaceSmooth:'表面平滑化',strength:'強度',resetFilters:'画像フィルターをリセット',
+  controls:'1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動',
+  seriesUnselected:'シリーズ未選択',selectSeries:'左の一覧からCTシリーズを選択してください。',
+  footer:'元のキャリブレーション済みCT値は保持されます。',
+  axial:'横断',coronal:'冠状',sagittal:'矢状',
+  slices:'スライス',matrix:'マトリクス',voxel:'ボクセル',stored:'保存形式',
+  estimated:'推定展開サイズ',decoding:'CTボリュームを展開中…',ready:'CTボリューム準備完了',
+  demoLoading:'公開マウスPET/CTを取得中…',demoSize:'約20.8MBの公開データです。',
+  demoFailed:'公開デモを読み込めませんでした',dicomChecking:'DICOMを確認中…',
+  pixelDeferred:'Pixel Dataはまだ展開しません。',noSeries:'DICOMシリーズを検出できませんでした',
+  original:'元のキャリブレーション済みCT値',processingReset:'処理をリセットしました。元のキャリブレーション済みCT値を復元しました',
+  demoCache:'公開デモ: キャッシュ済みデータを使用',demoDone:'公開デモ: ダウンロード完了。端末キャッシュへ保存中'
+ },
+ en:{
+  subtitle:'Browser-based DICOM CT viewer for mouse and laboratory-animal imaging',
+  gpuChecking:'WEBGPU CHECKING',
+  demo:'Public mouse CT demo',openFolder:'Open DICOM folder',
+  dataset:'DATASET',series:'DICOM Series',selectData:'Select data',
+  selectDataHelp:'Use a local folder or the approximately 20.8 MB public mouse PET/CT demo.',
+  display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',
+  segmentation:'SEGMENTATION',segments:'Tissue segments',
+  bone:'Bone',soft:'Soft tissue',fat:'Fat',min:'Min',max:'Max',opacity:'Opacity',
+  surfaceSmooth:'Surface Smooth',strength:'Strength',resetFilters:'Reset image filters',
+  controls:'One finger: rotate 3D / Two fingers: zoom and pan / Drag vertically in MPR to change slices',
+  seriesUnselected:'No Series selected',selectSeries:'Select a CT Series from the list on the left.',
+  footer:'Original calibrated CT values are preserved.',
+  axial:'Axial',coronal:'Coronal',sagittal:'Sagittal',
+  slices:'Slices',matrix:'Matrix',voxel:'Voxel',stored:'Stored',
+  estimated:'Estimated decoded size',decoding:'Decoding CT volume…',ready:'CT volume ready',
+  demoLoading:'Loading public mouse PET/CT…',demoSize:'Approximately 20.8 MB of public data.',
+  demoFailed:'Could not load the public demo',dicomChecking:'Checking DICOM…',
+  pixelDeferred:'Pixel Data has not been expanded yet.',noSeries:'No DICOM Series detected',
+  original:'Original calibrated CT values',processingReset:'Processing reset. Original calibrated CT values restored.',
+  demoCache:'Public demo: using cached data',demoDone:'Public demo: download complete. Saving to device cache'
+ }
+};
+const tr=key=>I18N[currentLanguage][key]??key;
+function applyLanguage(lang){
+ currentLanguage=lang;
+ document.documentElement.lang=lang;
+ document.title=lang==='ja'?'Virtual Rodent Lab — DICOMビューワー':'Virtual Rodent Lab — DICOM Viewer';
+ document.querySelectorAll('[data-i18n]').forEach(el=>{const key=el.dataset.i18n;if(key)el.textContent=tr(key)});
+ document.querySelectorAll('[data-plane-label]').forEach(el=>{el.textContent=tr(el.dataset.planeLabel)});
+ const toggle=document.querySelector('#language-toggle');if(toggle)toggle.textContent=lang==='ja'?'English':'日本語';
+}
 app.innerHTML=`
 <main class="app-shell">
-<header class="topbar"><div><p class="eyebrow">SMALL-ANIMAL CT / WEBGPU</p><h1>Virtual Rodent Lab</h1><p class="subtitle">Browser-based DICOM CT viewer for mouse and laboratory-animal imaging</p></div><div class="topbar-actions"><div id="gpu-status" class="status status-checking">WEBGPU CHECKING</div><button id="demo-button" class="secondary-button">公開マウスCTデモ</button><button id="open-folder" class="primary-button">DICOMフォルダを開く</button><input id="folder-input" class="visually-hidden" type="file" webkitdirectory multiple></div></header>
-<section class="workspace"><aside class="sidebar"><section class="panel"><div class="panel-heading"><div><p class="panel-kicker">DATASET</p><h2>DICOM Series</h2></div></div><div id="scan-state" class="empty-state"><strong>データを選択してください</strong><span>ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。</span></div><div id="scan-progress" class="progress-wrap is-hidden"><div class="progress-track"><div id="scan-progress-bar" class="progress-bar"></div></div><span id="scan-progress-label">0 / 0</span></div><div id="series-list" class="series-list"></div></section>
-<section class="panel compact-panel"><div class="panel-heading"><div><p class="panel-kicker">DISPLAY</p><h2>CT表示</h2></div></div><label class="range-row"><span>Window Center</span><output id="wc-val">—</output><input id="wc" type="range" min="-2000" max="4000" value="500" disabled></label><label class="range-row"><span>Window Width</span><output id="ww-val">—</output><input id="ww" type="range" min="1" max="8000" value="3000" disabled></label><div class="panel-heading segment-heading"><div><p class="panel-kicker">SEGMENTATION</p><h2>組織セグメント</h2></div></div><div id="segment-controls" class="segment-controls"><div class="segment-card" data-segment="bone">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="bone" checked disabled><strong>Bone</strong></label><input class="segment-color" data-seg-color="bone" type="color" value="#f3f0e8" disabled></div>
-<label class="segment-range"><span>Min</span><output data-seg-min-out="bone">—</output><input data-seg-min="bone" type="range" min="0" max="1" value="0" disabled></label>
-<label class="segment-range"><span>Max</span><output data-seg-max-out="bone">—</output><input data-seg-max="bone" type="range" min="0" max="1" value="1" disabled></label>
-<label class="segment-range"><span>Opacity</span><output data-seg-opacity-out="bone">0.85</output><input data-seg-opacity="bone" type="range" min="0" max="1" step="0.05" value="0.85" disabled></label>
+<header class="topbar"><div><p class="eyebrow">SMALL-ANIMAL CT / WEBGPU</p><h1>Virtual Rodent Lab</h1><p class="subtitle" data-i18n="subtitle">マウス・実験動物画像のためのブラウザDICOM CTビューワー</p></div><div class="topbar-actions"><button id="language-toggle" class="secondary-button" type="button">English</button><div id="gpu-status" class="status status-checking" data-i18n="gpuChecking">WEBGPU 確認中</div><button id="demo-button" class="secondary-button" data-i18n="demo">公開マウスCTデモ</button><button id="open-folder" class="primary-button" data-i18n="openFolder">DICOMフォルダを開く</button><input id="folder-input" class="visually-hidden" type="file" webkitdirectory multiple></div></header>
+<section class="workspace"><aside class="sidebar"><section class="panel"><div class="panel-heading"><div><p class="panel-kicker" data-i18n="dataset">データセット</p><h2 data-i18n="series">DICOMシリーズ</h2></div></div><div id="scan-state" class="empty-state"><strong data-i18n="selectData">データを選択してください</strong><span data-i18n="selectDataHelp">ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。</span></div><div id="scan-progress" class="progress-wrap is-hidden"><div class="progress-track"><div id="scan-progress-bar" class="progress-bar"></div></div><span id="scan-progress-label">0 / 0</span></div><div id="series-list" class="series-list"></div></section>
+<section class="panel compact-panel"><div class="panel-heading"><div><p class="panel-kicker" data-i18n="display">表示</p><h2 data-i18n="ctDisplay">CT表示</h2></div></div><label class="range-row"><span data-i18n="windowCenter">ウィンドウ中心</span><output id="wc-val">—</output><input id="wc" type="range" min="-2000" max="4000" value="500" disabled></label><label class="range-row"><span data-i18n="windowWidth">ウィンドウ幅</span><output id="ww-val">—</output><input id="ww" type="range" min="1" max="8000" value="3000" disabled></label><div class="panel-heading segment-heading"><div><p class="panel-kicker" data-i18n="segmentation">セグメンテーション</p><h2 data-i18n="segments">組織セグメント</h2></div></div><div id="segment-controls" class="segment-controls"><div class="segment-card" data-segment="bone">
+<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="bone" checked disabled><strong data-i18n="bone">骨</strong></label><input class="segment-color" data-seg-color="bone" type="color" value="#f3f0e8" disabled></div>
+<label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="bone">—</output><input data-seg-min="bone" type="range" min="0" max="1" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="bone">—</output><input data-seg-max="bone" type="range" min="0" max="1" value="1" disabled></label>
+<label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="bone">0.85</output><input data-seg-opacity="bone" type="range" min="0" max="1" step="0.05" value="0.85" disabled></label>
 </div><div class="segment-card" data-segment="soft">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="soft"  disabled><strong>Soft tissue</strong></label><input class="segment-color" data-seg-color="soft" type="color" value="#d97f7f" disabled></div>
-<label class="segment-range"><span>Min</span><output data-seg-min-out="soft">—</output><input data-seg-min="soft" type="range" min="0" max="1" value="0" disabled></label>
-<label class="segment-range"><span>Max</span><output data-seg-max-out="soft">—</output><input data-seg-max="soft" type="range" min="0" max="1" value="1" disabled></label>
-<label class="segment-range"><span>Opacity</span><output data-seg-opacity-out="soft">0.28</output><input data-seg-opacity="soft" type="range" min="0" max="1" step="0.05" value="0.28" disabled></label>
+<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="soft"  disabled><strong data-i18n="soft">軟部組織</strong></label><input class="segment-color" data-seg-color="soft" type="color" value="#d97f7f" disabled></div>
+<label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="soft">—</output><input data-seg-min="soft" type="range" min="0" max="1" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="soft">—</output><input data-seg-max="soft" type="range" min="0" max="1" value="1" disabled></label>
+<label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="soft">0.28</output><input data-seg-opacity="soft" type="range" min="0" max="1" step="0.05" value="0.28" disabled></label>
 </div><div class="segment-card" data-segment="fat">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="fat"  disabled><strong>Fat</strong></label><input class="segment-color" data-seg-color="fat" type="color" value="#e7c85d" disabled></div>
-<label class="segment-range"><span>Min</span><output data-seg-min-out="fat">—</output><input data-seg-min="fat" type="range" min="0" max="1" value="0" disabled></label>
-<label class="segment-range"><span>Max</span><output data-seg-max-out="fat">—</output><input data-seg-max="fat" type="range" min="0" max="1" value="1" disabled></label>
-<label class="segment-range"><span>Opacity</span><output data-seg-opacity-out="fat">0.35</output><input data-seg-opacity="fat" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
+<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="fat"  disabled><strong data-i18n="fat">脂肪</strong></label><input class="segment-color" data-seg-color="fat" type="color" value="#e7c85d" disabled></div>
+<label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="fat">—</output><input data-seg-min="fat" type="range" min="0" max="1" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="fat">—</output><input data-seg-max="fat" type="range" min="0" max="1" value="1" disabled></label>
+<label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="fat">0.35</output><input data-seg-opacity="fat" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
 </div></div><div class="surface-smooth-card">
-  <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong>Surface Smooth</strong></label>
-  <label class="segment-range"><span>Strength</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="1" step="0.05" value="0.60" disabled></label>
+  <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong data-i18n="surfaceSmooth">表面平滑化</strong></label>
+  <label class="segment-range"><span data-i18n="strength">強度</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="1" step="0.05" value="0.60" disabled></label>
 </div>
 <div class="filter-control-list">
   <div class="filter-control-card">
     <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-gaussian" type="checkbox" disabled><strong>Gaussian 3D</strong></label></div>
-    <label class="segment-range"><span>Strength</span><output id="gaussian-strength-value">0.40</output><input id="gaussian-strength" type="range" min="0" max="1" step="0.05" value="0.40" disabled></label>
+    <label class="segment-range"><span data-i18n="strength">強度</span><output id="gaussian-strength-value">0.40</output><input id="gaussian-strength" type="range" min="0" max="1" step="0.05" value="0.40" disabled></label>
   </div>
   <div class="filter-control-card">
     <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-spike-hole" type="checkbox" disabled><strong>Spike / Hole</strong></label></div>
-    <label class="segment-range"><span>Strength</span><output id="spike-hole-strength-value">0.50</output><input id="spike-hole-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
+    <label class="segment-range"><span data-i18n="strength">強度</span><output id="spike-hole-strength-value">0.50</output><input id="spike-hole-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
   </div>
   <div class="filter-control-card">
     <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-nlm" type="checkbox" disabled><strong>Fast NLM 3D</strong></label></div>
-    <label class="segment-range"><span>Strength</span><output id="nlm-strength-value">0.45</output><input id="nlm-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
+    <label class="segment-range"><span data-i18n="strength">強度</span><output id="nlm-strength-value">0.45</output><input id="nlm-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
   </div>
   <div class="filter-control-card">
     <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-anisotropic" type="checkbox" disabled><strong>Anisotropic Diffusion</strong></label></div>
-    <label class="segment-range"><span>Strength</span><output id="anisotropic-strength-value">0.45</output><input id="anisotropic-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
+    <label class="segment-range"><span data-i18n="strength">強度</span><output id="anisotropic-strength-value">0.45</output><input id="anisotropic-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
   </div>
-  <button id="filter-reset" class="tool-chip filter-reset" disabled>Reset image filters</button>
-</div><p class="hint">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></aside>
-<section class="viewer-grid"><section class="viewport-card viewport-card-main"><div class="viewport-label"><strong>3D</strong><span id="three-label">WebGPU</span></div><div id="viewport-3d" class="viewport viewport-3d"></div><div id="selected" class="selected-series-overlay"><strong>Series未選択</strong><span>左の一覧からCT Seriesを選択してください。</span></div></section><section class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<article class="viewport-card mpr-card"><div class="viewport-label"><strong>${p}</strong><span id="${p}-label">—</span></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article>`).join('')}</section></section></section>
-<footer><span id="footer">Original calibrated CT values are preserved.</span></footer></main>`;
+  <button id="filter-reset" class="tool-chip filter-reset" data-i18n="resetFilters" disabled>画像フィルターをリセット</button>
+</div><p class="hint" data-i18n="controls">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></aside>
+<section class="viewer-grid"><section class="viewport-card viewport-card-main"><div class="viewport-label"><strong>3D</strong><span id="three-label">WebGPU</span></div><div id="viewport-3d" class="viewport viewport-3d"></div><div id="selected" class="selected-series-overlay"><strong data-i18n="seriesUnselected">シリーズ未選択</strong><span data-i18n="selectSeries">左の一覧からCTシリーズを選択してください。</span></div></section><section class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<article class="viewport-card mpr-card"><div class="viewport-label"><strong data-plane-label="${p}">${tr(p)}</strong><span id="${p}-label">—</span></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article>`).join('')}</section></section></section>
+<footer><span id="footer" data-i18n="footer">元のキャリブレーション済みCT値は保持されます。</span></footer></main>`;
 
 const $=s=>document.querySelector(s);
 const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value');
-const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]));
+const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
+const languageToggle=$('#language-toggle');
+languageToggle.onclick=()=>applyLanguage(currentLanguage==='ja'?'en':'ja');
+applyLanguage('ja');;
 let volume=null,sourceVolume=null,sceneState=null,activeId=null;
 const filterState={gaussian:false,spikeHole:false,nlm:false,anisotropic:false};
 let filterRebuildTimer=null;
@@ -68,7 +127,7 @@ let segmentRenderTimer=null;
 
 folderBtn.onclick=()=>{folderInput.value='';folderInput.click()};
 folderInput.onchange=async()=>{const files=[...(folderInput.files||[])];if(files.length)await inspect(files,false)};
-demoBtn.onclick=async()=>{busy(true);resetVolume();list.replaceChildren();state.classList.remove('is-hidden');prog.classList.remove('is-hidden');state.innerHTML='<strong>公開マウスPET/CTを取得中…</strong><span>20.8MBの公開データです。</span>';try{const files=await loadDemo();await inspect(files,true)}catch(e){console.error(e);state.innerHTML='<strong>公開デモを読み込めませんでした</strong><span>'+esc(e.message||e)+'</span>';footer.textContent='Demo error: '+String(e.message||e)}finally{busy(false);prog.classList.add('is-hidden')}};
+demoBtn.onclick=async()=>{busy(true);resetVolume();list.replaceChildren();state.classList.remove('is-hidden');prog.classList.remove('is-hidden');state.innerHTML='<strong>'+tr('demoLoading')+'</strong><span>'+tr('demoSize')+'</span>';try{const files=await loadDemo();await inspect(files,true)}catch(e){console.error(e);state.innerHTML='<strong>'+tr('demoFailed')+'</strong><span>'+esc(e.message||e)+'</span>';footer.textContent='Demo error: '+String(e.message||e)}finally{busy(false);prog.classList.add('is-hidden')}};
 wc.oninput=ww.oninput=renderAll;
 for(const key of Object.keys(segmentState)){
  const enabled=$('[data-seg-enabled="'+key+'"]'),color=$('[data-seg-color="'+key+'"]'),min=$('[data-seg-min="'+key+'"]'),max=$('[data-seg-max="'+key+'"]'),opacity=$('[data-seg-opacity="'+key+'"]');
@@ -134,7 +193,7 @@ async function rebuildActiveFilters(){
   if(filterState.nlm){await applyNlm3D(base);if(revision!==filterRebuildRevision)return;base=volume}
   if(filterState.anisotropic){await applyAnisotropicDiffusion(base);if(revision!==filterRebuildRevision)return;base=volume}
   if(!filterState.gaussian&&!filterState.spikeHole&&!filterState.nlm&&!filterState.anisotropic){
-   volume=sourceVolume;renderAll();render3D(volume);footer.textContent='Original calibrated CT values';
+   volume=sourceVolume;renderAll();render3D(volume);footer.textContent=tr('original');
   }
  }finally{syncFilterControls()}
 }
@@ -160,7 +219,7 @@ async function loadDemo(){
    cache=await withTimeout(caches.open('virtual-rodent-demo-v2'),1200,null);
    if(cache){
     response=await withTimeout(cache.match(DEMO_URL),1200,null);
-    if(response){fromCache=true;footer.textContent='公開デモ: キャッシュ済みデータを使用';}
+    if(response){fromCache=true;footer.textContent=tr('demoCache');}
    }
   }catch(e){
    console.warn('Cache lookup skipped.',e);
@@ -204,7 +263,7 @@ async function loadDemo(){
  byteProgress(bytes.byteLength,bytes.byteLength,'Unzip');
  const entries=await new Promise((res,rej)=>unzip(bytes,(e,f)=>e?rej(e):res(f)));
  const out=[];for(const [path,b] of Object.entries(entries)){if(path.endsWith('/')||!b.byteLength)continue;out.push(new File([b],path.split('/').pop()||path))}
- footer.textContent=fromCache?'公開デモ: 端末キャッシュから読み込み':'公開デモ: ダウンロード完了。端末キャッシュへ保存中';
+ footer.textContent=fromCache?tr('demoCache'):tr('demoDone');
  return out;
 }
 function withTimeout(promise,ms,fallback){
@@ -219,8 +278,8 @@ async function updateDemoCacheBadge(){
 }
 void updateDemoCacheBadge();
 async function inspect(files,auto){
- activeId=null;resetVolume();list.replaceChildren();state.classList.remove('is-hidden');state.innerHTML='<strong>DICOMを確認中…</strong><span>Pixel Dataはまだ展開しません。</span>';prog.classList.remove('is-hidden');busy(true);
- try{const slices=await parseFiles(files,(a,b)=>progress(a,b));const series=groupSeries(slices);if(!series.length){state.innerHTML='<strong>DICOM Seriesを検出できませんでした</strong>';return}state.classList.add('is-hidden');renderSeries(series);if(auto){const ct=series.find(s=>s.modality.toUpperCase()==='CT')||series[0];await selectSeries(ct)}}finally{busy(false);prog.classList.add('is-hidden')}
+ activeId=null;resetVolume();list.replaceChildren();state.classList.remove('is-hidden');state.innerHTML='<strong>'+tr('dicomChecking')+'</strong><span>'+tr('pixelDeferred')+'</span>';prog.classList.remove('is-hidden');busy(true);
+ try{const slices=await parseFiles(files,(a,b)=>progress(a,b));const series=groupSeries(slices);if(!series.length){state.innerHTML='<strong>'+tr('noSeries')+'</strong>';return}state.classList.add('is-hidden');renderSeries(series);if(auto){const ct=series.find(s=>s.modality.toUpperCase()==='CT')||series[0];await selectSeries(ct)}}finally{busy(false);prog.classList.add('is-hidden')}
 }
 
 async function parseFiles(files,onProgress){
@@ -382,7 +441,7 @@ async function applyAnisotropicDiffusion(baseVolume=volume){
 function resetProcessing(){
  clearTimeout(liveFilterState.timer);clearTimeout(filterRebuildTimer);filterRebuildRevision++;liveFilterState.base=null;liveFilterState.key=null;
  filterState.gaussian=filterState.spikeHole=filterState.nlm=filterState.anisotropic=false;syncFilterControls();
- if(!sourceVolume)return;volume=sourceVolume;renderAll();render3D(volume);footer.textContent='Processing reset · Original calibrated CT values restored';
+ if(!sourceVolume)return;volume=sourceVolume;renderAll();render3D(volume);footer.textContent=tr('processingReset');
 }
 function setProcessingBusy(busyState,label='Processing'){
  resetFilterBtn.disabled=busyState||!sourceVolume;
