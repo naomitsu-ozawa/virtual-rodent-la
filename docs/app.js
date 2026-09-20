@@ -92,25 +92,35 @@ app.innerHTML=`
   <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong data-i18n="surfaceSmooth">表面平滑化</strong></label>
   <label class="segment-range"><span data-i18n="strength">強度</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="3" step="0.05" value="0.60" disabled></label>
 </div>
+<div class="filter-add-row">
+  <select id="filter-add-select" class="filter-select">
+    <option value="spikeHole">Spike / Hole</option>
+    <option value="nlm">Fast NLM 3D</option>
+    <option value="anisotropic">Anisotropic Diffusion</option>
+    <option value="gaussian">Spatial Filter 3D</option>
+    <option value="sigmoid">Sigmoid</option>
+  </select>
+  <button id="filter-add-button" class="tool-chip" type="button">フィルターを追加</button>
+</div>
 <div class="filter-control-list">
-  <div class="filter-control-card" data-filter-key="spikeHole" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-spike-hole" type="checkbox" disabled><strong>Spike / Hole</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span></span></div>
+  <div class="filter-control-card is-hidden" data-filter-key="spikeHole" draggable="true">
+    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-spike-hole" type="checkbox" disabled><strong>Spike / Hole</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
     <label class="segment-range"><span data-i18n="strength">強度</span><output id="spike-hole-strength-value">0.50</output><input id="spike-hole-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
   </div>
-  <div class="filter-control-card" data-filter-key="nlm" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-nlm" type="checkbox" disabled><strong>Fast NLM 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span></span></div>
+  <div class="filter-control-card is-hidden" data-filter-key="nlm" draggable="true">
+    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-nlm" type="checkbox" disabled><strong>Fast NLM 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
     <label class="segment-range"><span data-i18n="strength">強度</span><output id="nlm-strength-value">0.45</output><input id="nlm-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
   </div>
-  <div class="filter-control-card" data-filter-key="anisotropic" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-anisotropic" type="checkbox" disabled><strong>Anisotropic Diffusion</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span></span></div>
+  <div class="filter-control-card is-hidden" data-filter-key="anisotropic" draggable="true">
+    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-anisotropic" type="checkbox" disabled><strong>Anisotropic Diffusion</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
     <label class="segment-range"><span data-i18n="strength">強度</span><output id="anisotropic-strength-value">0.45</output><input id="anisotropic-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
   </div>
-  <div class="filter-control-card" data-filter-key="gaussian" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-gaussian" type="checkbox" disabled><strong>Spatial Filter 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span></span><select id="filter-smoothing-type" class="filter-select" disabled><option value="gaussian">Gaussian 3D</option><option value="median">Median 3D</option></select></div>
+  <div class="filter-control-card is-hidden" data-filter-key="gaussian" draggable="true">
+    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-gaussian" type="checkbox" disabled><strong>Spatial Filter 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span><select id="filter-smoothing-type" class="filter-select" disabled><option value="gaussian">Gaussian 3D</option><option value="median">Median 3D</option></select></div>
     <label class="segment-range"><span data-i18n="strength">強度</span><output id="gaussian-strength-value">0.40</output><input id="gaussian-strength" type="range" min="0" max="1" step="0.05" value="0.40" disabled></label>
   </div>
-  <div class="filter-control-card" data-filter-key="sigmoid" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-sigmoid" type="checkbox" disabled><strong>Sigmoid</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span></span></div>
+  <div class="filter-control-card is-hidden" data-filter-key="sigmoid" draggable="true">
+    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-sigmoid" type="checkbox" disabled><strong>Sigmoid</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
     <label class="segment-range"><span data-i18n="strength">強度</span><output id="sigmoid-strength-value">0.50</output><input id="sigmoid-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
   </div>
   <button id="filter-reset" class="tool-chip filter-reset" data-i18n="resetFilters" disabled>画像フィルターをリセット</button>
@@ -119,15 +129,15 @@ app.innerHTML=`
 <footer><span id="footer" data-i18n="footer">元のキャリブレーション済みCT値は保持されます。</span><a href="https://github.com/naomitsu-ozawa/virtual-rodent-la" target="_blank" rel="noopener">Source / License</a></footer></main>`;
 
 const $=s=>document.querySelector(s);
-const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),filterControlList=$('.filter-control-list');
+const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
 const languageToggle=$('#language-toggle');
 languageToggle.onclick=()=>applyLanguage(currentLanguage==='ja'?'en':'ja');
 applyLanguage('ja');;
 let volume=null,sourceVolume=null,sceneState=null,activeId=null,volumeAnalysisMode=false,volumeAnalysisBusy=false;
 const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false};
-const DEFAULT_FILTER_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid'];
-let filterOrder=[...DEFAULT_FILTER_ORDER];
+const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid'];
+let filterOrder=[];
 let filterRebuildTimer=null;
 let filterRebuildRevision=0;
 const segmentState={
@@ -194,9 +204,12 @@ function bindLiveSlider(input,output,key,fn){
 }
 function renderFilterOrder(){
  if(!filterControlList)return;
- for(const key of filterOrder){
+ const active=new Set(filterOrder);
+ for(const key of FILTER_CATALOG_ORDER){
   const card=filterControlList.querySelector('[data-filter-key="'+key+'"]');
-  if(card)filterControlList.insertBefore(card,resetFilterBtn);
+  if(!card)continue;
+  card.classList.toggle('is-hidden',!active.has(key));
+  if(active.has(key))filterControlList.insertBefore(card,resetFilterBtn);
  }
  for(const card of filterControlList.querySelectorAll('[data-filter-key]')){
   const key=card.dataset.filterKey,index=filterOrder.indexOf(key);
@@ -204,20 +217,44 @@ function renderFilterOrder(){
   if(up)up.disabled=index<=0;
   if(down)down.disabled=index<0||index>=filterOrder.length-1;
  }
+ for(const option of filterAddSelect.options)option.disabled=active.has(option.value);
+ const next=[...filterAddSelect.options].find(o=>!o.disabled);
+ if(next)filterAddSelect.value=next.value;
+ filterAddButton.disabled=!next;
+ resetFilterBtn.disabled=!sourceVolume||filterOrder.length===0;
+}
+function addFilter(key){
+ if(!FILTER_CATALOG_ORDER.includes(key)||filterOrder.includes(key))return;
+ filterOrder.push(key);
+ filterState[key]=true;
+ const box={spikeHole:spikeHoleBtn,nlm:nlmBtn,anisotropic:anisotropicBtn,gaussian:gaussianBtn,sigmoid:sigmoidBtn}[key];
+ if(box)box.checked=true;
+ renderFilterOrder();syncFilterControls();
+ if(sourceVolume)scheduleFilterRebuild(0);
+}
+function removeFilter(key){
+ const index=filterOrder.indexOf(key);if(index<0)return;
+ filterOrder.splice(index,1);filterState[key]=false;
+ const box={spikeHole:spikeHoleBtn,nlm:nlmBtn,anisotropic:anisotropicBtn,gaussian:gaussianBtn,sigmoid:sigmoidBtn}[key];
+ if(box)box.checked=false;
+ renderFilterOrder();syncFilterControls();
+ if(sourceVolume)scheduleFilterRebuild(0);
 }
 function moveFilter(key,delta){
  const from=filterOrder.indexOf(key),to=from+delta;
  if(from<0||to<0||to>=filterOrder.length)return;
  [filterOrder[from],filterOrder[to]]=[filterOrder[to],filterOrder[from]];
  renderFilterOrder();
- if(Object.values(filterState).some(Boolean))scheduleFilterRebuild(0);
+ if(sourceVolume&&filterOrder.length)scheduleFilterRebuild(0);
 }
 function installFilterReorder(){
  if(!filterControlList)return;
- let draggedKey=null;
+ filterAddButton.addEventListener('click',()=>addFilter(filterAddSelect.value));
  for(const card of filterControlList.querySelectorAll('[data-filter-key]')){
   card.querySelector('[data-filter-move="up"]')?.addEventListener('click',()=>moveFilter(card.dataset.filterKey,-1));
   card.querySelector('[data-filter-move="down"]')?.addEventListener('click',()=>moveFilter(card.dataset.filterKey,1));
+  card.querySelector('[data-filter-remove]')?.addEventListener('click',()=>removeFilter(card.dataset.filterKey));
+  let draggedKey=null;
   card.addEventListener('dragstart',e=>{
    draggedKey=card.dataset.filterKey;card.classList.add('is-dragging');
    if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedKey)}
@@ -232,7 +269,7 @@ function installFilterReorder(){
    if(from<0||to<0)return;
    filterOrder.splice(from,1);filterOrder.splice(to,0,fromKey);
    renderFilterOrder();
-   if(Object.values(filterState).some(Boolean))scheduleFilterRebuild(0);
+   if(sourceVolume)scheduleFilterRebuild(0);
   });
  }
  renderFilterOrder();
@@ -246,7 +283,7 @@ function syncFilterControls(){
  sigmoidStrength.disabled=!sourceVolume||!filterState.sigmoid;
  gaussianBtn.disabled=!sourceVolume;smoothingType.disabled=!sourceVolume||!filterState.gaussian;spikeHoleBtn.disabled=!sourceVolume;nlmBtn.disabled=!sourceVolume;anisotropicBtn.disabled=!sourceVolume;sigmoidBtn.disabled=!sourceVolume;
  gaussianBtn.checked=filterState.gaussian;spikeHoleBtn.checked=filterState.spikeHole;nlmBtn.checked=filterState.nlm;anisotropicBtn.checked=filterState.anisotropic;sigmoidBtn.checked=filterState.sigmoid;
- resetFilterBtn.disabled=!sourceVolume;
+ resetFilterBtn.disabled=!sourceVolume||filterOrder.length===0;
 }
 function scheduleFilterRebuild(delay=120){
  clearTimeout(filterRebuildTimer);
@@ -273,15 +310,12 @@ async function rebuildActiveFilters(){
   }
  }finally{syncFilterControls()}
 }
-for(const [box,key] of [[spikeHoleBtn,'spikeHole'],[nlmBtn,'nlm'],[anisotropicBtn,'anisotropic'],[gaussianBtn,'gaussian'],[sigmoidBtn,'sigmoid']]){
- box.onchange=()=>{filterState[key]=box.checked;syncFilterControls();scheduleFilterRebuild(0)};
-}
 smoothingType.onchange=()=>{if(filterState.gaussian)scheduleFilterRebuild(0)};
 for(const [input,output,key] of [[spikeHoleStrength,spikeHoleStrengthValue,'spikeHole'],[nlmStrength,nlmStrengthValue,'nlm'],[anisotropicStrength,anisotropicStrengthValue,'anisotropic'],[gaussianStrength,gaussianStrengthValue,'gaussian'],[sigmoidStrength,sigmoidStrengthValue,'sigmoid']]){
  input.oninput=()=>{output.value=(+input.value).toFixed(2);if(filterState[key])scheduleFilterRebuild(160)};
  input.onchange=()=>{if(filterState[key])scheduleFilterRebuild(0)};
 }
-resetFilterBtn.onclick=()=>{filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=false;smoothingType.value='gaussian';filterOrder=[...DEFAULT_FILTER_ORDER];renderFilterOrder();syncFilterControls();resetProcessing()};
+resetFilterBtn.onclick=()=>{filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=false;smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn])box.checked=false;renderFilterOrder();syncFilterControls();resetProcessing()};
 installFilterReorder();
 
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>renderPlane(p);installMprTouch(p)}
@@ -921,7 +955,7 @@ function taubinSmoothGeometry(geometry,strength){
  pos.array.set(a);pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
 }
 
-function resetVolume(){clearAnalysisHighlight();smoothingType.value='gaussian';filterOrder=[...DEFAULT_FILTER_ORDER];renderFilterOrder();volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');volumeAnalysisResult.textContent='';filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spikeHoleStrength.disabled=true;nlmStrength.disabled=true;anisotropicStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
+function resetVolume(){clearAnalysisHighlight();smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn])box.checked=false;renderFilterOrder();volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');volumeAnalysisResult.textContent='';filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spikeHoleStrength.disabled=true;nlmStrength.disabled=true;anisotropicStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
 function dispose(o){o.traverse(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
