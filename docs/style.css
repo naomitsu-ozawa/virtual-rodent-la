@@ -146,3 +146,10 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 
 .segment-export-stl{width:100%;min-height:36px;margin-top:8px;border:1px solid #3b4850;border-radius:8px;background:#1a2024;color:#d4e0e5;font-size:11px;font-weight:800;cursor:pointer}
 .segment-export-stl:disabled{opacity:.45;cursor:default}
+
+.volume-analysis-panel{position:absolute;z-index:6;top:10px;right:10px;display:grid;justify-items:end;gap:8px;max-width:min(260px,70%)}
+.volume-analysis-panel .tool-chip{min-height:36px;border:1px solid #3b4850;border-radius:8px;background:#1a2024;color:#d4e0e5;padding:7px 10px;font-size:11px;font-weight:800}
+.volume-analysis-panel .tool-chip.is-active{border-color:#67b2d1;background:#17313d;color:#dff6ff}
+.volume-analysis-result{display:grid;gap:3px;min-width:160px;padding:9px 10px;border:1px solid #334047;border-radius:9px;background:rgba(12,16,18,.9);font-size:11px;color:#d8e4e9}
+.volume-analysis-result strong{font-size:12px}
+.volume-analysis-result span{font-variant-numeric:tabular-nums}
