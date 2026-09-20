@@ -16,6 +16,7 @@
 - MPRへのセグメンテーション重畳
 - セグメントの3Dサーフェスメッシュ表示
 - セグメントごとのSTL書き出し（mmスケール）
+- 3D上で連結成分を選択して体積解析（mm³ / µL）
 - 表面平滑化
 - 非破壊画像処理
   - Spike / Hole correction
@@ -95,6 +96,7 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Segmentation overlays in MPR
 - 3D segment surface meshes
 - Per-segment STL export in physical mm scale
+- Click a connected 3D component to measure its volume in mm³ / µL
 - Surface smoothing
 - Non-destructive filters: Spike / Hole, Fast NLM 3D, Anisotropic Diffusion, Gaussian 3D, and Sigmoid
 - Filter strength controls and reset
