@@ -143,4 +143,5 @@ Third-party libraries and public datasets remain subject to their own licenses a
 
 ## 大容量DICOM
 
-大容量シリーズはブラウザのメモリ上限を超えないよう、自動的に低解像度プレビューとしてデコードします。CT値はInt16で保持できる場合はInt16を使用し、プレビュー時はボクセル間隔を補正して物理寸法を維持します。
+大容量シリーズでも解像度・CT値・voxel spacingを変更しません。全ボリュームを一括展開せず、元DICOMをスライス／行単位で必要時に読み込み、MPRと3Dセグメントをフル解像度で処理します。自動ダウンサンプリングは行いません。
+
