@@ -81,12 +81,13 @@ The calibrated source volume is preserved separately from the active processed v
 
 Implemented filters:
 
-- Gaussian 3D
 - Spike / Hole correction
 - Fast NLM 3D
 - Anisotropic Diffusion
+- Gaussian 3D
+- Sigmoid
 
-Each filter has a strength control. Active filters are rebuilt from the preserved source volume, and Reset restores the original calibrated CT data.
+Each filter has a strength control. Active filters are rebuilt from the preserved source volume in this order: Spike / Hole → Fast NLM 3D → Anisotropic Diffusion → Gaussian 3D → Sigmoid. Reset restores the original calibrated CT data.
 
 ## Thin-bone direction
 
