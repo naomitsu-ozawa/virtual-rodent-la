@@ -65,6 +65,18 @@ export async function processVolume(
     await yieldToBrowser();
   }
 
+  if (settings.nlm.enabled) {
+    data = fastNlm3d(
+      data,
+      source.columns,
+      source.rows,
+      source.slices,
+      settings.nlm.strength,
+      onProgress,
+    );
+    await yieldToBrowser();
+  }
+
   if (settings.anisotropic.enabled) {
     data = anisotropicDiffusion3d(
       data,
@@ -76,8 +88,6 @@ export async function processVolume(
     );
     await yieldToBrowser();
   }
-
-  // NLM remains disabled in the UI until its worker/WebGPU implementation lands.
 
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
@@ -218,6 +228,70 @@ function spikeHoleCorrect3d(
       }
     }
     onProgress?.('Spike / Hole', z, slices - 2);
+  }
+
+  return output;
+}
+
+function fastNlm3d(
+  source: Float32Array,
+  columns: number,
+  rows: number,
+  slices: number,
+  strength: number,
+  onProgress?: ProcessingProgress,
+): Float32Array {
+  const output = new Float32Array(source);
+  const plane = columns * rows;
+  const h = 55 + strength * 85;
+  const h2 = h * h;
+  const spatialSigma = 1.1 + strength * 0.45;
+  const spatialDenom = 2 * spatialSigma * spatialSigma;
+
+  // Fast local 3D NLM: 3x3x3 search neighborhood with a compact
+  // 7-sample cross patch. This keeps the browser implementation practical
+  // while preserving the NLM similarity-weighted averaging principle.
+  const patchOffsets = [0, -1, 1, -columns, columns, -plane, plane];
+
+  for (let z = 1; z < slices - 1; z += 1) {
+    for (let y = 1; y < rows - 1; y += 1) {
+      for (let x = 1; x < columns - 1; x += 1) {
+        const centerIndex = z * plane + y * columns + x;
+        let weightedSum = source[centerIndex];
+        let weightSum = 1;
+
+        for (let dz = -1; dz <= 1; dz += 1) {
+          for (let dy = -1; dy <= 1; dy += 1) {
+            for (let dx = -1; dx <= 1; dx += 1) {
+              if (dx === 0 && dy === 0 && dz === 0) continue;
+
+              const candidateIndex =
+                centerIndex + dz * plane + dy * columns + dx;
+
+              let patchSsd = 0;
+              for (const patchOffset of patchOffsets) {
+                const diff =
+                  source[centerIndex + patchOffset] -
+                  source[candidateIndex + patchOffset];
+                patchSsd += diff * diff;
+              }
+              patchSsd /= patchOffsets.length;
+
+              const spatial2 = dx * dx + dy * dy + dz * dz;
+              const weight =
+                Math.exp(-patchSsd / h2) *
+                Math.exp(-spatial2 / spatialDenom);
+
+              weightedSum += source[candidateIndex] * weight;
+              weightSum += weight;
+            }
+          }
+        }
+
+        output[centerIndex] = weightedSum / weightSum;
+      }
+    }
+    onProgress?.('Fast NLM 3D', z, slices - 2);
   }
 
   return output;
