@@ -1,111 +1,65 @@
 # Virtual Rodent Lab
 
-WebGPU-first browser application for small-animal DICOM CT visualization, segmentation, and image processing.
+Browser-based DICOM CT viewer for mouse and other small-animal imaging.
 
-## Current development branch
+The repository is focused on one application: a local-first DICOM viewer that runs in the browser. The deployed application in `docs/` is the canonical implementation.
 
-The active DICOM viewer work is on:
+## Current capabilities
 
-`feature/dicom-webgpu-viewer`
+- Local DICOM directory loading
+- Browser-side DICOM parsing and Series grouping
+- CT calibration with RescaleSlope / RescaleIntercept
+- Axial / Coronal / Sagittal MPR
+- Interactive 3D rendering with WebGPU and WebGL fallback
+- Bone / soft-tissue / fat threshold segmentation
+- Segment visibility, color, opacity, and CT-range controls
+- Segmentation overlays in MPR
+- 3D segment surface meshes
+- Surface smoothing
+- Non-destructive image-processing stack
+  - Gaussian 3D
+  - Spike / Hole correction
+  - Fast NLM 3D
+  - Anisotropic Diffusion
+- Filter strength controls and reset to the original calibrated CT volume
+- Touch interaction for mobile devices
+- Public mouse PET/CT demo loaded on demand from Zenodo
 
-Current milestone:
+## Repository layout
 
-- Local DICOM directory selection
-- Browser-side metadata parsing
-- Series grouping
-- Dataset size / voxel metadata inspection before full-volume work
-- WebGPU viewer shell with 3D + Axial / Coronal / Sagittal layout
+- `docs/index.html` — GitHub Pages entry point
+- `docs/app.js` — canonical viewer implementation
+- `docs/style.css` — viewer styling
+- `docs/DICOM_WEBGPU_SPEC.md` — current architecture and behavior
+- `docs/IMPLEMENTATION_PLAN.md` — current implementation status and remaining work
+- `docs/THIRD_PARTY_NOTICES.md` — third-party sources and licenses
+- `index.html` — local-development entry point that loads the same canonical app
 
-The next step is decoding the selected series into an immutable calibrated CT-value volume.
+Legacy Digimouse / MouseMapper experiments and their generated assets are intentionally excluded from the current application tree.
 
-## Target workflow
+## Public demo
 
-1. Select a DICOM directory.
-2. Inspect detected Series and expected memory cost.
-3. Select one Series.
-4. Build a calibrated 3D CT volume locally in the browser.
-5. View synchronized axial, coronal, sagittal, and interactive WebGPU 3D views.
-6. Segment bone, soft tissue, and fat.
-7. Adjust segment color, opacity, visibility, and thresholds.
-8. Apply non-destructive image-processing filters.
+The `公開マウスCTデモ` button retrieves `PET-CT.zip` from Zenodo record 12761093 on demand.
 
-## Planned image-processing tools
-
-- Gaussian
-- 3D Median
-- Bilateral
-- Non-Local Means
-- Anisotropic Diffusion
-- Total Variation
-- Window / Level
-- Gamma
-- Sigmoid
-- Tanh
-- CLAHE
-- Histogram Equalization
-- Opening / Closing
-- Opening / Closing by reconstruction
-- Hole filling
-- Small-hole removal
-- Small-object removal
-- Voting hole filling
-
-A dedicated local Spike / Hole Corrector is planned for thin-bone CT. It will use local 3D statistics to repair isolated high and low CT-value outliers while preserving genuine edges.
-
-See:
-
-- [DICOM WebGPU viewer specification](docs/DICOM_WEBGPU_SPEC.md)
-- [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
-
-## Technical direction
-
-- Browser-first
-- TypeScript
-- Vite
-- Three.js WebGPU
-- Local DICOM directory input
-- Web Workers for heavy CPU work
-- WebGPU compute where it provides a clear benefit
-- WASM/CPU fallback where appropriate
-- No mandatory server-side DICOM upload
+- Archive size: about 20.8 MB
+- Animal: mouse
+- Scanner: Siemens Inveon micro-PET/CT
+- DICOM data is not stored in this repository
 
 ## Local development
 
 Requirements:
 
 - Node.js
-- A WebGPU-capable browser
+- A modern browser; WebGPU is recommended
 
 ```bash
 npm install
 npm run dev
 ```
 
+The root development page loads the same viewer files used by GitHub Pages.
+
 ## Project status
 
-Research / feasibility prototype under active development.
-
-## Third-party material
-
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-
-## Public mouse CT demo
-
-The development branch includes a `公開マウスCTデモ` button.
-
-It retrieves `PET-CT.zip` (20.8 MB) from Zenodo record 12761093 on demand. The associated study used a Siemens Inveon micro-PET/CT scanner in mice and reports DICOM-based image analysis.
-
-The DICOM archive is not stored in this Git repository.
-
-Current demo path:
-
-1. Download the small public archive.
-2. Expand it in browser memory.
-3. Detect DICOM Series.
-4. Select the CT Series.
-5. Decode pixels and apply RescaleSlope / RescaleIntercept.
-6. Show Axial / Coronal / Sagittal views.
-7. Show a WebGPU 3D high-density CT preview.
-
-The 3D preview is intentionally lightweight. Full volume rendering and segmentation surfaces are the next rendering milestone.
+Active research / feasibility prototype.

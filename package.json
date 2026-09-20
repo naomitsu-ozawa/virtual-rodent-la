@@ -1,21 +1,13 @@
 {
   "name": "virtual-rodent-lab",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "dicom-parser": "1.8.21",
-    "fflate": "0.8.2",
-    "three": "0.186.0"
+    "preview": "vite"
   },
   "devDependencies": {
-    "@types/three": "0.186.0",
-    "typescript": "7.0.2",
     "vite": "8.3.0"
   }
 }

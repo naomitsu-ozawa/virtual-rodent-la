@@ -1,275 +1,120 @@
-# DICOM WebGPU Viewer Specification
+# DICOM Viewer Specification
 
 ## Goal
 
-Virtual Rodent Lab will become a browser-based DICOM viewer focused on small-animal CT data, especially mouse CT.
+Virtual Rodent Lab is a browser-based DICOM CT viewer for mouse and other small-animal imaging.
 
-The application is WebGPU-first and runs locally in the browser. A user selects a DICOM directory and inspects the same volume through synchronized multiplanar slices and an interactive 3D view.
+The application is local-first. Users can open a DICOM directory directly in the browser, inspect detected Series, decode a CT Series locally, and work with multiplanar views plus an interactive 3D representation.
 
-## Core interaction
+The canonical deployed implementation is `docs/app.js`.
 
-- Select a DICOM directory as the input unit.
-- Detect and group DICOM series from the selected directory.
-- Show dataset metadata before heavy processing:
-  - modality
-  - slice count
-  - matrix size
-  - voxel spacing
-  - estimated in-memory volume size
-- Load one series into a 3D volume.
-- Display synchronized:
-  - axial
-  - coronal
-  - sagittal
-  - interactive 3D viewport
-- 3D controls:
-  - rotate
-  - zoom
-  - pan
-  - reset camera
+## Core workflow
 
-## Segmentation
+1. Select a local DICOM directory, or start the optional public mouse PET/CT demo.
+2. Parse DICOM metadata in the browser.
+3. Group images by Series.
+4. Select one CT Series.
+5. Decode pixel data.
+6. Apply RescaleSlope / RescaleIntercept.
+7. Preserve the calibrated source volume.
+8. Display Axial / Coronal / Sagittal MPR.
+9. Display interactive 3D segment surfaces.
+10. Apply optional segmentation and non-destructive image processing.
 
-Initial segmentation targets:
+## Current viewer
+
+### DICOM
+
+- Local directory input
+- Browser-side metadata parsing
+- Series grouping
+- Series metadata display
+- Estimated volume memory display
+- Uncompressed 8-bit / 16-bit pixel decoding
+- CT-value calibration
+
+Compressed Transfer Syntax support remains future work.
+
+### MPR
+
+- Axial
+- Coronal
+- Sagittal
+- Slice sliders
+- Touch drag to move through slices
+- Window Center / Window Width
+- Segmentation overlays
+
+Synchronized crosshair navigation is planned.
+
+### 3D
+
+The viewer prefers WebGPU and falls back to WebGL when needed.
+
+Current interaction:
+
+- one pointer / one finger: rotate
+- two fingers: zoom and pan
+- mouse wheel: zoom
+
+Segmentation ranges are converted into surface meshes for interactive 3D display.
+
+### Segmentation
+
+Initial segments:
 
 - Bone
 - Soft tissue
 - Fat
 
-Each segment must support:
+Each supports visibility, color, opacity, minimum/maximum CT value, MPR overlay, and 3D surface display.
 
-- visibility on/off
-- color change
-- opacity change
-- threshold/range adjustment
-- 3D display
-- overlay in the three slice views
-- manual correction with brush/eraser in a later milestone
+Surface smoothing is available as an optional post-process.
 
-The segmentation pipeline operates on the original calibrated CT-value volume. Display-only contrast processing must not destroy the original quantitative values.
+## Processing model
 
-## CT value handling
+The calibrated source volume is preserved separately from the active processed volume.
 
-DICOM pixel values are converted using DICOM calibration metadata when present:
+Implemented filters:
 
-- RescaleSlope
-- RescaleIntercept
-
-The application keeps two logical data paths:
-
-1. Quantitative volume
-   - original calibrated CT values
-   - segmentation source
-   - measurement source
-
-2. Display volume
-   - window/level
-   - denoise
-   - contrast adjustment
-   - preview processing
-   - 3D rendering preparation
-
-## Image-processing toolbox
-
-### General denoise
-
-- Gaussian
-- 3D Median
-- Bilateral
-- Non-Local Means
+- Gaussian 3D
+- Spike / Hole correction
+- Fast NLM 3D
 - Anisotropic Diffusion
-- Total Variation
-- Wavelet denoise candidate
 
-### Intensity / contrast
+Each filter has a strength control. Active filters are rebuilt from the preserved source volume, and Reset restores the original calibrated CT data.
 
-- Window / Level
-- Clamp
-- Linear rescale
-- Gamma
-- Sigmoid
-- Tanh
-- Histogram equalization
-- CLAHE
+## Thin-bone direction
 
-### Local CT-value correction
+Thin-bone quality remains a primary development target.
 
-A dedicated Spike / Hole Corrector is required.
+Planned improvements:
 
-Purpose:
+1. edge-preserving denoise
+2. dual-threshold / hysteresis-style bone candidate extraction
+3. 3D connectivity
+4. size-limited hole filling
+5. small-object cleanup
+6. optional Spike / Hole correction
+7. improved surface generation
 
-- remove isolated high-value spikes on surfaces and tips
-- repair isolated low-value holes inside thin bone
-- preserve genuine edges and thin anatomical structures
+## Data locality
 
-Candidate logic:
+Local DICOM files remain in the browser. No mandatory server-side DICOM upload is part of the base application.
 
-- inspect a 3D neighborhood such as 3 x 3 x 3
-- calculate local median and local variance
-- classify the center voxel as a spike or hole only when it is a strong local outlier
-- replace or partially pull the voxel toward the local median
-- cap the maximum correction magnitude
-- visualize corrected voxels as an optional overlay
-
-Controls:
-
-- spike threshold
-- hole threshold
-- neighborhood size
-- replacement mode
-- correction strength
-- maximum correction
-- edge-preservation sensitivity
-
-### Morphology / segmentation cleanup
-
-- Erode
-- Dilate
-- Opening
-- Closing
-- Opening by reconstruction
-- Closing by reconstruction
-- Fill holes
-- Remove small holes
-- Remove small objects
-- Voting hole filling
-
-## Bone extraction strategy
-
-Thin bone holes and surface spikes are treated as a segmentation-pipeline problem, not only a smoothing problem.
-
-Preferred pipeline:
-
-1. CT calibration
-2. Edge-preserving denoise
-3. Dual threshold / hysteresis-style bone candidate extraction
-4. 3D connectivity
-5. Closing by reconstruction
-6. Size-limited hole filling
-7. Small-object / spike cleanup
-8. Optional local Spike / Hole correction
-9. 3D surface generation
-
-Dual-threshold concept:
-
-- high threshold: strong, reliable bone
-- low threshold: weak bone candidate
-- retain weak candidates when they are connected to strong bone
-
-This is intended to reduce the trade-off between preserving thin bone and suppressing isolated spikes.
-
-## Rendering architecture
-
-### Primary platform
-
-- Browser application
-- TypeScript
-- Vite
-- WebGPU-first rendering
-- Three.js WebGPU remains the existing rendering foundation
-
-### 3D
-
-The main 3D viewport uses WebGPU for:
-
-- volume/surface rendering
-- segment visualization
-- per-segment color and opacity
-- interactive camera manipulation
-
-### MPR
-
-The three orthogonal slice views share the same volume coordinates and crosshair position.
-
-Required synchronization:
-
-- clicking or scrolling in one view updates the other views
-- crosshair position is shared
-- segmentation overlays remain spatially aligned
-- 3D camera and slice position may be linked where useful
-
-### Local-only data flow
-
-DICOM files are selected from the user's local machine and processed in the browser.
-
-No DICOM upload is required for the base application.
-
-Preferred folder-input strategy:
-
-- File System Access API where available
-- directory input fallback for browsers that support folder selection
-
-## Performance principles
-
-Before decoding a full series, show its scale and expected resource cost.
-
-The application must avoid blind full-volume work. Heavy processing should use:
-
-- Web Workers
-- transferable buffers
-- chunked processing
-- WebGPU compute where it is genuinely useful and supported
-- WASM/CPU fallback for filters that are easier or safer there
-
-Large intermediate copies should be avoided.
-
-## Initial UI layout
-
-- Large central/left 3D viewport
-- Three MPR views grouped on the right
-- Dataset / series header
-- Segmentation panel
-- Image-processing panel
-- Per-segment color and opacity controls
-- Processing history / reset controls
-
-## Non-destructive processing
-
-Image-processing operations should be represented as a processing stack where practical.
-
-Example:
-
-- Original
-- NLM
-- Spike/Hole correction
-- Window/Level
-
-Each stage should be toggleable or resettable without destroying the original DICOM-derived volume.
-
-## Initial development priority
-
-1. DICOM directory loading and series inspection
-2. CT-value calibration
-3. Three synchronized MPR views
-4. WebGPU 3D volume/surface display
-5. Basic bone/soft-tissue/fat threshold segmentation
-6. Per-segment color, opacity and visibility
-7. General filter panel
-8. Thin-bone pipeline
-9. Spike/Hole Corrector
-10. Manual segmentation correction
-
+The public demo is downloaded only when the user explicitly selects it.
 
 ## Public demo dataset
 
-The browser demo uses a small public mouse PET/CT archive hosted outside GitHub.
-
-- Dataset: Bidirectional Regulation of Motor Circuits Using Magnetogenetic Gene Therapy
-- Provider: Zenodo
-- Record: https://zenodo.org/records/12761093
-- Demo archive: PET-CT.zip
-- Archive size: 20.8 MB
-- Animal: mouse
+- Zenodo record: https://zenodo.org/records/12761093
+- Archive: `PET-CT.zip`
+- Approximate size: 20.8 MB
 - Scanner: Siemens Inveon micro-PET/CT
-- Analysis format reported by the associated publication: DICOM
 
-The application downloads the archive only when the user chooses the public demo. The archive is expanded in browser memory and passed through the same DICOM parser, CT calibration and viewer pipeline used for local data.
+The archive is expanded in browser memory and passed through the same DICOM parsing, CT calibration, MPR, segmentation, and 3D pipeline used for local data.
 
-### Demo data policy
+## Repository policy
 
-- DICOM pixel data is not committed to Git.
-- The public archive remains hosted by Zenodo.
-- Download size is shown before and during transfer.
-- Local-directory loading remains the primary workflow.
-- Demo data and local data share the same viewer code path.
-- The original calibrated CT-value volume remains immutable.
+This repository is for the DICOM viewer.
+
+Legacy Digimouse atlas experiments, MouseMapper inference workflows, generated atlas meshes, and unrelated segmentation assets are intentionally excluded from the current tree.

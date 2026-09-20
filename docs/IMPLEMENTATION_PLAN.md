@@ -1,81 +1,74 @@
 # Implementation Plan
 
-## Milestone 1 — DICOM volume foundation
+This file reflects the current deployed DICOM viewer in `docs/app.js`.
 
-- [x] Local directory picker
-- [x] DICOM metadata parsing in the browser
-- [x] Group files by SeriesInstanceUID
-- [x] Show modality, slice count, matrix, spacing, calibration and estimated volume memory before full decode
-- [ ] Decode selected series to calibrated scalar volume
-- [ ] Validate slice ordering/orientation
+## Implemented
 
-## Milestone 2 — Viewer layout
+### DICOM foundation
 
-- [ ] Axial viewport
-- [ ] Coronal viewport
-- [ ] Sagittal viewport
-- [ ] WebGPU 3D viewport
-- [ ] Synchronized crosshair
-- [ ] Zoom / pan / rotate
+- [x] Local directory selection
+- [x] Browser-side DICOM metadata parsing
+- [x] Series grouping
+- [x] Series metadata and estimated memory display
+- [x] Selected-Series pixel decoding
+- [x] RescaleSlope / RescaleIntercept calibration
+- [x] Original calibrated CT volume retained as the processing source
+- [x] Public mouse PET/CT demo from Zenodo
 
-## Milestone 3 — Basic segmentation
+### Viewer
 
-- [ ] Bone
-- [ ] Soft tissue
-- [ ] Fat
-- [ ] Threshold/range controls
-- [ ] Color / opacity / visibility
-- [ ] Slice overlays
-- [ ] 3D rendering
+- [x] Axial MPR
+- [x] Coronal MPR
+- [x] Sagittal MPR
+- [x] Window / Level
+- [x] Interactive 3D viewport
+- [x] WebGPU rendering
+- [x] WebGL fallback
+- [x] Mouse / touch 3D interaction
+- [x] Mobile MPR slice navigation
 
-## Milestone 4 — General image-processing toolbox
+### Segmentation
 
-- [ ] Gaussian
-- [ ] 3D Median
-- [ ] Bilateral
-- [ ] Non-Local Means
-- [ ] Anisotropic Diffusion
-- [ ] Total Variation
-- [ ] Window / Level
-- [ ] Gamma
-- [ ] Sigmoid
-- [ ] Tanh
-- [ ] CLAHE
-- [ ] Histogram Equalization
-- [ ] Clamp / rescale
+- [x] Bone threshold segmentation
+- [x] Soft-tissue threshold segmentation
+- [x] Fat threshold segmentation
+- [x] Per-segment visibility
+- [x] Per-segment color
+- [x] Per-segment opacity
+- [x] Per-segment CT range
+- [x] MPR overlays
+- [x] 3D segment surface meshes
+- [x] Surface smoothing
 
-## Milestone 5 — Thin-bone quality pipeline
+### Image processing
 
-- [ ] Dual threshold / hysteresis
-- [ ] 3D connectivity
-- [ ] Closing by reconstruction
-- [ ] Size-limited hole fill
-- [ ] Remove small objects
-- [ ] Compare thin-bone continuity, tip preservation, spikes and false bridges
+- [x] Gaussian 3D
+- [x] Spike / Hole correction
+- [x] Fast NLM 3D
+- [x] Anisotropic Diffusion
+- [x] Per-filter strength control
+- [x] Non-destructive reset to the original calibrated CT volume
 
-## Milestone 6 — Spike / Hole Corrector
+## Next priorities
 
-- [ ] 3D neighborhood analysis
-- [ ] Local median
-- [ ] Local variance / edge guard
-- [ ] Spike correction
-- [ ] Hole correction
-- [ ] Maximum correction cap
-- [ ] Correction overlay
-- [ ] Before/after preview
-
-## Milestone 7 — Manual correction
-
-- [ ] Brush
-- [ ] Eraser
-- [ ] Segment paint
-- [ ] Undo / redo
+- [ ] Improve slice ordering/orientation handling for broader DICOM datasets
+- [ ] Add synchronized crosshair navigation across MPR views
+- [ ] Improve segmentation surface quality for thin bone
+- [ ] Add dual-threshold / hysteresis-style bone extraction
+- [ ] Add 3D connectivity cleanup
+- [ ] Add size-limited hole filling and small-object removal
+- [ ] Add morphology tools where they materially improve bone continuity
+- [ ] Add manual brush / eraser correction
+- [ ] Move heavy processing off the main UI thread where needed
+- [ ] Add compressed DICOM Transfer Syntax support
 
 ## Architecture rules
 
-- WebGPU is the primary 3D rendering backend.
+- `docs/app.js` is the canonical deployed implementation.
 - Browser-first and local-data-first.
+- No mandatory DICOM upload.
 - Original calibrated CT values remain immutable.
-- Heavy work moves off the main UI thread.
-- Dataset scale is shown before full-volume allocation or processing.
-- Avoid duplicate full-volume buffers where possible.
+- Processing filters operate on derived working volumes.
+- WebGPU is preferred; WebGL is the rendering fallback.
+- Avoid duplicate full-volume buffers where practical.
+- Do not reintroduce unrelated atlas or MouseMapper assets into the viewer repository.
