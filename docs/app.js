@@ -324,7 +324,7 @@ function renderFilterOrder(){
  for(const option of filterAddSelect.options)option.disabled=active.has(option.value);
  const next=[...filterAddSelect.options].find(o=>!o.disabled);
  if(next)filterAddSelect.value=next.value;
- filterAddButton.disabled=!next;
+ filterAddButton.disabled=volume?.sourceBacked===true||!next;
  resetFilterBtn.disabled=!sourceVolume||filterOrder.length===0;
 }
 function addFilter(key){
@@ -638,7 +638,7 @@ async function decode(s,onProgress){
 function enableProcessingControls(enabled){
  const sourceMode=enabled&&volume?.sourceBacked===true;
  if(!enabled||sourceMode){filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;filterOrder=[]}
- gaussianBtn.disabled=!enabled||sourceMode;smoothingType.disabled=!enabled||sourceMode||!filterState.gaussian;spikeHoleBtn.disabled=!enabled||sourceMode;nlmBtn.disabled=!enabled||sourceMode;anisotropicBtn.disabled=!enabled||sourceMode;bilateralBtn.disabled=!enabled||sourceMode;tvBtn.disabled=!enabled||sourceMode;unsharpBtn.disabled=!enabled||sourceMode;filterAddSelect.disabled=sourceMode;filterAddButton.disabled=sourceMode;
+ gaussianBtn.disabled=!enabled||sourceMode;smoothingType.disabled=!enabled||sourceMode||!filterState.gaussian;spikeHoleBtn.disabled=!enabled||sourceMode;nlmBtn.disabled=!enabled||sourceMode;anisotropicBtn.disabled=!enabled||sourceMode;bilateralBtn.disabled=!enabled||sourceMode;tvBtn.disabled=!enabled||sourceMode;unsharpBtn.disabled=!enabled||sourceMode;filterAddSelect.disabled=!enabled;filterAddButton.disabled=sourceMode;filterAddSelect.title=sourceMode?'フル解像度ストリーミングではフィルター一覧のみ参照できます':'';filterAddButton.title=sourceMode?'フル解像度ストリーミングへのフィルター適用は未対応です':'';
  resetFilterBtn.disabled=!enabled;
  surfaceSmoothEnabled.disabled=!enabled;
  surfaceSmoothStrength.disabled=!enabled||!surfaceSmoothEnabled.checked;
