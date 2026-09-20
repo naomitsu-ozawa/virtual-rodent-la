@@ -32,6 +32,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [x] Bone threshold segmentation
 - [x] Soft-tissue threshold segmentation
 - [x] Fat threshold segmentation
+- [x] Lung threshold segmentation
 - [x] Per-segment visibility
 - [x] Per-segment color
 - [x] Per-segment opacity
