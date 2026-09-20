@@ -137,3 +137,11 @@ Legacy Digimouse atlas experiments, MouseMapper inference workflows, generated a
 - Strength はS字カーブの急峻さを制御する
 - Center は変曲点となるCT値を指定する
 - 初期値は読み込んだボリュームのCT値レンジ中央
+
+## Advanced filter parameters
+
+- Spike / Hole: Strength + detection threshold
+- Fast NLM 3D: Strength
+- Anisotropic Diffusion: Strength + iteration count
+- Gaussian 3D / Median 3D: Strength + pass count
+- Sigmoid: Strength + center CT value
