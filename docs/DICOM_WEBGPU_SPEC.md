@@ -66,6 +66,7 @@ Initial segments:
 - Bone
 - Soft tissue
 - Fat
+- Lung
 
 Each supports visibility, color, opacity, minimum/maximum CT value, MPR overlay, and 3D surface display.
 
