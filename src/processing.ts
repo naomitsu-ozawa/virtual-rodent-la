@@ -65,8 +65,19 @@ export async function processVolume(
     await yieldToBrowser();
   }
 
-  // NLM and anisotropic diffusion are wired into the processing state now,
-  // but remain intentionally inactive until their worker/WebGPU implementations land.
+  if (settings.anisotropic.enabled) {
+    data = anisotropicDiffusion3d(
+      data,
+      source.columns,
+      source.rows,
+      source.slices,
+      settings.anisotropic.strength,
+      onProgress,
+    );
+    await yieldToBrowser();
+  }
+
+  // NLM remains disabled in the UI until its worker/WebGPU implementation lands.
 
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
@@ -210,6 +221,66 @@ function spikeHoleCorrect3d(
   }
 
   return output;
+}
+
+function anisotropicDiffusion3d(
+  source: Float32Array,
+  columns: number,
+  rows: number,
+  slices: number,
+  strength: number,
+  onProgress?: ProcessingProgress,
+): Float32Array {
+  const plane = columns * rows;
+  const iterations = Math.max(1, Math.min(8, Math.round(strength * 2)));
+  const kappa = 90 + strength * 90;
+  const lambda = 0.14;
+
+  let input = new Float32Array(source);
+  let output = new Float32Array(source.length);
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    output.set(input);
+
+    for (let z = 1; z < slices - 1; z += 1) {
+      for (let y = 1; y < rows - 1; y += 1) {
+        for (let x = 1; x < columns - 1; x += 1) {
+          const index = z * plane + y * columns + x;
+          const center = input[index];
+
+          const gradients = [
+            input[index - 1] - center,
+            input[index + 1] - center,
+            input[index - columns] - center,
+            input[index + columns] - center,
+            input[index - plane] - center,
+            input[index + plane] - center,
+          ];
+
+          let flux = 0;
+          for (const gradient of gradients) {
+            const ratio = gradient / kappa;
+            const conductance = Math.exp(-(ratio * ratio));
+            flux += conductance * gradient;
+          }
+
+          output[index] = center + lambda * flux;
+        }
+      }
+
+      onProgress?.(
+        `Anisotropic ${iteration + 1}/${iterations}`,
+        z,
+        slices - 2,
+      );
+    }
+
+    const swap = input;
+    input = output;
+    output = swap;
+  }
+
+  return input;
 }
 
 function median26(values: Float32Array): number {
