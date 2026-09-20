@@ -400,6 +400,7 @@ function syncFilterControls(){
 }
 function scheduleFilterRebuild(delay=120){
  clearTimeout(filterRebuildTimer);
+ if(sourceVolume?.sourceBacked&&delay>0)return;
  const finalize3D=!(sourceVolume?.sourceBacked)||delay===0;
  filterRebuildTimer=setTimeout(()=>{filterRebuildTimer=null;void rebuildActiveFilters(finalize3D)},delay);
 }
@@ -408,9 +409,14 @@ async function rebuildActiveFilters(finalize3D=true){
  const revision=++filterRebuildRevision;
  clearTimeout(liveFilterState.timer);liveFilterState.base=null;liveFilterState.key=null;
  if(sourceVolume.sourceBacked){
-  invalidateSourceFilters();volume=sourceVolume;renderAll();if(finalize3D)render3D(volume);
-  footer.textContent=filterOrder.length?'Full-resolution filters · chunked · '+filterOrder.length+' stage(s)':tr('original');
-  syncFilterControls();return;
+  invalidateSourceFilters();volume=sourceVolume;setProcessingBusy(true,'Full-resolution filters');
+  try{
+   const tasks=Object.keys(planes).map(p=>renderPlane(p));await Promise.all(tasks);
+   if(revision!==filterRebuildRevision)return;
+   if(finalize3D)render3D(volume);
+   footer.textContent=filterOrder.length?'Full-resolution filters · chunked · '+filterOrder.length+' stage(s)':tr('original');
+  }finally{setProcessingBusy(false);syncFilterControls()}
+  return;
  }
  let base=sourceVolume;
  try{
@@ -589,6 +595,7 @@ async function selectSeries(s){
  selected.innerHTML='<strong>'+esc(s.description)+'</strong><span>'+esc(s.modality)+' · '+s.slices.length+' slices · '+s.columns+'×'+s.rows+(s.sourceBacked?' · full resolution':'')+'</span><span class="ready-badge">CT volume loading…</span>';
  prog.classList.remove('is-hidden');busy(true);let phase='decode';
  try{
+  invalidateSourceFilters();
   sourceVolume=s.sourceBacked?openSourceBackedVolume(s):await decode(s,(x,y)=>progress(x,y));
   volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);phase='render';renderAll();render3D(volume);
   selected.querySelector('.ready-badge').textContent=s.sourceBacked?'CT source ready · full resolution':'CT volume ready';
@@ -714,7 +721,7 @@ function invalidateSourceFilters(){
  sourceFilterRuntime.cache.clear();sourceFilterRuntime.cacheBytes=0;disposeSourceFilterWorkers();
 }
 function createSourceFilterSlot(){
- const source='('+sourceFilterWorkerMain.toString()+')()',url=URL.createObjectURL(new Blob([source],{type:'text/javascript'})),worker=new Worker(url);URL.revokeObjectURL(url);
+ const source='('+sourceFilterWorkerMain.toString()+')()',url=URL.createObjectURL(new Blob([source],{type:'text/javascript'})),worker=new Worker(url);setTimeout(()=>URL.revokeObjectURL(url),1000);
  const slot={worker,busy:false,current:null};
  worker.onmessage=e=>{const task=slot.current;if(!task)return;slot.current=null;slot.busy=false;if(e.data?.error)task.reject(new Error(e.data.error));else task.resolve(new Float32Array(e.data.buffer));pumpSourceFilterWorkers()};
  worker.onerror=e=>{const task=slot.current;slot.current=null;slot.busy=false;if(task)task.reject(new Error(e.message||'Source filter worker failed'));pumpSourceFilterWorkers()};
@@ -813,6 +820,21 @@ async function getFilteredSourcePlaneValues(p,idx,series,keyPrefix='mpr'){
   }
  }
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');sourceFilterCacheSet(cacheKey,out);return out;
+}
+async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d-block'){
+ const stages=sourceFilterStages();if(!stages.length)return null;
+ const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=sourceFilterHalo(stages),outDepth=Math.min(d-zStart,coreDepth+(zStart+coreDepth<d?1:0));
+ const out=new Float32Array(w*h*outDepth),[tx,ty]=fitSourceTile(w,h,outDepth,halo,384,128);
+ for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
+  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+  const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),tile=await processSourceRegion(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart,revision);
+  for(let zz=0;zz<outDepth;zz++)for(let yy=0;yy<th;yy++){
+   const src=(zz*th+yy)*tw,dst=(zz*h+y+yy)*w+x;
+   out.set(tile.subarray(src,src+tw),dst);
+  }
+ }
+ if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+ return{data:out,depth:outDepth,coreDepth:Math.min(coreDepth,d-zStart)};
 }
 function segmentMasksFromValues(data,segments){
  const blockSize=16384,states=new Map(segments.map(({key,seg})=>[key,{mask:new Uint8Array(data.length),blocks:[],block:new Uint32Array(blockSize),used:0,min:seg.min,max:seg.max}]));
@@ -1523,24 +1545,36 @@ async function render3DSourceBacked(v){
   positions.length=0;
  };
  try{
-  const filtered=sourceFilterStages().length>0,filterRevision=sourceFilterRuntime.revision;
-  const readMasks=async z=>filtered?segmentMasksFromValues(await getFilteredSourcePlaneValues('axial',z,series,'3d:'+revision),active):decodeSourceSegmentMasks(series.slices[z],active);
-  let prev=null,curr=await readMasks(0);
-  let next=series.slices.length>1?await readMasks(1):null;
-  for(let z=0;z<series.slices.length;z++){
-   if(revision!==sourceRenderRevision){dispose(group);return}
-   const nz=z+2,nextPromise=nz<series.slices.length?readMasks(nz):Promise.resolve(null);
-   for(const {key} of active){
-    appendSourceSliceFacesFast(positionsByKey.get(key),series,z,prev?.get(key),curr.get(key),next?.get(key),coords);
+  const filtered=sourceFilterStages().length>0;
+  if(filtered){
+   const filterBlockDepth=navigator.maxTouchPoints>0?2:4,planeSize=series.columns*series.rows;
+   let previousMask=null;
+   for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
+    if(revision!==sourceRenderRevision){dispose(group);return}
+    const block=await getFilteredSourceAxialBlock(z0,filterBlockDepth,series,'3d:'+revision);
+    const masks=[];
+    for(let local=0;local<block.depth;local++){
+     masks.push(segmentMasksFromValues(block.data.subarray(local*planeSize,(local+1)*planeSize),active));
+    }
+    for(let local=0;local<block.coreDepth;local++){
+     const z=z0+local,curr=masks[local],prev=local===0?previousMask:masks[local-1],next=local+1<masks.length?masks[local+1]:null;
+     for(const {key} of active)appendSourceSliceFacesFast(positionsByKey.get(key),series,z,prev?.get(key),curr.get(key),next?.get(key),coords);
+     const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
+     if(flush){for(const {key} of active)flushSegment(key,z);footer.textContent='3D building · '+(z+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(z+1)+' / '+series.slices.length);await frameYield()}
+    }
+    previousMask=masks[block.coreDepth-1];
    }
-   const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
-   if(flush){
-    for(const {key} of active)flushSegment(key,z);
-    footer.textContent='3D building · '+(z+1)+' / '+series.slices.length;
-    set3DBusy(true,'3D構築中… '+(z+1)+' / '+series.slices.length);
-    await frameYield();
+  }else{
+   let prev=null,curr=await decodeSourceSegmentMasks(series.slices[0],active);
+   let next=series.slices.length>1?await decodeSourceSegmentMasks(series.slices[1],active):null;
+   for(let z=0;z<series.slices.length;z++){
+    if(revision!==sourceRenderRevision){dispose(group);return}
+    const nz=z+2,nextPromise=nz<series.slices.length?decodeSourceSegmentMasks(series.slices[nz],active):Promise.resolve(null);
+    for(const {key} of active)appendSourceSliceFacesFast(positionsByKey.get(key),series,z,prev?.get(key),curr.get(key),next?.get(key),coords);
+    const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
+    if(flush){for(const {key} of active)flushSegment(key,z);footer.textContent='3D building · '+(z+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(z+1)+' / '+series.slices.length);await frameYield()}
+    prev=curr;curr=next;next=await nextPromise;
    }
-   prev=curr;curr=next;next=await nextPromise;
   }
   if(revision!==sourceRenderRevision){dispose(group);return}
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
