@@ -15,6 +15,7 @@
 - セグメントごとの表示ON/OFF、色、不透明度、CT値範囲調整
 - MPRへのセグメンテーション重畳
 - セグメントの3Dサーフェスメッシュ表示
+- セグメントごとのSTL書き出し（mmスケール）
 - 表面平滑化
 - 非破壊画像処理
   - Spike / Hole correction
@@ -93,6 +94,7 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Per-segment visibility, color, opacity, and CT-range controls
 - Segmentation overlays in MPR
 - 3D segment surface meshes
+- Per-segment STL export in physical mm scale
 - Surface smoothing
 - Non-destructive filters: Spike / Hole, Fast NLM 3D, Anisotropic Diffusion, Gaussian 3D, and Sigmoid
 - Filter strength controls and reset
