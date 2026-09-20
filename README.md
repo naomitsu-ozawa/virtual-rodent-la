@@ -72,6 +72,16 @@ npm run dev
 
 ルートの開発ページは、GitHub Pagesと同じ `docs/app.js` / `docs/style.css` を読み込みます。
 
+## ライセンス
+
+本ソフトウェアは **GNU Affero General Public License v3.0 only (AGPL-3.0-only)** の条件で公開します。
+
+AGPLv3の条件を満たす限り、研究・教育・商用を含めて利用、改変、再配布できます。ネットワーク経由で改変版を提供する場合も、利用者へ対応するソースコードを提供する必要があります。
+
+AGPLv3の条件に適合しないクローズドな商用利用を希望する場合は、著作権者から別途商用ライセンスを取得してください。
+
+第三者ライブラリおよび公開データには、それぞれのライセンス・利用条件が適用されます。詳細は `THIRD_PARTY_NOTICES.md` を参照してください。
+
 ## 開発状況
 
 研究・実証用プロトタイプとして開発中です。
@@ -104,3 +114,13 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Optional public mouse PET/CT demo from Zenodo
 
 The original calibrated CT-value volume is preserved separately from processed display data.
+
+### License
+
+This software is licensed under the **GNU Affero General Public License v3.0 only (AGPL-3.0-only)**.
+
+Use, modification, redistribution, and commercial use are permitted under the AGPLv3 terms. Modified versions made available to users over a network must offer the corresponding source code as required by the license.
+
+A separate commercial license is available for proprietary or closed-source commercial use that cannot comply with the AGPLv3 requirements.
+
+Third-party libraries and public datasets remain subject to their own licenses and terms. See `THIRD_PARTY_NOTICES.md`.
