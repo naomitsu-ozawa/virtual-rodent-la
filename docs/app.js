@@ -539,7 +539,7 @@ async function parseFiles(files,onProgress){
 function planDecodePreview(s){
  const compact=canDecodeToInt16(s.slices),bytesPerVoxel=compact?2:4;
  const fullCount=s.columns*s.rows*s.slices.length,fullBytes=fullCount*bytesPerVoxel;
- const targetBytes=96*1024*1024;
+ const targetBytes=128*1024*1024;
  const stride=fullBytes>targetBytes?Math.max(2,Math.ceil(Math.cbrt(fullBytes/targetBytes))):1;
  return{
   compact,bytesPerVoxel,stride,
@@ -1130,6 +1130,16 @@ function buildMaskSurface(v,mask,key){
  return mesh;
 }
 
+function surfaceSamplingStep(v){
+ const total=v.columns*v.rows*v.slices;
+ if(v.previewStride>1){
+  if(total<=18000000)return 1;
+  return 2;
+ }
+ if(total<=12000000)return 1;
+ if(total<=40000000)return 2;
+ return Math.max(2,Math.ceil(Math.cbrt(total/2500000)));
+}
 function render3D(v){
  if(!sceneState)return;
  sceneState.analysisMesh=null;
@@ -1149,7 +1159,7 @@ function render3D(v){
   group.scale.copy(savedTransform.scale);
  }
  const total=v.columns*v.rows*v.slices;
- const step=Math.max(1,Math.ceil(Math.cbrt(total/300000)));
+ const step=surfaceSamplingStep(v);
  for(const key of ['lung','fat','soft','bone']){
   const seg=segmentState[key];
   if(!seg.active||!seg.enabled)continue;
@@ -1157,7 +1167,7 @@ function render3D(v){
   if(mesh)group.add(mesh);
  }
  sceneState.obj=group;sceneState.scene.add(group);
- threeLabel.textContent=(sceneState.backend||'3D')+' · surface mesh';
+ threeLabel.textContent=(sceneState.backend||'3D')+' · surface mesh · step '+step;
 }
 function buildSegmentSurface(v,seg,step,key){
  const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing,mask=getProcessedSegmentMask(v,seg);
@@ -1178,7 +1188,7 @@ function buildSegmentSurface(v,seg,step,key){
   const ia=vertex(...a),ib=vertex(...b),ic=vertex(...c),id=vertex(...dv);
   indices.push(ia,ib,ic,ia,ic,id);
  };
- const maxFaces=key==='bone'?180000:100000;let faces=0;
+ const maxFaces=key==='bone'?600000:300000;let faces=0;
  outer:for(let z=0;z<d;z+=step)for(let y=0;y<h;y+=step)for(let x=0;x<w;x+=step){
   if(!inside(x,y,z))continue;
   const x1=Math.min(w,x+step),y1=Math.min(h,y+step),z1=Math.min(d,z+step);
@@ -1210,7 +1220,7 @@ function exportSegmentStl(key){
  if(!volume)return;
  const seg=segmentState[key];
  const total=volume.columns*volume.rows*volume.slices;
- const step=Math.max(1,Math.ceil(Math.cbrt(total/300000)));
+ const step=surfaceSamplingStep(volume);
  const mesh=buildSegmentSurface(volume,seg,step,key);
  if(!mesh){footer.textContent='STL: segment is empty';return}
  try{
