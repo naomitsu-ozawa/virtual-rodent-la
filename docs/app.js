@@ -32,19 +32,19 @@ app.innerHTML=`
 </div>
 <div class="filter-control-list">
   <div class="filter-control-card">
-    <div class="filter-control-head"><strong>Gaussian 3D</strong><span id="filter-gaussian" class="tool-chip filter-auto">Auto</span></div>
+    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-gaussian" type="checkbox" disabled><strong>Gaussian 3D</strong></label></div>
     <label class="segment-range"><span>Strength</span><output id="gaussian-strength-value">0.40</output><input id="gaussian-strength" type="range" min="0" max="1" step="0.05" value="0.40" disabled></label>
   </div>
   <div class="filter-control-card">
-    <div class="filter-control-head"><strong>Spike / Hole</strong><span id="filter-spike-hole" class="tool-chip filter-auto">Auto</span></div>
+    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-spike-hole" type="checkbox" disabled><strong>Spike / Hole</strong></label></div>
     <label class="segment-range"><span>Strength</span><output id="spike-hole-strength-value">0.50</output><input id="spike-hole-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
   </div>
   <div class="filter-control-card">
-    <div class="filter-control-head"><strong>Fast NLM 3D</strong><span id="filter-nlm" class="tool-chip filter-auto">Auto</span></div>
+    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-nlm" type="checkbox" disabled><strong>Fast NLM 3D</strong></label></div>
     <label class="segment-range"><span>Strength</span><output id="nlm-strength-value">0.45</output><input id="nlm-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
   </div>
   <div class="filter-control-card">
-    <div class="filter-control-head"><strong>Anisotropic Diffusion</strong><span id="filter-anisotropic" class="tool-chip filter-auto">Auto</span></div>
+    <div class="filter-control-head"><label class="filter-enable-label"><input id="filter-anisotropic" type="checkbox" disabled><strong>Anisotropic Diffusion</strong></label></div>
     <label class="segment-range"><span>Strength</span><output id="anisotropic-strength-value">0.45</output><input id="anisotropic-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
   </div>
   <button id="filter-reset" class="tool-chip filter-reset" disabled>Reset image filters</button>
@@ -56,6 +56,9 @@ const $=s=>document.querySelector(s);
 const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]));
 let volume=null,sourceVolume=null,sceneState=null,activeId=null;
+const filterState={gaussian:false,spikeHole:false,nlm:false,anisotropic:false};
+let filterRebuildTimer=null;
+let filterRebuildRevision=0;
 const segmentState={
  bone:{enabled:true,color:'#f3f0e8',opacity:.85,min:0,max:1},
  soft:{enabled:false,color:'#d97f7f',opacity:.28,min:0,max:1},
@@ -107,11 +110,42 @@ function bindLiveSlider(input,output,key,fn){
  });
  input.addEventListener('change',()=>finishLiveFilter(key,fn));
 }
-bindLiveSlider(gaussianStrength,gaussianStrengthValue,'gaussian',applyGaussian3D);
-bindLiveSlider(spikeHoleStrength,spikeHoleStrengthValue,'spike',applySpikeHole);
-bindLiveSlider(nlmStrength,nlmStrengthValue,'nlm',applyNlm3D);
-bindLiveSlider(anisotropicStrength,anisotropicStrengthValue,'anisotropic',applyAnisotropicDiffusion);
-resetFilterBtn.onclick=()=>resetProcessing();
+function syncFilterControls(){
+ gaussianStrength.disabled=!sourceVolume||!filterState.gaussian;
+ spikeHoleStrength.disabled=!sourceVolume||!filterState.spikeHole;
+ nlmStrength.disabled=!sourceVolume||!filterState.nlm;
+ anisotropicStrength.disabled=!sourceVolume||!filterState.anisotropic;
+ gaussianBtn.disabled=!sourceVolume;spikeHoleBtn.disabled=!sourceVolume;nlmBtn.disabled=!sourceVolume;anisotropicBtn.disabled=!sourceVolume;
+ gaussianBtn.checked=filterState.gaussian;spikeHoleBtn.checked=filterState.spikeHole;nlmBtn.checked=filterState.nlm;anisotropicBtn.checked=filterState.anisotropic;
+ resetFilterBtn.disabled=!sourceVolume;
+}
+function scheduleFilterRebuild(delay=120){
+ clearTimeout(filterRebuildTimer);
+ filterRebuildTimer=setTimeout(()=>{filterRebuildTimer=null;void rebuildActiveFilters()},delay);
+}
+async function rebuildActiveFilters(){
+ if(!sourceVolume)return;
+ const revision=++filterRebuildRevision;
+ clearTimeout(liveFilterState.timer);liveFilterState.base=null;liveFilterState.key=null;
+ let base=sourceVolume;
+ try{
+  if(filterState.gaussian){await applyGaussian3D(base);if(revision!==filterRebuildRevision)return;base=volume}
+  if(filterState.spikeHole){await applySpikeHole(base);if(revision!==filterRebuildRevision)return;base=volume}
+  if(filterState.nlm){await applyNlm3D(base);if(revision!==filterRebuildRevision)return;base=volume}
+  if(filterState.anisotropic){await applyAnisotropicDiffusion(base);if(revision!==filterRebuildRevision)return;base=volume}
+  if(!filterState.gaussian&&!filterState.spikeHole&&!filterState.nlm&&!filterState.anisotropic){
+   volume=sourceVolume;renderAll();render3D(volume);footer.textContent='Original calibrated CT values';
+  }
+ }finally{syncFilterControls()}
+}
+for(const [box,key] of [[gaussianBtn,'gaussian'],[spikeHoleBtn,'spikeHole'],[nlmBtn,'nlm'],[anisotropicBtn,'anisotropic']]){
+ box.onchange=()=>{filterState[key]=box.checked;syncFilterControls();scheduleFilterRebuild(0)};
+}
+for(const [input,output,key] of [[gaussianStrength,gaussianStrengthValue,'gaussian'],[spikeHoleStrength,spikeHoleStrengthValue,'spikeHole'],[nlmStrength,nlmStrengthValue,'nlm'],[anisotropicStrength,anisotropicStrengthValue,'anisotropic']]){
+ input.oninput=()=>{output.value=(+input.value).toFixed(2);if(filterState[key])scheduleFilterRebuild(160)};
+ input.onchange=()=>{if(filterState[key])scheduleFilterRebuild(0)};
+}
+resetFilterBtn.onclick=()=>{filterState.gaussian=filterState.spikeHole=filterState.nlm=filterState.anisotropic=false;syncFilterControls();resetProcessing()};
 
 
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>renderPlane(p);installMprTouch(p)}
@@ -202,10 +236,12 @@ async function selectSeries(s){activeId=s.id;for(const n of list.children)n.clas
 async function decode(s,onProgress){const count=s.columns*s.rows*s.slices.length,data=new Float32Array(count);let min=Infinity,max=-Infinity;for(let z=0;z<s.slices.length;z++){const meta=s.slices[z];if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),el=ds.elements.x7fe00010;if(!el)throw new Error('Pixel Data missing');const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=s.rows*s.columns,off=z*n;for(let i=0;i<n;i++){let raw;if(meta.bits===8){raw=bytes[el.dataOffset+i];if(meta.signed&&raw>127)raw-=256}else if(meta.bits===16){raw=meta.signed?view.getInt16(el.dataOffset+i*2,little):view.getUint16(el.dataOffset+i*2,little)}else throw new Error('Unsupported BitsAllocated='+meta.bits);const v=raw*meta.slope+meta.intercept;data[off+i]=v;if(v<min)min=v;if(v>max)max=v}onProgress?.(z+1,s.slices.length)}return{data,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min,max}}
 
 function enableProcessingControls(enabled){
+ if(!enabled){filterState.gaussian=filterState.spikeHole=filterState.nlm=filterState.anisotropic=false}
+ gaussianBtn.disabled=!enabled;spikeHoleBtn.disabled=!enabled;nlmBtn.disabled=!enabled;anisotropicBtn.disabled=!enabled;
  resetFilterBtn.disabled=!enabled;
- gaussianStrength.disabled=!enabled;spikeHoleStrength.disabled=!enabled;nlmStrength.disabled=!enabled;anisotropicStrength.disabled=!enabled;
  surfaceSmoothEnabled.disabled=!enabled;
  surfaceSmoothStrength.disabled=!enabled||!surfaceSmoothEnabled.checked;
+ syncFilterControls();
 }
 function cloneVolumeWithData(base,data){
  return{data,columns:base.columns,rows:base.rows,slices:base.slices,spacing:[...base.spacing],min:base.min,max:base.max};
@@ -344,12 +380,17 @@ async function applyAnisotropicDiffusion(baseVolume=volume){
  finally{setProcessingBusy(false)}
 }
 function resetProcessing(){
- clearTimeout(liveFilterState.timer);liveFilterState.base=null;liveFilterState.key=null;
+ clearTimeout(liveFilterState.timer);clearTimeout(filterRebuildTimer);filterRebuildRevision++;liveFilterState.base=null;liveFilterState.key=null;
+ filterState.gaussian=filterState.spikeHole=filterState.nlm=filterState.anisotropic=false;syncFilterControls();
  if(!sourceVolume)return;volume=sourceVolume;renderAll();render3D(volume);footer.textContent='Processing reset · Original calibrated CT values restored';
 }
 function setProcessingBusy(busyState,label='Processing'){
  resetFilterBtn.disabled=busyState||!sourceVolume;
- gaussianStrength.disabled=busyState||!volume;spikeHoleStrength.disabled=busyState||!volume;nlmStrength.disabled=busyState||!volume;anisotropicStrength.disabled=busyState||!volume;
+ gaussianBtn.disabled=spikeHoleBtn.disabled=nlmBtn.disabled=anisotropicBtn.disabled=busyState||!sourceVolume;
+ gaussianStrength.disabled=busyState||!sourceVolume||!filterState.gaussian;
+ spikeHoleStrength.disabled=busyState||!sourceVolume||!filterState.spikeHole;
+ nlmStrength.disabled=busyState||!sourceVolume||!filterState.nlm;
+ anisotropicStrength.disabled=busyState||!sourceVolume||!filterState.anisotropic;
  folderBtn.disabled=demoBtn.disabled=busyState;prog.classList.toggle('is-hidden',!busyState);
  if(busyState){bar.style.width='0%';progLabel.textContent=label}
 }
@@ -529,7 +570,7 @@ function taubinSmoothGeometry(geometry,strength){
  pos.array.set(a);pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
 }
 
-function resetVolume(){volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spikeHoleStrength.disabled=true;nlmStrength.disabled=true;anisotropicStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
+function resetVolume(){filterRebuildRevision++;filterState.gaussian=filterState.spikeHole=filterState.nlm=filterState.anisotropic=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spikeHoleStrength.disabled=true;nlmStrength.disabled=true;anisotropicStrength.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}threeLabel.textContent=sceneState?.backend||'3D'}
 function dispose(o){o.traverse(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
