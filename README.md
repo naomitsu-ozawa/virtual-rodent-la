@@ -22,7 +22,7 @@
   - Spike / Hole correction
   - Fast NLM 3D
   - Anisotropic Diffusion
-  - Gaussian 3D
+  - Gaussian 3D / Median 3D（選択式）
   - Sigmoid
 - 各フィルターの強度調整とリセット
 - 断面画像は左右スワイプ、マウスではホイールでスライス移動
@@ -108,7 +108,7 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Per-segment STL export in physical mm scale
 - Click a connected 3D component to measure its volume in mm³ / µL
 - Surface smoothing
-- Non-destructive filters: Spike / Hole, Fast NLM 3D, Anisotropic Diffusion, Gaussian 3D, and Sigmoid
+- Non-destructive filters: Spike / Hole, Fast NLM 3D, Anisotropic Diffusion, selectable Gaussian 3D / Median 3D, and Sigmoid
 - Filter strength controls and reset
 - MPR slice navigation by left/right swipe or mouse wheel
 - Optional public mouse PET/CT demo from Zenodo
