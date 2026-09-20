@@ -86,7 +86,7 @@ app.innerHTML=`
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="lung">0.35</output><input data-seg-opacity="lung" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
 </div></div><div class="surface-smooth-card">
   <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong data-i18n="surfaceSmooth">表面平滑化</strong></label>
-  <label class="segment-range"><span data-i18n="strength">強度</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="2" step="0.05" value="0.60" disabled></label>
+  <label class="segment-range"><span data-i18n="strength">強度</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="3" step="0.05" value="0.60" disabled></label>
 </div>
 <div class="filter-control-list">
   <div class="filter-control-card">
@@ -648,7 +648,7 @@ function taubinSmoothGeometry(geometry,strength){
    const o=i*3;dst[o]=src[o]+factor*(ax-src[o]);dst[o+1]=src[o+1]+factor*(ay-src[o+1]);dst[o+2]=src[o+2]+factor*(az-src[o+2]);
   }
  };
- const iterations=Math.max(1,Math.round(strength<=1?2+strength*4:6+(strength-1)*12));
+ const iterations=Math.max(1,Math.round(strength<=1?2+strength*4:6+(strength-1)*18));
  let a=coords,b=tmp;
  for(let k=0;k<iterations;k++){
   pass(a,b,lambda);[a,b]=[b,a];
