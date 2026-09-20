@@ -9,7 +9,7 @@
 - ローカルDICOMフォルダの読み込み
 - ブラウザ内でのDICOM解析とSeriesのグループ化
 - RescaleSlope / RescaleInterceptによるCT値キャリブレーション
-- Axial / Coronal / Sagittal の3面MPR
+- Axial / Coronal / Sagittal の3面MPR（断面名は英語表記）
 - WebGPU優先、WebGLフォールバック対応のインタラクティブ3D表示
 - 骨・軟部組織・脂肪・肺の閾値セグメンテーション
 - セグメントごとの表示ON/OFF、色、不透明度、CT値範囲調整
@@ -22,7 +22,7 @@
   - Fast NLM 3D
   - Anisotropic Diffusion
 - 各フィルターの強度調整とリセット
-- モバイル向けタッチ操作
+- 断面画像は左右スワイプ、マウスではホイールでスライス移動
 - Zenodoの公開マウスPET/CTデモ
 
 元のキャリブレーション済みCT値は保持され、表示・フィルター処理は作業用ボリュームに対して行います。
@@ -95,7 +95,7 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Surface smoothing
 - Non-destructive filters: Gaussian 3D, Spike / Hole, Fast NLM 3D, and Anisotropic Diffusion
 - Filter strength controls and reset
-- Mobile touch interaction
+- MPR slice navigation by left/right swipe or mouse wheel
 - Optional public mouse PET/CT demo from Zenodo
 
 The original calibrated CT-value volume is preserved separately from processed display data.
