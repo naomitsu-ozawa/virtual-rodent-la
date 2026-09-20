@@ -17,6 +17,7 @@
 - セグメントの3Dサーフェスメッシュ表示
 - セグメントごとのSTL書き出し（mmスケール）
 - 3D上で連結成分を選択して体積解析（mm³ / µL）
+- セグメント後処理: Opening / Closing / Small Component Removal / Hole Filling
 - 表面平滑化
 - 非破壊画像処理
   - Spike / Hole correction
@@ -25,6 +26,9 @@
   - Anisotropic Diffusion
   - Gaussian 3D / Median 3D（選択式）
   - Sigmoid
+- Bilateral 3D
+- TV Denoising 3D
+- Unsharp Mask 3D
 - 各フィルターの強度調整とリセット
 - Spike / Hole の検出閾値
 - Anisotropic Diffusion の反復回数
@@ -121,6 +125,8 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Gaussian / Median pass count
 - Adjustable Sigmoid center in CT-value units
 - MPR slice navigation by left/right swipe or mouse wheel
+- Bilateral 3D / TV Denoising 3D / Unsharp Mask 3D
+- Segment post-processing: Opening / Closing / Small Component Removal / Hole Filling
 - Optional public mouse PET/CT demo from Zenodo
 
 The original calibrated CT-value volume is preserved separately from processed display data.
