@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "preview": "vite",
-    "dev:cornerstone": "vite cornerstone-poc.html"
+    "dev:cornerstone": "vite cornerstone-poc.html",
+    "build:poc": "vite build --config vite.poc.config.js"
   },
   "devDependencies": {
     "vite": "8.3.0"
