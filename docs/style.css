@@ -85,3 +85,15 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
     touch-action:pan-y;
   }
 }
+
+/* Mobile: keep 3D and MPR viewports narrow enough to leave scroll gutters. */
+@media(max-width:640px){
+  .viewport-card-main,
+  .mpr-card{
+    width:calc(100% - 52px);
+    margin-inline:auto;
+  }
+  .mpr-column{
+    width:100%;
+  }
+}
