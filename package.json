@@ -5,10 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "preview": "vite"
+    "preview": "vite",
+    "dev:cornerstone": "vite cornerstone-poc.html"
   },
   "devDependencies": {
     "vite": "8.3.0"
   },
-  "license": "AGPL-3.0-only"
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@cornerstonejs/core": "5.10.7",
+    "@cornerstonejs/dicom-image-loader": "5.10.7",
+    "@cornerstonejs/metadata": "5.10.7",
+    "@cornerstonejs/tools": "5.10.7"
+  }
 }
