@@ -17,10 +17,11 @@
 - セグメントの3Dサーフェスメッシュ表示
 - 表面平滑化
 - 非破壊画像処理
-  - Gaussian 3D
   - Spike / Hole correction
   - Fast NLM 3D
   - Anisotropic Diffusion
+  - Gaussian 3D
+  - Sigmoid
 - 各フィルターの強度調整とリセット
 - 断面画像は左右スワイプ、マウスではホイールでスライス移動
 - Zenodoの公開マウスPET/CTデモ
@@ -93,7 +94,7 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Segmentation overlays in MPR
 - 3D segment surface meshes
 - Surface smoothing
-- Non-destructive filters: Gaussian 3D, Spike / Hole, Fast NLM 3D, and Anisotropic Diffusion
+- Non-destructive filters: Spike / Hole, Fast NLM 3D, Anisotropic Diffusion, Gaussian 3D, and Sigmoid
 - Filter strength controls and reset
 - MPR slice navigation by left/right swipe or mouse wheel
 - Optional public mouse PET/CT demo from Zenodo
