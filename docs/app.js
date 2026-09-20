@@ -536,16 +536,44 @@ async function parseFiles(files,onProgress){
  const out=[];for(let i=0;i<files.length;i++){const f=files[i];try{const ds=dicomParser.parseDicom(new Uint8Array(await f.arrayBuffer()),{untilTag:'x7fe00010'});const seriesUid=ds.string('x0020000e')?.trim();if(seriesUid){const ps=multi(ds.string('x00280030'),2),pos=multi(ds.string('x00200032'),3);out.push({file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'})}}catch{}onProgress?.(i+1,files.length)}return out
 }
 
-function groupSeries(slices){const m=new Map();for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}return[...m.entries()].map(([id,g])=>{g.sort((a,b)=>((a.pos?.[2]??a.instance??0)-(b.pos?.[2]??b.instance??0)));const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),bytes=rows*columns*g.length*Math.max(1,Math.ceil(bits/8));let z=f.spacingBetween||f.thickness||1;if(g.length>1&&g[0].pos&&g[1].pos)z=Math.abs(g[1].pos[2]-g[0].pos[2])||z;return{id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z}}).sort((a,b)=>b.slices.length-a.slices.length)}
+function canDecodeToInt16(slices){
+ for(const meta of slices){
+  if(meta.bits!==8&&meta.bits!==16)return false;
+  if(!Number.isInteger(meta.slope)||!Number.isInteger(meta.intercept))return false;
+  const rawMin=meta.signed?-(2**(meta.bits-1)):0,rawMax=meta.signed?(2**(meta.bits-1)-1):(2**meta.bits-1);
+  const a=rawMin*meta.slope+meta.intercept,b=rawMax*meta.slope+meta.intercept,lo=Math.min(a,b),hi=Math.max(a,b);
+  if(lo<-32768||hi>32767)return false;
+ }
+ return true;
+}
+function groupSeries(slices){const m=new Map();for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}return[...m.entries()].map(([id,g])=>{g.sort((a,b)=>((a.pos?.[2]??a.instance??0)-(b.pos?.[2]??b.instance??0)));const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),storedBytes=rows*columns*g.length*Math.max(1,Math.ceil(bits/8)),count=rows*columns*g.length,compact=canDecodeToInt16(g),decodedBytes=count*(compact?2:4);let z=f.spacingBetween||f.thickness||1;if(g.length>1&&g[0].pos&&g[1].pos)z=Math.abs(g[1].pos[2]-g[0].pos[2])||z;return{id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes:storedBytes,decodedBytes,compact,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z}}).sort((a,b)=>b.slices.length-a.slices.length)}
 
-function renderSeries(series){list.replaceChildren();for(const s of series){const b=document.createElement('button');b.className='series-card';b.innerHTML='<div class="series-card-header"><div><span class="modality-badge">'+esc(s.modality)+'</span><strong>'+esc(s.description)+'</strong></div><strong class="memory-estimate">'+fmt(s.bytes)+'</strong></div><dl class="series-meta-grid"><div><dt>Slices</dt><dd>'+s.slices.length+'</dd></div><div><dt>Matrix</dt><dd>'+s.columns+' × '+s.rows+'</dd></div><div><dt>Voxel</dt><dd>'+s.spacingX.toFixed(4)+' × '+s.spacingY.toFixed(4)+' × '+s.spacingZ.toFixed(4)+' mm</dd></div><div><dt>Stored</dt><dd>'+s.bits+'-bit</dd></div></dl><p class="series-note">推定展開サイズ: '+fmt(s.bytes)+'</p>';b.onclick=()=>selectSeries(s);b.dataset.id=s.id;list.appendChild(b)}}
+function renderSeries(series){list.replaceChildren();for(const s of series){const b=document.createElement('button');b.className='series-card';b.innerHTML='<div class="series-card-header"><div><span class="modality-badge">'+esc(s.modality)+'</span><strong>'+esc(s.description)+'</strong></div><strong class="memory-estimate">'+fmt(s.bytes)+'</strong></div><dl class="series-meta-grid"><div><dt>Slices</dt><dd>'+s.slices.length+'</dd></div><div><dt>Matrix</dt><dd>'+s.columns+' × '+s.rows+'</dd></div><div><dt>Voxel</dt><dd>'+s.spacingX.toFixed(4)+' × '+s.spacingY.toFixed(4)+' × '+s.spacingZ.toFixed(4)+' mm</dd></div><div><dt>Stored</dt><dd>'+s.bits+'-bit</dd></div></dl><p class="series-note">推定展開サイズ: '+fmt(s.decodedBytes)+' · '+(s.compact?'Int16':'Float32')+'</p>';b.onclick=()=>selectSeries(s);b.dataset.id=s.id;list.appendChild(b)}}
 
-async function selectSeries(s){activeId=s.id;for(const n of list.children)n.classList.toggle('is-selected',n.dataset.id===activeId);selected.innerHTML='<strong>'+esc(s.description)+'</strong><span>'+esc(s.modality)+' · '+s.slices.length+' slices · '+s.columns+'×'+s.rows+'</span><span class="ready-badge">CT volume decoding…</span>';prog.classList.remove('is-hidden');busy(true);try{sourceVolume=await decode(s,(a,b)=>progress(a,b));volume=sourceVolume;configure(volume);enableProcessingControls(true);renderAll();render3D(volume);selected.querySelector('.ready-badge').textContent='CT volume ready';footer.textContent='CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · Float32 '+fmt(volume.data.byteLength)}catch(e){console.error(e);selected.querySelector('.ready-badge').textContent='Decode failed';footer.textContent=String(e.message||e)}finally{prog.classList.add('is-hidden');busy(false)}}
+async function selectSeries(s){activeId=s.id;for(const n of list.children)n.classList.toggle('is-selected',n.dataset.id===activeId);selected.innerHTML='<strong>'+esc(s.description)+'</strong><span>'+esc(s.modality)+' · '+s.slices.length+' slices · '+s.columns+'×'+s.rows+'</span><span class="ready-badge">CT volume decoding…</span>';prog.classList.remove('is-hidden');busy(true);let phase='decode';try{sourceVolume=await decode(s,(a,b)=>progress(a,b));volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);phase='render';renderAll();render3D(volume);selected.querySelector('.ready-badge').textContent='CT volume ready';footer.textContent='CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength)}catch(e){console.error(e);const label=phase==='decode'?'Decode failed':phase==='configure'?'Configure failed':'Render failed';selected.querySelector('.ready-badge').textContent=label;footer.textContent=label+': '+String(e.message||e)}finally{prog.classList.add('is-hidden');busy(false)}}
 
-async function decode(s,onProgress){const count=s.columns*s.rows*s.slices.length,data=new Float32Array(count);let min=Infinity,max=-Infinity;for(let z=0;z<s.slices.length;z++){const meta=s.slices[z];if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),el=ds.elements.x7fe00010;if(!el)throw new Error('Pixel Data missing');const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=s.rows*s.columns,off=z*n;for(let i=0;i<n;i++){let raw;if(meta.bits===8){raw=bytes[el.dataOffset+i];if(meta.signed&&raw>127)raw-=256}else if(meta.bits===16){raw=meta.signed?view.getInt16(el.dataOffset+i*2,little):view.getUint16(el.dataOffset+i*2,little)}else throw new Error('Unsupported BitsAllocated='+meta.bits);const v=raw*meta.slope+meta.intercept;data[off+i]=v;if(v<min)min=v;if(v>max)max=v}onProgress?.(z+1,s.slices.length)}return{data,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min,max}}
+async function decode(s,onProgress){
+ const count=s.columns*s.rows*s.slices.length,compact=canDecodeToInt16(s.slices),Ctor=compact?Int16Array:Float32Array,bytesNeeded=count*Ctor.BYTES_PER_ELEMENT;
+ if(!Number.isSafeInteger(count)||count<=0)throw new Error('Invalid volume dimensions');
+ let data;try{data=new Ctor(count)}catch(e){throw new Error('Volume memory allocation failed: '+fmt(bytesNeeded)+' ('+Ctor.name+')')}
+ let min=Infinity,max=-Infinity;
+ for(let z=0;z<s.slices.length;z++){
+  const meta=s.slices[z];if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);
+  const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),el=ds.elements.x7fe00010;if(!el)throw new Error('Pixel Data missing');
+  const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=s.rows*s.columns,off=z*n,bytesPerPixel=meta.bits===8?1:meta.bits===16?2:0;
+  if(!bytesPerPixel)throw new Error('Unsupported BitsAllocated='+meta.bits);
+  const required=el.dataOffset+n*bytesPerPixel;if(required>bytes.byteLength)throw new Error('Pixel Data is shorter than expected at slice '+(z+1));
+  for(let i=0;i<n;i++){
+   let raw;if(meta.bits===8){raw=bytes[el.dataOffset+i];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(el.dataOffset+i*2,little):view.getUint16(el.dataOffset+i*2,little);
+   const v=raw*meta.slope+meta.intercept;data[off+i]=v;if(v<min)min=v;if(v>max)max=v
+  }
+  onProgress?.(z+1,s.slices.length);if((z&7)===0)await frameYield();
+ }
+ return{data,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min,max,storage:Ctor.name}
+}
 
 function enableProcessingControls(enabled){
- if(!enabled){filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=false}
+ if(!enabled){filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false}
  gaussianBtn.disabled=!enabled;smoothingType.disabled=!enabled||!filterState.gaussian;spikeHoleBtn.disabled=!enabled;nlmBtn.disabled=!enabled;anisotropicBtn.disabled=!enabled;
  resetFilterBtn.disabled=!enabled;
  surfaceSmoothEnabled.disabled=!enabled;
@@ -553,7 +581,7 @@ function enableProcessingControls(enabled){
  syncFilterControls();
 }
 function cloneVolumeWithData(base,data){
- return{data,columns:base.columns,rows:base.rows,slices:base.slices,spacing:[...base.spacing],min:base.min,max:base.max};
+ return{data,columns:base.columns,rows:base.rows,slices:base.slices,spacing:[...base.spacing],min:base.min,max:base.max,storage:data.constructor.name};
 }
 async function applyGaussian3D(baseVolume=volume){
  if(!baseVolume)return;setProcessingBusy(true,'Gaussian 3D');
