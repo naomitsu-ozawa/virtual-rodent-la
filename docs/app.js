@@ -351,7 +351,7 @@ async function ensureFilterWorker(){
  if(filterWorkerState.worker&&filterWorkerState.source===sourceVolume&&filterWorkerState.ready)return true;
  if(filterWorkerState.worker&&filterWorkerState.source===sourceVolume&&filterWorkerState.initPromise)return filterWorkerState.initPromise;
  disposeFilterWorker(false);
- const worker=new Worker(new URL('./filter-worker.js?v=filter-worker-2',import.meta.url));
+ const worker=new Worker(new URL('./filter-worker.js?v=filter-worker-3',import.meta.url));
  filterWorkerState.worker=worker;filterWorkerState.source=sourceVolume;
  filterWorkerState.initPromise=new Promise((resolve,reject)=>{filterWorkerState.resolveInit=resolve;filterWorkerState.rejectInit=reject});
  worker.onmessage=e=>{
