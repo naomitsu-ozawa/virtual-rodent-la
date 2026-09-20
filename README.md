@@ -140,3 +140,7 @@ Use, modification, redistribution, and commercial use are permitted under the AG
 A separate commercial license is available for proprietary or closed-source commercial use that cannot comply with the AGPLv3 requirements.
 
 Third-party libraries and public datasets remain subject to their own licenses and terms. See `THIRD_PARTY_NOTICES.md`.
+
+## 大容量DICOM
+
+大容量シリーズはブラウザのメモリ上限を超えないよう、自動的に低解像度プレビューとしてデコードします。CT値はInt16で保持できる場合はInt16を使用し、プレビュー時はボクセル間隔を補正して物理寸法を維持します。
