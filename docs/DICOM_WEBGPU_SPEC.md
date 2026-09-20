@@ -84,10 +84,10 @@ Implemented filters:
 - Spike / Hole correction
 - Fast NLM 3D
 - Anisotropic Diffusion
-- Gaussian 3D
+- Gaussian 3D / Median 3D (selectable)
 - Sigmoid
 
-Each filter has a strength control. Active filters are rebuilt from the preserved source volume in this order: Spike / Hole → Fast NLM 3D → Anisotropic Diffusion → Gaussian 3D → Sigmoid. Reset restores the original calibrated CT data.
+Each filter has a strength control. Active filters are rebuilt from the preserved source volume in this order: Spike / Hole → Fast NLM 3D → Anisotropic Diffusion → Gaussian 3D or Median 3D → Sigmoid. Reset restores the original calibrated CT data.
 
 ## Thin-bone direction
 
