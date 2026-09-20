@@ -201,7 +201,7 @@ const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas
 const languageToggle=$('#language-toggle');
 languageToggle.onclick=()=>applyLanguage(currentLanguage==='ja'?'en':'ja');
 applyLanguage('ja');;
-let volume=null,sourceVolume=null,sceneState=null,activeId=null,volumeAnalysisMode=false,volumeAnalysisBusy=false;
+let volume=null,sourceVolume=null,sceneState=null,activeId=null,activeSeries=null,volumeAnalysisMode=false,volumeAnalysisBusy=false,sourceRenderRevision=0;
 const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
 const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid','bilateral','tv','unsharp'];
 let filterOrder=[];
@@ -533,79 +533,118 @@ async function inspect(files,auto){
 }
 
 async function parseFiles(files,onProgress){
- const out=[];for(let i=0;i<files.length;i++){const f=files[i];try{const ds=dicomParser.parseDicom(new Uint8Array(await f.arrayBuffer()),{untilTag:'x7fe00010'});const seriesUid=ds.string('x0020000e')?.trim();if(seriesUid){const ps=multi(ds.string('x00280030'),2),pos=multi(ds.string('x00200032'),3);out.push({file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'})}}catch{}onProgress?.(i+1,files.length)}return out
+ const out=[];for(let i=0;i<files.length;i++){const f=files[i];try{const ds=dicomParser.parseDicom(new Uint8Array(await f.arrayBuffer()),{untilTag:'x7fe00010'});const seriesUid=ds.string('x0020000e')?.trim();if(seriesUid){const ps=multi(ds.string('x00280030'),2),pos=multi(ds.string('x00200032'),3);out.push({file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),windowCenter:num(ds.string('x00281050')),windowWidth:num(ds.string('x00281051')),smallest:ds.uint16('x00280106'),largest:ds.uint16('x00280107'),pixelOffset:ds.elements.x7fe00010?.dataOffset??null,pixelLength:ds.elements.x7fe00010?.length??null,ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'})}}catch{}onProgress?.(i+1,files.length)}return out
 }
 
-function planDecodePreview(s){
- const compact=canDecodeToInt16(s.slices),bytesPerVoxel=compact?2:4;
- const fullCount=s.columns*s.rows*s.slices.length,fullBytes=fullCount*bytesPerVoxel;
- const targetBytes=128*1024*1024;
- const stride=fullBytes>targetBytes?Math.max(2,Math.ceil(Math.cbrt(fullBytes/targetBytes))):1;
- return{
-  compact,bytesPerVoxel,stride,
-  columns:Math.ceil(s.columns/stride),
-  rows:Math.ceil(s.rows/stride),
-  slices:Math.ceil(s.slices.length/stride),
-  fullBytes,
-  decodedBytes:Math.ceil(s.columns/stride)*Math.ceil(s.rows/stride)*Math.ceil(s.slices.length/stride)*bytesPerVoxel
- };
-}
 function canDecodeToInt16(slices){
  for(const meta of slices){
   if(meta.bits!==8&&meta.bits!==16)return false;
   if(!Number.isInteger(meta.slope)||!Number.isInteger(meta.intercept))return false;
   const rawMin=meta.signed?-(2**(meta.bits-1)):0,rawMax=meta.signed?(2**(meta.bits-1)-1):(2**meta.bits-1);
-  const a=rawMin*meta.slope+meta.intercept,b=rawMax*meta.slope+meta.intercept,lo=Math.min(a,b),hi=Math.max(a,b);
-  if(lo<-32768||hi>32767)return false;
+  const x=rawMin*meta.slope+meta.intercept,y=rawMax*meta.slope+meta.intercept;
+  if(Math.min(x,y)<-32768||Math.max(x,y)>32767)return false;
  }
  return true;
 }
-function groupSeries(slices){const m=new Map();for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}return[...m.entries()].map(([id,g])=>{g.sort((a,b)=>((a.pos?.[2]??a.instance??0)-(b.pos?.[2]??b.instance??0)));const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),storedBytes=rows*columns*g.length*Math.max(1,Math.ceil(bits/8));let z=f.spacingBetween||f.thickness||1;if(g.length>1&&g[0].pos&&g[1].pos)z=Math.abs(g[1].pos[2]-g[0].pos[2])||z;const base={id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes:storedBytes,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z};const preview=planDecodePreview(base);return{...base,decodedBytes:preview.decodedBytes,compact:preview.compact,previewStride:preview.stride,previewColumns:preview.columns,previewRows:preview.rows,previewSlices:preview.slices}}).sort((a,b)=>b.slices.length-a.slices.length)}
-
-function renderSeries(series){list.replaceChildren();for(const s of series){const b=document.createElement('button');b.className='series-card';b.innerHTML='<div class="series-card-header"><div><span class="modality-badge">'+esc(s.modality)+'</span><strong>'+esc(s.description)+'</strong></div><strong class="memory-estimate">'+fmt(s.bytes)+'</strong></div><dl class="series-meta-grid"><div><dt>Slices</dt><dd>'+s.slices.length+'</dd></div><div><dt>Matrix</dt><dd>'+s.columns+' × '+s.rows+'</dd></div><div><dt>Voxel</dt><dd>'+s.spacingX.toFixed(4)+' × '+s.spacingY.toFixed(4)+' × '+s.spacingZ.toFixed(4)+' mm</dd></div><div><dt>Stored</dt><dd>'+s.bits+'-bit</dd></div></dl><p class="series-note">推定展開サイズ: '+fmt(s.decodedBytes)+' · '+(s.compact?'Int16':'Float32')+(s.previewStride>1?' · Preview 1/'+s.previewStride:'')+'</p>';b.onclick=()=>selectSeries(s);b.dataset.id=s.id;list.appendChild(b)}}
-
-async function selectSeries(s){activeId=s.id;for(const n of list.children)n.classList.toggle('is-selected',n.dataset.id===activeId);selected.innerHTML='<strong>'+esc(s.description)+'</strong><span>'+esc(s.modality)+' · '+s.slices.length+' slices · '+s.columns+'×'+s.rows+(s.previewStride>1?' · preview 1/'+s.previewStride:'')+'</span><span class="ready-badge">CT volume decoding…</span>';prog.classList.remove('is-hidden');busy(true);let phase='decode';try{sourceVolume=await decode(s,(a,b)=>progress(a,b));volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);phase='render';renderAll();render3D(volume);selected.querySelector('.ready-badge').textContent='CT volume ready';footer.textContent='CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength)+(volume.previewStride>1?' · preview 1/'+volume.previewStride:'')}catch(e){console.error(e);const label=phase==='decode'?'Decode failed':phase==='configure'?'Configure failed':'Render failed';selected.querySelector('.ready-badge').textContent=label;footer.textContent=label+': '+String(e.message||e)}finally{prog.classList.add('is-hidden');busy(false)}}
-
-async function decode(s,onProgress){
- const plan=planDecodePreview(s),stride=plan.stride,Ctor=plan.compact?Int16Array:Float32Array;
- const outW=plan.columns,outH=plan.rows,outD=plan.slices,count=outW*outH*outD,bytesNeeded=count*Ctor.BYTES_PER_ELEMENT;
- if(!Number.isSafeInteger(count)||count<=0)throw new Error('Invalid volume dimensions');
- let data;try{data=new Ctor(count)}catch(e){throw new Error('Volume memory allocation failed: '+fmt(bytesNeeded)+' ('+Ctor.name+')')}
- let min=Infinity,max=-Infinity,outZ=0;
- for(let z=0;z<s.slices.length;z+=stride){
-  const meta=s.slices[z];if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);
-  const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),el=ds.elements.x7fe00010;if(!el)throw new Error('Pixel Data missing');
-  const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),bytesPerPixel=meta.bits===8?1:meta.bits===16?2:0;
-  if(!bytesPerPixel)throw new Error('Unsupported BitsAllocated='+meta.bits);
-  const sourcePixels=s.rows*s.columns,required=el.dataOffset+sourcePixels*bytesPerPixel;if(required>bytes.byteLength)throw new Error('Pixel Data is shorter than expected at slice '+(z+1));
-  let q=outZ*outW*outH;
-  for(let y=0;y<s.rows;y+=stride){
-   for(let x=0;x<s.columns;x+=stride){
-    const i=y*s.columns+x;let raw;
-    if(meta.bits===8){raw=bytes[el.dataOffset+i];if(meta.signed&&raw>127)raw-=256}
-    else raw=meta.signed?view.getInt16(el.dataOffset+i*2,little):view.getUint16(el.dataOffset+i*2,little);
-    const v=raw*meta.slope+meta.intercept;data[q++]=v;if(v<min)min=v;if(v>max)max=v;
-   }
+function sourceRangeFromMetadata(slices){
+ let min=Infinity,max=-Infinity;
+ for(const meta of slices){
+  let rawMin=meta.smallest,rawMax=meta.largest;
+  if(rawMin==null||rawMax==null){
+   rawMin=meta.signed?-(2**(meta.bits-1)):0;
+   rawMax=meta.signed?(2**(meta.bits-1)-1):(2**meta.bits-1);
+  }else if(meta.signed&&meta.bits===16){
+   if(rawMin>32767)rawMin-=65536;
+   if(rawMax>32767)rawMax-=65536;
   }
-  outZ++;onProgress?.(Math.min(z+stride,s.slices.length),s.slices.length);await frameYield();
+  const x=rawMin*meta.slope+meta.intercept,y=rawMax*meta.slope+meta.intercept;
+  min=Math.min(min,x,y);max=Math.max(max,x,y);
  }
- return{
-  data,columns:outW,rows:outH,slices:outD,
-  spacing:[s.spacingX*stride,s.spacingY*stride,s.spacingZ*stride],
-  min,max,storage:Ctor.name,previewStride:stride,
-  sourceDimensions:[s.columns,s.rows,s.slices.length]
- };
+ return{min,max};
 }
+function groupSeries(slices){
+ const m=new Map();
+ for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}
+ return[...m.entries()].map(([id,g])=>{
+  g.sort((a,b)=>((a.pos?.[2]??a.instance??0)-(b.pos?.[2]??b.instance??0)));
+  const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),compact=canDecodeToInt16(g),count=rows*columns*g.length,decodedBytes=count*(compact?2:4),sourceBacked=decodedBytes>256*1024*1024,range=sourceRangeFromMetadata(g);
+  let z=f.spacingBetween||f.thickness||1;
+  if(g.length>1&&g[0].pos&&g[1].pos)z=Math.abs(g[1].pos[2]-g[0].pos[2])||z;
+  return{id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes:decodedBytes,decodedBytes,compact,sourceBacked,min:range.min,max:range.max,windowCenter:f.windowCenter,windowWidth:f.windowWidth,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z};
+ }).sort((a,b)=>b.slices.length-a.slices.length)
+}
+
+function renderSeries(series){list.replaceChildren();for(const s of series){const b=document.createElement('button');b.className='series-card';b.innerHTML='<div class="series-card-header"><div><span class="modality-badge">'+esc(s.modality)+'</span><strong>'+esc(s.description)+'</strong></div><strong class="memory-estimate">'+fmt(s.bytes)+'</strong></div><dl class="series-meta-grid"><div><dt>Slices</dt><dd>'+s.slices.length+'</dd></div><div><dt>Matrix</dt><dd>'+s.columns+' × '+s.rows+'</dd></div><div><dt>Voxel</dt><dd>'+s.spacingX.toFixed(4)+' × '+s.spacingY.toFixed(4)+' × '+s.spacingZ.toFixed(4)+' mm</dd></div><div><dt>Stored</dt><dd>'+s.bits+'-bit</dd></div></dl><p class="series-note">推定展開サイズ: '+fmt(s.decodedBytes)+' · '+(s.sourceBacked?'フル解像度・ストリーミング':(s.compact?'Int16':'Float32'))+'</p>';b.onclick=()=>selectSeries(s);b.dataset.id=s.id;list.appendChild(b)}}
+
+async function selectSeries(s){
+ activeId=s.id;activeSeries=s;
+ for(const n of list.children)n.classList.toggle('is-selected',n.dataset.id===activeId);
+ selected.innerHTML='<strong>'+esc(s.description)+'</strong><span>'+esc(s.modality)+' · '+s.slices.length+' slices · '+s.columns+'×'+s.rows+(s.sourceBacked?' · full resolution':'')+'</span><span class="ready-badge">CT volume loading…</span>';
+ prog.classList.remove('is-hidden');busy(true);let phase='decode';
+ try{
+  sourceVolume=s.sourceBacked?openSourceBackedVolume(s):await decode(s,(x,y)=>progress(x,y));
+  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);phase='render';renderAll();render3D(volume);
+  selected.querySelector('.ready-badge').textContent=s.sourceBacked?'CT source ready · full resolution':'CT volume ready';
+  footer.textContent=s.sourceBacked?'Full-resolution source-backed DICOM · no resampling':'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
+ }catch(e){
+  console.error(e);const label=phase==='decode'?'Decode failed':phase==='configure'?'Configure failed':'Render failed';
+  selected.querySelector('.ready-badge').textContent=label;footer.textContent=label+': '+String(e.message||e)
+ }finally{prog.classList.add('is-hidden');busy(false)}
+}
+function openSourceBackedVolume(s){
+ return{data:null,sourceBacked:true,series:s,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min:s.min,max:s.max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:'DICOM source'};
+}
+async function decodeSourceSlice(meta){
+ if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);
+ const bpp=meta.bits===8?1:meta.bits===16?2:0;
+ if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
+ let bytes,offset=meta.pixelOffset;
+ if(offset!=null){
+  bytes=new Uint8Array(await meta.file.slice(offset,offset+meta.rows*meta.columns*bpp).arrayBuffer());
+  offset=0;
+ }else{
+  const all=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(all),el=ds.elements.x7fe00010;
+  if(!el)throw new Error('Pixel Data missing');bytes=all;offset=el.dataOffset;
+ }
+ const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=meta.rows*meta.columns,out=new Float32Array(n);
+ for(let i=0;i<n;i++){
+  let raw;
+  if(meta.bits===8){raw=bytes[offset+i];if(meta.signed&&raw>127)raw-=256}
+  else raw=meta.signed?view.getInt16(offset+i*2,little):view.getUint16(offset+i*2,little);
+  out[i]=raw*meta.slope+meta.intercept;
+ }
+ return out;
+}
+async function readSourceRow(meta,row){
+ const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
+ if(meta.pixelOffset==null){const full=await decodeSourceSlice(meta);return full.slice(row*meta.columns,(row+1)*meta.columns)}
+ const start=meta.pixelOffset+row*meta.columns*bpp,end=start+meta.columns*bpp,bytes=new Uint8Array(await meta.file.slice(start,end).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer),out=new Float32Array(meta.columns);
+ for(let x=0;x<meta.columns;x++){let raw;if(meta.bits===8){raw=bytes[x];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(x*2,little):view.getUint16(x*2,little);out[x]=raw*meta.slope+meta.intercept}
+ return out;
+}
+async function decode(s,onProgress){
+ const Ctor=s.compact?Int16Array:Float32Array,count=s.columns*s.rows*s.slices.length,bytesNeeded=count*Ctor.BYTES_PER_ELEMENT;
+ let data;try{data=new Ctor(count)}catch(e){throw new Error('Volume memory allocation failed: '+fmt(bytesNeeded)+' ('+Ctor.name+')')}
+ let min=Infinity,max=-Infinity;
+ for(let z=0;z<s.slices.length;z++){
+  const slice=await decodeSourceSlice(s.slices[z]);data.set(slice,z*s.rows*s.columns);
+  for(let i=0;i<slice.length;i++){const v=slice[i];if(v<min)min=v;if(v>max)max=v}
+  onProgress?.(z+1,s.slices.length);if((z&7)===0)await frameYield();
+ }
+ return{data,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min,max,storage:Ctor.name,sourceBacked:false};
+}
+
 function enableProcessingControls(enabled){
- if(!enabled){filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false}
- gaussianBtn.disabled=!enabled;smoothingType.disabled=!enabled||!filterState.gaussian;spikeHoleBtn.disabled=!enabled;nlmBtn.disabled=!enabled;anisotropicBtn.disabled=!enabled;
+ const sourceMode=enabled&&volume?.sourceBacked===true;
+ if(!enabled||sourceMode){filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;filterOrder=[]}
+ gaussianBtn.disabled=!enabled||sourceMode;smoothingType.disabled=!enabled||sourceMode||!filterState.gaussian;spikeHoleBtn.disabled=!enabled||sourceMode;nlmBtn.disabled=!enabled||sourceMode;anisotropicBtn.disabled=!enabled||sourceMode;bilateralBtn.disabled=!enabled||sourceMode;tvBtn.disabled=!enabled||sourceMode;unsharpBtn.disabled=!enabled||sourceMode;filterAddSelect.disabled=sourceMode;filterAddButton.disabled=sourceMode;
  resetFilterBtn.disabled=!enabled;
  surfaceSmoothEnabled.disabled=!enabled;
  surfaceSmoothStrength.disabled=!enabled||!surfaceSmoothEnabled.checked;
  syncFilterControls();
 }
 function cloneVolumeWithData(base,data){
- return{data,columns:base.columns,rows:base.rows,slices:base.slices,spacing:[...base.spacing],min:base.min,max:base.max,storage:data.constructor.name,previewStride:base.previewStride||1,sourceDimensions:base.sourceDimensions?[...base.sourceDimensions]:null};
+ return{data,columns:base.columns,rows:base.rows,slices:base.slices,spacing:[...base.spacing],min:base.min,max:base.max,storage:data.constructor.name,sourceBacked:false};
 }
 async function applyGaussian3D(baseVolume=volume){
  if(!baseVolume)return;setProcessingBusy(true,'Gaussian 3D');
@@ -899,7 +938,7 @@ function setProcessingBusy(busyState,label='Processing'){
 const frameYield=()=>new Promise(resolve=>setTimeout(resolve,0));
 
 function configure(v){
- const range=Math.max(1,v.max-v.min),center=(v.min+v.max)/2;wc.min=Math.floor(v.min);wc.max=Math.ceil(v.max);wc.value=center;ww.min=1;ww.max=Math.ceil(range);ww.value=range;wc.disabled=ww.disabled=false;
+ const range=Math.max(1,v.max-v.min),center=Number.isFinite(v.windowCenter)?v.windowCenter:(v.min+v.max)/2,initialWidth=Number.isFinite(v.windowWidth)&&v.windowWidth>0?v.windowWidth:range;wc.min=Math.floor(v.min);wc.max=Math.ceil(v.max);wc.value=center;ww.min=1;ww.max=Math.max(Math.ceil(range),Math.ceil(initialWidth));ww.value=initialWidth;wc.disabled=ww.disabled=false;
  sigmoidCenter.min=Math.floor(v.min);sigmoidCenter.max=Math.ceil(v.max);sigmoidCenter.step=Math.max(1,Math.round(range/1000));sigmoidCenter.value=Math.round(center);sigmoidCenterValue.value=Math.round(center);
  const vals={axial:[v.slices,v.slices/2],coronal:[v.rows,v.rows/2],sagittal:[v.columns,v.columns/2]};for(const [p,[max,mid]]of Object.entries(vals)){planes[p].slider.max=max-1;planes[p].slider.value=Math.floor(mid);planes[p].slider.disabled=false}
  configureSegments(v);
