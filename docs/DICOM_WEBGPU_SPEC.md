@@ -169,3 +169,11 @@ Each active tissue segment can apply the following binary-mask post-processing b
 - Hole Filling
 
 The processed mask is shared across MPR, 3D, STL, and volume analysis so all outputs use the same segment definition.
+
+## Large DICOM preview decoding
+
+- Int16で保持可能な校正済みCT値はInt16Arrayを使用する
+- 推定デコード容量が約96 MiBを超える場合はXYZを同じ整数strideで自動間引きする
+- spacingはstride倍して物理サイズを維持する
+- UIにはpreview strideと実際のデコード後メモリ量を表示する
+- Decode / Configure / Render の失敗段階を分けて表示する
