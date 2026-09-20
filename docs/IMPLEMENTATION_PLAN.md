@@ -25,7 +25,8 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [x] WebGPU rendering
 - [x] WebGL fallback
 - [x] Mouse / touch 3D interaction
-- [x] Mobile MPR slice navigation
+- [x] Mobile MPR slice navigation by left/right swipe
+- [x] Desktop MPR slice navigation by mouse wheel
 
 ### Segmentation
 
