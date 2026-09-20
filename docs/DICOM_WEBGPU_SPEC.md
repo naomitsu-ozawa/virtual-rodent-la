@@ -152,3 +152,20 @@ Legacy Digimouse atlas experiments, MouseMapper inference workflows, generated a
 - Search Radius は比較候補となる近傍探索範囲を制御する
 - Patch Radius は類似度計算に使う中心＋各軸方向のパッチ範囲を制御する
 - Search Radius は 1〜2、Patch Radius は 0〜2
+
+## Additional image filters
+
+- Bilateral 3D: Strength / Spatial Sigma / Intensity Sigma / Passes
+- TV Denoising 3D: Weight / Iterations
+- Unsharp Mask 3D: Radius / Amount / Threshold
+
+## Segment post-processing
+
+Each active tissue segment can apply the following binary-mask post-processing before MPR overlay, 3D surface generation, STL export, and connected-component volume analysis:
+
+- Opening (radius 0-3)
+- Closing (radius 0-3)
+- Small Component Removal (minimum voxel count)
+- Hole Filling
+
+The processed mask is shared across MPR, 3D, STL, and volume analysis so all outputs use the same segment definition.
