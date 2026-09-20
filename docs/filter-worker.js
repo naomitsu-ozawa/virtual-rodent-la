@@ -7,6 +7,7 @@ let cachedStages=[];
 let cachedBytes=0;
 let cacheLimit=128*1024*1024;
 let pendingRun=null;
+let latestRunId=0;
 let processing=false;
 const tick=()=>new Promise(r=>setTimeout(r,0));
 
@@ -19,7 +20,7 @@ function singleOut(input){
   return input===scratchA?scratchB:scratchA;
 }
 function progress(id,done,total,label){postMessage({type:'progress',id,done,total,label})}
-function isSuperseded(id){return pendingRun&&pendingRun.id!==id}
+function isSuperseded(id){return id!==latestRunId}
 function cloneFloat(src){const out=new Float32Array(src.length);out.set(src);return out}
 
 async function gaussian(input,p,id){
@@ -163,6 +164,6 @@ onmessage=e=>{
     postMessage({type:'ready'});
     return;
   }
-  if(msg.type==='run'){pendingRun=msg;void pump();return}
-  if(msg.type==='reset'){cachedStages=[];cachedBytes=0;pendingRun=null}
+  if(msg.type==='run'){latestRunId=msg.id;pendingRun=msg;void pump();return}
+  if(msg.type==='reset'){latestRunId=0;cachedStages=[];cachedBytes=0;pendingRun=null}
 };
