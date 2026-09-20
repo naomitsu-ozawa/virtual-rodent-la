@@ -2,15 +2,21 @@ let source=null;
 let meta=null;
 let scratchA=null;
 let scratchB=null;
+let scratchC=null;
 let cachedStages=[];
 let cachedBytes=0;
+let cacheLimit=128*1024*1024;
 let pendingRun=null;
 let processing=false;
-const CACHE_LIMIT=256*1024*1024;
 const tick=()=>new Promise(r=>setTimeout(r,0));
 
-function ensureScratch(n){
-  if(!scratchA||scratchA.length!==n){scratchA=new Float32Array(n);scratchB=new Float32Array(n)}
+function ensureScratch(n,needThird=false){
+  if(!scratchA||scratchA.length!==n){scratchA=new Float32Array(n);scratchB=new Float32Array(n);scratchC=null}
+  if(needThird&&(!scratchC||scratchC.length!==n))scratchC=new Float32Array(n);
+}
+function singleOut(input){
+  ensureScratch(input.length);
+  return input===scratchA?scratchB:scratchA;
 }
 function progress(id,done,total,label){postMessage({type:'progress',id,done,total,label})}
 function isSuperseded(id){return pendingRun&&pendingRun.id!==id}
@@ -48,7 +54,7 @@ async function median(input,p,id){
   return a;
 }
 async function spikeHole(input,p,id){
-  const {w,h,d,min,max}=meta,n=w*h*d;ensureScratch(n);const out=scratchA;out.set(input);
+  const {w,h,d,min,max}=meta,n=w*h*d;const out=singleOut(input);out.set(input);
   const strength=p.strength,range=Math.max(1,max-min),thresholdRatio=p.threshold,threshold=range*thresholdRatio,edgeGuard=threshold*(.55+.35*strength),correctionBlend=.20+.75*strength;
   for(let z=1;z<d-1;z++){
     for(let y=1;y<h-1;y++){const row=z*h*w+y*w;
@@ -59,7 +65,7 @@ async function spikeHole(input,p,id){
   return out;
 }
 async function nlm(input,p,id){
-  const {w,h,d,min,max}=meta,n=w*h*d;ensureScratch(n);const out=scratchA;
+  const {w,h,d,min,max}=meta,n=w*h*d;const out=singleOut(input);
   const strength=p.strength,range=Math.max(1,max-min),hParam=range*(.018+.11*strength),h2=hParam*hParam,searchRadius=Math.max(1,Math.round(p.searchRadius)),patchRadius=Math.max(0,Math.round(p.patchRadius)),offsets=[];
   for(let dz=-searchRadius;dz<=searchRadius;dz++)for(let dy=-searchRadius;dy<=searchRadius;dy++)for(let dx=-searchRadius;dx<=searchRadius;dx++)if(dx||dy||dz)offsets.push([dx,dy,dz]);
   const patch=[[0,0,0]];for(let r=1;r<=patchRadius;r++)patch.push([r,0,0],[-r,0,0],[0,r,0],[0,-r,0],[0,0,r],[0,0,-r]);
@@ -89,17 +95,19 @@ async function tv(input,p,id){
   return a;
 }
 async function boxBlur(input,r,id){
-  const {w,h,d}=meta,n=w*h*d;ensureScratch(n);const out=scratchA,radius=Math.max(1,Math.round(r));
+  const {w,h,d}=meta,n=w*h*d;const out=singleOut(input),radius=Math.max(1,Math.round(r));
   for(let z=0;z<d;z++){for(let y=0;y<h;y++)for(let x=0;x<w;x++){let sum=0,count=0;for(let dz=-radius;dz<=radius;dz++){const zz=z+dz;if(zz<0||zz>=d)continue;for(let dy=-radius;dy<=radius;dy++){const yy=y+dy;if(yy<0||yy>=h)continue;for(let dx=-radius;dx<=radius;dx++){const xx=x+dx;if(xx<0||xx>=w)continue;sum+=input[zz*h*w+yy*w+xx];count++}}}out[z*h*w+y*w+x]=sum/Math.max(1,count)}if((z&7)===0){progress(id,z+1,d,'Unsharp Mask 3D');await tick();if(isSuperseded(id))throw new Error('__SUPERSEDED__')}}
   return out;
 }
 async function unsharp(input,p,id){
-  const {min,max}=meta,n=input.length;const blurred=await boxBlur(input,p.radius,id);const saved=cloneFloat(blurred);ensureScratch(n);const out=scratchB,range=Math.max(1,max-min),amount=p.amount,threshold=p.threshold*range;
-  for(let i=0;i<n;i++){const detail=input[i]-saved[i];out[i]=Math.abs(detail)>=threshold?input[i]+amount*detail:input[i]}
+  const {min,max}=meta,n=input.length;const blurred=await boxBlur(input,p.radius,id);ensureScratch(n,true);
+  const out=(input!==scratchA&&blurred!==scratchA)?scratchA:(input!==scratchB&&blurred!==scratchB)?scratchB:scratchC;
+  const range=Math.max(1,max-min),amount=p.amount,threshold=p.threshold*range;
+  for(let i=0;i<n;i++){const detail=input[i]-blurred[i];out[i]=Math.abs(detail)>=threshold?input[i]+amount*detail:input[i]}
   return out;
 }
 async function sigmoid(input,p,id){
-  const {min,max}=meta,n=input.length;ensureScratch(n);const out=scratchA,range=Math.max(1,max-min),gain=2+p.strength*10,centerValue=Math.max(min,Math.min(max,p.center)),center=(centerValue-min)/range,lo=1/(1+Math.exp(gain*center)),hi=1/(1+Math.exp(-gain*(1-center))),norm=Math.max(1e-6,hi-lo);
+  const {min,max}=meta,n=input.length;const out=singleOut(input),range=Math.max(1,max-min),gain=2+p.strength*10,centerValue=Math.max(min,Math.min(max,p.center)),center=(centerValue-min)/range,lo=1/(1+Math.exp(gain*center)),hi=1/(1+Math.exp(-gain*(1-center))),norm=Math.max(1e-6,hi-lo);
   for(let i=0;i<n;i++){const x=Math.max(0,Math.min(1,(input[i]-min)/range)),y=(1/(1+Math.exp(-gain*(x-center)))-lo)/norm;out[i]=min+Math.max(0,Math.min(1,y))*range;if((i&0x3ffff)===0){progress(id,i+1,n,'Sigmoid');await tick();if(isSuperseded(id))throw new Error('__SUPERSEDED__')}}
   return out;
 }
@@ -117,7 +125,7 @@ async function applyFilter(input,stage,id){
   }
 }
 function trimCache(){
-  while(cachedBytes>CACHE_LIMIT&&cachedStages.length){const removed=cachedStages.pop();cachedBytes-=removed.data.byteLength}
+  while(cachedBytes>cacheLimit&&cachedStages.length){const removed=cachedStages.pop();cachedBytes-=removed.data.byteLength}
 }
 async function executeRun(msg){
   const stages=msg.stages;
@@ -130,7 +138,7 @@ async function executeRun(msg){
     const result=await applyFilter(current,stages[i],msg.id);
     if(isSuperseded(msg.id))throw new Error('__SUPERSEDED__');
     let next=result;
-    if(cachedBytes+result.byteLength<=CACHE_LIMIT){
+    if(cachedBytes+result.byteLength<=cacheLimit){
       const copy=cloneFloat(result);cachedStages.push({signature:stages[i].signature,data:copy});cachedBytes+=copy.byteLength;next=copy;
     }
     current=next;
@@ -151,7 +159,7 @@ async function pump(){
 onmessage=e=>{
   const msg=e.data;
   if(msg.type==='init'){
-    meta=msg.meta;source=new Float32Array(msg.data.length);source.set(msg.data);cachedStages=[];cachedBytes=0;ensureScratch(source.length);
+    meta=msg.meta;source=msg.data;cacheLimit=Math.max(0,msg.cacheLimit||128*1024*1024);cachedStages=[];cachedBytes=0;ensureScratch(source.length);
     postMessage({type:'ready'});
     return;
   }
