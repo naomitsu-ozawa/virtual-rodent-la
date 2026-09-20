@@ -82,7 +82,7 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
   }
   .viewport-3d,
   .viewport-3d canvas{
-    touch-action:pan-y;
+    touch-action:none;
   }
 }
 
@@ -95,5 +95,15 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
   }
   .mpr-column{
     width:100%;
+  }
+}
+
+/* Mobile: 3D viewport interaction takes priority over page scrolling.
+   Use the side gutters for page scroll. */
+@media(max-width:640px){
+  .viewport-card-main .viewport-3d,
+  .viewport-card-main .viewport-3d canvas{
+    touch-action:none !important;
+    overscroll-behavior:contain;
   }
 }
