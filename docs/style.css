@@ -153,3 +153,6 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .volume-analysis-result{display:grid;gap:3px;min-width:160px;padding:9px 10px;border:1px solid #334047;border-radius:9px;background:rgba(12,16,18,.9);font-size:11px;color:#d8e4e9}
 .volume-analysis-result strong{font-size:12px}
 .volume-analysis-result span{font-variant-numeric:tabular-nums}
+
+.filter-select{min-height:34px;border:1px solid #3b4850;border-radius:8px;background:#11171a;color:#d8e4e9;padding:5px 8px;font-size:11px}
+.filter-select:disabled{opacity:.45}
