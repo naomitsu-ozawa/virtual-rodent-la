@@ -18,7 +18,7 @@ const I18N={
   display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',
   segmentation:'セグメンテーション',segments:'組織セグメント',
   bone:'骨',soft:'軟部組織',fat:'脂肪',lung:'肺',min:'最小',max:'最大',opacity:'不透明度',segmentPreset:'セグメントプリセット',addSegment:'セグメントを追加',removeSegment:'削除',
-  surfaceSmooth:'表面平滑化',strength:'強度',exportStl:'STL書き出し',volumeMode:'体積解析',volumeOff:'体積解析を終了',volumeHint:'3D上の部品をクリックしてください',resetFilters:'画像フィルターをリセット',
+  surfaceSmooth:'表面平滑化',strength:'強度',sigmoidCenter:'中心',exportStl:'STL書き出し',volumeMode:'体積解析',volumeOff:'体積解析を終了',volumeHint:'3D上の部品をクリックしてください',resetFilters:'画像フィルターをリセット',
   controls:'断面画像: 左右スワイプ / マウスホイールでスライス移動',
   seriesUnselected:'シリーズ未選択',selectSeries:'左の一覧からCTシリーズを選択してください。',
   footer:'元のキャリブレーション済みCT値は保持されます。',
@@ -39,7 +39,7 @@ const I18N={
   display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',
   segmentation:'SEGMENTATION',segments:'Tissue segments',
   bone:'Bone',soft:'Soft tissue',fat:'Fat',lung:'Lung',min:'Min',max:'Max',opacity:'Opacity',segmentPreset:'Segment preset',addSegment:'Add segment',removeSegment:'Remove',
-  surfaceSmooth:'Surface Smooth',strength:'Strength',exportStl:'Export STL',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',volumeHint:'Click a 3D component',resetFilters:'Reset image filters',
+  surfaceSmooth:'Surface Smooth',strength:'Strength',sigmoidCenter:'Center',exportStl:'Export STL',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',volumeHint:'Click a 3D component',resetFilters:'Reset image filters',
   controls:'MPR slices: swipe left/right or use the mouse wheel',
   seriesUnselected:'No Series selected',selectSeries:'Select a CT Series from the list on the left.',
   footer:'Original calibrated CT values are preserved.',
@@ -137,6 +137,7 @@ app.innerHTML=`
   <div class="filter-control-card is-hidden" data-filter-key="sigmoid" draggable="true">
     <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-sigmoid" type="checkbox" disabled><strong>Sigmoid</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
     <label class="segment-range"><span data-i18n="strength">強度</span><output id="sigmoid-strength-value">0.50</output><input id="sigmoid-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
+    <label class="segment-range"><span data-i18n="sigmoidCenter">中心</span><output id="sigmoid-center-value">—</output><input id="sigmoid-center" type="range" min="0" max="1" step="1" value="0" disabled></label>
   </div>
   <button id="filter-reset" class="tool-chip filter-reset" data-i18n="resetFilters" disabled>画像フィルターをリセット</button>
 </div><p class="hint" data-i18n="controls">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></div></aside>
@@ -144,7 +145,7 @@ app.innerHTML=`
 <footer><span id="footer" data-i18n="footer">元のキャリブレーション済みCT値は保持されます。</span><a href="https://github.com/naomitsu-ozawa/virtual-rodent-la" target="_blank" rel="noopener">Source / License</a></footer></main>`;
 
 const $=s=>document.querySelector(s);
-const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button'),segmentAddSelect=$('#segment-add-select'),segmentAddButton=$('#segment-add-button'),segmentControls=$('#segment-controls');
+const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),sigmoidCenter=$('#sigmoid-center'),sigmoidCenterValue=$('#sigmoid-center-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button'),segmentAddSelect=$('#segment-add-select'),segmentAddButton=$('#segment-add-button'),segmentControls=$('#segment-controls');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
 const languageToggle=$('#language-toggle');
 languageToggle.onclick=()=>applyLanguage(currentLanguage==='ja'?'en':'ja');
@@ -327,6 +328,7 @@ function syncFilterControls(){
  nlmStrength.disabled=!sourceVolume||!filterState.nlm;
  anisotropicStrength.disabled=!sourceVolume||!filterState.anisotropic;
  sigmoidStrength.disabled=!sourceVolume||!filterState.sigmoid;
+ sigmoidCenter.disabled=!sourceVolume||!filterState.sigmoid;
  gaussianBtn.disabled=!sourceVolume;smoothingType.disabled=!sourceVolume||!filterState.gaussian;spikeHoleBtn.disabled=!sourceVolume;nlmBtn.disabled=!sourceVolume;anisotropicBtn.disabled=!sourceVolume;sigmoidBtn.disabled=!sourceVolume;
  gaussianBtn.checked=filterState.gaussian;spikeHoleBtn.checked=filterState.spikeHole;nlmBtn.checked=filterState.nlm;anisotropicBtn.checked=filterState.anisotropic;sigmoidBtn.checked=filterState.sigmoid;
  resetFilterBtn.disabled=!sourceVolume||filterOrder.length===0;
@@ -361,6 +363,8 @@ for(const [input,output,key] of [[spikeHoleStrength,spikeHoleStrengthValue,'spik
  input.oninput=()=>{output.value=(+input.value).toFixed(2);if(filterState[key])scheduleFilterRebuild(160)};
  input.onchange=()=>{if(filterState[key])scheduleFilterRebuild(0)};
 }
+sigmoidCenter.oninput=()=>{sigmoidCenterValue.value=Math.round(+sigmoidCenter.value);if(filterState.sigmoid)scheduleFilterRebuild(160)};
+sigmoidCenter.onchange=()=>{if(filterState.sigmoid)scheduleFilterRebuild(0)};
 resetFilterBtn.onclick=()=>{filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=false;smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn])box.checked=false;renderFilterOrder();syncFilterControls();resetProcessing()};
 installFilterReorder();
 
@@ -630,15 +634,16 @@ async function applySigmoid(baseVolume=volume){
   const src=baseVolume.data,out=new Float32Array(src.length);
   const min=baseVolume.min,max=baseVolume.max,range=Math.max(1,max-min);
   const strength=+sigmoidStrength.value,gain=2+strength*10;
-  const lo=1/(1+Math.exp(gain*.5)),hi=1/(1+Math.exp(-gain*.5)),norm=Math.max(1e-6,hi-lo);
+  const centerValue=Math.max(min,Math.min(max,+sigmoidCenter.value)),center=(centerValue-min)/range;
+  const lo=1/(1+Math.exp(gain*center)),hi=1/(1+Math.exp(-gain*(1-center))),norm=Math.max(1e-6,hi-lo);
   for(let i=0;i<src.length;i++){
    const x=Math.max(0,Math.min(1,(src[i]-min)/range));
-   const y=(1/(1+Math.exp(-gain*(x-.5)))-lo)/norm;
+   const y=(1/(1+Math.exp(-gain*(x-center)))-lo)/norm;
    out[i]=min+Math.max(0,Math.min(1,y))*range;
    if((i&0x3ffff)===0){progress(i+1,src.length);await frameYield()}
   }
   volume=cloneVolumeWithData(baseVolume,out);renderAll();render3D(volume);
-  footer.textContent='Sigmoid · '+strength.toFixed(2);
+  footer.textContent='Sigmoid · '+strength.toFixed(2)+' · center '+Math.round(centerValue);
  }catch(e){console.error(e);footer.textContent='Sigmoid error: '+String(e.message||e)}
  finally{setProcessingBusy(false)}
 }
@@ -655,6 +660,7 @@ function setProcessingBusy(busyState,label='Processing'){
  nlmStrength.disabled=busyState||!sourceVolume||!filterState.nlm;
  anisotropicStrength.disabled=busyState||!sourceVolume||!filterState.anisotropic;
  sigmoidStrength.disabled=busyState||!sourceVolume||!filterState.sigmoid;
+ sigmoidCenter.disabled=busyState||!sourceVolume||!filterState.sigmoid;
  folderBtn.disabled=demoBtn.disabled=busyState;prog.classList.toggle('is-hidden',!busyState);
  if(busyState){bar.style.width='0%';progLabel.textContent=label}
 }
@@ -662,6 +668,7 @@ const frameYield=()=>new Promise(resolve=>setTimeout(resolve,0));
 
 function configure(v){
  const range=Math.max(1,v.max-v.min),center=(v.min+v.max)/2;wc.min=Math.floor(v.min);wc.max=Math.ceil(v.max);wc.value=center;ww.min=1;ww.max=Math.ceil(range);ww.value=range;wc.disabled=ww.disabled=false;
+ sigmoidCenter.min=Math.floor(v.min);sigmoidCenter.max=Math.ceil(v.max);sigmoidCenter.step=Math.max(1,Math.round(range/1000));sigmoidCenter.value=Math.round(center);sigmoidCenterValue.value=Math.round(center);
  const vals={axial:[v.slices,v.slices/2],coronal:[v.rows,v.rows/2],sagittal:[v.columns,v.columns/2]};for(const [p,[max,mid]]of Object.entries(vals)){planes[p].slider.max=max-1;planes[p].slider.value=Math.floor(mid);planes[p].slider.disabled=false}
  configureSegments(v);
  volumeAnalysisToggle.disabled=false;
