@@ -170,10 +170,14 @@ Each active tissue segment can apply the following binary-mask post-processing b
 
 The processed mask is shared across MPR, 3D, STL, and volume analysis so all outputs use the same segment definition.
 
-## Large DICOM preview decoding
+## Large DICOM full-resolution streaming
 
-- Int16で保持可能な校正済みCT値はInt16Arrayを使用する
-- 推定デコード容量が約96 MiBを超える場合はXYZを同じ整数strideで自動間引きする
-- spacingはstride倍して物理サイズを維持する
-- UIにはpreview strideと実際のデコード後メモリ量を表示する
-- Decode / Configure / Render の失敗段階を分けて表示する
+- 大容量DICOMでも自動ダウンサンプリングしない
+- 元の columns / rows / slice count / spacing / calibrated CT values を維持する
+- 全ボリュームを一括でFloat32展開せず、DICOM Pixel Dataを必要時にFile.sliceで読み出す
+- Axial MPRは対象スライスを元解像度で読み込む
+- Coronal / Sagittal MPRも元解像度のピクセルから構成する
+- 3D閾値セグメントは元スライスを前・現在・次の3枚だけ保持してストリーミング生成する
+- 3D生成でvoxel skip / preview strideを使用しない
+- 大容量source-backed modeでは、フルボリュームを必要とする画像フィルターと形態学的後処理は無効化し、低解像度代替を行わない
+
