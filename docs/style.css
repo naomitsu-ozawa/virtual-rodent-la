@@ -67,3 +67,8 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 }
 
 .filter-auto{display:inline-flex;align-items:center;justify-content:center;min-width:58px;opacity:.75;pointer-events:none}
+
+.filter-enable-label{display:flex;align-items:center;gap:12px;min-height:44px;width:100%;cursor:pointer}
+.filter-enable-label input[type=checkbox]{width:22px;height:22px;accent-color:#0a84ff;flex:none}
+.filter-enable-label strong{font-size:16px}
+.filter-enable-label:has(input:disabled){opacity:.55;cursor:default}
