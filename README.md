@@ -25,6 +25,9 @@
   - Gaussian 3D / Median 3D（選択式）
   - Sigmoid
 - 各フィルターの強度調整とリセット
+- Spike / Hole の検出閾値
+- Anisotropic Diffusion の反復回数
+- Gaussian / Median のPass数
 - Sigmoidの中心CT値を調整
 - 断面画像は左右スワイプ、マウスではホイールでスライス移動
 - Zenodoの公開マウスPET/CTデモ
@@ -111,6 +114,9 @@ The app uses Japanese by default. Use the language button in the top-right corne
 - Surface smoothing
 - Non-destructive filters: Spike / Hole, Fast NLM 3D, Anisotropic Diffusion, selectable Gaussian 3D / Median 3D, and Sigmoid
 - Filter strength controls and reset
+- Spike / Hole detection threshold
+- Anisotropic Diffusion iteration count
+- Gaussian / Median pass count
 - Adjustable Sigmoid center in CT-value units
 - MPR slice navigation by left/right swipe or mouse wheel
 - Optional public mouse PET/CT demo from Zenodo
