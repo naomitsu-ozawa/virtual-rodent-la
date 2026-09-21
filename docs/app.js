@@ -437,14 +437,14 @@ async function rebuildActiveFilters(finalize3D=true){
  const revision=++filterRebuildRevision;
  clearTimeout(liveFilterState.timer);liveFilterState.base=null;liveFilterState.key=null;
  if(sourceVolume.sourceBacked){
-  invalidateSourceFilters();volume=sourceVolume;setProcessingBusy(true,'Full-resolution filters');
+  invalidateSourceFilters();volume=sourceVolume;setProcessingBusy(true,'Full-resolution filters',false);
   try{
    const mainKey=currentMainViewKey(),previewPlane=planes[mainKey]?mainKey:'axial';
    await renderPlane(previewPlane);
    if(revision!==filterRebuildRevision)return;
    mark3DStale();
    footer.textContent=filterOrder.length?'Full-resolution filters · '+gpuFilterRuntime.lastBackend+' · '+filterOrder.length+' stage(s)':tr('original');
-  }finally{setProcessingBusy(false);syncFilterControls()}
+  }finally{setProcessingBusy(false,'Full-resolution filters',false);syncFilterControls()}
   return;
  }
  let base=sourceVolume;
@@ -452,7 +452,7 @@ async function rebuildActiveFilters(finalize3D=true){
  try{
   const stages=sourceFilterStages();
   if(stages.length&&gpuStagesSupported(stages)){
-   setProcessingBusy(true,'WebGPU filters');
+   setProcessingBusy(true,'WebGPU filters',false);
    try{
     const gpuData=await applyGpuFiltersToMemoryVolume(sourceVolume,stages,revision);
     if(revision!==filterRebuildRevision)return;
@@ -462,7 +462,7 @@ async function rebuildActiveFilters(finalize3D=true){
    }catch(e){
     if(String(e.message||e)==='__SUPERSEDED__')return;
     console.warn('In-memory WebGPU filters unavailable; using CPU stack.',e);
-   }finally{setProcessingBusy(false)}
+   }finally{setProcessingBusy(false,'WebGPU filters',false)}
   }
   for(const key of filterOrder){
    if(!filterState[key])continue;
@@ -1875,29 +1875,32 @@ function resetProcessing(){
  filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;syncFilterControls();
  if(!sourceVolume)return;volume=sourceVolume;renderAll();mark3DStale();footer.textContent=tr('processingReset');
 }
-function setProcessingBusy(busyState,label='Processing'){
+function setProcessingBusy(busyState,label='Processing',lockControls=true){
  if(processingOverlay){
-  processingOverlay.classList.toggle('is-hidden',!busyState);
+  processingOverlay.classList.toggle('is-hidden',!busyState||!lockControls);
   processingOverlay.setAttribute('aria-busy',busyState?'true':'false');
  }
- if(processingOverlayLabel)processingOverlayLabel.textContent=busyState?label+' · 処理中…':'';
- resetFilterBtn.disabled=busyState||!sourceVolume;
- gaussianBtn.disabled=spikeHoleBtn.disabled=nlmBtn.disabled=anisotropicBtn.disabled=sigmoidBtn.disabled=busyState||!sourceVolume;smoothingType.disabled=busyState||!sourceVolume||!filterState.gaussian;
- gaussianStrength.disabled=busyState||!sourceVolume||!filterState.gaussian;
- spatialPasses.disabled=busyState||!sourceVolume||!filterState.gaussian;
- spikeHoleStrength.disabled=busyState||!sourceVolume||!filterState.spikeHole;
- spikeHoleThreshold.disabled=busyState||!sourceVolume||!filterState.spikeHole;
- nlmStrength.disabled=busyState||!sourceVolume||!filterState.nlm;
- nlmSearchRadius.disabled=busyState||!sourceVolume||!filterState.nlm;
- nlmPatchRadius.disabled=busyState||!sourceVolume||!filterState.nlm;
- anisotropicStrength.disabled=busyState||!sourceVolume||!filterState.anisotropic;
- anisotropicIterations.disabled=busyState||!sourceVolume||!filterState.anisotropic;
- sigmoidStrength.disabled=busyState||!sourceVolume||!filterState.sigmoid;
- sigmoidCenter.disabled=busyState||!sourceVolume||!filterState.sigmoid;
- bilateralStrength.disabled=bilateralSpatial.disabled=bilateralIntensity.disabled=bilateralPasses.disabled=busyState||!sourceVolume||!filterState.bilateral;
- tvWeight.disabled=tvIterations.disabled=busyState||!sourceVolume||!filterState.tv;
- unsharpRadius.disabled=unsharpAmount.disabled=unsharpThreshold.disabled=busyState||!sourceVolume||!filterState.unsharp;
- folderBtn.disabled=demoBtn.disabled=busyState;prog.classList.toggle('is-hidden',!busyState);
+ if(processingOverlayLabel)processingOverlayLabel.textContent=busyState&&lockControls?label+' · 処理中…':'';
+ if(lockControls){
+  resetFilterBtn.disabled=busyState||!sourceVolume;
+  gaussianBtn.disabled=spikeHoleBtn.disabled=nlmBtn.disabled=anisotropicBtn.disabled=sigmoidBtn.disabled=busyState||!sourceVolume;smoothingType.disabled=busyState||!sourceVolume||!filterState.gaussian;
+  gaussianStrength.disabled=busyState||!sourceVolume||!filterState.gaussian;
+  spatialPasses.disabled=busyState||!sourceVolume||!filterState.gaussian;
+  spikeHoleStrength.disabled=busyState||!sourceVolume||!filterState.spikeHole;
+  spikeHoleThreshold.disabled=busyState||!sourceVolume||!filterState.spikeHole;
+  nlmStrength.disabled=busyState||!sourceVolume||!filterState.nlm;
+  nlmSearchRadius.disabled=busyState||!sourceVolume||!filterState.nlm;
+  nlmPatchRadius.disabled=busyState||!sourceVolume||!filterState.nlm;
+  anisotropicStrength.disabled=busyState||!sourceVolume||!filterState.anisotropic;
+  anisotropicIterations.disabled=busyState||!sourceVolume||!filterState.anisotropic;
+  sigmoidStrength.disabled=busyState||!sourceVolume||!filterState.sigmoid;
+  sigmoidCenter.disabled=busyState||!sourceVolume||!filterState.sigmoid;
+  bilateralStrength.disabled=bilateralSpatial.disabled=bilateralIntensity.disabled=bilateralPasses.disabled=busyState||!sourceVolume||!filterState.bilateral;
+  tvWeight.disabled=tvIterations.disabled=busyState||!sourceVolume||!filterState.tv;
+  unsharpRadius.disabled=unsharpAmount.disabled=unsharpThreshold.disabled=busyState||!sourceVolume||!filterState.unsharp;
+  folderBtn.disabled=demoBtn.disabled=busyState;
+ }
+ prog.classList.toggle('is-hidden',!busyState);
  if(busyState){bar.style.width='0%';progLabel.textContent=label}
 }
 const frameYield=()=>new Promise(resolve=>setTimeout(resolve,0));
