@@ -327,23 +327,28 @@ volumeAnalysisToggle.onclick=()=>{
 folderBtn.onclick=()=>{folderInput.value='';folderInput.click()};
 folderInput.onchange=async()=>{const files=[...(folderInput.files||[])];if(files.length)await inspect(files,false)};
 demoBtn.onclick=async()=>{busy(true);resetVolume();list.replaceChildren();state.classList.remove('is-hidden');prog.classList.remove('is-hidden');state.innerHTML='<strong>'+tr('demoLoading')+'</strong><span>'+tr('demoSize')+'</span>';try{const files=await loadDemo();await inspect(files,true)}catch(e){console.error(e);state.innerHTML='<strong>'+tr('demoFailed')+'</strong><span>'+esc(e.message||e)+'</span>';footer.textContent='Demo error: '+String(e.message||e)}finally{busy(false);prog.classList.add('is-hidden')}};
-wc.oninput=ww.oninput=renderAll;
-wc.onchange=ww.onchange=()=>{if(ctRangeMode==='auto')applyCtRangeMode('auto')};
+wc.oninput=ww.oninput=()=>renderMainMprPreview();
+wc.onchange=ww.onchange=()=>{if(ctRangeMode==='auto')applyCtRangeMode('auto');renderAll()};
 ctRangeAuto.onclick=()=>applyCtRangeMode('auto');
 ctRangeFull.onclick=()=>applyCtRangeMode('full');
 for(const key of Object.keys(segmentState)){
  const enabled=$('[data-seg-enabled="'+key+'"]'),color=$('[data-seg-color="'+key+'"]'),min=$('[data-seg-min="'+key+'"]'),max=$('[data-seg-max="'+key+'"]'),opacity=$('[data-seg-opacity="'+key+'"]'),exportBtn=$('[data-seg-export="'+key+'"]'),removeBtn=$('[data-seg-remove="'+key+'"]'),opening=$('[data-seg-opening="'+key+'"]'),closing=$('[data-seg-closing="'+key+'"]'),minComponent=$('[data-seg-min-component="'+key+'"]'),holeFill=$('[data-seg-hole-fill="'+key+'"]');
  enabled.onchange=()=>{segmentState[key].enabled=enabled.checked;renderAll();scheduleSegment3D()};
- color.oninput=()=>{segmentState[key].color=color.value;renderAll();scheduleSegment3D()};
- min.oninput=()=>{segmentState[key].min=Math.min(+min.value,segmentState[key].max);min.value=segmentState[key].min;segmentState[key]._maskCache=null;updateSegmentOutputs(key);renderAll();scheduleSegment3D()};
- max.oninput=()=>{segmentState[key].max=Math.max(+max.value,segmentState[key].min);max.value=segmentState[key].max;segmentState[key]._maskCache=null;updateSegmentOutputs(key);renderAll();scheduleSegment3D()};
- min.onchange=max.onchange=()=>{if(ctRangeMode==='auto')applyCtRangeMode('auto')};
- opacity.oninput=()=>{segmentState[key].opacity=+opacity.value;updateSegmentOutputs(key);renderAll();scheduleSegment3D()};
- const invalidateSegment=()=>{segmentState[key]._maskCache=null;segmentState[key]._maskCacheKey='';clearAnalysisHighlight();renderAll();scheduleSegment3D()};
- opening.oninput=()=>{segmentState[key].opening=+opening.value;$('[data-seg-opening-out="'+key+'"]').value=opening.value;invalidateSegment()};
- closing.oninput=()=>{segmentState[key].closing=+closing.value;$('[data-seg-closing-out="'+key+'"]').value=closing.value;invalidateSegment()};
- minComponent.oninput=()=>{segmentState[key].minComponent=+minComponent.value;$('[data-seg-min-component-out="'+key+'"]').value=minComponent.value;invalidateSegment()};
- holeFill.onchange=()=>{segmentState[key].holeFill=holeFill.checked;invalidateSegment()};
+ color.oninput=()=>{segmentState[key].color=color.value;renderMainMprPreview();scheduleSegment3D()};
+ color.onchange=()=>renderAll();
+ min.oninput=()=>{segmentState[key].min=Math.min(+min.value,segmentState[key].max);min.value=segmentState[key].min;segmentState[key]._maskCache=null;updateSegmentOutputs(key);renderMainMprPreview();scheduleSegment3D()};
+ max.oninput=()=>{segmentState[key].max=Math.max(+max.value,segmentState[key].min);max.value=segmentState[key].max;segmentState[key]._maskCache=null;updateSegmentOutputs(key);renderMainMprPreview();scheduleSegment3D()};
+ min.onchange=max.onchange=()=>{if(ctRangeMode==='auto')applyCtRangeMode('auto');renderAll()};
+ opacity.oninput=()=>{segmentState[key].opacity=+opacity.value;updateSegmentOutputs(key);renderMainMprPreview();scheduleSegment3D()};
+ opacity.onchange=()=>renderAll();
+ const invalidateSegment=(full=false)=>{segmentState[key]._maskCache=null;segmentState[key]._maskCacheKey='';clearAnalysisHighlight();if(full)renderAll();else renderMainMprPreview();scheduleSegment3D()};
+ opening.oninput=()=>{segmentState[key].opening=+opening.value;$('[data-seg-opening-out="'+key+'"]').value=opening.value;invalidateSegment(false)};
+ opening.onchange=()=>invalidateSegment(true);
+ closing.oninput=()=>{segmentState[key].closing=+closing.value;$('[data-seg-closing-out="'+key+'"]').value=closing.value;invalidateSegment(false)};
+ closing.onchange=()=>invalidateSegment(true);
+ minComponent.oninput=()=>{segmentState[key].minComponent=+minComponent.value;$('[data-seg-min-component-out="'+key+'"]').value=minComponent.value;invalidateSegment(false)};
+ minComponent.onchange=()=>invalidateSegment(true);
+ holeFill.onchange=()=>{segmentState[key].holeFill=holeFill.checked;invalidateSegment(true)};
  exportBtn.onclick=()=>exportSegmentStl(key);
  removeBtn.onclick=()=>removeSegmentPreset(key);
 }
@@ -2166,6 +2171,11 @@ function updateSegmentOutputs(key){
 }
 function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);sourceRenderRevision++;mark3DStale()}
 const planeRenderRevision={axial:0,coronal:0,sagittal:0};
+function renderMainMprPreview(){
+ if(!volume)return;
+ const key=currentMainViewKey(),p=planes[key]?key:'axial';
+ schedulePlaneRender(p);
+}
 function renderAll(){
  if(!volume)return;
  wcVal.value=formatCtValue(+wc.value,+wc.step);wwVal.value=formatCtValue(+ww.value,+ww.step);
