@@ -199,10 +199,11 @@ app.innerHTML=`
 const $=s=>document.querySelector(s);
 const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spatialPasses=$('#spatial-passes'),spatialPassesValue=$('#spatial-passes-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),spikeHoleThreshold=$('#spike-hole-threshold'),spikeHoleThresholdValue=$('#spike-hole-threshold-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),nlmSearchRadius=$('#nlm-search-radius'),nlmSearchRadiusValue=$('#nlm-search-radius-value'),nlmPatchRadius=$('#nlm-patch-radius'),nlmPatchRadiusValue=$('#nlm-patch-radius-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),anisotropicIterations=$('#anisotropic-iterations'),anisotropicIterationsValue=$('#anisotropic-iterations-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),sigmoidCenter=$('#sigmoid-center'),sigmoidCenterValue=$('#sigmoid-center-value'),bilateralBtn=$('#filter-bilateral'),bilateralStrength=$('#bilateral-strength'),bilateralStrengthValue=$('#bilateral-strength-value'),bilateralSpatial=$('#bilateral-spatial'),bilateralSpatialValue=$('#bilateral-spatial-value'),bilateralIntensity=$('#bilateral-intensity'),bilateralIntensityValue=$('#bilateral-intensity-value'),bilateralPasses=$('#bilateral-passes'),bilateralPassesValue=$('#bilateral-passes-value'),tvBtn=$('#filter-tv'),tvWeight=$('#tv-weight'),tvWeightValue=$('#tv-weight-value'),tvIterations=$('#tv-iterations'),tvIterationsValue=$('#tv-iterations-value'),unsharpBtn=$('#filter-unsharp'),unsharpRadius=$('#unsharp-radius'),unsharpRadiusValue=$('#unsharp-radius-value'),unsharpAmount=$('#unsharp-amount'),unsharpAmountValue=$('#unsharp-amount-value'),unsharpThreshold=$('#unsharp-threshold'),unsharpThresholdValue=$('#unsharp-threshold-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button'),segmentAddSelect=$('#segment-add-select'),segmentAddButton=$('#segment-add-button'),segmentControls=$('#segment-controls');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
-const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label');
+const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterApply3D=$('#filter-apply-3d'),filter3DState=$('#filter-3d-state'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
 languageToggle.onclick=()=>applyLanguage(currentLanguage==='ja'?'en':'ja');
 applyLanguage('ja');;
 let volume=null,sourceVolume=null,sceneState=null,activeId=null,activeSeries=null,volumeAnalysisMode=false,volumeAnalysisBusy=false,sourceRenderRevision=0;
+let deferAutomatic3D=false,threeDDirty=false,threeDApplying=false;
 const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
 const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid','bilateral','tv','unsharp'];
 let filterOrder=[];
@@ -217,6 +218,23 @@ const segmentState={
 };
 let segmentRenderTimer=null;
 
+function set3DState(mode){
+ threeDDirty=mode==='stale';threeDApplying=mode==='updating';
+ if(!filter3DState||!filterApply3D)return;
+ filter3DState.classList.toggle('is-stale',mode==='stale');
+ filter3DState.classList.toggle('is-updating',mode==='updating');
+ filter3DState.classList.toggle('is-current',mode==='current');
+ filter3DState.textContent=tr(mode==='stale'?'threeStale':mode==='updating'?'threeUpdating':'threeCurrent');
+ filterApply3D.disabled=!volume||mode!=='stale';
+}
+function mark3DStale(){if(volume)set3DState('stale')}
+function mark3DCurrent(){set3DState('current')}
+function mark3DUpdating(){set3DState('updating')}
+async function applyCurrent3D(){
+ if(!volume||threeDApplying)return;
+ mark3DUpdating();
+ try{await render3D(volume,true)}catch(e){console.error(e);mark3DStale()}
+}
 function renderSegmentPresets(){
  const active=new Set(SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active));
  for(const key of SEGMENT_PRESET_ORDER){
@@ -400,7 +418,7 @@ function syncFilterControls(){
  resetFilterBtn.disabled=!sourceVolume||filterOrder.length===0;
 }
 function scheduleFilterRebuild(delay=120){
- clearTimeout(filterRebuildTimer);
+ clearTimeout(filterRebuildTimer);mark3DStale();
  if(sourceVolume?.sourceBacked&&delay>0)return;
  const finalize3D=!(sourceVolume?.sourceBacked)||delay===0;
  filterRebuildTimer=setTimeout(()=>{filterRebuildTimer=null;void rebuildActiveFilters(finalize3D)},delay);
@@ -416,12 +434,13 @@ async function rebuildActiveFilters(finalize3D=true){
     await renderPlane(p);
     if(revision!==filterRebuildRevision)return;
    }
-   if(finalize3D)render3D(volume);
+   mark3DStale();
    footer.textContent=filterOrder.length?'Full-resolution filters · chunked · '+filterOrder.length+' stage(s)':tr('original');
   }finally{setProcessingBusy(false);syncFilterControls()}
   return;
  }
  let base=sourceVolume;
+ deferAutomatic3D=true;
  try{
   for(const key of filterOrder){
    if(!filterState[key])continue;
@@ -439,7 +458,7 @@ async function rebuildActiveFilters(finalize3D=true){
   if(!filterOrder.length){
    volume=sourceVolume;renderAll();render3D(volume);footer.textContent=tr('original');
   }
- }finally{syncFilterControls()}
+ }finally{deferAutomatic3D=false;mark3DStale();syncFilterControls()}
 }
 smoothingType.onchange=()=>{if(filterState.gaussian)scheduleFilterRebuild(0)};
 for(const [input,output,key] of [[spikeHoleStrength,spikeHoleStrengthValue,'spikeHole'],[nlmStrength,nlmStrengthValue,'nlm'],[anisotropicStrength,anisotropicStrengthValue,'anisotropic'],[gaussianStrength,gaussianStrengthValue,'gaussian'],[sigmoidStrength,sigmoidStrengthValue,'sigmoid']]){
@@ -471,6 +490,7 @@ for(const [input,output,key] of [[bilateralPasses,bilateralPassesValue,'bilatera
  input.onchange=()=>{if(filterState[key])scheduleFilterRebuild(0)};
 }
 resetFilterBtn.onclick=()=>{filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();syncFilterControls();resetProcessing()};
+filterApply3D.onclick=()=>void applyCurrent3D();
 installFilterReorder();
 
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>void renderPlane(p);installMprTouch(p)}
@@ -600,7 +620,7 @@ async function selectSeries(s){
  try{
   invalidateSourceFilters();
   sourceVolume=s.sourceBacked?openSourceBackedVolume(s):await decode(s,(x,y)=>progress(x,y));
-  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);phase='render';renderAll();render3D(volume);
+  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);phase='render';renderAll();void render3D(volume,true);
   selected.querySelector('.ready-badge').textContent=s.sourceBacked?'CT source ready · full resolution':'CT volume ready';
   footer.textContent=s.sourceBacked?'Full-resolution source-backed DICOM · no resampling':'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
  }catch(e){
@@ -1125,7 +1145,7 @@ async function applySigmoid(baseVolume=volume){
 function resetProcessing(){
  clearTimeout(liveFilterState.timer);clearTimeout(filterRebuildTimer);filterRebuildRevision++;if(sourceVolume?.sourceBacked)invalidateSourceFilters();liveFilterState.base=null;liveFilterState.key=null;
  filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;syncFilterControls();
- if(!sourceVolume)return;volume=sourceVolume;renderAll();render3D(volume);footer.textContent=tr('processingReset');
+ if(!sourceVolume)return;volume=sourceVolume;renderAll();mark3DStale();footer.textContent=tr('processingReset');
 }
 function setProcessingBusy(busyState,label='Processing'){
  if(processingOverlay){
@@ -1220,7 +1240,7 @@ function updateSegmentOutputs(key){
  $('[data-seg-max-out="'+key+'"]').value=Math.round(segmentState[key].max);
  $('[data-seg-opacity-out="'+key+'"]').value=segmentState[key].opacity.toFixed(2);
 }
-function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);segmentRenderTimer=setTimeout(()=>render3D(volume),90)}
+function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);mark3DStale()}
 const planeRenderRevision={axial:0,coronal:0,sagittal:0};
 function renderAll(){
  if(!volume)return;
@@ -1298,6 +1318,40 @@ function set3DBusy(busyState,label='3D構築中…'){
  if(threeBusy)threeBusy.classList.toggle('is-hidden',!busyState);
  if(threeBusyLabel)threeBusyLabel.textContent=label;
 }
+function currentMainViewKey(){return mainViewSlot?.querySelector('.view-card')?.dataset.viewKey||'3d'}
+function swapViewCards(a,b){
+ if(!a||!b||a===b)return;
+ const placeholder=document.createComment('view-swap'),aParent=a.parentNode;
+ aParent.replaceChild(placeholder,a);b.parentNode.replaceChild(a,b);placeholder.replaceWith(b);
+ requestAnimationFrame(()=>{sceneState?.resize?.();request3DRender()});
+}
+function moveViewToMain(key){
+ const card=document.querySelector('.view-card[data-view-key="'+key+'"]'),mainCard=mainViewSlot?.querySelector('.view-card');
+ if(card&&mainCard&&card!==mainCard)swapViewCards(card,mainCard);
+}
+function installViewSwapping(){
+ document.querySelectorAll('[data-view-main]').forEach(button=>button.addEventListener('click',()=>moveViewToMain(button.dataset.viewMain)));
+ let dragCard=null,targetCard=null,pointerId=null;
+ const clearTarget=()=>{targetCard?.classList.remove('is-view-drop-target');targetCard=null};
+ for(const handle of document.querySelectorAll('[data-view-drag-handle]')){
+  handle.addEventListener('pointerdown',e=>{
+   dragCard=handle.closest('.view-card');pointerId=e.pointerId;if(!dragCard)return;
+   handle.setPointerCapture?.(pointerId);dragCard.classList.add('is-view-dragging');e.preventDefault();
+  });
+  handle.addEventListener('pointermove',e=>{
+   if(!dragCard||e.pointerId!==pointerId)return;clearTarget();
+   const hit=document.elementFromPoint(e.clientX,e.clientY)?.closest('.view-card');
+   if(hit&&hit!==dragCard){targetCard=hit;targetCard.classList.add('is-view-drop-target')}
+  });
+  const end=e=>{
+   if(!dragCard||e.pointerId!==pointerId)return;
+   const from=dragCard,to=targetCard;clearTarget();from.classList.remove('is-view-dragging');dragCard=null;pointerId=null;
+   if(to)swapViewCards(from,to);
+  };
+  handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
+ }
+}
+installViewSwapping();
 async function start3D(){
  const scene=new THREE.Scene();scene.background=new THREE.Color(0x090c0e);const camera=new THREE.PerspectiveCamera(38,1,.1,100);camera.position.z=5.2;scene.add(new THREE.HemisphereLight(0xffffff,0x182028,2.0));const keyLight=new THREE.DirectionalLight(0xffffff,2.4);keyLight.position.set(2,3,4);scene.add(keyLight);
  let renderer,backend='WEBGL';
@@ -1320,7 +1374,7 @@ async function start3D(){
  const endPointer=e=>{const start=pointerStarts.get(e.pointerId);const wasSingle=pointers.size===1;pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(renderer.domElement.hasPointerCapture(e.pointerId))renderer.domElement.releasePointerCapture(e.pointerId);if(pointers.size<2){lastPinch=0;lastCenter=null}if(e.type==='pointerup'&&wasSingle&&start&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,2.2,12);camera.position.z=distance;request3DRender()},{passive:false});
- const resize=()=>{camera.aspect=viewport.clientWidth/Math.max(viewport.clientHeight,1);camera.updateProjectionMatrix();renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);request3DRender()};new ResizeObserver(resize).observe(viewport);resize();
+ const resize=()=>{camera.aspect=viewport.clientWidth/Math.max(viewport.clientHeight,1);camera.updateProjectionMatrix();renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);request3DRender()};sceneState.resize=resize;new ResizeObserver(resize).observe(viewport);resize();
  renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;sceneState.needsRender=false;renderer.render(scene,camera)});
 }
 async function analyzeVolumeAtPointer(event,canvas,camera){
@@ -1534,7 +1588,7 @@ async function render3DSourceBacked(v){
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return}
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
-  sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';set3DBusy(false);request3DRender();return;
+  sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
  const chunkDepth=8,coords=makeSource3DCoordinates(series),positionsByKey=new Map(active.map(({key})=>[key,[]]));
  const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55}]));
@@ -1583,10 +1637,10 @@ async function render3DSourceBacked(v){
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);
   threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';
-  footer.textContent='3D full resolution · source DICOM · no resampling';set3DBusy(false);request3DRender();
+  footer.textContent='3D full resolution · source DICOM · no resampling';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){
   dispose(group);
-  if(revision===sourceRenderRevision){threeLabel.textContent=(sceneState.backend||'3D')+' · build error';footer.textContent='3D build error: '+String(e.message||e);set3DBusy(false)}
+  if(revision===sourceRenderRevision){threeLabel.textContent=(sceneState.backend||'3D')+' · build error';footer.textContent='3D build error: '+String(e.message||e);set3DBusy(false);mark3DStale()}
   if(String(e.message||e)!=='__SUPERSEDED__')console.error(e);
  }
 }
@@ -1598,9 +1652,10 @@ function surfaceSamplingStep(v){
  if(total<=40000000)return 2;
  return Math.max(2,Math.ceil(Math.cbrt(total/2500000)));
 }
-function render3D(v){
- if(!sceneState)return;
- if(v.sourceBacked){void render3DSourceBacked(v);return}
+function render3D(v,force=false){
+ if(!sceneState)return Promise.resolve(false);
+ if(deferAutomatic3D&&!force){mark3DStale();return Promise.resolve(false)}
+ if(v.sourceBacked)return render3DSourceBacked(v);
  sourceRenderRevision++;
  sceneState.analysisMesh=null;
  let savedTransform=null;
@@ -1627,7 +1682,7 @@ function render3D(v){
   if(mesh)group.add(mesh);
  }
  sceneState.obj=group;sceneState.scene.add(group);
- threeLabel.textContent=(sceneState.backend||'3D')+' · surface mesh · step '+step;request3DRender();
+ threeLabel.textContent=(sceneState.backend||'3D')+' · surface mesh · step '+step;request3DRender();mark3DCurrent();return Promise.resolve(true);
 }
 function buildSegmentSurface(v,seg,step,key){
  const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing,mask=getProcessedSegmentMask(v,seg);
@@ -1755,7 +1810,7 @@ function taubinSmoothGeometry(geometry,strength){
  pos.array.set(a);pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
 }
 
-function resetVolume(){sourceRenderRevision++;invalidateSourceFilters();activeSeries=null;clearAnalysisHighlight();smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();for(const key of SEGMENT_PRESET_ORDER){segmentState[key].active=false;segmentState[key].enabled=false;const enabled=$('[data-seg-enabled="'+key+'"]');if(enabled)enabled.checked=false}renderSegmentPresets();volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');volumeAnalysisResult.textContent='';filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spatialPasses.disabled=true;spikeHoleStrength.disabled=true;spikeHoleThreshold.disabled=true;nlmStrength.disabled=true;nlmSearchRadius.disabled=true;nlmPatchRadius.disabled=true;anisotropicStrength.disabled=true;anisotropicIterations.disabled=true;bilateralStrength.disabled=true;bilateralSpatial.disabled=true;bilateralIntensity.disabled=true;bilateralPasses.disabled=true;tvWeight.disabled=true;tvIterations.disabled=true;unsharpRadius.disabled=true;unsharpAmount.disabled=true;unsharpThreshold.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity','opening','closing','min-component','hole-fill']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true;const removeBtn=$('[data-seg-remove="'+key+'"]');if(removeBtn)removeBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}set3DBusy(false);request3DRender();threeLabel.textContent=sceneState?.backend||'3D'}
+function resetVolume(){sourceRenderRevision++;invalidateSourceFilters();activeSeries=null;clearAnalysisHighlight();smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();for(const key of SEGMENT_PRESET_ORDER){segmentState[key].active=false;segmentState[key].enabled=false;const enabled=$('[data-seg-enabled="'+key+'"]');if(enabled)enabled.checked=false}renderSegmentPresets();volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');volumeAnalysisResult.textContent='';filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spatialPasses.disabled=true;spikeHoleStrength.disabled=true;spikeHoleThreshold.disabled=true;nlmStrength.disabled=true;nlmSearchRadius.disabled=true;nlmPatchRadius.disabled=true;anisotropicStrength.disabled=true;anisotropicIterations.disabled=true;bilateralStrength.disabled=true;bilateralSpatial.disabled=true;bilateralIntensity.disabled=true;bilateralPasses.disabled=true;tvWeight.disabled=true;tvIterations.disabled=true;unsharpRadius.disabled=true;unsharpAmount.disabled=true;unsharpThreshold.disabled=true;wc.disabled=ww.disabled=true;for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity','opening','closing','min-component','hole-fill']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true;const removeBtn=$('[data-seg-remove="'+key+'"]');if(removeBtn)removeBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}set3DBusy(false);request3DRender();set3DState('current');threeLabel.textContent=sceneState?.backend||'3D'}
 function dispose(o){o.traverse(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
