@@ -3,7 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.w
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.21-1849';const APP_BUILD='01';
+const APP_VERSION='2026.09.21-1849';const APP_BUILD='02';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -206,7 +206,13 @@ languageToggle.onclick=()=>{applyLanguage(currentLanguage==='ja'?'en':'ja');rend
 applyLanguage('ja');;
 if(appVersionBadge)appVersionBadge.textContent='Virtual Rodent Lab · v'+APP_VERSION+' · build '+APP_BUILD;
 let volume=null,sourceVolume=null,sceneState=null,activeId=null,activeSeries=null,volumeAnalysisMode=false,volumeAnalysisBusy=false,sourceRenderRevision=0;
-let analysisRegions=[],nextAnalysisRegionId=1;
+let analysisRegions=[],nextAnalysisRegionId=1,nextAnalysisColorIndex=0;
+const ANALYSIS_REGION_COLORS=[0x00d8ff,0xff9f1c,0x7ae582,0xff4d8d,0xf4e409,0x9b5cff,0xff5a5f,0x2ec4b6];
+function nextAnalysisColor(){
+ const color=ANALYSIS_REGION_COLORS[nextAnalysisColorIndex%ANALYSIS_REGION_COLORS.length];
+ nextAnalysisColorIndex++;return color;
+}
+function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
 let deferAutomatic3D=false,threeDDirty=false,threeDApplying=false,threeDCancelRequested=false,current3DVolume=null,memoryGpuPreviewActive=false;
 let ctRangeMode='auto',ctRangeProfile=null;
 const memoryFilterPreviewCache={map:new Map(),bytes:0};
@@ -2512,9 +2518,9 @@ async function connectedComponentVolume(v,seg,x0,y0,z0,mask=getProcessedSegmentM
  return{voxels:count,mm3:count*v.spacing[0]*v.spacing[1]*v.spacing[2],mask:visited};
 }
 
-function createAnalysisMaterial(){
+function createAnalysisMaterial(color=0x00d8ff){
  return new THREE.MeshStandardMaterial({
-  color:0x00d8ff,emissive:0x0088aa,emissiveIntensity:.75,transparent:true,opacity:.92,
+  color,emissive:color,emissiveIntensity:.55,transparent:true,opacity:.92,
   roughness:.35,metalness:0,side:THREE.DoubleSide,depthWrite:false,
   polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:true
  });
@@ -2618,9 +2624,9 @@ function ensureAnalysisRoot(){
  if(sceneState?.analysisMesh?.parent===sceneState?.obj)return sceneState.analysisMesh;
  const root=new THREE.Group();root.name='analysis_regions';sceneState.analysisMesh=root;sceneState?.obj?.add(root);return root;
 }
-async function buildAnalysisRunsGroup(v,runsBySlice,key,id){
+async function buildAnalysisRunsGroup(v,runsBySlice,key,id,color){
  const w=v.columns,h=v.rows,d=v.slices,coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),series={columns:w,rows:h},group=new THREE.Group(),builder=new Float32FaceBuilder(),floatLimit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
- const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions),mesh=new THREE.Mesh(geometry,createAnalysisMaterial());mesh.name='analysis_'+key+'_'+id+'_'+z;mesh.renderOrder=20;group.add(mesh)};
+ const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions),mesh=new THREE.Mesh(geometry,createAnalysisMaterial(color));mesh.name='analysis_'+key+'_'+id+'_'+z;mesh.renderOrder=20;group.add(mesh)};
  let prev=null,curr=analysisRunSliceState(runsBySlice[0],w,h),next=d>1?analysisRunSliceState(runsBySlice[1],w,h):null;
  for(let z=0;z<d;z++){
   appendSourceSliceFacesFast(builder,series,z,prev,curr,next,coords);if(builder.length>=floatLimit)flush(z);
@@ -2643,6 +2649,7 @@ function renderAnalysisResults(statusText=null){
  for(const region of analysisRegions){
   const row=document.createElement('div');row.className='analysis-region-row';
   const select=document.createElement('input');select.type='checkbox';select.checked=!!region.selected;select.className='analysis-region-select';select.title=tr('mergeSelected');select.onchange=()=>{region.selected=select.checked;renderAnalysisResults()};
+  const swatch=document.createElement('span');swatch.className='analysis-region-swatch';swatch.style.background=analysisColorCss(region.color);swatch.title=analysisColorCss(region.color);
   const info=document.createElement('div');info.className='analysis-region-info';
   const title=document.createElement('strong');title.textContent=analysisRegionName(region);
   const keys=document.createElement('span');keys.textContent=region.segmentKeys.map(k=>tr(k)||k).join(' + ');
@@ -2650,7 +2657,7 @@ function renderAnalysisResults(statusText=null){
   info.append(title,keys,value);
   const visible=document.createElement('button');visible.type='button';visible.className='analysis-region-button';visible.textContent=region.visible?tr('hideRegion'):tr('showRegion');visible.onclick=()=>{region.visible=!region.visible;if(region.meshGroup)region.meshGroup.visible=region.visible;request3DRender();renderAnalysisResults()};
   const remove=document.createElement('button');remove.type='button';remove.className='analysis-region-button analysis-region-delete';remove.textContent=tr('deleteRegion');remove.onclick=()=>removeAnalysisRegion(region.id);
-  row.append(select,info,visible,remove);analysisRegionList.append(row);
+  row.append(select,swatch,info,visible,remove);analysisRegionList.append(row);
  }
 }
 function disposeAnalysisRegionMesh(region){
@@ -2663,12 +2670,12 @@ function removeAnalysisRegion(id){
  request3DRender();renderAnalysisResults();
 }
 async function attachAnalysisRegion(region,v){
- const group=await buildAnalysisRunsGroup(v,region.runsBySlice,region.key,region.id);region.meshGroup=group;if(group){group.visible=region.visible;ensureAnalysisRoot().add(group)}request3DRender();
+ const group=await buildAnalysisRunsGroup(v,region.runsBySlice,region.key,region.id,region.color);region.meshGroup=group;if(group){group.visible=region.visible;ensureAnalysisRoot().add(group)}request3DRender();
 }
 async function addAnalysisRegion(v,{key,segmentKeys,runsBySlice,voxels,mm3,merged=false}){
  const existing=analysisRegions.find(r=>r.segmentKeys.includes(key)&&analysisRunsOverlap(r.runsBySlice,runsBySlice));
  if(existing){existing.selected=true;existing.visible=true;if(existing.meshGroup)existing.meshGroup.visible=true;renderAnalysisResults();request3DRender();return existing}
- const region={id:nextAnalysisRegionId++,key,segmentKeys:[...new Set(segmentKeys)],runsBySlice,voxels,mm3,merged,selected:false,visible:true,meshGroup:null};
+ const region={id:nextAnalysisRegionId++,key,segmentKeys:[...new Set(segmentKeys)],runsBySlice,voxels,mm3,merged,selected:false,visible:true,meshGroup:null,color:nextAnalysisColor()};
  analysisRegions.push(region);await attachAnalysisRegion(region,v);renderAnalysisResults();return region;
 }
 async function mergeSelectedAnalysisRegions(){
@@ -2678,15 +2685,15 @@ async function mergeSelectedAnalysisRegions(){
   const runsBySlice=unionAnalysisRuns(selected,v.slices),voxels=analysisRunsVoxelCount(runsBySlice),mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2],segmentKeys=[...new Set(selected.flatMap(r=>r.segmentKeys))],key=segmentKeys.length===1?segmentKeys[0]:'merged';
   for(const region of selected)disposeAnalysisRegionMesh(region);
   const ids=new Set(selected.map(r=>r.id));analysisRegions=analysisRegions.filter(r=>!ids.has(r.id));
-  const region={id:nextAnalysisRegionId++,key,segmentKeys,runsBySlice,voxels,mm3,merged:true,selected:false,visible:true,meshGroup:null};analysisRegions.push(region);await attachAnalysisRegion(region,v);
+  const region={id:nextAnalysisRegionId++,key,segmentKeys,runsBySlice,voxels,mm3,merged:true,selected:false,visible:true,meshGroup:null,color:nextAnalysisColor()};analysisRegions.push(region);await attachAnalysisRegion(region,v);
  }finally{volumeAnalysisBusy=false;renderAnalysisResults()}
 }
 function resetAnalysisRegistryAfterRebuild(){
- analysisRegions=[];nextAnalysisRegionId=1;if(sceneState)sceneState.analysisMesh=null;renderAnalysisResults();
+ analysisRegions=[];nextAnalysisRegionId=1;nextAnalysisColorIndex=0;if(sceneState)sceneState.analysisMesh=null;renderAnalysisResults();
 }
 function clearAnalysisHighlight(){
  if(sceneState?.analysisMesh){const root=sceneState.analysisMesh;if(root.parent)root.parent.remove(root);dispose(root);sceneState.analysisMesh=null}
- analysisRegions=[];nextAnalysisRegionId=1;request3DRender();renderAnalysisResults();
+ analysisRegions=[];nextAnalysisRegionId=1;nextAnalysisColorIndex=0;request3DRender();renderAnalysisResults();
 }
 function showAnalysisHighlight(v,mask,key){
  clearAnalysisHighlight();if(!sceneState?.obj||!mask)return;
