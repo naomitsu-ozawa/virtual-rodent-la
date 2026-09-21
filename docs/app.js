@@ -680,9 +680,9 @@ async function decode(s,onProgress){
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
 const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU'};
-const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','anisotropic','tv']);
+const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','anisotropic','tv','bilateral','nlm']);
 function gpuStagesSupported(stages){
- return stages.length>0&&stages.every(stage=>GPU_FILTER_KEYS.has(stage.key)&&(stage.key!=='gaussian'||stage.params.mode==='gaussian'));
+ return stages.length>0&&stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
 }
 async function ensureGpuFilterDevice(){
  if(gpuFilterRuntime.disabled||!('gpu' in navigator))return null;
@@ -715,6 +715,10 @@ fn coord(i:u32)->vec3<u32>{
  return vec3<u32>(i%w,(i/w)%h,i/plane);
 }
 fn idx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
+fn cidx(x:i32,y:i32,z:i32)->u32{
+ let xx=u32(clamp(x,0,i32(meta[0])-1));let yy=u32(clamp(y,0,i32(meta[1])-1));let zz=u32(clamp(z,0,i32(meta[2])-1));
+ return idx(xx,yy,zz);
+}
 `;
  if(kind==='gaussian')return header+`
 @compute @workgroup_size(256)
@@ -726,6 +730,23 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  if(axis==2u){z0=select(c.z-1u,0u,c.z==0u);z1=min(d-1u,c.z+1u);}
  let a=src[idx(x0,y0,z0)];let b=src[i];let cc=src[idx(x1,y1,z1)];
  let blur=(a+2.0*b+cc)*0.25;let s=params[0];dst[i]=b*(1.0-s)+blur*s;
+}`;
+ if(kind==='median')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
+ if(c.x==0u||c.y==0u||c.z==0u||c.x+1u>=w||c.y+1u>=h||c.z+1u>=d){dst[i]=src[i];return;}
+ let plane=w*h;var vals:array<f32,7>;
+ vals[0]=src[i];vals[1]=src[i-1u];vals[2]=src[i+1u];vals[3]=src[i-w];vals[4]=src[i+w];vals[5]=src[i-plane];vals[6]=src[i+plane];
+ for(var q:u32=1u;q<7u;q=q+1u){
+  let v=vals[q];var j=i32(q)-1;
+  loop{
+   if(j<0||vals[u32(j)]<=v){break;}
+   vals[u32(j+1)]=vals[u32(j)];j=j-1;
+  }
+  vals[u32(j+1)]=v;
+ }
+ let s=params[0];dst[i]=src[i]*(1.0-s)+vals[3]*s;
 }`;
  if(kind==='sigmoid')return header+`
 @compute @workgroup_size(256)
@@ -781,6 +802,56 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let blur=sum/max(count,1.0);let detail=src[i]-blur;let range=max(1.0,params[1]-params[0]);let threshold=params[3]*range;
  dst[i]=select(src[i],src[i]+params[2]*detail,abs(detail)>=threshold);
 }`;
+ if(kind==='bilateral')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
+ let strength=params[2];let spatialSigma=params[3];let intensitySigma=max(0.000001,params[4]*max(1.0,params[1]-params[0]));
+ let radius=i32(meta[4]);let sp2=2.0*spatialSigma*spatialSigma;let int2=2.0*intensitySigma*intensitySigma;
+ var sum=0.0;var wsum=0.0;
+ for(var dz:i32=-radius;dz<=radius;dz=dz+1){
+  let zz=i32(c.z)+dz;if(zz<0||zz>=i32(meta[2])){continue;}
+  for(var dy:i32=-radius;dy<=radius;dy=dy+1){
+   let yy=i32(c.y)+dy;if(yy<0||yy>=i32(meta[1])){continue;}
+   for(var dx:i32=-radius;dx<=radius;dx=dx+1){
+    let xx=i32(c.x)+dx;if(xx<0||xx>=i32(meta[0])){continue;}
+    let j=idx(u32(xx),u32(yy),u32(zz));let dv=src[j]-center;
+    let sw=exp(-f32(dx*dx+dy*dy+dz*dz)/sp2);let iw=exp(-(dv*dv)/int2);let ww=sw*iw;
+    sum+=src[j]*ww;wsum+=ww;
+   }
+  }
+ }
+ let filtered=select(center,sum/wsum,wsum>0.0);dst[i]=center*(1.0-strength)+filtered*strength;
+}`;
+ if(kind==='nlm')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
+ let sr=i32(meta[4]);let pr=i32(meta[5]);let range=max(1.0,params[1]-params[0]);let hp=range*(0.018+0.11*params[2]);let h2=max(hp*hp,0.000001);
+ var weighted=center;var weightSum=1.0;
+ for(var dz:i32=-sr;dz<=sr;dz=dz+1){
+  let nz=i32(c.z)+dz;if(nz<0||nz>=i32(meta[2])){continue;}
+  for(var dy:i32=-sr;dy<=sr;dy=dy+1){
+   let ny=i32(c.y)+dy;if(ny<0||ny>=i32(meta[1])){continue;}
+   for(var dx:i32=-sr;dx<=sr;dx=dx+1){
+    let nx=i32(c.x)+dx;if(nx<0||nx>=i32(meta[0])||(dx==0&&dy==0&&dz==0)){continue;}
+    var dist2=0.0;var samples=1.0;
+    var dv=src[cidx(i32(c.x),i32(c.y),i32(c.z))]-src[cidx(nx,ny,nz)];dist2+=dv*dv;
+    for(var r:i32=1;r<=pr;r=r+1){
+     dv=src[cidx(i32(c.x)+r,i32(c.y),i32(c.z))]-src[cidx(nx+r,ny,nz)];dist2+=dv*dv;
+     dv=src[cidx(i32(c.x)-r,i32(c.y),i32(c.z))]-src[cidx(nx-r,ny,nz)];dist2+=dv*dv;
+     dv=src[cidx(i32(c.x),i32(c.y)+r,i32(c.z))]-src[cidx(nx,ny+r,nz)];dist2+=dv*dv;
+     dv=src[cidx(i32(c.x),i32(c.y)-r,i32(c.z))]-src[cidx(nx,ny-r,nz)];dist2+=dv*dv;
+     dv=src[cidx(i32(c.x),i32(c.y),i32(c.z)+r)]-src[cidx(nx,ny,nz+r)];dist2+=dv*dv;
+     dv=src[cidx(i32(c.x),i32(c.y),i32(c.z)-r)]-src[cidx(nx,ny,nz-r)];dist2+=dv*dv;
+     samples+=6.0;
+    }
+    dist2/=samples;let weight=exp(-dist2/h2);let j=idx(u32(nx),u32(ny),u32(nz));weighted+=weight*src[j];weightSum+=weight;
+   }
+  }
+ }
+ dst[i]=weighted/weightSum;
+}`;
  if(kind==='extract')return `
 @group(0) @binding(0) var<storage, read> src: array<f32>;
 @group(0) @binding(1) var<storage, read_write> dst: array<f32>;
@@ -828,12 +899,20 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target){
  for(const stage of stages){
   const p=stage.params;
   if(stage.key==='gaussian'){
-   for(let round=0;round<Math.max(1,Math.round(p.passes));round++)for(let axis=0;axis<3;axis++)await dispatch('gaussian',[axis],[p.strength]);
+   if(p.mode==='median'){
+    for(let round=0;round<Math.max(1,Math.round(p.passes));round++)await dispatch('median',[],[p.strength]);
+   }else{
+    for(let round=0;round<Math.max(1,Math.round(p.passes));round++)for(let axis=0;axis<3;axis++)await dispatch('gaussian',[axis],[p.strength]);
+   }
   }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[minv,maxv,p.strength,p.center]);
   else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[minv,maxv,p.strength,p.threshold]);
   else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[minv,maxv,p.strength]);
   else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[minv,maxv,p.weight]);
   else if(stage.key==='unsharp')await dispatch('unsharp',[Math.max(1,Math.round(p.radius))],[minv,maxv,p.amount,p.threshold]);
+  else if(stage.key==='bilateral'){
+   const radius=Math.max(1,Math.min(3,Math.ceil(p.spatialSigma*1.5)));
+   for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.intensitySigma]);
+  }else if(stage.key==='nlm')await dispatch('nlm',[Math.max(1,Math.round(p.searchRadius)),Math.max(0,Math.round(p.patchRadius))],[minv,maxv,p.strength]);
   else return null;
  }
  const targetCount=target.width*target.height*target.depth,targetBytes=targetCount*4;
