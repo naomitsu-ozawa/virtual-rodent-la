@@ -1928,10 +1928,31 @@ function appendSourceSliceFaces(positions,series,z,prev,curr,next){
   if(!at(next,x,y))quad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]);
  }
 }
+class Float32FaceBuilder{
+ constructor(initial=131072){this.data=new Float32Array(initial);this.length=0}
+ ensure(extra){
+  const need=this.length+extra;if(need<=this.data.length)return;
+  let size=this.data.length;while(size<need)size*=2;
+  const next=new Float32Array(size);next.set(this.data.subarray(0,this.length));this.data=next;
+ }
+ push(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r){
+  this.ensure(18);const x=this.data,q0=this.length;
+  x[q0]=a;x[q0+1]=b;x[q0+2]=c;x[q0+3]=d;x[q0+4]=e;x[q0+5]=f;
+  x[q0+6]=g;x[q0+7]=h;x[q0+8]=i;x[q0+9]=j;x[q0+10]=k;x[q0+11]=l;
+  x[q0+12]=m;x[q0+13]=n;x[q0+14]=o;x[q0+15]=p;x[q0+16]=q;x[q0+17]=r;
+  this.length=q0+18;
+ }
+ take(){
+  if(!this.length)return null;
+  const out=this.data.subarray(0,this.length);
+  const nextSize=Math.max(131072,Math.min(this.data.length,1048576));
+  this.data=new Float32Array(nextSize);this.length=0;return out;
+ }
+}
 function geometryFromSourcePositions(positions){
- if(!positions.length)return null;
+ if(!positions||!positions.length)return null;
  const geometry=new THREE.BufferGeometry();
- geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+ geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
  geometry.computeVertexNormals();geometry.computeBoundingSphere();
  return geometry;
 }
@@ -2022,16 +2043,15 @@ async function render3DSourceBacked(v){
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
- const chunkDepth=8,coords=makeSource3DCoordinates(series),positionsByKey=new Map(active.map(({key})=>[key,[]]));
+ const chunkDepth=8,coords=makeSource3DCoordinates(series),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()]));
  const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55}]));
  const flushSegment=(key,z)=>{
-  const positions=positionsByKey.get(key);if(!positions?.length)return;
-  const geometry=geometryFromSourcePositions(positions);
+  const builder=positionsByKey.get(key);if(!builder?.length)return;
+  const positions=builder.take(),geometry=geometryFromSourcePositions(positions);
   if(geometry){
    const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));
    mesh.name='segment_'+key+'_full_'+z;mesh.userData.segmentKey=key;mesh.userData.displayScale=coords.scale;group.add(mesh);
   }
-  positions.length=0;
  };
  try{
   const filtered=sourceFilterStages().length>0;
