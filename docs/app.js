@@ -424,7 +424,6 @@ function syncFilterControls(){
 }
 function scheduleFilterRebuild(delay=120){
  clearTimeout(filterRebuildTimer);mark3DStale();
- if(sourceVolume?.sourceBacked&&delay>0)return;
  const finalize3D=!(sourceVolume?.sourceBacked)||delay===0;
  filterRebuildTimer=setTimeout(()=>{filterRebuildTimer=null;void rebuildActiveFilters(finalize3D)},delay);
 }
@@ -511,7 +510,14 @@ resetFilterBtn.onclick=()=>{filterState.spikeHole=filterState.nlm=filterState.an
 filterRebuild3D.onclick=()=>void rebuildCurrent3D();
 installFilterReorder();
 
-for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>void renderPlane(p);installMprTouch(p)}
+const planeRenderTimers={axial:null,coronal:null,sagittal:null};
+function schedulePlaneRender(p){
+ clearTimeout(planeRenderTimers[p]);
+ const wait=volume?.sourceBacked&&sourceFilterStages().length?70:0;
+ if(wait)planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;void renderPlane(p)},wait);
+ else requestAnimationFrame(()=>void renderPlane(p));
+}
+for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);installMprTouch(p)}
 
 async function loadDemo(){
  let response=null,fromCache=false,cache=null;
@@ -1372,34 +1378,34 @@ function fitSourceTile(a,b,fixed,halo,startA,startB){
  while(bytes()>budget&&(ca>16||cb>16)){if(ca>=cb&&ca>16)ca=Math.max(16,Math.floor(ca/2));else if(cb>16)cb=Math.max(16,Math.floor(cb/2));else break}
  return[ca,cb];
 }
-async function getFilteredSourcePlaneValues(p,idx,series,keyPrefix='mpr'){
- const stages=sourceFilterStages();if(!stages.length)return null;
+async function getFilteredSourcePlaneValues(p,idx,series,keyPrefix='mpr',requestRevision=null){
+ const stages=sourceFilterStages();if(!stages.length)return null;const stale=()=>requestRevision!=null&&requestRevision!==planeRenderRevision[p];if(stale())throw new Error('__SUPERSEDED__');
  const signature=sourceFilterSignature(stages),cacheKey=signature+'|'+p+'|'+idx,hit=sourceFilterCacheGet(cacheKey);if(hit)return hit;
  const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=sourceFilterHalo(stages);
  let out;
  if(p==='axial'){
   out=new Float32Array(w*h);const [tx,ty]=fitSourceTile(w,h,1,halo,512,192);
   for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
-   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+   if(revision!==sourceFilterRuntime.revision||stale())throw new Error('__SUPERSEDED__');
    const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),tile=await processSourceRegion(series,{x,y,z:idx,width:tw,height:th,depth:1},stages,keyPrefix+':axial',revision);
    for(let yy=0;yy<th;yy++)out.set(tile.subarray(yy*tw,(yy+1)*tw),(y+yy)*w+x);
   }
  }else if(p==='coronal'){
   out=new Float32Array(w*d);const [tx,tz]=fitSourceTile(w,d,1,halo,512,32);
   for(let z=0;z<d;z+=tz)for(let x=0;x<w;x+=tx){
-   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+   if(revision!==sourceFilterRuntime.revision||stale())throw new Error('__SUPERSEDED__');
    const tw=Math.min(tx,w-x),td=Math.min(tz,d-z),tile=await processSourceRegion(series,{x,y:idx,z,width:tw,height:1,depth:td},stages,keyPrefix+':coronal',revision);
    for(let zz=0;zz<td;zz++)out.set(tile.subarray(zz*tw,(zz+1)*tw),(d-1-(z+zz))*w+x);
   }
  }else{
   out=new Float32Array(h*d);const [ty,tz]=fitSourceTile(h,d,1,halo,512,32);
   for(let z=0;z<d;z+=tz)for(let y=0;y<h;y+=ty){
-   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+   if(revision!==sourceFilterRuntime.revision||stale())throw new Error('__SUPERSEDED__');
    const th=Math.min(ty,h-y),td=Math.min(tz,d-z),tile=await processSourceRegion(series,{x:idx,y,z,width:1,height:th,depth:td},stages,keyPrefix+':sagittal',revision);
    for(let zz=0;zz<td;zz++)for(let yy=0;yy<th;yy++)out[(d-1-(z+zz))*h+y+yy]=tile[zz*th+yy];
   }
  }
- if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');sourceFilterCacheSet(cacheKey,out);return out;
+ if(revision!==sourceFilterRuntime.revision||stale())throw new Error('__SUPERSEDED__');sourceFilterCacheSet(cacheKey,out);return out;
 }
 async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d-block'){
  const stages=sourceFilterStages();if(!stages.length)return null;
@@ -1985,7 +1991,7 @@ async function renderPlaneSourceBacked(p){
  const c=planes[p],idx=+c.slider.value,series=volume.series,revision=++planeRenderRevision[p];c.label.textContent=idx+1;
  try{
   if(sourceFilterStages().length){
-   const values=await getFilteredSourcePlaneValues(p,idx,series,'mpr:'+p);
+   const values=await getFilteredSourcePlaneValues(p,idx,series,'mpr:'+p,revision);
    if(revision!==planeRenderRevision[p])return;
    const dims=p==='axial'?[series.columns,series.rows]:p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length];
    paintSourcePlane(c,dims,values);return;
@@ -2017,7 +2023,7 @@ async function renderPlaneSourceBacked(p){
 
 function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 
-function installMprTouch(p){const c=planes[p];let id=null,startX=0,start=0;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;start=+c.slider.value;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+(e.clientX-startX)/sens);c.slider.value=Math.max(0,Math.min(max,next));void renderPlane(p)};const end=e=>{if(id!==e.pointerId)return;if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));void renderPlane(p)},{passive:false})}
+function installMprTouch(p){const c=planes[p];let id=null,startX=0,start=0;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;start=+c.slider.value;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+(e.clientX-startX)/sens);c.slider.value=Math.max(0,Math.min(max,next));schedulePlaneRender(p)};const end=e=>{if(id!==e.pointerId)return;if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));schedulePlaneRender(p)},{passive:false})}
 
 function request3DRender(){
  if(sceneState)sceneState.needsRender=true;
@@ -2431,13 +2437,7 @@ async function render3DSourceBacked(v){
  }
 }
 
-function surfaceSamplingStep(v){
- const total=v.columns*v.rows*v.slices;
-
- if(total<=12000000)return 1;
- if(total<=40000000)return 2;
- return Math.max(2,Math.ceil(Math.cbrt(total/2500000)));
-}
+function surfaceSamplingStep(){return 1}
 async function render3DMemoryGpu(v){
  const device=await ensureGpuFilterDevice();if(!device)return false;
  const revision=++sourceRenderRevision,previous=sceneState.obj,group=new THREE.Group();
