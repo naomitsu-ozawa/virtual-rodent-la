@@ -251,3 +251,5 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .view-slot-main .view-main-button{display:none}.view-card.is-view-dragging{outline:2px solid #71b8d6;outline-offset:-2px;opacity:.82}.view-card.is-view-drop-target{outline:2px dashed #9bd7ee;outline-offset:-4px}
 @media(max-width:900px){.view-slot-main{min-height:420px}.view-slot-main>.viewport-card{min-height:420px}.view-slot-sub{min-height:180px}}
 @media(max-width:640px){.view-slot-main{width:calc(100% - 52px);margin-inline:auto;min-height:56dvh}.view-slot-main>.viewport-card{min-height:56dvh}.view-slot-sub{width:calc(100% - 52px);margin-inline:auto;min-height:240px}.view-main-button{font-size:9px;padding:3px 6px}}
+
+.view-toolbar{right:auto;width:max-content;max-width:calc(100% - 20px)}
