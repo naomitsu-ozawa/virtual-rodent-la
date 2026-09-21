@@ -2446,16 +2446,22 @@ function sourceComponentSliceState(records,w,h,root,uf){
 }
 async function showSourceAnalysisHighlight(v,result,key){
  clearAnalysisHighlight();if(!sceneState?.obj)return;
- const series=v.series,w=v.columns,h=v.rows,d=v.slices,coords=makeSource3DCoordinates(series),builder=new Float32FaceBuilder(),faceLimit=180000,floatLimit=faceLimit*18;
+ const series=v.series,w=v.columns,h=v.rows,d=v.slices,coords=makeSource3DCoordinates(series),group=new THREE.Group(),builder=new Float32FaceBuilder(),floatLimit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
+ const flush=z=>{
+  const positions=builder.take();if(!positions)return;
+  const geometry=geometryFromSourcePositions(positions),mesh=new THREE.Mesh(geometry,createAnalysisMaterial());
+  mesh.name='analysis_'+key+'_'+z;mesh.renderOrder=20;group.add(mesh);
+ };
  let prev=null,curr=sourceComponentSliceState(result.sliceRuns[0],w,h,result.root,result.uf),next=d>1?sourceComponentSliceState(result.sliceRuns[1],w,h,result.root,result.uf):null;
- for(let z=0;z<d&&builder.length<floatLimit;z++){
+ for(let z=0;z<d;z++){
   appendSourceSliceFacesFast(builder,series,z,prev,curr,next,coords);
+  if(builder.length>=floatLimit)flush(z);
   prev=curr;curr=next;next=z+2<d?sourceComponentSliceState(result.sliceRuns[z+2],w,h,result.root,result.uf):null;
   if((z&31)===0)await frameYield();
  }
- const positions=builder.take();if(!positions)return;
- const geometry=geometryFromSourcePositions(positions),material=new THREE.MeshStandardMaterial({color:0x00d8ff,emissive:0x0088aa,emissiveIntensity:.75,transparent:true,opacity:.92,roughness:.35,metalness:0,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:true});
- const mesh=new THREE.Mesh(geometry,material);mesh.name='analysis_'+key;mesh.renderOrder=20;sceneState.analysisMesh=mesh;sceneState.obj.add(mesh);request3DRender();
+ flush(d-1);
+ if(!group.children.length)return;
+ sceneState.analysisMesh=group;sceneState.obj.add(group);request3DRender();
 }
 async function analyzeVolumeAtPointer(event,canvas,camera){
  if(!volume||!sceneState?.obj)return;
@@ -2503,77 +2509,50 @@ async function connectedComponentVolume(v,seg,x0,y0,z0,mask=getProcessedSegmentM
  return{voxels:count,mm3:count*v.spacing[0]*v.spacing[1]*v.spacing[2],mask:visited};
 }
 
+function createAnalysisMaterial(){
+ return new THREE.MeshStandardMaterial({
+  color:0x00d8ff,emissive:0x0088aa,emissiveIntensity:.75,transparent:true,opacity:.92,
+  roughness:.35,metalness:0,side:THREE.DoubleSide,depthWrite:false,
+  polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:true
+ });
+}
+function appendDecodedMaskSliceFaces(builder,v,mask,z,coords){
+ const w=v.columns,h=v.rows,plane=w*h,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1],base=z*plane;
+ const inside=(x,y,zz)=>x>=0&&y>=0&&zz>=0&&x<w&&y<h&&zz<v.slices&&mask[zz*plane+y*w+x]===1;
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+  const i=base+y*w+x;if(!mask[i])continue;
+  const x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1];
+  if(!inside(x-1,y,z))builder.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
+  if(!inside(x+1,y,z))builder.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
+  if(!inside(x,y-1,z))builder.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
+  if(!inside(x,y+1,z))builder.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
+  if(!inside(x,y,z-1))builder.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
+  if(!inside(x,y,z+1))builder.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
+ }
+}
 function clearAnalysisHighlight(){
  if(!sceneState?.analysisMesh)return;
- const mesh=sceneState.analysisMesh;
- if(mesh.parent)mesh.parent.remove(mesh);
- mesh.geometry?.dispose?.();
- if(Array.isArray(mesh.material))mesh.material.forEach(m=>m.dispose?.());else mesh.material?.dispose?.();
- sceneState.analysisMesh=null;request3DRender();
+ const highlight=sceneState.analysisMesh;
+ if(highlight.parent)highlight.parent.remove(highlight);
+ dispose(highlight);sceneState.analysisMesh=null;request3DRender();
 }
 function showAnalysisHighlight(v,mask,key){
- clearAnalysisHighlight();
- if(!sceneState?.obj||!mask)return;
- const mesh=buildMaskSurface(v,mask,key);
- if(!mesh)return;
- sceneState.analysisMesh=mesh;
- sceneState.obj.add(mesh);request3DRender();
+ clearAnalysisHighlight();if(!sceneState?.obj||!mask)return;
+ const group=buildMaskSurface(v,mask,key);if(!group)return;
+ sceneState.analysisMesh=group;sceneState.obj.add(group);request3DRender();
 }
 function buildMaskSurface(v,mask,key){
- const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing;
- const positions=[],indices=[],vertexMap=new Map();
- const px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
- let count=0;for(let i=0;i<mask.length;i++)if(mask[i])count++;
- const step=Math.max(1,Math.ceil(Math.cbrt(Math.max(1,count)/180000)));
- const inside=(x,y,z)=>{
-  if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return false;
-  return mask[z*h*w+y*w+x]===1;
+ const coords=makeVolume3DCoordinates(v),group=new THREE.Group(),builder=new Float32FaceBuilder(),floatLimit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
+ const flush=z=>{
+  const positions=builder.take();if(!positions)return;
+  const geometry=geometryFromSourcePositions(positions),mesh=new THREE.Mesh(geometry,createAnalysisMaterial());
+  mesh.name='analysis_'+key+'_'+z;mesh.renderOrder=20;group.add(mesh);
  };
- const vertex=(gx,gy,gz)=>{
-  const k=gx+','+gy+','+gz;
-  let id=vertexMap.get(k);if(id!==undefined)return id;
-  id=positions.length/3;vertexMap.set(k,id);
-  positions.push((gx*sx-px/2)*scale,-(gy*sy-py/2)*scale,(gz*sz-pz/2)*scale);
-  return id;
- };
- const face=(a,b,c,dv)=>{
-  const ia=vertex(...a),ib=vertex(...b),ic=vertex(...c),id=vertex(...dv);
-  indices.push(ia,ib,ic,ia,ic,id);
- };
- const maxFaces=180000;let faces=0;
- outer:for(let z=0;z<d;z+=step)for(let y=0;y<h;y+=step)for(let x=0;x<w;x+=step){
-  if(!inside(x,y,z))continue;
-  const x1=Math.min(w,x+step),y1=Math.min(h,y+step),z1=Math.min(d,z+step);
-  if(!inside(x-step,y,z)){face([x,y,z],[x,y,z1],[x,y1,z1],[x,y1,z]);if(++faces>=maxFaces)break outer}
-  if(!inside(x+step,y,z)){face([x1,y,z],[x1,y1,z],[x1,y1,z1],[x1,y,z1]);if(++faces>=maxFaces)break outer}
-  if(!inside(x,y-step,z)){face([x,y,z],[x1,y,z],[x1,y,z1],[x,y,z1]);if(++faces>=maxFaces)break outer}
-  if(!inside(x,y+step,z)){face([x,y1,z],[x,y1,z1],[x1,y1,z1],[x1,y1,z]);if(++faces>=maxFaces)break outer}
-  if(!inside(x,y,z-step)){face([x,y,z],[x,y1,z],[x1,y1,z],[x1,y,z]);if(++faces>=maxFaces)break outer}
-  if(!inside(x,y,z+step)){face([x,y,z1],[x1,y,z1],[x1,y1,z1],[x,y1,z1]);if(++faces>=maxFaces)break outer}
+ for(let z=0;z<v.slices;z++){
+  appendDecodedMaskSliceFaces(builder,v,mask,z,coords);
+  if(builder.length>=floatLimit)flush(z);
  }
- if(!indices.length)return null;
- const geometry=new THREE.BufferGeometry();
- geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
- geometry.setIndex(indices);geometry.computeVertexNormals();geometry.computeBoundingSphere();
- if(surfaceSmoothEnabled.checked)taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
- const material=new THREE.MeshStandardMaterial({
-  color:0x00d8ff,
-  emissive:0x0088aa,
-  emissiveIntensity:.75,
-  transparent:true,
-  opacity:.92,
-  roughness:.35,
-  metalness:0,
-  side:THREE.DoubleSide,
-  depthWrite:false,
-  polygonOffset:true,
-  polygonOffsetFactor:-2,
-  polygonOffsetUnits:-2
- });
- const mesh=new THREE.Mesh(geometry,material);
- mesh.name='analysis_'+key;
- mesh.renderOrder=20;
- return mesh;
+ flush(v.slices-1);return group.children.length?group:null;
 }
 
 function appendSourceSliceFaces(positions,series,z,prev,curr,next){
