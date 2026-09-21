@@ -291,3 +291,26 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .analysis-region-info span{font-size:9px;color:#9fb2ba;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .analysis-region-delete{border-color:#694040;color:#efbcbc}
 @media(max-width:640px){.volume-analysis-panel{max-width:calc(100% - 20px)}.volume-analysis-result{min-width:min(310px,calc(100vw - 80px));max-width:calc(100vw - 80px)}.analysis-region-row{grid-template-columns:auto minmax(0,1fr) auto}.analysis-region-delete{grid-column:3}.analysis-region-button{padding:5px 6px}}
+
+.app-version-badge{
+  position:fixed;
+  right:10px;
+  bottom:8px;
+  z-index:1200;
+  padding:5px 8px;
+  border:1px solid rgba(110,130,140,.55);
+  border-radius:7px;
+  background:rgba(9,13,15,.82);
+  color:#aebdc4;
+  font-size:10px;
+  font-weight:700;
+  line-height:1;
+  font-variant-numeric:tabular-nums;
+  pointer-events:none;
+  user-select:none;
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+}
+@media(max-width:640px){
+  .app-version-badge{right:6px;bottom:6px;font-size:9px;padding:4px 6px}
+}
