@@ -571,8 +571,8 @@ const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 function schedulePlaneRender(p){
  clearTimeout(planeRenderTimers[p]);
  const wait=volume?.sourceBacked&&sourceFilterStages().length?70:0;
- if(wait)planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;void renderPlane(p)},wait);
- else requestAnimationFrame(()=>void renderPlane(p));
+ if(wait)planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;safeRenderPlane(p)},wait);
+ else requestAnimationFrame(()=>safeRenderPlane(p));
 }
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);installMprTouch(p)}
 
@@ -2002,7 +2002,8 @@ async function renderPlaneMemoryFiltered(p){
   const dims=p==='axial'?[sourceVolume.columns,sourceVolume.rows]:p==='coronal'?[sourceVolume.columns,sourceVolume.slices]:[sourceVolume.rows,sourceVolume.slices];
   paintSourcePlane(c,dims,values);
  }catch(e){
-  if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('GPU MPR preview failed.',e);memoryGpuPreviewActive=false;void rebuildActiveFilters(false)}
+  if(String(e.message||e)==='__SUPERSEDED__')return;
+  console.warn('GPU MPR preview failed.',e);memoryGpuPreviewActive=false;throw e;
  }
 }
 function setProcessingBusy(busyState,label='Processing',lockControls=true){
@@ -2171,6 +2172,9 @@ function updateSegmentOutputs(key){
 }
 function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);sourceRenderRevision++;mark3DStale()}
 const planeRenderRevision={axial:0,coronal:0,sagittal:0};
+function safeRenderPlane(p){
+ void renderPlane(p).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('MPR render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
+}
 function renderMainMprPreview(){
  if(!volume)return;
  const key=currentMainViewKey(),p=planes[key]?key:'axial';
@@ -2179,7 +2183,7 @@ function renderMainMprPreview(){
 function renderAll(){
  if(!volume)return;
  wcVal.value=formatCtValue(+wc.value,+wc.step);wwVal.value=formatCtValue(+ww.value,+ww.step);
- for(const p of Object.keys(planes))void renderPlane(p);
+ for(const p of Object.keys(planes))safeRenderPlane(p);
 }
 async function renderPlane(p){
  if(!volume)return;
