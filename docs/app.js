@@ -231,6 +231,11 @@ function set3DState(mode){
 function mark3DStale(){if(volume)set3DState('stale')}
 function mark3DCurrent(){set3DState('current')}
 function mark3DUpdating(){set3DState('updating')}
+function clear3DForSeriesChange(){
+ sourceRenderRevision++;set3DBusy(false);clearAnalysisHighlight();
+ if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}
+ request3DRender();mark3DStale();
+}
 async function rebuildCurrent3D(){
  if(!volume||threeDApplying)return;
  mark3DUpdating();
@@ -639,15 +644,15 @@ function groupSeries(slices){
 function renderSeries(series){list.replaceChildren();for(const s of series){const b=document.createElement('button');b.className='series-card';b.innerHTML='<div class="series-card-header"><div><span class="modality-badge">'+esc(s.modality)+'</span><strong>'+esc(s.description)+'</strong></div><strong class="memory-estimate">'+fmt(s.bytes)+'</strong></div><dl class="series-meta-grid"><div><dt>Slices</dt><dd>'+s.slices.length+'</dd></div><div><dt>Matrix</dt><dd>'+s.columns+' × '+s.rows+'</dd></div><div><dt>Voxel</dt><dd>'+s.spacingX.toFixed(4)+' × '+s.spacingY.toFixed(4)+' × '+s.spacingZ.toFixed(4)+' mm</dd></div><div><dt>Stored</dt><dd>'+s.bits+'-bit</dd></div></dl><p class="series-note">推定展開サイズ: '+fmt(s.decodedBytes)+' · '+(s.sourceBacked?'フル解像度・ストリーミング':(s.compact?'Int16':'Float32'))+'</p>';b.onclick=()=>selectSeries(s);b.dataset.id=s.id;list.appendChild(b)}}
 
 async function selectSeries(s){
- activeId=s.id;activeSeries=s;
+ activeId=s.id;activeSeries=s;clear3DForSeriesChange();
  for(const n of list.children)n.classList.toggle('is-selected',n.dataset.id===activeId);
  selected.innerHTML='<strong>'+esc(s.description)+'</strong><span>'+esc(s.modality)+' · '+s.slices.length+' slices · '+s.columns+'×'+s.rows+(s.sourceBacked?' · full resolution':'')+'</span><span class="ready-badge">CT volume loading…</span>';
  prog.classList.remove('is-hidden');busy(true);let phase='decode';
  try{
   invalidateSourceFilters();
   sourceVolume=s.sourceBacked?openSourceBackedVolume(s):await decode(s,(x,y)=>progress(x,y));
-  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);scheduleGpuPrewarm();phase='render';renderAll();void render3D(volume,true);
-  selected.querySelector('.ready-badge').textContent=s.sourceBacked?'CT source ready · full resolution':'CT volume ready';
+  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);scheduleGpuPrewarm();phase='render';renderAll();mark3DStale();
+  selected.querySelector('.ready-badge').textContent=s.sourceBacked?'CT source ready · 2D ready':'CT volume ready · 2D ready';
   footer.textContent=s.sourceBacked?'Full-resolution source-backed DICOM · no resampling':'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
  }catch(e){
   console.error(e);const label=phase==='decode'?'Decode failed':phase==='configure'?'Configure failed':'Render failed';
