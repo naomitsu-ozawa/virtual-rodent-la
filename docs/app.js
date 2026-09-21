@@ -1494,6 +1494,23 @@ async function applyGpuFiltersToMemoryVolume(v,stages,revision){
  if(revision!==filterRebuildRevision)throw new Error('__SUPERSEDED__');
  return out;
 }
+async function processMemoryMeshRegion(v,target,segments){
+ const halo=1,x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(v.columns,target.x+target.width+halo),y1=Math.min(v.rows,target.y+target.height+halo),z1=Math.min(v.slices,target.z+target.depth+halo);
+ const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=readMemoryRegion(v,box),local={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
+ const [sx,sy,sz]=v.spacing;
+ const result=await runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,[],local,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:v.columns,globalH:v.rows,globalD:v.slices,spacingX:sx,spacingY:sy,spacingZ:sz,mesh:true});
+ if(result?.mesh||result?.compact)return result;
+ throw new Error('__GPU_UNAVAILABLE__');
+}
+async function getMemoryGpuMeshBlock(v,zStart,coreDepth,segments){
+ const outDepth=Math.min(v.slices-zStart,coreDepth),tiles=[],[tx,ty]=fitSourceTile(v.columns,v.rows,outDepth,1,192,64);
+ for(let y=0;y<v.rows;y+=ty)for(let x=0;x<v.columns;x+=tx){
+  const tw=Math.min(tx,v.columns-x),th=Math.min(ty,v.rows-y),result=await processMemoryMeshRegion(v,{x,y,z:zStart,width:tw,height:th,depth:outDepth},segments);
+  if(result.mesh){if(result.vertices.length)tiles.push({mesh:true,vertices:result.vertices,counts:result.counts})}
+  else if(result.items.length)tiles.push({x,y,z:zStart,width:tw,height:th,depth:outDepth,items:result.items});
+ }
+ return{tiles,coreDepth:outDepth};
+}
 function enableProcessingControls(enabled){
  if(!enabled){filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;filterOrder=[]}
  gaussianBtn.disabled=!enabled;smoothingType.disabled=!enabled||!filterState.gaussian;spikeHoleBtn.disabled=!enabled;nlmBtn.disabled=!enabled;anisotropicBtn.disabled=!enabled;sigmoidBtn.disabled=!enabled;bilateralBtn.disabled=!enabled;tvBtn.disabled=!enabled;unsharpBtn.disabled=!enabled;filterAddSelect.disabled=!enabled;filterAddButton.disabled=!enabled;
@@ -2273,6 +2290,14 @@ async function decodeSourceSegmentMasks(meta,segments){
  }
  return states;
 }
+function makeVolume3DCoordinates(v){
+ const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
+ const xs=new Float64Array(w+1),ys=new Float64Array(h+1),zs=new Float64Array(d+1);
+ for(let x=0;x<=w;x++)xs[x]=(x*sx-px/2)*scale;
+ for(let y=0;y<=h;y++)ys[y]=-(y*sy-py/2)*scale;
+ for(let z=0;z<=d;z++)zs[z]=(z*sz-pz/2)*scale;
+ return{xs,ys,zs,scale};
+}
 function makeSource3DCoordinates(series){
  const w=series.columns,h=series.rows,d=series.slices.length,sx=series.spacingX,sy=series.spacingY,sz=series.spacingZ,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
  const xs=new Float64Array(w+1),ys=new Float64Array(h+1),zs=new Float64Array(d+1);
@@ -2413,37 +2438,60 @@ function surfaceSamplingStep(v){
  if(total<=40000000)return 2;
  return Math.max(2,Math.ceil(Math.cbrt(total/2500000)));
 }
+async function render3DMemoryGpu(v){
+ const device=await ensureGpuFilterDevice();if(!device)return false;
+ const revision=++sourceRenderRevision,previous=sceneState.obj,group=new THREE.Group();
+ if(previous){group.position.copy(previous.position);group.quaternion.copy(previous.quaternion);group.scale.copy(previous.scale)}
+ const active=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active&&segmentState[key].enabled).map(key=>({key,seg:segmentState[key]}));
+ threeLabel.textContent=(sceneState.backend||'3D')+' · GPU building…';set3DBusy(true,'3D構築中…');
+ if(!active.length){
+  if(revision!==sourceRenderRevision){dispose(group);return false}
+  if(previous){sceneState.scene.remove(previous);dispose(previous)}
+  sceneState.obj=group;sceneState.scene.add(group);set3DBusy(false);request3DRender();mark3DCurrent();return true;
+ }
+ const chunkDepth=8,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55}]));
+ const flushSegment=(key,z)=>{
+  const builder=positionsByKey.get(key);if(!builder?.length)return;
+  const geometry=geometryFromSourcePositions(builder.take());if(!geometry)return;
+  const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));mesh.name='segment_'+key+'_gpu_'+z;mesh.userData.segmentKey=key;mesh.userData.displayScale=coords.scale;group.add(mesh);
+ };
+ try{
+  const blockDepth=navigator.maxTouchPoints>0?2:4;
+  for(let z0=0;z0<v.slices;z0+=blockDepth){
+   if(revision!==sourceRenderRevision){dispose(group);return false}
+   const block=await getMemoryGpuMeshBlock(v,z0,blockDepth,active);
+   for(const tile of block.tiles){if(tile.mesh)appendGpuMeshTile(positionsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,{columns:v.columns,rows:v.rows},tile,active,coords)}
+   const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===v.slices-1;
+   if(flush){for(const {key} of active)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+v.slices;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+v.slices);await frameYield()}
+  }
+  if(revision!==sourceRenderRevision){dispose(group);return false}
+  if(previous){sceneState.scene.remove(previous);dispose(previous)}
+  sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution · GPU';footer.textContent='3D full resolution · '+gpuFilterRuntime.lastBackend;set3DBusy(false);request3DRender();mark3DCurrent();return true;
+ }catch(e){
+  dispose(group);set3DBusy(false);
+  if(String(e.message||e)!=='__GPU_UNAVAILABLE__')console.warn('GPU decoded-volume mesh failed; CPU fallback.',e);
+  return false;
+ }
+}
+function render3DMemoryCpu(v){
+ sourceRenderRevision++;
+ sceneState.analysisMesh=null;
+ let savedTransform=null;
+ if(sceneState.obj){savedTransform={position:sceneState.obj.position.clone(),quaternion:sceneState.obj.quaternion.clone(),scale:sceneState.obj.scale.clone()};sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj)}
+ const group=new THREE.Group();if(savedTransform){group.position.copy(savedTransform.position);group.quaternion.copy(savedTransform.quaternion);group.scale.copy(savedTransform.scale)}
+ const step=surfaceSamplingStep(v);
+ for(const key of ['lung','fat','soft','bone']){const seg=segmentState[key];if(!seg.active||!seg.enabled)continue;const mesh=buildSegmentSurface(v,seg,step,key);if(mesh)group.add(mesh)}
+ sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · CPU fallback · step '+step;request3DRender();mark3DCurrent();return true;
+}
 function render3D(v,force=false){
  if(!sceneState)return Promise.resolve(false);
  if(deferAutomatic3D&&!force){mark3DStale();return Promise.resolve(false)}
  if(v.sourceBacked)return render3DSourceBacked(v);
- sourceRenderRevision++;
- sceneState.analysisMesh=null;
- let savedTransform=null;
- if(sceneState.obj){
-  savedTransform={
-   position:sceneState.obj.position.clone(),
-   quaternion:sceneState.obj.quaternion.clone(),
-   scale:sceneState.obj.scale.clone()
-  };
-  sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj)
- }
- const group=new THREE.Group();
- if(savedTransform){
-  group.position.copy(savedTransform.position);
-  group.quaternion.copy(savedTransform.quaternion);
-  group.scale.copy(savedTransform.scale);
- }
- const total=v.columns*v.rows*v.slices;
- const step=surfaceSamplingStep(v);
- for(const key of ['lung','fat','soft','bone']){
-  const seg=segmentState[key];
-  if(!seg.active||!seg.enabled)continue;
-  const mesh=buildSegmentSurface(v,seg,step,key);
-  if(mesh)group.add(mesh);
- }
- sceneState.obj=group;sceneState.scene.add(group);
- threeLabel.textContent=(sceneState.backend||'3D')+' · surface mesh · step '+step;request3DRender();mark3DCurrent();return Promise.resolve(true);
+ return (async()=>{
+  const ok=await render3DMemoryGpu(v);
+  if(ok)return true;
+  return render3DMemoryCpu(v);
+ })();
 }
 function buildSegmentSurface(v,seg,step,key){
  const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing,mask=getProcessedSegmentMask(v,seg);
