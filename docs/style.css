@@ -253,3 +253,26 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 @media(max-width:640px){.view-slot-main{width:calc(100% - 52px);margin-inline:auto;min-height:56dvh}.view-slot-main>.viewport-card{min-height:56dvh}.view-slot-sub{width:calc(100% - 52px);margin-inline:auto;min-height:240px}.view-main-button{font-size:9px;padding:3px 6px}}
 
 .view-toolbar{right:auto;width:max-content;max-width:calc(100% - 20px)}
+
+.three-busy-cancel{
+  pointer-events:auto;
+  min-width:148px;
+  min-height:46px;
+  padding:10px 16px;
+  border:1px solid #a95a5a;
+  border-radius:10px;
+  background:rgba(78,24,24,.94);
+  color:#fff1f1;
+  font-size:13px;
+  font-weight:800;
+  cursor:pointer;
+  touch-action:manipulation;
+  box-shadow:0 6px 20px rgba(0,0,0,.28);
+}
+.three-busy-cancel:active{transform:translateY(1px)}
+.three-busy-cancel:disabled{opacity:.58;cursor:default}
+.filter-rebuild-3d.is-cancel{
+  background:#4a2020!important;
+  border-color:#a55a5a!important;
+  color:#fff0f0!important;
+}
