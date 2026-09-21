@@ -228,6 +228,11 @@ function set3DState(mode){
  filter3DState.classList.toggle('is-current',mode==='current');
  const key=mode==='stale'?'threeStale':mode==='updating'?'threeUpdating':'threeCurrent';filter3DState.dataset.i18n=key;filter3DState.textContent=tr(key);
  filterRebuild3D.disabled=!volume||mode!=='stale';
+ if(volumeAnalysisToggle)volumeAnalysisToggle.disabled=mode!=='current'||volume?.sourceBacked===true;
+ for(const key of SEGMENT_PRESET_ORDER){
+  const exportBtn=$('[data-seg-export="'+key+'"]');
+  if(exportBtn)exportBtn.disabled=mode!=='current'||volume?.sourceBacked===true||!segmentState[key].active;
+ }
 }
 function mark3DStale(){if(volume)set3DState('stale')}
 function mark3DCurrent(){set3DState('current')}
@@ -236,6 +241,25 @@ function clear3DForSeriesChange(){
  sourceRenderRevision++;current3DVolume=null;memoryGpuPreviewActive=false;clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
  if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}
  request3DRender();mark3DStale();
+}
+async function buildCpuFilteredVolumeFor3D(){
+ const previousDefer=deferAutomatic3D;deferAutomatic3D=true;memoryGpuPreviewActive=false;clearMemoryFilterPreviewCache();volume=sourceVolume;
+ let base=sourceVolume;
+ try{
+  for(const key of filterOrder){
+   if(!filterState[key])continue;
+   if(key==='spikeHole')await applySpikeHole(base);
+   else if(key==='nlm')await applyNlm3D(base);
+   else if(key==='anisotropic')await applyAnisotropicDiffusion(base);
+   else if(key==='gaussian'){if(smoothingType.value==='median')await applyMedian3D(base);else await applyGaussian3D(base)}
+   else if(key==='sigmoid')await applySigmoid(base);
+   else if(key==='bilateral')await applyBilateral3D(base);
+   else if(key==='tv')await applyTvDenoising3D(base);
+   else if(key==='unsharp')await applyUnsharpMask3D(base);
+   base=volume;
+  }
+  return base;
+ }finally{deferAutomatic3D=previousDefer}
 }
 async function rebuildCurrent3D(){
  if(!volume||threeDApplying)return;
@@ -252,8 +276,8 @@ async function rebuildCurrent3D(){
      buildVolume=cloneVolumeWithData(sourceVolume,data);
     }catch(e){
      if(String(e.message||e)==='__SUPERSEDED__'){mark3DStale();set3DBusy(false);return}
-     console.warn('Full GPU filter rebuild failed; using CPU filtered volume.',e);
-     memoryGpuPreviewActive=false;await rebuildActiveFilters(false);buildVolume=volume;
+     console.warn('Full GPU filter rebuild failed; using exact CPU filter stack.',e);
+     buildVolume=await buildCpuFilteredVolumeFor3D();
     }
    }
   }
