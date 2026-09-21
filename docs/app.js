@@ -1017,7 +1017,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
  const usage=GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST;
  let a=device.createBuffer({size:bytes,usage}),b=device.createBuffer({size:bytes,usage});device.queue.writeBuffer(a,0,data);
- const small=[];const encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
+ const small=[];let encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
  const dispatch=async(kind,extraU32=[],paramsF32=[])=>{
   const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
   const meta=new Uint32Array(8);meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=n;for(let i=0;i<extraU32.length&&i<4;i++)meta[4+i]=extraU32[i]>>>0;
@@ -1081,7 +1081,8 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    gpuFilterRuntime.lastBackend='WEBGPU FILTER+MESH';return{mesh:true,vertices,counts};
   }
   counters.destroy();
-  // Oversized worst-case output falls through to compact-face extraction using the already filtered GPU buffer.
+  encoder=device.createCommandEncoder({label:'VRL compact face fallback'});
+  // Oversized vertex output falls through to compact-face extraction using the already filtered GPU buffer.
  }
  const targetCount=target.width*target.height*target.depth,compactFaces=!!(segments?.length&&faceContext),targetBytes=targetCount*(compactFaces?8:4);
  const targetBuffer=device.createBuffer({size:Math.max(4,targetBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
