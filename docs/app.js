@@ -446,6 +446,20 @@ async function rebuildActiveFilters(finalize3D=true){
  let base=sourceVolume;
  deferAutomatic3D=true;
  try{
+  const stages=sourceFilterStages();
+  if(stages.length&&gpuStagesSupported(stages)){
+   setProcessingBusy(true,'WebGPU filters');
+   try{
+    const gpuData=await applyGpuFiltersToMemoryVolume(sourceVolume,stages,revision);
+    if(revision!==filterRebuildRevision)return;
+    volume=cloneVolumeWithData(sourceVolume,gpuData);renderAll();mark3DStale();
+    footer.textContent='Filters · WEBGPU COMPUTE · '+stages.length+' stage(s)';
+    return;
+   }catch(e){
+    if(String(e.message||e)==='__SUPERSEDED__')return;
+    console.warn('In-memory WebGPU filters unavailable; using CPU stack.',e);
+   }finally{setProcessingBusy(false)}
+  }
   for(const key of filterOrder){
    if(!filterState[key])continue;
    if(key==='spikeHole')await applySpikeHole(base);
@@ -1449,6 +1463,37 @@ function segmentMasksFromValues(data,segments){
  return states;
 }
 
+function readMemoryRegion(v,box){
+ const out=new Float32Array(box.width*box.height*box.depth),src=v.data,w=v.columns,h=v.rows;let q=0;
+ for(let z=0;z<box.depth;z++)for(let y=0;y<box.height;y++){
+  const off=((box.z+z)*h+(box.y+y))*w+box.x;
+  out.set(src.subarray(off,off+box.width),q);q+=box.width;
+ }
+ return out;
+}
+async function processMemoryRegion(v,target,stages){
+ const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(v.columns,target.x+target.width+halo),y1=Math.min(v.rows,target.y+target.height+halo),z1=Math.min(v.slices,target.z+target.depth+halo);
+ const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=readMemoryRegion(v,box),local={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
+ const result=await runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,local);
+ if(!(result instanceof Float32Array))throw new Error('__GPU_UNAVAILABLE__');
+ return result;
+}
+async function applyGpuFiltersToMemoryVolume(v,stages,revision){
+ const w=v.columns,h=v.rows,d=v.slices,out=new Float32Array(w*h*d),halo=sourceFilterHalo(stages),coreDepth=navigator.maxTouchPoints>0?2:4,[tx,ty]=fitSourceTile(w,h,coreDepth,halo,navigator.maxTouchPoints>0?256:384,navigator.maxTouchPoints>0?96:128);
+ for(let z=0;z<d;z+=coreDepth){
+  const td=Math.min(coreDepth,d-z);
+  for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
+   if(revision!==filterRebuildRevision)throw new Error('__SUPERSEDED__');
+   const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),tile=await processMemoryRegion(v,{x,y,z,width:tw,height:th,depth:td},stages);
+   for(let zz=0;zz<td;zz++)for(let yy=0;yy<th;yy++){
+    const src=(zz*th+yy)*tw,dst=((z+zz)*h+y+yy)*w+x;out.set(tile.subarray(src,src+tw),dst);
+   }
+  }
+  progress(Math.min(d,z+td),d);await frameYield();
+ }
+ if(revision!==filterRebuildRevision)throw new Error('__SUPERSEDED__');
+ return out;
+}
 function enableProcessingControls(enabled){
  if(!enabled){filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;filterOrder=[]}
  gaussianBtn.disabled=!enabled;smoothingType.disabled=!enabled||!filterState.gaussian;spikeHoleBtn.disabled=!enabled;nlmBtn.disabled=!enabled;anisotropicBtn.disabled=!enabled;sigmoidBtn.disabled=!enabled;bilateralBtn.disabled=!enabled;tvBtn.disabled=!enabled;unsharpBtn.disabled=!enabled;filterAddSelect.disabled=!enabled;filterAddButton.disabled=!enabled;
