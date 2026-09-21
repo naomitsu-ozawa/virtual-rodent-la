@@ -690,6 +690,18 @@ async function readSourceRow(meta,row){
  for(let x=0;x<meta.columns;x++){let raw;if(meta.bits===8){raw=bytes[x];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(x*2,little):view.getUint16(x*2,little);out[x]=raw*meta.slope+meta.intercept}
  return out;
 }
+async function readSourceColumn(meta,column){
+ const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
+ if(meta.pixelOffset==null){const full=await decodeSourceSlice(meta),out=new Float32Array(meta.rows);for(let y=0;y<meta.rows;y++)out[y]=full[y*meta.columns+column];return out}
+ const bytes=new Uint8Array(await meta.file.slice(meta.pixelOffset,meta.pixelOffset+meta.rows*meta.columns*bpp).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),out=new Float32Array(meta.rows);
+ for(let y=0;y<meta.rows;y++){
+  const off=(y*meta.columns+column)*bpp;let raw;
+  if(meta.bits===8){raw=bytes[off];if(meta.signed&&raw>127)raw-=256}
+  else raw=meta.signed?view.getInt16(off,little):view.getUint16(off,little);
+  out[y]=raw*meta.slope+meta.intercept;
+ }
+ return out;
+}
 async function decode(s,onProgress){
  const Ctor=s.compact?Int16Array:Float32Array,count=s.columns*s.rows*s.slices.length,bytesNeeded=count*Ctor.BYTES_PER_ELEMENT;
  let data;try{data=new Ctor(count)}catch(e){throw new Error('Volume memory allocation failed: '+fmt(bytesNeeded)+' ('+Ctor.name+')')}
@@ -2067,7 +2079,7 @@ async function renderPlaneSourceBacked(p){
    paintSourcePlane(c,dims,values);return;
   }
   if(p==='axial'){
-   const values=await decodeSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
+   const values=await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
    paintSourcePlane(c,[series.columns,series.rows],values);return;
   }
   if(p==='coronal'){
@@ -2082,9 +2094,9 @@ async function renderPlaneSourceBacked(p){
   }
   const values=new Float32Array(series.rows*series.slices.length);
   for(let z=0;z<series.slices.length;z++){
-   const slice=await decodeSourceSlice(series.slices[z]),base=(series.slices.length-1-z)*series.rows;
-   for(let y=0;y<series.rows;y++)values[base+y]=slice[y*series.columns+idx];
-   if((z&7)===0)await frameYield();
+   const column=await readSourceColumn(series.slices[z],idx),base=(series.slices.length-1-z)*series.rows;
+   values.set(column,base);
+   if((z&15)===0)await frameYield();
    if(revision!==planeRenderRevision[p])return;
   }
   paintSourcePlane(c,[series.rows,series.slices.length],values);
