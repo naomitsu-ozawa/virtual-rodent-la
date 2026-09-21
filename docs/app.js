@@ -3,7 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.w
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.21-1849';const APP_BUILD='02';
+const APP_VERSION='2026.09.21-1849';const APP_BUILD='03';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -2522,7 +2522,7 @@ function createAnalysisMaterial(color=0x00d8ff){
  return new THREE.MeshStandardMaterial({
   color,emissive:color,emissiveIntensity:.55,transparent:true,opacity:.92,
   roughness:.35,metalness:0,side:THREE.DoubleSide,depthWrite:false,
-  polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:true
+  polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:!surfaceSmoothingActive()
  });
 }
 function appendDecodedMaskSliceFaces(builder,v,mask,z,coords){
@@ -2753,11 +2753,33 @@ class Float32FaceBuilder{
   this.data=new Float32Array(nextSize);this.length=0;return out;
  }
 }
+function surfaceSmoothingActive(){
+ return !!surfaceSmoothEnabled?.checked&&Number(surfaceSmoothStrength?.value)>0;
+}
+function indexedGeometryFromTrianglePositions(positions){
+ const unique=[],indices=[],map=new Map();
+ for(let i=0;i<positions.length;i+=3){
+  const x=positions[i],y=positions[i+1],z=positions[i+2],key=x+'|'+y+'|'+z;
+  let id=map.get(key);
+  if(id===undefined){id=unique.length/3;map.set(key,id);unique.push(x,y,z)}
+  indices.push(id);
+ }
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.Float32BufferAttribute(unique,3));
+ geometry.setIndex(indices);
+ return geometry;
+}
 function geometryFromSourcePositions(positions){
  if(!positions||!positions.length)return null;
- const geometry=new THREE.BufferGeometry();
- geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
- geometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,0,0),3);
+ let geometry;
+ if(surfaceSmoothingActive()){
+  geometry=indexedGeometryFromTrianglePositions(positions);
+  taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
+ }else{
+  geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  geometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,0,0),3);
+ }
  return geometry;
 }
 function thresholdSourceMask(data,seg){
@@ -2895,7 +2917,7 @@ async function render3DSourceBacked(v){
   sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
  const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeSource3DCoordinates(series),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()]));
- const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:true}]));
+ const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}]));
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
   const positions=builder.take(),geometry=geometryFromSourcePositions(positions);
@@ -2951,7 +2973,7 @@ async function render3DMemoryGpu(v){
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
- const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:true}]));
+ const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}]));
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
   const geometry=geometryFromSourcePositions(builder.take());if(!geometry)return;
@@ -3037,7 +3059,7 @@ function buildSegmentSurface(v,seg,step,key){
   roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,
   depthWrite:seg.opacity>.55
  });
- if(surfaceSmoothEnabled.checked){
+ if(surfaceSmoothingActive()){
   taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
  }
  const mesh=new THREE.Mesh(geometry,material);mesh.name='segment_'+key;mesh.userData.segmentKey=key;mesh.userData.displayScale=scale;return mesh;
