@@ -411,8 +411,10 @@ async function rebuildActiveFilters(finalize3D=true){
  if(sourceVolume.sourceBacked){
   invalidateSourceFilters();volume=sourceVolume;setProcessingBusy(true,'Full-resolution filters');
   try{
-   const tasks=Object.keys(planes).map(p=>renderPlane(p));await Promise.all(tasks);
-   if(revision!==filterRebuildRevision)return;
+   for(const p of Object.keys(planes)){
+    await renderPlane(p);
+    if(revision!==filterRebuildRevision)return;
+   }
    if(finalize3D)render3D(volume);
    footer.textContent=filterOrder.length?'Full-resolution filters · chunked · '+filterOrder.length+' stage(s)':tr('original');
   }finally{setProcessingBusy(false);syncFilterControls()}
