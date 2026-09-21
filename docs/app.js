@@ -2255,7 +2255,7 @@ function geometryFromSourcePositions(positions){
  if(!positions||!positions.length)return null;
  const geometry=new THREE.BufferGeometry();
  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
- geometry.computeVertexNormals();geometry.computeBoundingSphere();
+ geometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,0,0),3);
  return geometry;
 }
 function thresholdSourceMask(data,seg){
@@ -2393,7 +2393,7 @@ async function render3DSourceBacked(v){
   sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
  const chunkDepth=8,coords=makeSource3DCoordinates(series),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()]));
- const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55}]));
+ const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:true}]));
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
   const positions=builder.take(),geometry=geometryFromSourcePositions(positions);
@@ -2449,7 +2449,7 @@ async function render3DMemoryGpu(v){
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
- const chunkDepth=8,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55}]));
+ const chunkDepth=8,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:true}]));
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
   const geometry=geometryFromSourcePositions(builder.take());if(!geometry)return;
