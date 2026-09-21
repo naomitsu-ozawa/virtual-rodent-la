@@ -1310,7 +1310,7 @@ function updateSegmentOutputs(key){
  $('[data-seg-max-out="'+key+'"]').value=formatCtValue(segmentState[key].max,+maxEl?.step||1);
  $('[data-seg-opacity-out="'+key+'"]').value=segmentState[key].opacity.toFixed(2);
 }
-function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);mark3DStale()}
+function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);sourceRenderRevision++;mark3DStale()}
 const planeRenderRevision={axial:0,coronal:0,sagittal:0};
 function renderAll(){
  if(!volume)return;
