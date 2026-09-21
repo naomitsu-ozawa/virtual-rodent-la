@@ -646,7 +646,7 @@ async function selectSeries(s){
  try{
   invalidateSourceFilters();
   sourceVolume=s.sourceBacked?openSourceBackedVolume(s):await decode(s,(x,y)=>progress(x,y));
-  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);phase='render';renderAll();void render3D(volume,true);
+  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);scheduleGpuPrewarm();phase='render';renderAll();void render3D(volume,true);
   selected.querySelector('.ready-badge').textContent=s.sourceBacked?'CT source ready · full resolution':'CT volume ready';
   footer.textContent=s.sourceBacked?'Full-resolution source-backed DICOM · no resampling':'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
  }catch(e){
@@ -714,7 +714,7 @@ async function ensureGpuFilterDevice(){
    if(!adapter)throw new Error('WebGPU adapter unavailable');
    const device=await adapter.requestDevice();
    gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;
-   device.lost.then(()=>{gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear()});
+   device.lost.then(()=>{gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();gpuPrewarmIndex=0;gpuPrewarmScheduled=false});
    return device;
   }catch(e){
    gpuFilterRuntime.disabled=true;
@@ -1026,6 +1026,21 @@ async function gpuFilterPipeline(kind){
  const desc={layout:'auto',compute:{module,entryPoint:'main'},label:'VRL '+kind};
  const pipeline=device.createComputePipelineAsync?await device.createComputePipelineAsync(desc):device.createComputePipeline(desc);
  gpuFilterRuntime.pipelines.set(kind,pipeline);return pipeline;
+}
+const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite'];
+let gpuPrewarmScheduled=false,gpuPrewarmIndex=0;
+function scheduleGpuPrewarm(){
+ if(gpuPrewarmScheduled||gpuFilterRuntime.disabled||gpuPrewarmIndex>=GPU_PREWARM_KINDS.length)return;
+ gpuPrewarmScheduled=true;
+ const run=async()=>{
+  gpuPrewarmScheduled=false;
+  if(gpuFilterRuntime.disabled||gpuPrewarmIndex>=GPU_PREWARM_KINDS.length)return;
+  const kind=GPU_PREWARM_KINDS[gpuPrewarmIndex++];
+  try{await gpuFilterPipeline(kind)}catch(e){console.warn('GPU pipeline prewarm skipped:',kind,e)}
+  if(gpuPrewarmIndex<GPU_PREWARM_KINDS.length)scheduleGpuPrewarm();
+ };
+ if('requestIdleCallback' in window)requestIdleCallback(()=>void run(),{timeout:2500});
+ else setTimeout(()=>void run(),180);
 }
 function gpuSmallBuffer(device,data){
  const buffer=device.createBuffer({size:Math.max(32,Math.ceil(data.byteLength/4)*4),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
