@@ -228,10 +228,11 @@ function set3DState(mode){
  filter3DState.classList.toggle('is-current',mode==='current');
  const key=mode==='stale'?'threeStale':mode==='updating'?'threeUpdating':'threeCurrent';filter3DState.dataset.i18n=key;filter3DState.textContent=tr(key);
  filterRebuild3D.disabled=!volume||mode!=='stale';
- if(volumeAnalysisToggle)volumeAnalysisToggle.disabled=mode!=='current'||volume?.sourceBacked===true;
+ const hasCurrent3D=mode==='current'&&!!sceneState?.obj;
+ if(volumeAnalysisToggle)volumeAnalysisToggle.disabled=!hasCurrent3D;
  for(const key of SEGMENT_PRESET_ORDER){
   const exportBtn=$('[data-seg-export="'+key+'"]');
-  if(exportBtn)exportBtn.disabled=mode!=='current'||volume?.sourceBacked===true||!segmentState[key].active;
+  if(exportBtn)exportBtn.disabled=!hasCurrent3D||!segmentState[key].active||!segmentState[key].enabled;
  }
 }
 function mark3DStale(){if(volume)set3DState('stale')}
@@ -304,7 +305,7 @@ function addSegmentPreset(key){
  const enabled=$('[data-seg-enabled="'+key+'"]'),color=$('[data-seg-color="'+key+'"]'),min=$('[data-seg-min="'+key+'"]'),max=$('[data-seg-max="'+key+'"]'),opacity=$('[data-seg-opacity="'+key+'"]'),exportBtn=$('[data-seg-export="'+key+'"]'),removeBtn=$('[data-seg-remove="'+key+'"]'),opening=$('[data-seg-opening="'+key+'"]'),closing=$('[data-seg-closing="'+key+'"]'),minComponent=$('[data-seg-min-component="'+key+'"]'),holeFill=$('[data-seg-hole-fill="'+key+'"]');
  enabled.checked=true;enabled.disabled=false;color.disabled=false;min.disabled=false;max.disabled=false;opacity.disabled=false;
  const sourceMode=volume?.sourceBacked===true;opening.disabled=sourceMode;closing.disabled=sourceMode;minComponent.disabled=sourceMode;holeFill.disabled=sourceMode;
- if(exportBtn)exportBtn.disabled=sourceMode;if(removeBtn)removeBtn.disabled=false;
+ if(exportBtn)exportBtn.disabled=true;if(removeBtn)removeBtn.disabled=false;
  renderSegmentPresets();renderAll();scheduleSegment3D();
 }
 function removeSegmentPreset(key){
@@ -2329,6 +2330,11 @@ async function analyzeVolumeAtPointer(event,canvas,camera){
   const hit=raycaster.intersectObjects(sceneState.obj.children,true).find(h=>h.object?.userData?.segmentKey);
   if(!hit){volumeAnalysisResult.textContent=tr('volumeHint');return}
   const key=hit.object.userData.segmentKey,seg=segmentState[key],scale=hit.object.userData.displayScale;
+  if(analysisVolume.sourceBacked){
+   const mm3=currentSegmentVolumeMm3(key),labels={bone:currentLanguage==='ja'?'骨':'Bone',soft:currentLanguage==='ja'?'軟部組織':'Soft tissue',fat:currentLanguage==='ja'?'脂肪':'Fat',lung:currentLanguage==='ja'?'肺':'Lung'};
+   volumeAnalysisResult.innerHTML='<strong>'+labels[key]+'</strong><span>'+mm3.toFixed(2)+' mm³</span><span>'+(currentLanguage==='ja'?'セグメント全体 · ':'Whole segment · ')+mm3.toFixed(2)+' µL</span>';
+   clearAnalysisHighlight();return;
+  }
   const local=hit.object.worldToLocal(hit.point.clone());
   const [vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices;
   const px=w*vx,py=h*vy,pz=d*vz;
@@ -2766,32 +2772,51 @@ function buildSegmentSurface(v,seg,step,key){
 }
 
 
-function exportSegmentStl(key){
- if(!volume)return;
- const exportVolume=current3DVolume||volume,seg=segmentState[key];
- const total=exportVolume.columns*exportVolume.rows*exportVolume.slices;
- const step=surfaceSamplingStep(exportVolume);
- const mesh=buildSegmentSurface(exportVolume,seg,step,key);
- if(!mesh){footer.textContent='STL: segment is empty';return}
- try{
-  const geometry=mesh.geometry.clone();
-  const [sx,sy,sz]=exportVolume.spacing;
-  const physicalMax=Math.max(exportVolume.columns*sx,exportVolume.rows*sy,exportVolume.slices*sz,1);
-  const inverseDisplayScale=physicalMax/3.3;
-  const posAttr=geometry.getAttribute('position');
-  for(let i=0;i<posAttr.count;i++){
-   posAttr.setXYZ(i,posAttr.getX(i)*inverseDisplayScale,posAttr.getY(i)*inverseDisplayScale,posAttr.getZ(i)*inverseDisplayScale);
-  }
-  posAttr.needsUpdate=true;geometry.computeVertexNormals();
-  const blob=geometryToBinaryStl(geometry,key);
-  const names={bone:'bone',soft:'soft-tissue',fat:'fat',lung:'lung'};
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='virtual-rodent-'+(names[key]||key)+'.stl';
-  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  footer.textContent=(currentLanguage==='ja'?'STLを書き出しました: ':'STL exported: ')+a.download;
-  geometry.dispose();
- }finally{
-  mesh.geometry.dispose();mesh.material.dispose();
+function eachGeometryTriangle(geometry,callback){
+ const pos=geometry?.getAttribute?.('position');if(!pos)return;
+ const index=geometry.index;
+ const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3();
+ const triCount=index?Math.floor(index.count/3):Math.floor(pos.count/3);
+ for(let t=0;t<triCount;t++){
+  const ia=index?index.getX(t*3):t*3,ib=index?index.getX(t*3+1):t*3+1,ic=index?index.getX(t*3+2):t*3+2;
+  a.fromBufferAttribute(pos,ia);b.fromBufferAttribute(pos,ib);c.fromBufferAttribute(pos,ic);callback(a,b,c);
  }
+}
+function currentSegmentMeshes(key){
+ const meshes=[];sceneState?.obj?.traverse?.(o=>{if(o.isMesh&&o.userData?.segmentKey===key&&o.geometry)meshes.push(o)});return meshes;
+}
+function currentSegmentDisplayScale(key){
+ const mesh=currentSegmentMeshes(key)[0];return Number(mesh?.userData?.displayScale)||1;
+}
+function currentSegmentVolumeMm3(key){
+ const meshes=currentSegmentMeshes(key);if(!meshes.length)return 0;
+ const scale=currentSegmentDisplayScale(key),inv3=1/Math.max(scale*scale*scale,1e-18);let signed=0;
+ for(const mesh of meshes)eachGeometryTriangle(mesh.geometry,(a,b,c)=>{signed+=a.dot(new THREE.Vector3().crossVectors(b,c))/6});
+ return Math.abs(signed)*inv3;
+}
+function currentSegmentTriangleCount(key){
+ let count=0;for(const mesh of currentSegmentMeshes(key)){const pos=mesh.geometry.getAttribute('position');count+=mesh.geometry.index?Math.floor(mesh.geometry.index.count/3):Math.floor((pos?.count||0)/3)}return count;
+}
+function currentSegmentToBinaryStl(key){
+ const meshes=currentSegmentMeshes(key);if(!meshes.length)return null;
+ const triCount=currentSegmentTriangleCount(key),buffer=new ArrayBuffer(84+triCount*50),view=new DataView(buffer),header=new TextEncoder().encode('Virtual Rodent Lab '+key);
+ new Uint8Array(buffer,0,Math.min(80,header.length)).set(header.slice(0,80));view.setUint32(80,triCount,true);
+ const scale=currentSegmentDisplayScale(key),inverseScale=1/Math.max(scale,1e-12),ab=new THREE.Vector3(),ac=new THREE.Vector3(),n=new THREE.Vector3();let off=84;
+ for(const mesh of meshes)eachGeometryTriangle(mesh.geometry,(aa,bb,cc)=>{
+  const a=aa.clone().multiplyScalar(inverseScale),b=bb.clone().multiplyScalar(inverseScale),c=cc.clone().multiplyScalar(inverseScale);
+  ab.subVectors(b,a);ac.subVectors(c,a);n.crossVectors(ab,ac).normalize();
+  for(const v of [n,a,b,c]){view.setFloat32(off,v.x,true);view.setFloat32(off+4,v.y,true);view.setFloat32(off+8,v.z,true);off+=12}
+  view.setUint16(off,0,true);off+=2;
+ });
+ return new Blob([buffer],{type:'model/stl'});
+}
+function exportSegmentStl(key){
+ if(!sceneState?.obj||threeDDirty){footer.textContent=currentLanguage==='ja'?'STL: 先に3Dを再構築してください':'STL: rebuild 3D first';return}
+ const blob=currentSegmentToBinaryStl(key);
+ if(!blob){footer.textContent='STL: segment is empty';return}
+ const names={bone:'bone',soft:'soft-tissue',fat:'fat',lung:'lung'},a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);a.download='virtual-rodent-'+(names[key]||key)+'.stl';document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),1000);footer.textContent=(currentLanguage==='ja'?'STLを書き出しました: ':'STL exported: ')+a.download;
 }
 function geometryToBinaryStl(geometry,name='segment'){
  const pos=geometry.getAttribute('position'),index=geometry.index;
