@@ -682,7 +682,7 @@ async function decode(s,onProgress){
 const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU'};
 const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','anisotropic','tv','bilateral','nlm']);
 function gpuStagesSupported(stages){
- return stages.length>0&&stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
+ return stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
 }
 async function ensureGpuFilterDevice(){
  if(gpuFilterRuntime.disabled||!('gpu' in navigator))return null;
@@ -1403,7 +1403,7 @@ async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d
  return{data:out,depth:outDepth,coreDepth:Math.min(coreDepth,d-zStart)};
 }
 async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,keyPrefix='3d-face-block'){
- const stages=sourceFilterStages();if(!stages.length)return null;
+ const stages=sourceFilterStages();
  const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tx,ty]=fitSourceTile(w,h,outDepth,halo,192,64);
  for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
@@ -2327,8 +2327,8 @@ async function render3DSourceBacked(v){
   }
  };
  try{
-  const filtered=sourceFilterStages().length>0;
-  if(filtered){
+  const filtered=sourceFilterStages().length>0,useGpuMesh=filtered||('gpu' in navigator&&!gpuFilterRuntime.disabled);
+  if(useGpuMesh){
    const filterBlockDepth=navigator.maxTouchPoints>0?2:4;
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
@@ -2345,7 +2345,7 @@ async function render3DSourceBacked(v){
     const nz=z+2,nextPromise=nz<series.slices.length?decodeSourceSegmentMasks(series.slices[nz],active):Promise.resolve(null);
     for(const {key} of active)appendSourceSliceFacesFast(positionsByKey.get(key),series,z,prev?.get(key),curr.get(key),next?.get(key),coords);
     const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
-    if(flush){for(const {key} of active)flushSegment(key,z);footer.textContent='3D building · '+(z+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(z+1)+' / '+series.slices.length);await frameYield()}
+    if(flush){for(const {key} of active)flushSegment(key,z);footer.textContent='3D building · CPU · '+(z+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(z+1)+' / '+series.slices.length);await frameYield()}
     prev=curr;curr=next;next=await nextPromise;
    }
   }
