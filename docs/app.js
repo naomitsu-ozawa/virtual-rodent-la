@@ -15,7 +15,7 @@ const I18N={
   demo:'公開マウスCTデモ',openFolder:'DICOMフォルダを開く',
   dataset:'データセット',series:'DICOMシリーズ',selectData:'データを選択してください',
   selectDataHelp:'ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。',
-  display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',ctRange:'CT値操作範囲',autoRange:'Auto',fullRange:'Full',apply3D:'3Dへ反映',threeCurrent:'3Dは最新',threeStale:'3Dは更新前',threeUpdating:'3D更新中',mainView:'メインへ',
+  display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',ctRange:'CT値操作範囲',autoRange:'Auto',fullRange:'Full',rebuild3D:'3D再構築',threeCurrent:'3Dは最新',threeStale:'3Dは再構築待ち',threeUpdating:'3D再構築中',mainView:'メインへ',
   segmentation:'セグメンテーション',segments:'組織セグメント',
   bone:'骨',soft:'軟部組織',fat:'脂肪',lung:'肺',min:'最小',max:'最大',opacity:'不透明度',segmentPreset:'セグメントプリセット',addSegment:'セグメントを追加',removeSegment:'削除',opening:'Opening',closing:'Closing',minComponent:'最小連結成分',holeFill:'Hole Filling',
   surfaceSmooth:'表面平滑化',strength:'強度',sigmoidCenter:'中心',filterThreshold:'検出閾値',iterations:'反復回数',passes:'Pass数',searchRadius:'探索半径',patchRadius:'パッチ半径',spatialSigma:'空間Sigma',intensitySigma:'強度Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'STL書き出し',volumeMode:'体積解析',volumeOff:'体積解析を終了',volumeHint:'3D上の部品をクリックしてください',resetFilters:'画像フィルターをリセット',
@@ -36,7 +36,7 @@ const I18N={
   demo:'Public mouse CT demo',openFolder:'Open DICOM folder',
   dataset:'DATASET',series:'DICOM Series',selectData:'Select data',
   selectDataHelp:'Use a local folder or the approximately 20.8 MB public mouse PET/CT demo.',
-  display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',ctRange:'CT value range',autoRange:'Auto',fullRange:'Full',apply3D:'Apply to 3D',threeCurrent:'3D is current',threeStale:'3D update pending',threeUpdating:'Updating 3D',mainView:'Main',
+  display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',ctRange:'CT value range',autoRange:'Auto',fullRange:'Full',rebuild3D:'Rebuild 3D',threeCurrent:'3D is current',threeStale:'3D rebuild pending',threeUpdating:'Rebuilding 3D',mainView:'Main',
   segmentation:'SEGMENTATION',segments:'Tissue segments',
   bone:'Bone',soft:'Soft tissue',fat:'Fat',lung:'Lung',min:'Min',max:'Max',opacity:'Opacity',segmentPreset:'Segment preset',addSegment:'Add segment',removeSegment:'Remove',opening:'Opening',closing:'Closing',minComponent:'Min Component',holeFill:'Hole Filling',
   surfaceSmooth:'Surface Smooth',strength:'Strength',sigmoidCenter:'Center',filterThreshold:'Threshold',iterations:'Iterations',passes:'Passes',searchRadius:'Search Radius',patchRadius:'Patch Radius',spatialSigma:'Spatial Sigma',intensitySigma:'Intensity Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'Export STL',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',volumeHint:'Click a 3D component',resetFilters:'Reset image filters',
@@ -144,7 +144,7 @@ app.innerHTML=`
   </select>
   <button id="filter-add-button" class="tool-chip" type="button">フィルターを追加</button>
 </div>
-<div class="filter-3d-commit"><button id="filter-apply-3d" class="tool-chip filter-apply-3d" type="button" data-i18n="apply3D" disabled>3Dへ反映</button><span id="filter-3d-state" class="filter-3d-state is-current" data-i18n="threeCurrent">3Dは最新</span></div>
+<div class="filter-3d-commit"><button id="filter-rebuild-3d" class="tool-chip filter-rebuild-3d" type="button" data-i18n="rebuild3D" disabled>3D再構築</button><span id="filter-3d-state" class="filter-3d-state is-current" data-i18n="threeCurrent">3Dは最新</span></div>
 <div class="filter-control-list">
   <div class="filter-control-card is-hidden" data-filter-key="spikeHole" draggable="true">
     <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-spike-hole" type="checkbox" disabled><strong>Spike / Hole</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
@@ -199,7 +199,7 @@ app.innerHTML=`
 const $=s=>document.querySelector(s);
 const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spatialPasses=$('#spatial-passes'),spatialPassesValue=$('#spatial-passes-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),spikeHoleThreshold=$('#spike-hole-threshold'),spikeHoleThresholdValue=$('#spike-hole-threshold-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),nlmSearchRadius=$('#nlm-search-radius'),nlmSearchRadiusValue=$('#nlm-search-radius-value'),nlmPatchRadius=$('#nlm-patch-radius'),nlmPatchRadiusValue=$('#nlm-patch-radius-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),anisotropicIterations=$('#anisotropic-iterations'),anisotropicIterationsValue=$('#anisotropic-iterations-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),sigmoidCenter=$('#sigmoid-center'),sigmoidCenterValue=$('#sigmoid-center-value'),bilateralBtn=$('#filter-bilateral'),bilateralStrength=$('#bilateral-strength'),bilateralStrengthValue=$('#bilateral-strength-value'),bilateralSpatial=$('#bilateral-spatial'),bilateralSpatialValue=$('#bilateral-spatial-value'),bilateralIntensity=$('#bilateral-intensity'),bilateralIntensityValue=$('#bilateral-intensity-value'),bilateralPasses=$('#bilateral-passes'),bilateralPassesValue=$('#bilateral-passes-value'),tvBtn=$('#filter-tv'),tvWeight=$('#tv-weight'),tvWeightValue=$('#tv-weight-value'),tvIterations=$('#tv-iterations'),tvIterationsValue=$('#tv-iterations-value'),unsharpBtn=$('#filter-unsharp'),unsharpRadius=$('#unsharp-radius'),unsharpRadiusValue=$('#unsharp-radius-value'),unsharpAmount=$('#unsharp-amount'),unsharpAmountValue=$('#unsharp-amount-value'),unsharpThreshold=$('#unsharp-threshold'),unsharpThresholdValue=$('#unsharp-threshold-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button'),segmentAddSelect=$('#segment-add-select'),segmentAddButton=$('#segment-add-button'),segmentControls=$('#segment-controls');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
-const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterApply3D=$('#filter-apply-3d'),filter3DState=$('#filter-3d-state'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
+const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterRebuild3D=$('#filter-rebuild-3d'),filter3DState=$('#filter-3d-state'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
 languageToggle.onclick=()=>applyLanguage(currentLanguage==='ja'?'en':'ja');
 applyLanguage('ja');;
 let volume=null,sourceVolume=null,sceneState=null,activeId=null,activeSeries=null,volumeAnalysisMode=false,volumeAnalysisBusy=false,sourceRenderRevision=0;
@@ -221,17 +221,17 @@ let segmentRenderTimer=null;
 
 function set3DState(mode){
  threeDDirty=mode==='stale';threeDApplying=mode==='updating';
- if(!filter3DState||!filterApply3D)return;
+ if(!filter3DState||!filterRebuild3D)return;
  filter3DState.classList.toggle('is-stale',mode==='stale');
  filter3DState.classList.toggle('is-updating',mode==='updating');
  filter3DState.classList.toggle('is-current',mode==='current');
  const key=mode==='stale'?'threeStale':mode==='updating'?'threeUpdating':'threeCurrent';filter3DState.dataset.i18n=key;filter3DState.textContent=tr(key);
- filterApply3D.disabled=!volume||mode!=='stale';
+ filterRebuild3D.disabled=!volume||mode!=='stale';
 }
 function mark3DStale(){if(volume)set3DState('stale')}
 function mark3DCurrent(){set3DState('current')}
 function mark3DUpdating(){set3DState('updating')}
-async function applyCurrent3D(){
+async function rebuildCurrent3D(){
  if(!volume||threeDApplying)return;
  mark3DUpdating();
  try{await render3D(volume,true)}catch(e){console.error(e);mark3DStale()}
@@ -435,12 +435,11 @@ async function rebuildActiveFilters(finalize3D=true){
  if(sourceVolume.sourceBacked){
   invalidateSourceFilters();volume=sourceVolume;setProcessingBusy(true,'Full-resolution filters');
   try{
-   for(const p of Object.keys(planes)){
-    await renderPlane(p);
-    if(revision!==filterRebuildRevision)return;
-   }
+   const mainKey=currentMainViewKey(),previewPlane=planes[mainKey]?mainKey:'axial';
+   await renderPlane(previewPlane);
+   if(revision!==filterRebuildRevision)return;
    mark3DStale();
-   footer.textContent=filterOrder.length?'Full-resolution filters · chunked · '+filterOrder.length+' stage(s)':tr('original');
+   footer.textContent=filterOrder.length?'Full-resolution filters · '+gpuFilterRuntime.lastBackend+' · '+filterOrder.length+' stage(s)':tr('original');
   }finally{setProcessingBusy(false);syncFilterControls()}
   return;
  }
@@ -495,7 +494,7 @@ for(const [input,output,key] of [[bilateralPasses,bilateralPassesValue,'bilatera
  input.onchange=()=>{if(filterState[key])scheduleFilterRebuild(0)};
 }
 resetFilterBtn.onclick=()=>{filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();syncFilterControls();resetProcessing()};
-filterApply3D.onclick=()=>void applyCurrent3D();
+filterRebuild3D.onclick=()=>void rebuildCurrent3D();
 installFilterReorder();
 
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>void renderPlane(p);installMprTouch(p)}
@@ -680,6 +679,179 @@ async function decode(s,onProgress){
 
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
+const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU'};
+const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','anisotropic','tv']);
+function gpuStagesSupported(stages){
+ return stages.length>0&&stages.every(stage=>GPU_FILTER_KEYS.has(stage.key)&&(stage.key!=='gaussian'||stage.params.mode==='gaussian'));
+}
+async function ensureGpuFilterDevice(){
+ if(gpuFilterRuntime.disabled||!('gpu' in navigator))return null;
+ if(gpuFilterRuntime.device)return gpuFilterRuntime.device;
+ if(gpuFilterRuntime.initPromise)return gpuFilterRuntime.initPromise;
+ gpuFilterRuntime.initPromise=(async()=>{
+  try{
+   const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
+   if(!adapter)throw new Error('WebGPU adapter unavailable');
+   const device=await adapter.requestDevice();
+   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;
+   device.lost.then(()=>{gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear()});
+   return device;
+  }catch(e){
+   gpuFilterRuntime.disabled=true;
+   if(!gpuFilterRuntime.warned){console.warn('WebGPU compute unavailable; CPU filter fallback active.',e);gpuFilterRuntime.warned=true}
+   return null;
+  }finally{gpuFilterRuntime.initPromise=null}
+ })();
+ return gpuFilterRuntime.initPromise;
+}
+function gpuFilterShader(kind){
+ const header=`
+@group(0) @binding(0) var<storage, read> src: array<f32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<f32>;
+@group(0) @binding(2) var<storage, read> meta: array<u32>;
+@group(0) @binding(3) var<storage, read> params: array<f32>;
+fn coord(i:u32)->vec3<u32>{
+ let w=meta[0];let h=meta[1];let plane=w*h;
+ return vec3<u32>(i%w,(i/w)%h,i/plane);
+}
+fn idx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
+`;
+ if(kind==='gaussian')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];let axis=meta[4];
+ var x0=c.x;var x1=c.x;var y0=c.y;var y1=c.y;var z0=c.z;var z1=c.z;
+ if(axis==0u){x0=select(c.x-1u,0u,c.x==0u);x1=min(w-1u,c.x+1u);}
+ if(axis==1u){y0=select(c.y-1u,0u,c.y==0u);y1=min(h-1u,c.y+1u);}
+ if(axis==2u){z0=select(c.z-1u,0u,c.z==0u);z1=min(d-1u,c.z+1u);}
+ let a=src[idx(x0,y0,z0)];let b=src[i];let cc=src[idx(x1,y1,z1)];
+ let blur=(a+2.0*b+cc)*0.25;let s=params[0];dst[i]=b*(1.0-s)+blur*s;
+}`;
+ if(kind==='sigmoid')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let minv=params[0];let maxv=params[1];let strength=params[2];let centerValue=clamp(params[3],minv,maxv);
+ let range=max(1.0,maxv-minv);let gain=2.0+strength*10.0;let center=(centerValue-minv)/range;
+ let lo=1.0/(1.0+exp(gain*center));let hi=1.0/(1.0+exp(-gain*(1.0-center)));let norm=max(0.000001,hi-lo);
+ let x=clamp((src[i]-minv)/range,0.0,1.0);let y=(1.0/(1.0+exp(-gain*(x-center)))-lo)/norm;
+ dst[i]=minv+clamp(y,0.0,1.0)*range;
+}`;
+ if(kind==='spikeHole')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
+ if(c.x==0u||c.y==0u||c.z==0u||c.x+1u>=w||c.y+1u>=h||c.z+1u>=d){dst[i]=src[i];return;}
+ let n0=src[i-1u];let n1=src[i+1u];let n2=src[i-w];let n3=src[i+w];let plane=w*h;let n4=src[i-plane];let n5=src[i+plane];
+ let mean=(n0+n1+n2+n3+n4+n5)/6.0;let lo=min(min(min(n0,n1),min(n2,n3)),min(n4,n5));let hi=max(max(max(n0,n1),max(n2,n3)),max(n4,n5));
+ let range=max(1.0,params[1]-params[0]);let strength=params[2];let threshold=range*params[3];let guard=threshold*(0.55+0.35*strength);let diff=src[i]-mean;
+ if(hi-lo<=guard&&abs(diff)>threshold){let target=mean+sign(diff)*threshold*0.08;let blend=0.20+0.75*strength;dst[i]=src[i]*(1.0-blend)+target*blend;}else{dst[i]=src[i];}
+}`;
+ if(kind==='anisotropic')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
+ if(c.x==0u||c.y==0u||c.z==0u||c.x+1u>=w||c.y+1u>=h||c.z+1u>=d){dst[i]=src[i];return;}
+ let center=src[i];let plane=w*h;let range=max(1.0,params[1]-params[0]);let strength=params[2];let k=range*(0.025+0.09*strength);let k2=max(k*k,0.000001);let lambda=0.06+0.14*strength;
+ var flux=0.0;var diff=src[i-1u]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+1u]-center;flux+=exp(-(diff*diff)/k2)*diff;
+ diff=src[i-w]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+w]-center;flux+=exp(-(diff*diff)/k2)*diff;
+ diff=src[i-plane]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+plane]-center;flux+=exp(-(diff*diff)/k2)*diff;
+ dst[i]=center+lambda*flux;
+}`;
+ if(kind==='tv')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
+ if(c.x==0u||c.y==0u||c.z==0u||c.x+1u>=w||c.y+1u>=h||c.z+1u>=d){dst[i]=src[i];return;}
+ let center=src[i];let plane=w*h;let range=max(1.0,params[1]-params[0]);let weight=params[2];let lambda=min(0.18,0.02+weight*0.45);let eps=range*0.0001;
+ var flux=0.0;var diff=src[i-1u]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+1u]-center;flux+=diff/sqrt(diff*diff+eps*eps);
+ diff=src[i-w]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+w]-center;flux+=diff/sqrt(diff*diff+eps*eps);
+ diff=src[i-plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);
+ dst[i]=center+lambda*flux;
+}`;
+ if(kind==='unsharp')return header+`
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=i32(meta[0]);let h=i32(meta[1]);let d=i32(meta[2]);let r=i32(meta[4]);
+ var sum=0.0;var count=0.0;
+ for(var dz:i32=-r;dz<=r;dz=dz+1){let zz=i32(c.z)+dz;if(zz<0||zz>=d){continue;}
+  for(var dy:i32=-r;dy<=r;dy=dy+1){let yy=i32(c.y)+dy;if(yy<0||yy>=h){continue;}
+   for(var dx:i32=-r;dx<=r;dx=dx+1){let xx=i32(c.x)+dx;if(xx<0||xx>=w){continue;}sum+=src[u32(zz)*meta[0]*meta[1]+u32(yy)*meta[0]+u32(xx)];count+=1.0;}
+  }
+ }
+ let blur=sum/max(count,1.0);let detail=src[i]-blur;let range=max(1.0,params[1]-params[0]);let threshold=params[3]*range;
+ dst[i]=select(src[i],src[i]+params[2]*detail,abs(detail)>=threshold);
+}`;
+ if(kind==='extract')return `
+@group(0) @binding(0) var<storage, read> src: array<f32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<f32>;
+@group(0) @binding(2) var<storage, read> meta: array<u32>;
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;let count=meta[9];if(i>=count){return;}
+ let tw=meta[6];let th=meta[7];let x=i%tw;let y=(i/tw)%th;let z=i/(tw*th);
+ let sx=meta[3]+x;let sy=meta[4]+y;let sz=meta[5]+z;
+ dst[i]=src[sz*meta[0]*meta[1]+sy*meta[0]+sx];
+}`;
+ throw new Error('Unknown GPU filter shader '+kind);
+}
+async function gpuFilterPipeline(kind){
+ const device=await ensureGpuFilterDevice();if(!device)return null;
+ if(gpuFilterRuntime.pipelines.has(kind))return gpuFilterRuntime.pipelines.get(kind);
+ const module=device.createShaderModule({code:gpuFilterShader(kind),label:'VRL '+kind+' compute'});
+ const desc={layout:'auto',compute:{module,entryPoint:'main'},label:'VRL '+kind};
+ const pipeline=device.createComputePipelineAsync?await device.createComputePipelineAsync(desc):device.createComputePipeline(desc);
+ gpuFilterRuntime.pipelines.set(kind,pipeline);return pipeline;
+}
+function gpuSmallBuffer(device,data){
+ const buffer=device.createBuffer({size:Math.max(32,Math.ceil(data.byteLength/4)*4),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+ device.queue.writeBuffer(buffer,0,data);return buffer;
+}
+async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target){
+ const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
+ const bytes=data.byteLength,n=data.length;
+ if(bytes>device.limits.maxStorageBufferBindingSize)return null;
+ const usage=GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST;
+ let a=device.createBuffer({size:bytes,usage}),b=device.createBuffer({size:bytes,usage});device.queue.writeBuffer(a,0,data);
+ const small=[];const encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
+ const dispatch=async(kind,extraU32=[],paramsF32=[])=>{
+  const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
+  const meta=new Uint32Array(8);meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=n;for(let i=0;i<extraU32.length&&i<4;i++)meta[4+i]=extraU32[i]>>>0;
+  const params=new Float32Array(8);for(let i=0;i<paramsF32.length&&i<8;i++)params[i]=paramsF32[i];
+  const mb=gpuSmallBuffer(device,meta),pb=gpuSmallBuffer(device,params);small.push(mb,pb);
+  const bind=pipeline.getBindGroupLayout(0);
+  const group=device.createBindGroup({layout:bind,entries:[
+   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}}
+  ]});
+  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(n/256));pass.end();
+  const t=current;current=next;next=t;
+ };
+ for(const stage of stages){
+  const p=stage.params;
+  if(stage.key==='gaussian'){
+   for(let round=0;round<Math.max(1,Math.round(p.passes));round++)for(let axis=0;axis<3;axis++)await dispatch('gaussian',[axis],[p.strength]);
+  }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[minv,maxv,p.strength,p.center]);
+  else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[minv,maxv,p.strength,p.threshold]);
+  else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[minv,maxv,p.strength]);
+  else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[minv,maxv,p.weight]);
+  else if(stage.key==='unsharp')await dispatch('unsharp',[Math.max(1,Math.round(p.radius))],[minv,maxv,p.amount,p.threshold]);
+  else return null;
+ }
+ const targetCount=target.width*target.height*target.depth,targetBytes=targetCount*4;
+ const targetBuffer=device.createBuffer({size:targetBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+ const extractPipeline=await gpuFilterPipeline('extract');
+ const extractMeta=new Uint32Array(12);extractMeta[0]=w;extractMeta[1]=h;extractMeta[2]=d;extractMeta[3]=target.x;extractMeta[4]=target.y;extractMeta[5]=target.z;extractMeta[6]=target.width;extractMeta[7]=target.height;extractMeta[8]=target.depth;extractMeta[9]=targetCount;
+ const emb=gpuSmallBuffer(device,extractMeta);small.push(emb);
+ const extractGroup=device.createBindGroup({layout:extractPipeline.getBindGroupLayout(0),entries:[
+  {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:targetBuffer}},{binding:2,resource:{buffer:emb}}
+ ]});
+ const ep=encoder.beginComputePass();ep.setPipeline(extractPipeline);ep.setBindGroup(0,extractGroup);ep.dispatchWorkgroups(Math.ceil(targetCount/256));ep.end();
+ const readback=device.createBuffer({size:targetBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+ encoder.copyBufferToBuffer(targetBuffer,0,readback,0,targetBytes);device.queue.submit([encoder.finish()]);
+ await readback.mapAsync(GPUMapMode.READ);const result=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();
+ a.destroy();b.destroy();targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
+ gpuFilterRuntime.lastBackend='WEBGPU COMPUTE';return result;
+}
+
 const sourceFilterRuntime={revision:0,workers:[],queue:[],nextId:0,cache:new Map(),cacheBytes:0};
 function sourceFilterWorkerMain(){
  function gaussian(input,w,h,d,p){const n=input.length,s=p.strength,r=Math.max(1,Math.round(p.passes));let a=new Float32Array(input),b=new Float32Array(n);for(let rr=0;rr<r;rr++)for(const [dx,dy,dz] of [[1,0,0],[0,1,0],[0,0,1]]){for(let z=0;z<d;z++)for(let y=0;y<h;y++){const row=z*h*w+y*w;for(let x=0;x<w;x++){const i=row+x,x0=Math.max(0,x-dx),x1=Math.min(w-1,x+dx),y0=Math.max(0,y-dy),y1=Math.min(h-1,y+dy),z0=Math.max(0,z-dz),z1=Math.min(d-1,z+dz),i0=z0*h*w+y0*w+x0,i1=z1*h*w+y1*w+x1,blur=(a[i0]+2*a[i]+a[i1])*.25;b[i]=a[i]*(1-s)+blur*s}}const t=a;a=b;b=t}return a}
@@ -811,7 +983,20 @@ async function processSourceRegion(series,target,stages,key,revision){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
- const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:{x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth}};
+ const localTarget={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
+ if(gpuStagesSupported(stages)){
+  try{
+   const gpuResult=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget);
+   if(gpuResult){
+    if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+    return gpuResult;
+   }
+  }catch(e){
+   if(!gpuFilterRuntime.warned){console.warn('WebGPU filter execution failed; using CPU worker.',e);gpuFilterRuntime.warned=true}
+  }
+ }
+ gpuFilterRuntime.lastBackend='CPU WORKER';
+ const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:localTarget};
  const result=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return result;
 }
