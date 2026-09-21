@@ -852,6 +852,65 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  }
  dst[i]=weighted/weightSum;
 }`;
+ if(kind==='meshCount')return `
+struct Counters{values:array<atomic<u32>,4>};
+@group(0) @binding(0) var<storage, read> src:array<f32>;
+@group(0) @binding(2) var<storage, read> meta:array<u32>;
+@group(0) @binding(3) var<storage, read> thresholds:array<f32>;
+@group(0) @binding(4) var<storage, read_write> counters:Counters;
+fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
+fn insideSegment(v:f32,s:u32)->bool{return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
+ let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
+ let gx=meta[11]+x;let gy=meta[12]+y;let gz=meta[13]+z;let center=src[localIdx(x,y,z)];
+ for(var s:u32=0u;s<meta[10];s=s+1u){
+  if(!insideSegment(center,s)){continue;}var count=0u;
+  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){count++;}
+  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){count++;}
+  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){count++;}
+  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){count++;}
+  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){count++;}
+  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){count++;}
+  if(count>0u){atomicAdd(&counters.values[s],count);}
+ }
+}`;
+ if(kind==='meshWrite')return `
+struct Counters{values:array<atomic<u32>,4>};
+@group(0) @binding(0) var<storage, read> src:array<f32>;
+@group(0) @binding(1) var<storage, read_write> dst:array<f32>;
+@group(0) @binding(2) var<storage, read> meta:array<u32>;
+@group(0) @binding(3) var<storage, read> thresholds:array<f32>;
+@group(0) @binding(4) var<storage, read_write> counters:Counters;
+@group(0) @binding(5) var<storage, read> geom:array<f32>;
+fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
+fn insideSegment(v:f32,s:u32)->bool{return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];}
+fn writeFace(base:u32,a:vec3<f32>,b:vec3<f32>,c:vec3<f32>,d:vec3<f32>,e:vec3<f32>,f:vec3<f32>){
+ dst[base]=a.x;dst[base+1u]=a.y;dst[base+2u]=a.z;dst[base+3u]=b.x;dst[base+4u]=b.y;dst[base+5u]=b.z;
+ dst[base+6u]=c.x;dst[base+7u]=c.y;dst[base+8u]=c.z;dst[base+9u]=d.x;dst[base+10u]=d.y;dst[base+11u]=d.z;
+ dst[base+12u]=e.x;dst[base+13u]=e.y;dst[base+14u]=e.z;dst[base+15u]=f.x;dst[base+16u]=f.y;dst[base+17u]=f.z;
+}
+fn slotFor(s:u32)->u32{return (meta[17u+s]+atomicAdd(&counters.values[s],1u))*18u;}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
+ let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
+ let gx=meta[11]+x;let gy=meta[12]+y;let gz=meta[13]+z;let center=src[localIdx(x,y,z)];
+ let sx=geom[0];let sy=geom[1];let sz=geom[2];let scale=geom[3];let px=geom[4];let py=geom[5];let pz=geom[6];
+ let x0=(f32(gx)*sx-px*0.5)*scale;let x1=(f32(gx+1u)*sx-px*0.5)*scale;
+ let y0=-(f32(gy)*sy-py*0.5)*scale;let y1=-(f32(gy+1u)*sy-py*0.5)*scale;
+ let z0=(f32(gz)*sz-pz*0.5)*scale;let z1=(f32(gz+1u)*sz-pz*0.5)*scale;
+ for(var s:u32=0u;s<meta[10];s=s+1u){
+  if(!insideSegment(center,s)){continue;}
+  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x0,y0,z1),vec3f(x0,y1,z1),vec3f(x0,y0,z0),vec3f(x0,y1,z1),vec3f(x0,y1,z0));}
+  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){let b=slotFor(s);writeFace(b,vec3f(x1,y0,z0),vec3f(x1,y1,z0),vec3f(x1,y1,z1),vec3f(x1,y0,z0),vec3f(x1,y1,z1),vec3f(x1,y0,z1));}
+  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x1,y0,z0),vec3f(x1,y0,z1),vec3f(x0,y0,z0),vec3f(x1,y0,z1),vec3f(x0,y0,z1));}
+  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y1,z0),vec3f(x0,y1,z1),vec3f(x1,y1,z1),vec3f(x0,y1,z0),vec3f(x1,y1,z1),vec3f(x1,y1,z0));}
+  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x0,y1,z0),vec3f(x1,y1,z0),vec3f(x0,y0,z0),vec3f(x1,y1,z0),vec3f(x1,y0,z0));}
+  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z1),vec3f(x1,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y1,z1));}
+ }
+}`;
  if(kind==='faceCompact')return `
 struct Counter{value:atomic<u32>};
 @group(0) @binding(0) var<storage, read> src: array<f32>;
@@ -989,6 +1048,40 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.intensitySigma]);
   }else if(stage.key==='nlm')await dispatch('nlm',[Math.max(1,Math.round(p.searchRadius)),Math.max(0,Math.round(p.patchRadius))],[minv,maxv,p.strength]);
   else return null;
+ }
+ if(segments?.length&&faceContext?.mesh){
+  const targetCount=target.width*target.height*target.depth,meta=new Uint32Array(24);
+  meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=target.x;meta[4]=target.y;meta[5]=target.z;meta[6]=target.width;meta[7]=target.height;meta[8]=target.depth;meta[9]=targetCount;meta[10]=Math.min(segments.length,4);
+  meta[11]=faceContext.boxX;meta[12]=faceContext.boxY;meta[13]=faceContext.boxZ;meta[14]=faceContext.globalW;meta[15]=faceContext.globalH;meta[16]=faceContext.globalD;
+  const thresholds=new Float32Array(8);for(let i=0;i<meta[10];i++){thresholds[i*2]=segments[i].seg.min;thresholds[i*2+1]=segments[i].seg.max}
+  const mb=gpuSmallBuffer(device,meta),tb=gpuSmallBuffer(device,thresholds);small.push(mb,tb);
+  const counters=device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(counters,0,new Uint32Array(4));
+  const countPipeline=await gpuFilterPipeline('meshCount'),countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
+   {binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}}
+  ]});
+  const cp=encoder.beginComputePass();cp.setPipeline(countPipeline);cp.setBindGroup(0,countGroup);cp.dispatchWorkgroups(Math.ceil(targetCount/256));cp.end();
+  const countRead=device.createBuffer({size:16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});encoder.copyBufferToBuffer(counters,0,countRead,0,16);device.queue.submit([encoder.finish()]);
+  await countRead.mapAsync(GPUMapMode.READ);const counts=new Uint32Array(countRead.getMappedRange().slice(0));countRead.unmap();countRead.destroy();
+  const totalFaces=counts[0]+counts[1]+counts[2]+counts[3],vertexBytes=totalFaces*18*4,maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
+  if(totalFaces===0){
+   a.destroy();b.destroy();counters.destroy();for(const buf of small)buf.destroy();gpuFilterRuntime.lastBackend='WEBGPU FILTER+MESH';return{mesh:true,vertices:new Float32Array(0),counts};
+  }
+  if(vertexBytes<=maxOut){
+   let offset=0;for(let i=0;i<4;i++){meta[17+i]=offset;offset+=counts[i]}device.queue.writeBuffer(mb,0,meta);device.queue.writeBuffer(counters,0,new Uint32Array(4));
+   const output=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+   const sx=faceContext.spacingX,sy=faceContext.spacingY,sz=faceContext.spacingZ,px=faceContext.globalW*sx,py=faceContext.globalH*sy,pz=faceContext.globalD*sz,scale=3.3/Math.max(px,py,pz,1);
+   const gb=gpuSmallBuffer(device,new Float32Array([sx,sy,sz,scale,px,py,pz,0]));small.push(gb);
+   const writePipeline=await gpuFilterPipeline('meshWrite'),writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries:[
+    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:output}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}},{binding:5,resource:{buffer:gb}}
+   ]});
+   const writeEncoder=device.createCommandEncoder({label:'VRL GPU mesh vertices'}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/256));wp.end();
+   const readback=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});writeEncoder.copyBufferToBuffer(output,0,readback,0,vertexBytes);device.queue.submit([writeEncoder.finish()]);
+   await readback.mapAsync(GPUMapMode.READ);const vertices=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();
+   output.destroy();readback.destroy();a.destroy();b.destroy();counters.destroy();for(const buf of small)buf.destroy();
+   gpuFilterRuntime.lastBackend='WEBGPU FILTER+MESH';return{mesh:true,vertices,counts};
+  }
+  counters.destroy();
+  // Oversized worst-case output falls through to compact-face extraction using the already filtered GPU buffer.
  }
  const targetCount=target.width*target.height*target.depth,compactFaces=!!(segments?.length&&faceContext),targetBytes=targetCount*(compactFaces?8:4);
  const targetBuffer=device.createBuffer({size:Math.max(4,targetBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
@@ -1245,8 +1338,8 @@ async function processSourceRegionFaces(series,target,stages,key,revision,segmen
  const localTarget={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
  if(gpuStagesSupported(stages)){
   try{
-   const compact=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:series.columns,globalH:series.rows,globalD:series.slices.length});
-   if(compact?.compact){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return compact}
+   const compact=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:series.columns,globalH:series.rows,globalD:series.slices.length,spacingX:series.spacingX,spacingY:series.spacingY,spacingZ:series.spacingZ,mesh:true});
+   if(compact?.mesh||compact?.compact){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return compact}
   }catch(e){
    if(!gpuFilterRuntime.warned){console.warn('WebGPU face extraction failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
   }
@@ -1310,11 +1403,12 @@ async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d
 }
 async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,keyPrefix='3d-face-block'){
  const stages=sourceFilterStages();if(!stages.length)return null;
- const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tx,ty]=fitSourceTile(w,h,outDepth,halo,384,128);
+ const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tx,ty]=fitSourceTile(w,h,outDepth,halo,192,64);
  for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),compact=await processSourceRegionFaces(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart+':'+x+':'+y,revision,segments);
-  if(compact.items.length)tiles.push({x,y,z:zStart,width:tw,height:th,depth:outDepth,items:compact.items});
+  if(compact.mesh){if(compact.vertices.length)tiles.push({mesh:true,vertices:compact.vertices,counts:compact.counts});}
+  else if(compact.items.length)tiles.push({x,y,z:zStart,width:tw,height:th,depth:outDepth,items:compact.items});
  }
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return{tiles,coreDepth:outDepth};
@@ -2071,6 +2165,9 @@ class Float32FaceBuilder{
   let size=this.data.length;while(size<need)size*=2;
   const next=new Float32Array(size);next.set(this.data.subarray(0,this.length));this.data=next;
  }
+ appendArray(values){
+  if(!values?.length)return;this.ensure(values.length);this.data.set(values,this.length);this.length+=values.length;
+ }
  push(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r){
   this.ensure(18);const x=this.data,q0=this.length;
   x[q0]=a;x[q0+1]=b;x[q0+2]=c;x[q0+3]=d;x[q0+4]=e;x[q0+5]=f;
@@ -2137,6 +2234,14 @@ function makeSource3DCoordinates(series){
  for(let y=0;y<=h;y++)ys[y]=-(y*sy-py/2)*scale;
  for(let z=0;z<=d;z++)zs[z]=(z*sz-pz/2)*scale;
  return{xs,ys,zs,scale};
+}
+function appendGpuMeshTile(positionsByKey,tile,active){
+ let faceOffset=0;
+ for(let s=0;s<active.length&&s<4;s++){
+  const faces=tile.counts[s]||0,floatCount=faces*18;
+  if(floatCount){positionsByKey.get(active[s].key)?.appendArray(tile.vertices.subarray(faceOffset*18,faceOffset*18+floatCount));}
+  faceOffset+=faces;
+ }
 }
 function appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords){
  const {xs,ys,zs}=coords,plane=tile.width*tile.height,items=tile.items;
@@ -2227,7 +2332,7 @@ async function render3DSourceBacked(v){
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
     const block=await getFilteredSourceAxialFaceBlock(z0,filterBlockDepth,series,active,'3d:'+revision);
-    for(const tile of block.tiles)appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords);
+    for(const tile of block.tiles){if(tile.mesh)appendGpuMeshTile(positionsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords)}
     const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===series.slices.length-1;
     if(flush){for(const {key} of active)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+series.slices.length);await frameYield()}
    }
