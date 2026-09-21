@@ -699,10 +699,38 @@ async function decode(s,onProgress){
 
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
-const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU'};
+const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false};
 const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','anisotropic','tv','bilateral','nlm']);
 function gpuStagesSupported(stages){
  return stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
+}
+function gpuPoolLimit(){return navigator.maxTouchPoints>0?64*1024*1024:192*1024*1024}
+function gpuBufferBucketSize(bytes){
+ let size=4096;while(size<bytes)size*=2;return size;
+}
+function acquireGpuWorkBuffer(device,bytes){
+ const size=gpuBufferBucketSize(bytes),bucket=gpuFilterRuntime.bufferPool.get(size);
+ if(bucket?.length){const buffer=bucket.pop();gpuFilterRuntime.bufferPoolBytes-=size;return{buffer,size}}
+ return{buffer:device.createBuffer({size,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST}),size};
+}
+function releaseGpuWorkBuffer(buffer,size){
+ if(!buffer||gpuFilterRuntime.sharedRendererDevice&&gpuFilterRuntime.device?.lost===undefined){try{buffer?.destroy?.()}catch{};return}
+ const limit=gpuPoolLimit();
+ if(size>limit/2||gpuFilterRuntime.bufferPoolBytes+size>limit){try{buffer.destroy()}catch{};return}
+ let bucket=gpuFilterRuntime.bufferPool.get(size);if(!bucket){bucket=[];gpuFilterRuntime.bufferPool.set(size,bucket)}
+ if(bucket.length>=2){try{buffer.destroy()}catch{};return}
+ bucket.push(buffer);gpuFilterRuntime.bufferPoolBytes+=size;
+}
+function clearGpuBufferPool(){
+ for(const bucket of gpuFilterRuntime.bufferPool.values())for(const buffer of bucket){try{buffer.destroy()}catch{}}
+ gpuFilterRuntime.bufferPool.clear();gpuFilterRuntime.bufferPoolBytes=0;
+}
+function adoptRendererGpuDevice(renderer){
+ const device=renderer?.backend?.device;
+ if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
+ clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuPrewarmIndex=0;gpuPrewarmScheduled=false;
+ try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false}})}catch{}
+ return true;
 }
 async function ensureGpuFilterDevice(){
  if(gpuFilterRuntime.disabled||!('gpu' in navigator))return null;
@@ -713,8 +741,8 @@ async function ensureGpuFilterDevice(){
    const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
    if(!adapter)throw new Error('WebGPU adapter unavailable');
    const device=await adapter.requestDevice();
-   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;
-   device.lost.then(()=>{gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();gpuPrewarmIndex=0;gpuPrewarmScheduled=false});
+   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;
+   device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false}});
    return device;
   }catch(e){
    gpuFilterRuntime.disabled=true;
@@ -1050,8 +1078,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
  const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
  const bytes=data.byteLength,n=data.length;
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
- const usage=GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST;
- let a=device.createBuffer({size:bytes,usage}),b=device.createBuffer({size:bytes,usage});device.queue.writeBuffer(a,0,data);
+ const aw=acquireGpuWorkBuffer(device,bytes),bw=acquireGpuWorkBuffer(device,bytes),a=aw.buffer,b=bw.buffer;device.queue.writeBuffer(a,0,data);
  const small=[];let encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
  const dispatch=async(kind,extraU32=[],paramsF32=[])=>{
   const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
@@ -1099,7 +1126,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   await countRead.mapAsync(GPUMapMode.READ);const counts=new Uint32Array(countRead.getMappedRange().slice(0));countRead.unmap();countRead.destroy();
   const totalFaces=counts[0]+counts[1]+counts[2]+counts[3],vertexBytes=totalFaces*18*4,maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
   if(totalFaces===0){
-   a.destroy();b.destroy();counters.destroy();for(const buf of small)buf.destroy();gpuFilterRuntime.lastBackend='WEBGPU FILTER+MESH';return{mesh:true,vertices:new Float32Array(0),counts};
+   releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();gpuFilterRuntime.lastBackend='WEBGPU FILTER+MESH';return{mesh:true,vertices:new Float32Array(0),counts};
   }
   if(vertexBytes<=maxOut){
    let offset=0;for(let i=0;i<4;i++){meta[17+i]=offset;offset+=counts[i]}device.queue.writeBuffer(mb,0,meta);device.queue.writeBuffer(counters,0,new Uint32Array(4));
@@ -1112,7 +1139,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    const writeEncoder=device.createCommandEncoder({label:'VRL GPU mesh vertices'}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/256));wp.end();
    const readback=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});writeEncoder.copyBufferToBuffer(output,0,readback,0,vertexBytes);device.queue.submit([writeEncoder.finish()]);
    await readback.mapAsync(GPUMapMode.READ);const vertices=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();
-   output.destroy();readback.destroy();a.destroy();b.destroy();counters.destroy();for(const buf of small)buf.destroy();
+   output.destroy();readback.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();
    gpuFilterRuntime.lastBackend='WEBGPU FILTER+MESH';return{mesh:true,vertices,counts};
   }
   counters.destroy();
@@ -1159,14 +1186,14 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    copyEncoder.copyBufferToBuffer(targetBuffer,0,readback,0,itemBytes);device.queue.submit([copyEncoder.finish()]);
    await readback.mapAsync(GPUMapMode.READ);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();readback.destroy();
   }
-  a.destroy();b.destroy();targetBuffer.destroy();counter.destroy();counterReadback.destroy();for(const buf of small)buf.destroy();
+  releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);targetBuffer.destroy();counter.destroy();counterReadback.destroy();for(const buf of small)buf.destroy();
   gpuFilterRuntime.lastBackend='WEBGPU FILTER+COMPACT FACES';return{compact:true,items};
  }
  const readback=device.createBuffer({size:targetBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
  encoder.copyBufferToBuffer(targetBuffer,0,readback,0,targetBytes);device.queue.submit([encoder.finish()]);
  await readback.mapAsync(GPUMapMode.READ);
  const copy=readback.getMappedRange().slice(0),result=segments?.length?new Uint32Array(copy):new Float32Array(copy);readback.unmap();
- a.destroy();b.destroy();targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
+ releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
  gpuFilterRuntime.lastBackend=segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE';return result;
 }
 
@@ -2104,7 +2131,7 @@ async function start3D(){
  let renderer,backend='WEBGL';
  if('gpu' in navigator){
   try{
-   const gpuRenderer=new THREE.WebGPURenderer({antialias:true});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';
+   const gpuRenderer=new THREE.WebGPURenderer({antialias:true});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';adoptRendererGpuDevice(gpuRenderer);
   }catch(error){
    console.warn('WebGPU init failed; falling back to WebGL.',error);
   }
