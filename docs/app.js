@@ -1981,6 +1981,23 @@ function makeSource3DCoordinates(series){
  for(let z=0;z<=d;z++)zs[z]=(z*sz-pz/2)*scale;
  return{xs,ys,zs,scale};
 }
+function appendSourceSliceFacesFromBits(positionsByKey,series,z,prevBits,currBits,nextBits,active,coords){
+ const w=series.columns,h=series.rows,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1];
+ for(let i=0;i<currBits.length;i++){
+  const bits=currBits[i];if(!bits)continue;
+  const y=Math.floor(i/w),x=i-y*w,x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1];
+  for(let s=0;s<active.length&&s<4;s++){
+   const bit=1<<s;if(!(bits&bit))continue;
+   const positions=positionsByKey.get(active[s].key);if(!positions)continue;
+   if(x===0||!(currBits[i-1]&bit))positions.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
+   if(x===w-1||!(currBits[i+1]&bit))positions.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
+   if(y===0||!(currBits[i-w]&bit))positions.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
+   if(y===h-1||!(currBits[i+w]&bit))positions.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
+   if(!prevBits||!(prevBits[i]&bit))positions.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
+   if(!nextBits||!(nextBits[i]&bit))positions.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
+  }
+ }
+}
 function appendSourceSliceFacesFast(positions,series,z,prev,curr,next,coords){
  const w=series.columns,h=series.rows,m=curr.mask,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1],pm=prev?.mask,nm=next?.mask;
  for(const block of curr.blocks)for(let bi=0;bi<block.length;bi++){
@@ -2020,21 +2037,20 @@ async function render3DSourceBacked(v){
   const filtered=sourceFilterStages().length>0;
   if(filtered){
    const filterBlockDepth=navigator.maxTouchPoints>0?2:4,planeSize=series.columns*series.rows;
-   let previousMask=null;
+   let previousBits=null;
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
     const block=await getFilteredSourceAxialMaskBlock(z0,filterBlockDepth,series,active,'3d:'+revision);
-    const masks=[];
-    for(let local=0;local<block.depth;local++){
-     masks.push(segmentMasksFromBits(block.data.subarray(local*planeSize,(local+1)*planeSize),active));
-    }
     for(let local=0;local<block.coreDepth;local++){
-     const z=z0+local,curr=masks[local],prev=local===0?previousMask:masks[local-1],next=local+1<masks.length?masks[local+1]:null;
-     for(const {key} of active)appendSourceSliceFacesFast(positionsByKey.get(key),series,z,prev?.get(key),curr.get(key),next?.get(key),coords);
+     const z=z0+local;
+     const currBits=block.data.subarray(local*planeSize,(local+1)*planeSize);
+     const prevBits=local===0?previousBits:block.data.subarray((local-1)*planeSize,local*planeSize);
+     const nextBits=local+1<block.depth?block.data.subarray((local+1)*planeSize,(local+2)*planeSize):null;
+     appendSourceSliceFacesFromBits(positionsByKey,series,z,prevBits,currBits,nextBits,active,coords);
      const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
-     if(flush){for(const {key} of active)flushSegment(key,z);footer.textContent='3D building · '+(z+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(z+1)+' / '+series.slices.length);await frameYield()}
+     if(flush){for(const {key} of active)flushSegment(key,z);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(z+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(z+1)+' / '+series.slices.length);await frameYield()}
     }
-    previousMask=masks[block.coreDepth-1];
+    previousBits=block.data.slice((block.coreDepth-1)*planeSize,block.coreDepth*planeSize);
    }
   }else{
    let prev=null,curr=await decodeSourceSegmentMasks(series.slices[0],active);
