@@ -276,3 +276,18 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
   border-color:#a55a5a!important;
   color:#fff0f0!important;
 }
+
+.volume-analysis-panel{max-width:min(390px,88%)}
+.volume-analysis-result{min-width:290px;max-width:390px;gap:8px}
+.analysis-summary{font-size:11px;color:#cfe0e7;min-height:16px}
+.analysis-actions{display:flex;gap:6px}
+.analysis-actions button,.analysis-region-button{min-height:32px;border:1px solid #3b4850;border-radius:7px;background:#151c20;color:#dbe7eb;padding:5px 8px;font-size:10px;font-weight:750;cursor:pointer}
+.analysis-actions button:disabled,.analysis-region-button:disabled{opacity:.4;cursor:default}
+.analysis-region-list{display:grid;gap:6px;max-height:240px;overflow:auto;overscroll-behavior:contain}
+.analysis-region-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:7px;border:1px solid #2d3940;border-radius:8px;background:rgba(17,23,26,.88)}
+.analysis-region-select{width:18px;height:18px}
+.analysis-region-info{display:grid;gap:2px;min-width:0}
+.analysis-region-info strong{font-size:11px;color:#e6f3f7}
+.analysis-region-info span{font-size:9px;color:#9fb2ba;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.analysis-region-delete{border-color:#694040;color:#efbcbc}
+@media(max-width:640px){.volume-analysis-panel{max-width:calc(100% - 20px)}.volume-analysis-result{min-width:min(310px,calc(100vw - 80px));max-width:calc(100vw - 80px)}.analysis-region-row{grid-template-columns:auto minmax(0,1fr) auto}.analysis-region-delete{grid-column:3}.analysis-region-button{padding:5px 6px}}
