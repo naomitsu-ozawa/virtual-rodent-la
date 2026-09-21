@@ -852,6 +852,22 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  }
  dst[i]=weighted/weightSum;
 }`;
+ if(kind==='maskExtract')return `
+@group(0) @binding(0) var<storage, read> src: array<f32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<u32>;
+@group(0) @binding(2) var<storage, read> meta: array<u32>;
+@group(0) @binding(3) var<storage, read> thresholds: array<f32>;
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;let count=meta[9];if(i>=count){return;}
+ let tw=meta[6];let th=meta[7];let x=i%tw;let y=(i/tw)%th;let z=i/(tw*th);
+ let sx=meta[3]+x;let sy=meta[4]+y;let sz=meta[5]+z;let value=src[sz*meta[0]*meta[1]+sy*meta[0]+sx];
+ var bits=0u;let segmentCount=meta[10];
+ for(var s:u32=0u;s<segmentCount;s=s+1u){
+  if(value>=thresholds[s*2u]&&value<=thresholds[s*2u+1u]){bits=bits|(1u<<s);}
+ }
+ dst[i]=bits;
+}`;
  if(kind==='extract')return `
 @group(0) @binding(0) var<storage, read> src: array<f32>;
 @group(0) @binding(1) var<storage, read_write> dst: array<f32>;
@@ -877,7 +893,7 @@ function gpuSmallBuffer(device,data){
  const buffer=device.createBuffer({size:Math.max(32,Math.ceil(data.byteLength/4)*4),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
  device.queue.writeBuffer(buffer,0,data);return buffer;
 }
-async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target){
+async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=null){
  const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
  const bytes=data.byteLength,n=data.length;
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
@@ -917,18 +933,31 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target){
  }
  const targetCount=target.width*target.height*target.depth,targetBytes=targetCount*4;
  const targetBuffer=device.createBuffer({size:targetBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
- const extractPipeline=await gpuFilterPipeline('extract');
  const extractMeta=new Uint32Array(12);extractMeta[0]=w;extractMeta[1]=h;extractMeta[2]=d;extractMeta[3]=target.x;extractMeta[4]=target.y;extractMeta[5]=target.z;extractMeta[6]=target.width;extractMeta[7]=target.height;extractMeta[8]=target.depth;extractMeta[9]=targetCount;
+ let extractPipeline,extractGroup;
  const emb=gpuSmallBuffer(device,extractMeta);small.push(emb);
- const extractGroup=device.createBindGroup({layout:extractPipeline.getBindGroupLayout(0),entries:[
-  {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:targetBuffer}},{binding:2,resource:{buffer:emb}}
- ]});
+ if(segments?.length){
+  extractMeta[10]=Math.min(segments.length,4);device.queue.writeBuffer(emb,0,extractMeta);
+  const thresholdValues=new Float32Array(8);
+  for(let i=0;i<Math.min(segments.length,4);i++){thresholdValues[i*2]=segments[i].seg.min;thresholdValues[i*2+1]=segments[i].seg.max}
+  const tb=gpuSmallBuffer(device,thresholdValues);small.push(tb);
+  extractPipeline=await gpuFilterPipeline('maskExtract');
+  extractGroup=device.createBindGroup({layout:extractPipeline.getBindGroupLayout(0),entries:[
+   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:targetBuffer}},{binding:2,resource:{buffer:emb}},{binding:3,resource:{buffer:tb}}
+  ]});
+ }else{
+  extractPipeline=await gpuFilterPipeline('extract');
+  extractGroup=device.createBindGroup({layout:extractPipeline.getBindGroupLayout(0),entries:[
+   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:targetBuffer}},{binding:2,resource:{buffer:emb}}
+  ]});
+ }
  const ep=encoder.beginComputePass();ep.setPipeline(extractPipeline);ep.setBindGroup(0,extractGroup);ep.dispatchWorkgroups(Math.ceil(targetCount/256));ep.end();
  const readback=device.createBuffer({size:targetBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
  encoder.copyBufferToBuffer(targetBuffer,0,readback,0,targetBytes);device.queue.submit([encoder.finish()]);
- await readback.mapAsync(GPUMapMode.READ);const result=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();
+ await readback.mapAsync(GPUMapMode.READ);
+ const copy=readback.getMappedRange().slice(0),result=segments?.length?new Uint32Array(copy):new Float32Array(copy);readback.unmap();
  a.destroy();b.destroy();targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
- gpuFilterRuntime.lastBackend='WEBGPU COMPUTE';return result;
+ gpuFilterRuntime.lastBackend=segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE';return result;
 }
 
 const sourceFilterRuntime={revision:0,workers:[],queue:[],nextId:0,cache:new Map(),cacheBytes:0};
@@ -1079,6 +1108,30 @@ async function processSourceRegion(series,target,stages,key,revision){
  const result=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return result;
 }
+function valuesToSegmentBits(values,segments){
+ const out=new Uint32Array(values.length);
+ for(let i=0;i<values.length;i++){const v=values[i];let bits=0;for(let s=0;s<segments.length&&s<4;s++)if(v>=segments[s].seg.min&&v<=segments[s].seg.max)bits|=(1<<s);out[i]=bits}
+ return out;
+}
+async function processSourceRegionMasks(series,target,stages,key,revision,segments){
+ const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
+ const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision);
+ if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+ const localTarget={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
+ if(gpuStagesSupported(stages)){
+  try{
+   const bits=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments);
+   if(bits instanceof Uint32Array){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return bits}
+  }catch(e){
+   if(!gpuFilterRuntime.warned){console.warn('WebGPU mask execution failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
+  }
+ }
+ gpuFilterRuntime.lastBackend='CPU WORKER';
+ const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:localTarget};
+ const values=await runSourceFilterWorker(message,key);
+ if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+ return valuesToSegmentBits(values,segments);
+}
 function sourceTileBudget(){return navigator.maxTouchPoints>0?8*1024*1024:16*1024*1024}
 function fitSourceTile(a,b,fixed,halo,startA,startB){
  let ca=Math.max(1,Math.min(a,startA)),cb=Math.max(1,Math.min(b,startB)),budget=sourceTileBudget();
@@ -1129,6 +1182,34 @@ async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d
  }
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return{data:out,depth:outDepth,coreDepth:Math.min(coreDepth,d-zStart)};
+}
+async function getFilteredSourceAxialMaskBlock(zStart,coreDepth,series,segments,keyPrefix='3d-mask-block'){
+ const stages=sourceFilterStages();if(!stages.length)return null;
+ const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=sourceFilterHalo(stages),outDepth=Math.min(d-zStart,coreDepth+(zStart+coreDepth<d?1:0));
+ const out=new Uint32Array(w*h*outDepth),[tx,ty]=fitSourceTile(w,h,outDepth,halo,384,128);
+ for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
+  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+  const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),tile=await processSourceRegionMasks(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart,revision,segments);
+  for(let zz=0;zz<outDepth;zz++)for(let yy=0;yy<th;yy++){
+   const src=(zz*th+yy)*tw,dst=(zz*h+y+yy)*w+x;
+   out.set(tile.subarray(src,src+tw),dst);
+  }
+ }
+ if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+ return{data:out,depth:outDepth,coreDepth:Math.min(coreDepth,d-zStart)};
+}
+function segmentMasksFromBits(bits,segments){
+ const blockSize=16384,states=new Map(segments.map(({key})=>[key,{mask:new Uint8Array(bits.length),blocks:[],block:new Uint32Array(blockSize),used:0}]));
+ for(let i=0;i<bits.length;i++){
+  const value=bits[i];if(!value)continue;
+  for(let s=0;s<segments.length&&s<4;s++)if(value&(1<<s)){
+   const state=states.get(segments[s].key);state.mask[i]=1;
+   if(state.used===state.block.length){state.blocks.push(state.block);state.block=new Uint32Array(blockSize);state.used=0}
+   state.block[state.used++]=i;
+  }
+ }
+ for(const state of states.values()){if(state.used)state.blocks.push(state.block.subarray(0,state.used));state.block=null;delete state.used}
+ return states;
 }
 function segmentMasksFromValues(data,segments){
  const blockSize=16384,states=new Map(segments.map(({key,seg})=>[key,{mask:new Uint8Array(data.length),blocks:[],block:new Uint32Array(blockSize),used:0,min:seg.min,max:seg.max}]));
@@ -1942,10 +2023,10 @@ async function render3DSourceBacked(v){
    let previousMask=null;
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
-    const block=await getFilteredSourceAxialBlock(z0,filterBlockDepth,series,'3d:'+revision);
+    const block=await getFilteredSourceAxialMaskBlock(z0,filterBlockDepth,series,active,'3d:'+revision);
     const masks=[];
     for(let local=0;local<block.depth;local++){
-     masks.push(segmentMasksFromValues(block.data.subarray(local*planeSize,(local+1)*planeSize),active));
+     masks.push(segmentMasksFromBits(block.data.subarray(local*planeSize,(local+1)*planeSize),active));
     }
     for(let local=0;local<block.coreDepth;local++){
      const z=z0+local,curr=masks[local],prev=local===0?previousMask:masks[local-1],next=local+1<masks.length?masks[local+1]:null;
