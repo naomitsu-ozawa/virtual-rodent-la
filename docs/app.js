@@ -225,7 +225,7 @@ function set3DState(mode){
  filter3DState.classList.toggle('is-stale',mode==='stale');
  filter3DState.classList.toggle('is-updating',mode==='updating');
  filter3DState.classList.toggle('is-current',mode==='current');
- filter3DState.textContent=tr(mode==='stale'?'threeStale':mode==='updating'?'threeUpdating':'threeCurrent');
+ const key=mode==='stale'?'threeStale':mode==='updating'?'threeUpdating':'threeCurrent';filter3DState.dataset.i18n=key;filter3DState.textContent=tr(key);
  filterApply3D.disabled=!volume||mode!=='stale';
 }
 function mark3DStale(){if(volume)set3DState('stale')}
