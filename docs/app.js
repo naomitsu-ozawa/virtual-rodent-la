@@ -852,6 +852,33 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  }
  dst[i]=weighted/weightSum;
 }`;
+ if(kind==='faceExtract')return `
+@group(0) @binding(0) var<storage, read> src: array<f32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<u32>;
+@group(0) @binding(2) var<storage, read> meta: array<u32>;
+@group(0) @binding(3) var<storage, read> thresholds: array<f32>;
+fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
+fn insideSegment(value:f32,s:u32)->bool{return value>=thresholds[s*2u]&&value<=thresholds[s*2u+1u];}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;let count=meta[9];if(i>=count){return;}
+ let tw=meta[6];let th=meta[7];let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);
+ let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
+ let gx=meta[11]+x;let gy=meta[12]+y;let gz=meta[13]+z;
+ let center=src[localIdx(x,y,z)];var packed=0u;
+ for(var s:u32=0u;s<meta[10];s=s+1u){
+  if(!insideSegment(center,s)){continue;}
+  let shift=s*6u;var faces=0u;
+  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){faces=faces|1u;}
+  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){faces=faces|2u;}
+  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){faces=faces|4u;}
+  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){faces=faces|8u;}
+  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){faces=faces|16u;}
+  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){faces=faces|32u;}
+  packed=packed|(faces<<shift);
+ }
+ dst[i]=packed;
+}`;
  if(kind==='maskExtract')return `
 @group(0) @binding(0) var<storage, read> src: array<f32>;
 @group(0) @binding(1) var<storage, read_write> dst: array<u32>;
@@ -893,7 +920,7 @@ function gpuSmallBuffer(device,data){
  const buffer=device.createBuffer({size:Math.max(32,Math.ceil(data.byteLength/4)*4),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
  device.queue.writeBuffer(buffer,0,data);return buffer;
 }
-async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=null){
+async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=null,faceContext=null){
  const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
  const bytes=data.byteLength,n=data.length;
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
@@ -937,11 +964,16 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
  let extractPipeline,extractGroup;
  const emb=gpuSmallBuffer(device,extractMeta);small.push(emb);
  if(segments?.length){
-  extractMeta[10]=Math.min(segments.length,4);device.queue.writeBuffer(emb,0,extractMeta);
+  extractMeta[10]=Math.min(segments.length,4);
+  if(faceContext){
+   extractMeta[11]=faceContext.boxX;extractMeta[12]=faceContext.boxY;extractMeta[13]=faceContext.boxZ;
+   extractMeta[14]=faceContext.globalW;extractMeta[15]=faceContext.globalH;extractMeta[16]=faceContext.globalD;
+  }
+  device.queue.writeBuffer(emb,0,extractMeta);
   const thresholdValues=new Float32Array(8);
   for(let i=0;i<Math.min(segments.length,4);i++){thresholdValues[i*2]=segments[i].seg.min;thresholdValues[i*2+1]=segments[i].seg.max}
   const tb=gpuSmallBuffer(device,thresholdValues);small.push(tb);
-  extractPipeline=await gpuFilterPipeline('maskExtract');
+  extractPipeline=await gpuFilterPipeline(faceContext?'faceExtract':'maskExtract');
   extractGroup=device.createBindGroup({layout:extractPipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:targetBuffer}},{binding:2,resource:{buffer:emb}},{binding:3,resource:{buffer:tb}}
   ]});
@@ -957,7 +989,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
  await readback.mapAsync(GPUMapMode.READ);
  const copy=readback.getMappedRange().slice(0),result=segments?.length?new Uint32Array(copy):new Float32Array(copy);readback.unmap();
  a.destroy();b.destroy();targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
- gpuFilterRuntime.lastBackend=segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE';return result;
+ gpuFilterRuntime.lastBackend=faceContext?'WEBGPU FILTER+FACES':segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE';return result;
 }
 
 const sourceFilterRuntime={revision:0,workers:[],queue:[],nextId:0,cache:new Map(),cacheBytes:0};
@@ -1132,6 +1164,44 @@ async function processSourceRegionMasks(series,target,stages,key,revision,segmen
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return valuesToSegmentBits(values,segments);
 }
+function valuesToFaceFlags(values,w,h,d,target,segments,box,series){
+ const out=new Uint32Array(target.width*target.height*target.depth);let q=0;
+ const local=(x,y,z)=>values[z*w*h+y*w+x],inside=(v,s)=>v>=segments[s].seg.min&&v<=segments[s].seg.max;
+ for(let tz=0;tz<target.depth;tz++)for(let ty=0;ty<target.height;ty++)for(let tx=0;tx<target.width;tx++){
+  const x=target.x+tx,y=target.y+ty,z=target.z+tz,gx=box.x+x,gy=box.y+y,gz=box.z+z,center=local(x,y,z);let packed=0;
+  for(let s=0;s<segments.length&&s<4;s++){
+   if(!inside(center,s))continue;let faces=0;
+   if(gx===0||!inside(local(x-1,y,z),s))faces|=1;
+   if(gx+1>=series.columns||!inside(local(x+1,y,z),s))faces|=2;
+   if(gy===0||!inside(local(x,y-1,z),s))faces|=4;
+   if(gy+1>=series.rows||!inside(local(x,y+1,z),s))faces|=8;
+   if(gz===0||!inside(local(x,y,z-1),s))faces|=16;
+   if(gz+1>=series.slices.length||!inside(local(x,y,z+1),s))faces|=32;
+   packed|=faces<<(s*6);
+  }
+  out[q++]=packed;
+ }
+ return out;
+}
+async function processSourceRegionFaces(series,target,stages,key,revision,segments){
+ const halo=Math.max(1,sourceFilterHalo(stages)),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
+ const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision);
+ if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+ const localTarget={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
+ if(gpuStagesSupported(stages)){
+  try{
+   const flags=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:series.columns,globalH:series.rows,globalD:series.slices.length});
+   if(flags instanceof Uint32Array){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return flags}
+  }catch(e){
+   if(!gpuFilterRuntime.warned){console.warn('WebGPU face extraction failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
+  }
+ }
+ gpuFilterRuntime.lastBackend='CPU WORKER';
+ const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:{x:0,y:0,z:0,width:box.width,height:box.height,depth:box.depth}};
+ const filtered=await runSourceFilterWorker(message,key);
+ if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+ return valuesToFaceFlags(filtered,box.width,box.height,box.depth,localTarget,segments,box,series);
+}
 function sourceTileBudget(){return navigator.maxTouchPoints>0?8*1024*1024:16*1024*1024}
 function fitSourceTile(a,b,fixed,halo,startA,startB){
  let ca=Math.max(1,Math.min(a,startA)),cb=Math.max(1,Math.min(b,startB)),budget=sourceTileBudget();
@@ -1182,6 +1252,20 @@ async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d
  }
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return{data:out,depth:outDepth,coreDepth:Math.min(coreDepth,d-zStart)};
+}
+async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,keyPrefix='3d-face-block'){
+ const stages=sourceFilterStages();if(!stages.length)return null;
+ const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth);
+ const out=new Uint32Array(w*h*outDepth),[tx,ty]=fitSourceTile(w,h,outDepth,halo,384,128);
+ for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
+  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+  const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),tile=await processSourceRegionFaces(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart,revision,segments);
+  for(let zz=0;zz<outDepth;zz++)for(let yy=0;yy<th;yy++){
+   const src=(zz*th+yy)*tw,dst=(zz*h+y+yy)*w+x;out.set(tile.subarray(src,src+tw),dst);
+  }
+ }
+ if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+ return{data:out,depth:outDepth,coreDepth:outDepth};
 }
 async function getFilteredSourceAxialMaskBlock(zStart,coreDepth,series,segments,keyPrefix='3d-mask-block'){
  const stages=sourceFilterStages();if(!stages.length)return null;
@@ -2002,6 +2086,21 @@ function makeSource3DCoordinates(series){
  for(let z=0;z<=d;z++)zs[z]=(z*sz-pz/2)*scale;
  return{xs,ys,zs,scale};
 }
+function appendSourceSliceFacesFromFlags(positionsByKey,series,z,flags,active,coords){
+ const w=series.columns,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1];
+ for(let i=0;i<flags.length;i++){
+  const packed=flags[i];if(!packed)continue;const y=Math.floor(i/w),x=i-y*w,x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1];
+  for(let s=0;s<active.length&&s<4;s++){
+   const faces=(packed>>>(s*6))&63;if(!faces)continue;const positions=positionsByKey.get(active[s].key);if(!positions)continue;
+   if(faces&1)positions.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
+   if(faces&2)positions.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
+   if(faces&4)positions.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
+   if(faces&8)positions.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
+   if(faces&16)positions.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
+   if(faces&32)positions.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
+  }
+ }
+}
 function appendSourceSliceFacesFromBits(positionsByKey,series,z,prevBits,currBits,nextBits,active,coords){
  const w=series.columns,h=series.rows,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1];
  for(let i=0;i<currBits.length;i++){
@@ -2057,20 +2156,15 @@ async function render3DSourceBacked(v){
   const filtered=sourceFilterStages().length>0;
   if(filtered){
    const filterBlockDepth=navigator.maxTouchPoints>0?2:4,planeSize=series.columns*series.rows;
-   let previousBits=null;
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
-    const block=await getFilteredSourceAxialMaskBlock(z0,filterBlockDepth,series,active,'3d:'+revision);
+    const block=await getFilteredSourceAxialFaceBlock(z0,filterBlockDepth,series,active,'3d:'+revision);
     for(let local=0;local<block.coreDepth;local++){
-     const z=z0+local;
-     const currBits=block.data.subarray(local*planeSize,(local+1)*planeSize);
-     const prevBits=local===0?previousBits:block.data.subarray((local-1)*planeSize,local*planeSize);
-     const nextBits=local+1<block.depth?block.data.subarray((local+1)*planeSize,(local+2)*planeSize):null;
-     appendSourceSliceFacesFromBits(positionsByKey,series,z,prevBits,currBits,nextBits,active,coords);
+     const z=z0+local,flags=block.data.subarray(local*planeSize,(local+1)*planeSize);
+     appendSourceSliceFacesFromFlags(positionsByKey,series,z,flags,active,coords);
      const flush=(z%chunkDepth===chunkDepth-1)||z===series.slices.length-1;
      if(flush){for(const {key} of active)flushSegment(key,z);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(z+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(z+1)+' / '+series.slices.length);await frameYield()}
     }
-    previousBits=block.data.slice((block.coreDepth-1)*planeSize,block.coreDepth*planeSize);
    }
   }else{
    let prev=null,curr=await decodeSourceSegmentMasks(series.slices[0],active);
