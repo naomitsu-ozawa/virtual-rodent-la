@@ -2346,42 +2346,145 @@ async function start3D(){
  const resize=()=>{camera.aspect=viewport.clientWidth/Math.max(viewport.clientHeight,1);camera.updateProjectionMatrix();renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);request3DRender()};sceneState.resize=resize;new ResizeObserver(resize).observe(viewport);resize();
  renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;sceneState.needsRender=false;renderer.render(scene,camera)});
 }
+class RunUnionFind{
+ constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
+ grow(){
+  const nextCap=this.parent.length*2,p=new Uint32Array(nextCap),s=new Uint32Array(nextCap);p.set(this.parent);s.set(this.size);this.parent=p;this.size=s;
+ }
+ add(weight){
+  if(this.count>=this.parent.length)this.grow();const id=this.count++;this.parent[id]=id;this.size[id]=weight;return id;
+ }
+ find(id){
+  let root=id;while(this.parent[root]!==root)root=this.parent[root];
+  while(this.parent[id]!==id){const next=this.parent[id];this.parent[id]=root;id=next}
+  return root;
+ }
+ union(a,b){
+  let ra=this.find(a),rb=this.find(b);if(ra===rb)return ra;
+  if(this.size[ra]<this.size[rb]){const t=ra;ra=rb;rb=t}
+  this.parent[rb]=ra;this.size[ra]+=this.size[rb];return ra;
+ }
+}
+function unionOverlappingRuns(a,b,uf){
+ let i=0,j=0;
+ while(i<a.length&&j<b.length){
+  const ar=a[i],br=b[j];
+  if(ar[1]<br[0]){i++;continue}
+  if(br[1]<ar[0]){j++;continue}
+  uf.union(ar[2],br[2]);
+  if(ar[1]<=br[1])i++;else j++;
+ }
+}
+function sourceRunSlice(mask,w,h,z,seed,uf,prevSliceRows){
+ const records=[],rows=new Array(h);let prevRow=[];
+ for(let y=0;y<h;y++){
+  const runs=[];let x=0,row=y*w;
+  while(x<w){
+   while(x<w&&!mask[row+x])x++;if(x>=w)break;
+   const x0=x;while(x+1<w&&mask[row+x+1])x++;const x1=x,label=uf.add(x1-x0+1),run=[x0,x1,label];runs.push(run);
+   if(Math.abs(z-seed.z)<=2&&Math.abs(y-seed.y)<=2){
+    const dx=seed.x<x0?x0-seed.x:seed.x>x1?seed.x-x1:0;
+    if(dx<=2){
+     const dist2=dx*dx+(y-seed.y)*(y-seed.y)+(z-seed.z)*(z-seed.z);
+     if(dist2<seed.bestDist2){seed.bestDist2=dist2;seed.label=label}
+    }
+   }
+   records.push(y,x0,x1,label);x++;
+  }
+  unionOverlappingRuns(runs,prevRow,uf);
+  unionOverlappingRuns(runs,prevSliceRows?.[y]||[],uf);
+  rows[y]=runs;prevRow=runs;
+ }
+ return{rows,records:new Uint32Array(records)};
+}
+async function sourceSegmentMaskBlock(v,key,seg,zStart,depth,analysisRevision){
+ const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart);
+ if(stages.length){
+  const block=await getFilteredSourceAxialMaskBlock(zStart,coreDepth,series,[{key,seg}],'analysis:'+analysisRevision);
+  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+  const masks=[];
+  for(let z=0;z<block.coreDepth;z++){
+   const bits=block.data.subarray(z*series.columns*series.rows,(z+1)*series.columns*series.rows),mask=new Uint8Array(bits.length);
+   for(let i=0;i<bits.length;i++)mask[i]=(bits[i]&1)?1:0;
+   masks.push(mask);
+  }
+  return masks;
+ }
+ const masks=[];
+ for(let z=0;z<coreDepth;z++){
+  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+  const state=(await decodeSourceSegmentMasks(series.slices[zStart+z],[{key,seg}])).get(key);masks.push(state.mask);
+ }
+ return masks;
+}
+async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
+ const w=v.columns,h=v.rows,d=v.slices,analysisRevision=sourceFilterRuntime.revision,uf=new RunUnionFind(),sliceRuns=new Array(d);
+ const seed={x:Math.max(0,Math.min(w-1,x0)),y:Math.max(0,Math.min(h-1,y0)),z:Math.max(0,Math.min(d-1,z0)),label:null,bestDist2:Infinity};
+ let prevRows=null,done=0;const blockDepth=navigator.maxTouchPoints>0?2:4;
+ for(let z0b=0;z0b<d;z0b+=blockDepth){
+  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+  const masks=await sourceSegmentMaskBlock(v,key,seg,z0b,blockDepth,analysisRevision);
+  for(let local=0;local<masks.length;local++){
+   const z=z0b+local,result=sourceRunSlice(masks[local],w,h,z,seed,uf,prevRows);
+   sliceRuns[z]=result.records;prevRows=result.rows;done=z+1;
+   if((z&7)===0){volumeAnalysisResult.textContent=(currentLanguage==='ja'?'連結成分を解析中… ':'Analyzing connected component… ')+done+' / '+d;await frameYield()}
+  }
+ }
+ if(seed.label==null)throw new Error(currentLanguage==='ja'?'選択位置から連結成分を特定できませんでした':'Could not identify a connected component at the selected point');
+ const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];
+ return{voxels,mm3,root,uf,sliceRuns};
+}
+function sourceComponentSliceState(records,w,h,root,uf){
+ const mask=new Uint8Array(w*h),blocks=[],blockSize=16384;let block=new Uint32Array(blockSize),used=0;
+ const push=i=>{if(used===block.length){blocks.push(block);block=new Uint32Array(blockSize);used=0}block[used++]=i};
+ if(records)for(let r=0;r<records.length;r+=4){
+  const y=records[r],x0=records[r+1],x1=records[r+2],label=records[r+3];if(uf.find(label)!==root)continue;
+  const start=y*w+x0;mask.fill(1,start,start+(x1-x0+1));for(let x=x0;x<=x1;x++)push(y*w+x);
+ }
+ if(used)blocks.push(block.subarray(0,used));
+ return{mask,blocks};
+}
+async function showSourceAnalysisHighlight(v,result,key){
+ clearAnalysisHighlight();if(!sceneState?.obj)return;
+ const series=v.series,w=v.columns,h=v.rows,d=v.slices,coords=makeSource3DCoordinates(series),builder=new Float32FaceBuilder(),faceLimit=180000,floatLimit=faceLimit*18;
+ let prev=null,curr=sourceComponentSliceState(result.sliceRuns[0],w,h,result.root,result.uf),next=d>1?sourceComponentSliceState(result.sliceRuns[1],w,h,result.root,result.uf):null;
+ for(let z=0;z<d&&builder.length<floatLimit;z++){
+  appendSourceSliceFacesFast(builder,series,z,prev,curr,next,coords);
+  prev=curr;curr=next;next=z+2<d?sourceComponentSliceState(result.sliceRuns[z+2],w,h,result.root,result.uf):null;
+  if((z&31)===0)await frameYield();
+ }
+ const positions=builder.take();if(!positions)return;
+ const geometry=geometryFromSourcePositions(positions),material=new THREE.MeshStandardMaterial({color:0x00d8ff,emissive:0x0088aa,emissiveIntensity:.75,transparent:true,opacity:.92,roughness:.35,metalness:0,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:true});
+ const mesh=new THREE.Mesh(geometry,material);mesh.name='analysis_'+key;mesh.renderOrder=20;sceneState.analysisMesh=mesh;sceneState.obj.add(mesh);request3DRender();
+}
 async function analyzeVolumeAtPointer(event,canvas,camera){
  if(!volume||!sceneState?.obj)return;
  const analysisVolume=current3DVolume||volume;
- volumeAnalysisBusy=true;
- volumeAnalysisResult.classList.remove('is-hidden');
- volumeAnalysisResult.textContent=currentLanguage==='ja'?'解析中…':'Analyzing…';
+ volumeAnalysisBusy=true;volumeAnalysisResult.classList.remove('is-hidden');volumeAnalysisResult.textContent=currentLanguage==='ja'?'解析中…':'Analyzing…';
  try{
-  const rect=canvas.getBoundingClientRect();
-  const mouse=new THREE.Vector2(((event.clientX-rect.left)/rect.width)*2-1,-((event.clientY-rect.top)/rect.height)*2+1);
-  const raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
+  const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/rect.width)*2-1,-((event.clientY-rect.top)/rect.height)*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
   const hit=raycaster.intersectObjects(sceneState.obj.children,true).find(h=>h.object?.userData?.segmentKey);
   if(!hit){volumeAnalysisResult.textContent=tr('volumeHint');return}
-  const key=hit.object.userData.segmentKey,seg=segmentState[key],scale=hit.object.userData.displayScale;
-  if(analysisVolume.sourceBacked){
-   const mm3=currentSegmentVolumeMm3(key),labels={bone:currentLanguage==='ja'?'骨':'Bone',soft:currentLanguage==='ja'?'軟部組織':'Soft tissue',fat:currentLanguage==='ja'?'脂肪':'Fat',lung:currentLanguage==='ja'?'肺':'Lung'};
-   volumeAnalysisResult.innerHTML='<strong>'+labels[key]+'</strong><span>'+mm3.toFixed(2)+' mm³</span><span>'+(currentLanguage==='ja'?'セグメント全体 · ':'Whole segment · ')+mm3.toFixed(2)+' µL</span>';
-   clearAnalysisHighlight();return;
-  }
-  const local=hit.object.worldToLocal(hit.point.clone());
-  const [vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices;
-  const px=w*vx,py=h*vy,pz=d*vz;
+  const key=hit.object.userData.segmentKey,seg=segmentState[key],scale=hit.object.userData.displayScale,local=hit.object.worldToLocal(hit.point.clone());
+  const [vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices,px=w*vx,py=h*vy,pz=d*vz;
   let x=Math.round((local.x/scale+px/2)/vx),y=Math.round((-local.y/scale+py/2)/vy),z=Math.round((local.z/scale+pz/2)/vz);
-  const processedMask=getProcessedSegmentMask(analysisVolume,seg);
-  const inside=(ix,iy,iz)=>ix>=0&&iy>=0&&iz>=0&&ix<w&&iy<h&&iz<d&&processedMask[iz*h*w+iy*w+ix]===1;
+  const labels={bone:currentLanguage==='ja'?'骨':'Bone',soft:currentLanguage==='ja'?'軟部組織':'Soft tissue',fat:currentLanguage==='ja'?'脂肪':'Fat',lung:currentLanguage==='ja'?'肺':'Lung'};
+  if(analysisVolume.sourceBacked){
+   const result=await connectedComponentVolumeSource(analysisVolume,key,seg,x,y,z);
+   await showSourceAnalysisHighlight(analysisVolume,result,key);
+   volumeAnalysisResult.innerHTML='<strong>'+labels[key]+'</strong><span>'+result.mm3.toFixed(2)+' mm³</span><span>'+result.mm3.toFixed(2)+' µL · '+result.voxels.toLocaleString()+' voxels</span>';
+   return;
+  }
+  const processedMask=getProcessedSegmentMask(analysisVolume,seg),inside=(ix,iy,iz)=>ix>=0&&iy>=0&&iz>=0&&ix<w&&iy<h&&iz<d&&processedMask[iz*h*w+iy*w+ix]===1;
   if(!inside(x,y,z)){
-   let found=null;
-   for(let r=1;r<=2&&!found;r++)for(let dz=-r;dz<=r&&!found;dz++)for(let dy=-r;dy<=r&&!found;dy++)for(let dx=-r;dx<=r;dx++){const ix=x+dx,iy=y+dy,iz=z+dz;if(inside(ix,iy,iz)){found=[ix,iy,iz];break}}
+   let found=null;for(let r=1;r<=2&&!found;r++)for(let dz=-r;dz<=r&&!found;dz++)for(let dy=-r;dy<=r&&!found;dy++)for(let dx=-r;dx<=r;dx++){const ix=x+dx,iy=y+dy,iz=z+dz;if(inside(ix,iy,iz)){found=[ix,iy,iz];break}}
    if(!found){volumeAnalysisResult.textContent=currentLanguage==='ja'?'選択位置から領域を特定できませんでした':'Could not identify a component at the selected point';return}
    [x,y,z]=found;
   }
-  const result=await connectedComponentVolume(analysisVolume,seg,x,y,z,processedMask);
-  showAnalysisHighlight(analysisVolume,result.mask,key);
-  const labels={bone:currentLanguage==='ja'?'骨':'Bone',soft:currentLanguage==='ja'?'軟部組織':'Soft tissue',fat:currentLanguage==='ja'?'脂肪':'Fat',lung:currentLanguage==='ja'?'肺':'Lung'};
+  const result=await connectedComponentVolume(analysisVolume,seg,x,y,z,processedMask);showAnalysisHighlight(analysisVolume,result.mask,key);
   volumeAnalysisResult.innerHTML='<strong>'+labels[key]+'</strong><span>'+result.mm3.toFixed(2)+' mm³</span><span>'+result.mm3.toFixed(2)+' µL · '+result.voxels.toLocaleString()+' voxels</span>';
  }catch(e){
-  console.error(e);volumeAnalysisResult.textContent=(currentLanguage==='ja'?'体積解析エラー: ':'Volume analysis error: ')+String(e.message||e);
+  if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);volumeAnalysisResult.textContent=(currentLanguage==='ja'?'体積解析エラー: ':'Volume analysis error: ')+String(e.message||e)}
  }finally{volumeAnalysisBusy=false}
 }
 async function connectedComponentVolume(v,seg,x0,y0,z0,mask=getProcessedSegmentMask(v,seg)){
