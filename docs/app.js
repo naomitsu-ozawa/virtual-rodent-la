@@ -550,7 +550,7 @@ function addSegmentPreset(key){
  const seg=segmentState[key];seg.active=true;seg.enabled=true;
  const enabled=$('[data-seg-enabled="'+key+'"]'),color=$('[data-seg-color="'+key+'"]'),min=$('[data-seg-min="'+key+'"]'),max=$('[data-seg-max="'+key+'"]'),opacity=$('[data-seg-opacity="'+key+'"]'),exportBtn=$('[data-seg-export="'+key+'"]'),removeBtn=$('[data-seg-remove="'+key+'"]'),opening=$('[data-seg-opening="'+key+'"]'),closing=$('[data-seg-closing="'+key+'"]'),minComponent=$('[data-seg-min-component="'+key+'"]'),holeFill=$('[data-seg-hole-fill="'+key+'"]');
  enabled.checked=true;enabled.disabled=false;color.disabled=false;min.disabled=false;max.disabled=false;opacity.disabled=false;
- const sourceMode=volume?.sourceBacked===true;opening.disabled=sourceMode;closing.disabled=sourceMode;minComponent.disabled=sourceMode;holeFill.disabled=sourceMode;
+ const sourceMode=volume?.sourceBacked===true,globalProcessingAvailable=!sourceMode||!!volume?.mprData;opening.disabled=!globalProcessingAvailable;closing.disabled=!globalProcessingAvailable;minComponent.disabled=!globalProcessingAvailable;holeFill.disabled=!globalProcessingAvailable;
  if(exportBtn)exportBtn.disabled=true;if(removeBtn)removeBtn.disabled=false;
  renderSegmentPresets();renderAll();scheduleSegment3D();
 }
@@ -2935,8 +2935,8 @@ function configureSegments(v){
   const cfg=segmentState[key],d=defaults[key];cfg.min=d[0];cfg.max=d[1];
   const enabled=$('[data-seg-enabled="'+key+'"]'),color=$('[data-seg-color="'+key+'"]'),min=$('[data-seg-min="'+key+'"]'),max=$('[data-seg-max="'+key+'"]'),opacity=$('[data-seg-opacity="'+key+'"]');
   const exportBtn=$('[data-seg-export="'+key+'"]'),removeBtn=$('[data-seg-remove="'+key+'"]'),opening=$('[data-seg-opening="'+key+'"]'),closing=$('[data-seg-closing="'+key+'"]'),minComponent=$('[data-seg-min-component="'+key+'"]'),holeFill=$('[data-seg-hole-fill="'+key+'"]');
-  const usable=cfg.active,sourceMode=v.sourceBacked===true;
-  enabled.disabled=color.disabled=min.disabled=max.disabled=opacity.disabled=!usable;opening.disabled=closing.disabled=minComponent.disabled=holeFill.disabled=!usable||sourceMode;if(exportBtn)exportBtn.disabled=!usable;if(removeBtn)removeBtn.disabled=!usable;enabled.checked=cfg.enabled;color.value=cfg.color;
+  const usable=cfg.active,sourceMode=v.sourceBacked===true,globalProcessingAvailable=!sourceMode||!!v.mprData;
+  enabled.disabled=color.disabled=min.disabled=max.disabled=opacity.disabled=!usable;opening.disabled=closing.disabled=minComponent.disabled=holeFill.disabled=!usable||!globalProcessingAvailable;if(exportBtn)exportBtn.disabled=!usable;if(removeBtn)removeBtn.disabled=!usable;enabled.checked=cfg.enabled;color.value=cfg.color;
   min.min=max.min=Math.floor(v.min);min.max=max.max=Math.ceil(v.max);min.value=cfg.min;max.value=cfg.max;opacity.value=cfg.opacity;opening.value=cfg.opening;closing.value=cfg.closing;minComponent.value=cfg.minComponent;holeFill.checked=cfg.holeFill;$('[data-seg-opening-out="'+key+'"]').value=cfg.opening;$('[data-seg-closing-out="'+key+'"]').value=cfg.closing;$('[data-seg-min-component-out="'+key+'"]').value=cfg.minComponent;cfg._maskCache=null;updateSegmentOutputs(key);
  }
  renderSegmentPresets();
@@ -3733,7 +3733,7 @@ function clearSegmentEditCache(key,clearEdits=false){
 }
 function clearAllSegmentEdits(){
  for(const key of SEGMENT_PRESET_ORDER){const st=segmentEditState[key];if(st.surfaceGroup?.parent)st.surfaceGroup.parent.remove(st.surfaceGroup);st.surfaceGroup=null;clearSegmentEditCache(key,true)}
- analysisEditTool='select';analysisCutStroke=null;analysisCutScreen=[];
+ analysisEditTool='select';analysisEditTargetKey=null;analysisEditTargetMode='auto';if(analysisEditTargetSelect)analysisEditTargetSelect.value='auto';analysisCutStroke=null;analysisCutScreen=[];updateThreeEditUi();
 }
 function thresholdRunsFromMemory(v,seg){
  const w=v.columns,h=v.rows,d=v.slices,out=new Array(d),plane=w*h;
@@ -3742,6 +3742,10 @@ function thresholdRunsFromMemory(v,seg){
  return out;
 }
 async function sourceRunsForSegment(v,key,seg){
+ if(segmentNeedsGlobalMask(seg)&&v.mprData){
+  const memoryView={data:v.mprData,columns:v.columns,rows:v.rows,slices:v.slices,spacing:v.spacing,min:v.min,max:v.max};
+  return thresholdRunsFromMemory(memoryView,seg);
+ }
  const d=v.slices,w=v.columns,h=v.rows,out=Array.from({length:d},()=>new Uint32Array(0)),revision=sourceFilterRuntime.revision,blockDepth=navigator.maxTouchPoints>0?4:16;
  for(let z0=0;z0<d;z0+=blockDepth){
   let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision)}catch(e){console.warn('Edit base GPU RLE fallback.',e)}
