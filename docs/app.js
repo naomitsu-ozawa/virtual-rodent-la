@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build09-final';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-13';const APP_BUILD='13';
+const APP_VERSION='2026.09.22-14';const APP_BUILD='14';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -976,7 +976,7 @@ async function decode(s,onProgress){
 
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
-const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128};
+const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 function isDesktopMac(){
  const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent||'';
  return /mac/i.test(platform)&&(navigator.maxTouchPoints||0)===0;
@@ -1041,8 +1041,8 @@ function installGpuErrorListener(device){
  try{
   device.__vrlErrorListenerInstalled=true;
   device.addEventListener?.('uncapturederror',event=>{
-   const message=String(event?.error?.message||event?.message||'uncaptured WebGPU error');
-   gpuFilterRuntime.lastError='uncaptured: '+message;
+   const message=String(event?.error?.message||event?.message||'uncaptured WebGPU error'),kind=gpuFilterRuntime.lastShaderKind?(' ['+gpuFilterRuntime.lastShaderKind+']'):'';
+   gpuFilterRuntime.lastError='uncaptured'+kind+': '+message;
    setGpuComputeBackend('WEBGPU GPU FAIL',gpuFilterRuntime.lastError);
    console.error('Virtual Rodent Lab WebGPU error:',event?.error||event);
   });
@@ -1610,10 +1610,14 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 }`;
  throw new Error('Unknown GPU filter shader '+kind);
 }
+function normalizeVrlWgsl(source){
+ return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
+}
 async function gpuFilterPipeline(kind){
  const device=await ensureGpuFilterDevice();if(!device)return null;
  if(gpuFilterRuntime.pipelines.has(kind))return gpuFilterRuntime.pipelines.get(kind);
- const module=device.createShaderModule({code:gpuFilterShader(kind),label:'VRL '+kind+' compute'});
+ gpuFilterRuntime.lastShaderKind=kind;
+ const source=normalizeVrlWgsl(gpuFilterShader(kind)),module=device.createShaderModule({code:source,label:'VRL '+kind+' compute'});
  if(typeof module.getCompilationInfo==='function'){
   const info=await module.getCompilationInfo(),errors=(info.messages||[]).filter(m=>m.type==='error');
   if(errors.length)throw new Error('WGSL '+kind+': '+errors.map(m=>m.message).join(' | '));
