@@ -85,15 +85,15 @@ fn segmentIndex(v:f32)->i32{
  return -1;
 }
 fn brickMayContain(p:vec3<f32>)->bool{
- let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999)),dims=max(u.dimsSlope.xyz,vec3<f32>(1.0)),bs=max(u.viewport.w,1.0);
- let voxel=vec3<u32>(tc*dims),bx=voxel.x/u32(bs),by=voxel.y/u32(bs),bz=voxel.z/u32(bs),bcx=u32(u.calibration.z),bcy=u32(u.calibration.w);
+ let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999));let dims=max(u.dimsSlope.xyz,vec3<f32>(1.0));let bs=max(u.viewport.w,1.0);
+ let voxel=vec3<u32>(tc*dims);let bx=voxel.x/u32(bs);let by=voxel.y/u32(bs);let bz=voxel.z/u32(bs);let bcx=u32(u.calibration.z);let bcy=u32(u.calibration.w);
  let mm=brickMinMax[bz*bcx*bcy+by*bcx+bx];
  for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){return true;}}
  return false;
 }
 fn brickExitDistance(p:vec3<f32>,dir:vec3<f32>)->f32{
- let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999)),dims=max(u.dimsSlope.xyz,vec3<f32>(1.0)),bs=max(u.viewport.w,1.0),voxel=vec3<u32>(tc*dims);
- let b=voxel/u32(bs),voxelSize=2.0*u.halfStep.xyz/dims;var best=1e20;
+ let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999));let dims=max(u.dimsSlope.xyz,vec3<f32>(1.0));let bs=max(u.viewport.w,1.0);let voxel=vec3<u32>(tc*dims);
+ let b=voxel/u32(bs);let voxelSize=2.0*u.halfStep.xyz/dims;var best=1e20;
  if(abs(dir.x)>1e-8){let edge=select(f32(b.x*u32(bs)),min(f32((b.x+1u)*u32(bs)),dims.x),dir.x>0.0);let q=-u.halfStep.x+edge*voxelSize.x;let dt=(q-p.x)/dir.x;if(dt>1e-7){best=min(best,dt);}}
  if(abs(dir.y)>1e-8){let edge=select(f32(b.y*u32(bs)),min(f32((b.y+1u)*u32(bs)),dims.y),dir.y<0.0);let q=u.halfStep.y-edge*voxelSize.y;let dt=(q-p.y)/dir.y;if(dt>1e-7){best=min(best,dt);}}
  if(abs(dir.z)>1e-8){let edge=select(f32(b.z*u32(bs)),min(f32((b.z+1u)*u32(bs)),dims.z),dir.z>0.0);let q=-u.halfStep.z+edge*voxelSize.z;let dt=(q-p.z)/dir.z;if(dt>1e-7){best=min(best,dt);}}
@@ -125,12 +125,12 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      let mid=(lo+hi)*0.5;let mi=segmentIndex(huAt(texCoord(u.camOrigin.xyz+dir*mid)));
      if(mi==idx){hi=mid;}else{lo=mid;}
     }
-    let hp=u.camOrigin.xyz+dir*hi,tc=texCoord(hp),n=gradientAt(tc);
-    let viewDir=normalize(u.camOrigin.xyz-hp),lightDir=normalize(viewDir+vec3<f32>(0.35,0.5,0.25));
+    let hp=u.camOrigin.xyz+dir*hi;let tc=texCoord(hp);let n=gradientAt(tc);
+    let viewDir=normalize(u.camOrigin.xyz-hp);let lightDir=normalize(viewDir+vec3<f32>(0.35,0.5,0.25));
     let diffuse=0.28+0.72*abs(dot(n,lightDir));
     let spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
-    let a=u.segments[u32(idx)*2u],col=u.segments[u32(idx)*2u+1u].rgb;
-    let alpha=clamp(a.z,0.03,1.0),lit=col*diffuse+vec3<f32>(spec);
+    let a=u.segments[u32(idx)*2u];let col=u.segments[u32(idx)*2u+1u].rgb;
+    let alpha=clamp(a.z,0.03,1.0);let lit=col*diffuse+vec3<f32>(spec);
     acc.rgb+=(1.0-acc.a)*lit*alpha;acc.a+=(1.0-acc.a)*alpha;
    }
    lastIndex=idx;
