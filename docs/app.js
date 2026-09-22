@@ -773,7 +773,7 @@ function schedulePlaneRender(p,immediate=false){
   const cached=sourceOrthogonalCacheGet(p,idx);
   if(cached){paintSourcePlane(planes[p],p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],cached,p,idx);return}
  }
- const wait=immediate?0:sourceFilterStages().length?24:0;
+ const wait=immediate?0:sourceFilterStages().length?24:(volume?.sourceBacked&&p!=='axial'?12:0);
  planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;if(revision===planeRenderRevision[p])safeRenderPlane(p,revision,idx)},wait);
 }
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>schedulePlaneRender(p,true);installMprTouch(p)}
@@ -1893,20 +1893,27 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
  setGpuComputeBackend(segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE');return result;
 }
 
-const sourceSliceCache={map:new Map(),bytes:0},sourceOrthogonalPlaneCache=new Map();
+const sourceSliceCache={map:new Map(),bytes:0},sourceOrthogonalPlaneCache=new Map();let sourceOrthogonalPlaneCacheBytes=0;
 function sourceSliceCacheLimit(){return navigator.maxTouchPoints>0?48*1024*1024:128*1024*1024}
-function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear()}
+function sourceOrthogonalCacheLimit(){return navigator.maxTouchPoints>0?32*1024*1024:64*1024*1024}
+function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear();sourceOrthogonalPlaneCacheBytes=0}
 function sourceOrthogonalCacheGet(p,idx){
  const key=p+':'+idx,v=sourceOrthogonalPlaneCache.get(key);if(!v)return null;sourceOrthogonalPlaneCache.delete(key);sourceOrthogonalPlaneCache.set(key,v);return v;
 }
 function sourceOrthogonalCacheSet(p,idx,v){
- const key=p+':'+idx;sourceOrthogonalPlaneCache.set(key,v);
- while(sourceOrthogonalPlaneCache.size>20)sourceOrthogonalPlaneCache.delete(sourceOrthogonalPlaneCache.keys().next().value);
+ const key=p+':'+idx,old=sourceOrthogonalPlaneCache.get(key);if(old)sourceOrthogonalPlaneCacheBytes-=old.byteLength;
+ sourceOrthogonalPlaneCache.delete(key);sourceOrthogonalPlaneCache.set(key,v);sourceOrthogonalPlaneCacheBytes+=v.byteLength;
+ const limit=sourceOrthogonalCacheLimit();
+ while(sourceOrthogonalPlaneCacheBytes>limit&&sourceOrthogonalPlaneCache.size>1){
+  const first=sourceOrthogonalPlaneCache.keys().next().value,item=sourceOrthogonalPlaneCache.get(first);sourceOrthogonalPlaneCache.delete(first);sourceOrthogonalPlaneCacheBytes-=item.byteLength;
+ }
 }
 async function buildSourceOrthogonalNeighborhood(p,idx,series,revision){
  const cached=sourceOrthogonalCacheGet(p,idx);if(cached)return cached;
- const max=p==='coronal'?series.rows-1:series.columns-1,radius=navigator.maxTouchPoints>0?3:5,a=Math.max(0,idx-radius),b=Math.min(max,idx+radius),indices=[];for(let i=a;i<=b;i++)if(!sourceOrthogonalCacheGet(p,i))indices.push(i);
- const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],built=new Map(indices.map(i=>[i,new Float32Array(dims[0]*dims[1])]));
+ const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],planeBytes=dims[0]*dims[1]*4;
+ const maxPlanes=Math.max(3,Math.min(33,Math.floor(sourceOrthogonalCacheLimit()/Math.max(planeBytes,1)))),radius=Math.max(1,Math.floor((maxPlanes-1)/2));
+ const max=p==='coronal'?series.rows-1:series.columns-1,a=Math.max(0,idx-radius),b=Math.min(max,idx+radius),indices=[];for(let i=a;i<=b;i++)if(!sourceOrthogonalCacheGet(p,i))indices.push(i);
+ const built=new Map(indices.map(i=>[i,new Float32Array(dims[0]*dims[1])]));
  if(!indices.length)return sourceOrthogonalCacheGet(p,idx);
  for(let z=0;z<series.slices.length;z++){
   if(revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
@@ -1915,7 +1922,7 @@ async function buildSourceOrthogonalNeighborhood(p,idx,series,revision){
    const lo=indices[0],hi=indices[indices.length-1],block=await readSourceRows(meta,lo,hi-lo+1);
    for(const i of indices)built.get(i).set(block.subarray((i-lo)*series.columns,(i-lo+1)*series.columns),base);
   }else{
-   const full=await decodeSourceSlice(meta);
+   const full=await getCachedSourceSlice(meta);
    for(const i of indices){const dst=built.get(i);for(let y=0;y<series.rows;y++)dst[base+y]=full[y*series.columns+i]}
   }
   if((z&15)===0)await frameYield();
