@@ -3,7 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.w
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-1028';const APP_BUILD='07';
+const APP_VERSION='2026.09.22-1105';const APP_BUILD='08';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -355,9 +355,13 @@ function removeSegmentPreset(key){
 segmentAddButton.onclick=()=>addSegmentPreset(segmentAddSelect.value);
 analysisMergeButton.onclick=()=>void mergeSelectedAnalysisRegions();
 analysisClearButton.onclick=()=>clearAnalysisHighlight();
-volumeAnalysisToggle.onclick=()=>{
+volumeAnalysisToggle.onclick=async()=>{
  if(!volume)return;
- volumeAnalysisMode=!volumeAnalysisMode;
+ if(!volumeAnalysisMode){
+  volumeAnalysisToggle.disabled=true;
+  try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'体積解析用データを取得中':'Preparing volume analysis')}catch(e){console.error(e);footer.textContent=(currentLanguage==='ja'?'体積解析の準備に失敗しました: ':'Volume analysis preparation failed: ')+String(e.message||e);return}finally{volumeAnalysisToggle.disabled=false}
+  volumeAnalysisMode=true;
+ }else volumeAnalysisMode=false;
  volumeAnalysisToggle.textContent=volumeAnalysisMode?tr('volumeOff'):tr('volumeMode');
  volumeAnalysisToggle.classList.toggle('is-active',volumeAnalysisMode);
  volumeAnalysisResult.classList.toggle('is-hidden',!volumeAnalysisMode);
@@ -388,7 +392,7 @@ for(const key of Object.keys(segmentState)){
  minComponent.oninput=()=>{segmentState[key].minComponent=+minComponent.value;$('[data-seg-min-component-out="'+key+'"]').value=minComponent.value;invalidateSegment(false)};
  minComponent.onchange=()=>invalidateSegment(true);
  holeFill.onchange=()=>{segmentState[key].holeFill=holeFill.checked;invalidateSegment(true)};
- exportBtn.onclick=()=>exportSegmentStl(key);
+ exportBtn.onclick=()=>void exportSegmentStl(key);
  removeBtn.onclick=()=>removeSegmentPreset(key);
 }
 surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;scheduleSegment3D()};
@@ -838,7 +842,12 @@ function isDesktopMac(){
  const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent||'';
  return /mac/i.test(platform)&&(navigator.maxTouchPoints||0)===0;
 }
-function gpuMeshBlockDepth(){return navigator.maxTouchPoints>0?2:(isDesktopMac()?8:4)}
+function gpuMeshBlockDepth(){
+ if(navigator.maxTouchPoints>0)return 2;
+ if(!isDesktopMac())return 4;
+ const cap=Number(gpuFilterRuntime.device?.limits?.maxStorageBufferBindingSize)||128*1024*1024;
+ return cap>=256*1024*1024?32:cap>=128*1024*1024?24:12;
+}
 function gpuMeshTileStart(){return isDesktopMac()?[1024,1024]:[192,64]}
 function gpuAdapterLabel(adapter){
  try{
@@ -1343,6 +1352,25 @@ function gpuSmallBuffer(device,data){
  const buffer=device.createBuffer({size:Math.max(32,Math.ceil(data.byteLength/4)*4),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
  device.queue.writeBuffer(buffer,0,data);return buffer;
 }
+function createGpuResidentFloat3Attribute(device,vertexCount,label){
+ const renderer=sceneState?.renderer,backend=renderer?.backend;
+ if(sceneState?.backend!=='WEBGPU'||backend?.device!==device||typeof backend.set!=='function')return null;
+ try{
+  const attribute=new THREE.Float32BufferAttribute(new Float32Array(vertexCount*3),3);attribute.name=label;
+  const buffer=device.createBuffer({label,size:Math.max(4,attribute.array.byteLength),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
+  backend.set(attribute,{buffer});return{attribute,buffer};
+ }catch(e){console.warn('GPU-resident attribute allocation failed.',e);return null}
+}
+function destroyGpuResidentAttribute(entry){
+ if(!entry)return;
+ const backend=sceneState?.renderer?.backend;
+ try{if(backend?.get(entry.attribute)?.buffer===entry.buffer&&typeof backend.destroyAttribute==='function')backend.destroyAttribute(entry.attribute);else entry.buffer?.destroy?.()}catch{try{entry.buffer?.destroy?.()}catch{}}
+}
+function finishGpuResidentTemps(device,cleanup){
+ let completion;
+ try{completion=device.queue.onSubmittedWorkDone()}catch{cleanup();return Promise.resolve()}
+ completion.then(cleanup,cleanup);return completion;
+}
 async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=null,faceContext=null){
  const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
  const bytes=data.byteLength,n=data.length;
@@ -1399,16 +1427,22 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   }
   if(vertexBytes<=maxOut){
    let offset=0;for(let i=0;i<4;i++){meta[17+i]=offset;offset+=counts[i]}device.queue.writeBuffer(mb,0,meta);device.queue.writeBuffer(counters,0,new Uint32Array(4));
-   const output=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
-   const normalOutput=surfaceSmoothingActive()?device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}):null;
+   const vertexCount=totalFaces*6,gpuSmooth=surfaceSmoothingActive(),smoothStrength=gpuSmooth?Number(surfaceSmoothStrength.value):0;
+   let residentPosition=createGpuResidentFloat3Attribute(device,vertexCount,'VRL GPU resident position'),residentNormal=gpuSmooth?createGpuResidentFloat3Attribute(device,vertexCount,'VRL GPU resident normal'):null;
+   let gpuResident=!!residentPosition&&(!gpuSmooth||!!residentNormal);
+   if(!gpuResident){destroyGpuResidentAttribute(residentPosition);destroyGpuResidentAttribute(residentNormal);residentPosition=residentNormal=null}
+   const output=gpuResident?residentPosition.buffer:device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+   const normalOutput=gpuSmooth?(gpuResident?residentNormal.buffer:device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC})):null;
    const sx=faceContext.spacingX,sy=faceContext.spacingY,sz=faceContext.spacingZ,px=faceContext.globalW*sx,py=faceContext.globalH*sy,pz=faceContext.globalD*sz,scale=3.3/Math.max(px,py,pz,1);
    const gb=gpuSmallBuffer(device,new Float32Array([sx,sy,sz,scale,px,py,pz,0]));small.push(gb);
-   const gpuSmooth=surfaceSmoothingActive(),smoothStrength=gpuSmooth?Number(surfaceSmoothStrength.value):0;
    let cornerA=null,cornerB=null,cornerCurrent=null;
    const writeEncoder=device.createCommandEncoder({label:gpuSmooth?'VRL GPU mesh + smoothing':'VRL GPU mesh vertices'});
    if(gpuSmooth){
     const cornerCount=(target.width+1)*(target.height+1)*(target.depth+1)*meta[10],cornerBytes=cornerCount*16;
-    if(cornerBytes>maxOut){output.destroy();normalOutput?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();throw new Error('__GPU_SMOOTH_CAPACITY__')}
+    if(cornerBytes>maxOut){
+     if(gpuResident){destroyGpuResidentAttribute(residentPosition);destroyGpuResidentAttribute(residentNormal)}else{output.destroy();normalOutput?.destroy()}
+     releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();throw new Error('__GPU_SMOOTH_CAPACITY__')
+    }
     cornerA=device.createBuffer({size:Math.max(16,cornerBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
     cornerB=device.createBuffer({size:Math.max(16,cornerBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
     const initPipeline=await gpuFilterPipeline('meshCornerInit'),initGroup=device.createBindGroup({layout:initPipeline.getBindGroupLayout(0),entries:[
@@ -1432,6 +1466,13 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    ];
    entries.push({binding:5,resource:{buffer:gpuSmooth?cornerCurrent:gb}});if(gpuSmooth)entries.push({binding:6,resource:{buffer:normalOutput}});
    const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/256));wp.end();
+   if(gpuResident){
+    device.queue.submit([writeEncoder.finish()]);
+    const cleanup=()=>{cornerA?.destroy();cornerB?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy()};
+    const completion=finishGpuResidentTemps(device,cleanup);
+    setGpuComputeBackend(gpuSmooth?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');
+    return{mesh:true,gpuResident:true,positionAttribute:residentPosition.attribute,normalAttribute:residentNormal?.attribute||null,counts,gpuSmoothed:gpuSmooth,completion};
+   }
    const readback=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),normalReadback=gpuSmooth?device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}):null;writeEncoder.copyBufferToBuffer(output,0,readback,0,vertexBytes);if(gpuSmooth)writeEncoder.copyBufferToBuffer(normalOutput,0,normalReadback,0,vertexBytes);device.queue.submit([writeEncoder.finish()]);
    await readback.mapAsync(GPUMapMode.READ);const vertices=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();let normals=null;if(gpuSmooth){await normalReadback.mapAsync(GPUMapMode.READ);normals=new Float32Array(normalReadback.getMappedRange().slice(0));normalReadback.unmap()}
    output.destroy();normalOutput?.destroy();readback.destroy();normalReadback?.destroy();cornerA?.destroy();cornerB?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();
@@ -1787,7 +1828,7 @@ async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,
  for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),compact=await processSourceRegionFaces(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart+':'+x+':'+y,revision,segments);
-  if(compact.mesh){if(compact.vertices.length)tiles.push({mesh:true,vertices:compact.vertices,counts:compact.counts});}
+  if(compact.mesh){if(compact.gpuResident||compact.vertices?.length)tiles.push(compact);}
   else if(compact.items.length)tiles.push({x,y,z:zStart,width:tw,height:th,depth:outDepth,items:compact.items});
  }
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
@@ -1871,7 +1912,7 @@ async function getMemoryGpuMeshBlock(v,zStart,coreDepth,segments){
  const outDepth=Math.min(v.slices-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(v.columns,v.rows,outDepth,1,tileStartX,tileStartY);
  for(let y=0;y<v.rows;y+=ty)for(let x=0;x<v.columns;x+=tx){
   const tw=Math.min(tx,v.columns-x),th=Math.min(ty,v.rows-y),result=await processMemoryMeshRegion(v,{x,y,z:zStart,width:tw,height:th,depth:outDepth},segments);
-  if(result.mesh){if(result.vertices.length)tiles.push({mesh:true,vertices:result.vertices,counts:result.counts})}
+  if(result.mesh){if(result.gpuResident||result.vertices?.length)tiles.push(result)}
   else if(result.items.length)tiles.push({x,y,z:zStart,width:tw,height:th,depth:outDepth,items:result.items});
  }
  return{tiles,coreDepth:outDepth};
@@ -2659,9 +2700,9 @@ async function analyzeVolumeAtPointer(event,canvas,camera){
  volumeAnalysisBusy=true;volumeAnalysisResult.classList.remove('is-hidden');renderAnalysisResults(currentLanguage==='ja'?'解析中…':'Analyzing…');
  try{
   const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/rect.width)*2-1,-((event.clientY-rect.top)/rect.height)*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
-  const hit=raycaster.intersectObjects(sceneState.obj.children,true).find(h=>h.object?.userData?.segmentKey);
+  const hit=raycaster.intersectObjects(sceneState.obj.children,true).find(h=>segmentKeyFromIntersection(h));
   if(!hit){renderAnalysisResults(tr('volumeHint'));return}
-  const key=hit.object.userData.segmentKey,seg=segmentState[key],scale=hit.object.userData.displayScale,local=hit.object.worldToLocal(hit.point.clone());
+  const key=segmentKeyFromIntersection(hit),seg=segmentState[key],scale=hit.object.userData.displayScale,local=hit.object.worldToLocal(hit.point.clone());
   const [vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices,px=w*vx,py=h*vy,pz=d*vz;
   let x=Math.round((local.x/scale+px/2)/vx),y=Math.round((-local.y/scale+py/2)/vy),z=Math.round((local.z/scale+pz/2)/vz);
   if(analysisVolume.sourceBacked){
@@ -3035,6 +3076,21 @@ function appendGpuMeshTile(positionsByKey,normalsByKey,tile,active){
   faceOffset+=faces;
  }
 }
+function addGpuResidentTileMesh(group,tile,active,materialParamsByKey,displayScale,name){
+ if(!tile?.gpuResident||!tile.positionAttribute)return false;
+ const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',tile.positionAttribute);if(tile.normalAttribute)geometry.setAttribute('normal',tile.normalAttribute);
+ const materials=[],ranges=[];let start=0,total=0;
+ for(let s=0;s<active.length&&s<4;s++){
+  const count=(tile.counts[s]||0)*6,key=active[s].key;
+  if(count){const materialIndex=materials.length;materials.push(new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));geometry.addGroup(start,count,materialIndex);ranges.push({key,start,count,materialIndex});}
+  start+=count;total+=count;
+ }
+ if(!total){geometry.dispose();return false}
+ geometry.setDrawRange(0,total);geometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,0,0),3.6);
+ const mesh=new THREE.Mesh(geometry,materials);mesh.name=name;mesh.userData.segmentRanges=ranges;mesh.userData.displayScale=displayScale;mesh.userData.gpuResident=true;mesh.userData.gpuPositionReady=false;mesh.userData.gpuCompletion=tile.completion||null;
+ if(ranges.length===1)mesh.userData.segmentKey=ranges[0].key;
+ group.add(mesh);return true;
+}
 function appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords){
  const {xs,ys,zs}=coords,plane=tile.width*tile.height,items=tile.items;
  for(let q=0;q<items.length;q+=2){
@@ -3124,7 +3180,7 @@ async function render3DSourceBacked(v){
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
     const block=await getFilteredSourceAxialFaceBlock(z0,filterBlockDepth,series,active,'3d:'+revision);
-    for(const tile of block.tiles){if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords)}
+    for(let ti=0;ti<block.tiles.length;ti++){const tile=block.tiles[ti];if(tile.gpuResident)addGpuResidentTileMesh(group,tile,active,materialParamsByKey,coords.scale,'segment_gpu_resident_'+z0+'_'+ti);else if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords)}
     const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===series.slices.length-1||[...positionsByKey.values()].some(b=>b.length>=meshFloatLimit);
     if(flush){for(const {key} of active)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+series.slices.length);await frameYield()}
    }
@@ -3143,8 +3199,8 @@ async function render3DSourceBacked(v){
   if(revision!==sourceRenderRevision){dispose(group);return}
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);
-  threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';
-  footer.textContent='3D full resolution · source DICOM · no resampling';set3DBusy(false);request3DRender();mark3DCurrent();return true;
+  const resident=group.children.some(o=>o.userData?.gpuResident);threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':' · full resolution');
+  footer.textContent=resident?'3D full resolution · GPU resident · source DICOM · no vertex readback':'3D full resolution · source DICOM · no resampling';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){
   dispose(group);
   if(revision===sourceRenderRevision){threeLabel.textContent=(sceneState.backend||'3D')+' · build error';footer.textContent='3D build error: '+String(e.message||e);set3DBusy(false);mark3DStale()}
@@ -3175,13 +3231,13 @@ async function render3DMemoryGpu(v){
   for(let z0=0;z0<v.slices;z0+=blockDepth){
    if(revision!==sourceRenderRevision){dispose(group);return null}
    const block=await getMemoryGpuMeshBlock(v,z0,blockDepth,active);
-   for(const tile of block.tiles){if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,{columns:v.columns,rows:v.rows},tile,active,coords)}
+   for(let ti=0;ti<block.tiles.length;ti++){const tile=block.tiles[ti];if(tile.gpuResident)addGpuResidentTileMesh(group,tile,active,materialParamsByKey,coords.scale,'segment_gpu_resident_'+z0+'_'+ti);else if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,{columns:v.columns,rows:v.rows},tile,active,coords)}
    const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===v.slices-1||[...positionsByKey.values()].some(b=>b.length>=meshFloatLimit);
    if(flush){for(const {key} of active)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+v.slices;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+v.slices);await frameYield()}
   }
   if(revision!==sourceRenderRevision){dispose(group);return null}
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
-  sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution · GPU';footer.textContent='3D full resolution · '+gpuFilterRuntime.lastBackend;set3DBusy(false);request3DRender();mark3DCurrent();return true;
+  sceneState.obj=group;sceneState.scene.add(group);const resident=group.children.some(o=>o.userData?.gpuResident);threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':' · full resolution · GPU');footer.textContent=resident?'3D full resolution · GPU resident · no vertex readback':'3D full resolution · '+gpuFilterRuntime.lastBackend;set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){
   dispose(group);set3DBusy(false);
   if(revision!==sourceRenderRevision||threeDCancelRequested)return null;
@@ -3257,37 +3313,65 @@ function buildSegmentSurface(v,seg,step,key){
 }
 
 
-function eachGeometryTriangle(geometry,callback){
+function meshSegmentRanges(mesh,key){
+ const pos=mesh?.geometry?.getAttribute?.('position');if(!pos)return[];
+ if(mesh.userData?.segmentKey===key)return[{start:0,count:mesh.geometry.index?mesh.geometry.index.count:pos.count}];
+ return Array.isArray(mesh.userData?.segmentRanges)?mesh.userData.segmentRanges.filter(r=>r.key===key):[];
+}
+function segmentKeyFromIntersection(hit){
+ const direct=hit?.object?.userData?.segmentKey;if(direct)return direct;
+ const mi=hit?.face?.materialIndex,ranges=hit?.object?.userData?.segmentRanges;
+ if(Array.isArray(ranges)&&Number.isInteger(mi)){const match=ranges.find(r=>r.materialIndex===mi);if(match)return match.key}
+ return null;
+}
+async function ensureGpuResidentCpuPositions(key=null,label='GPU readback'){
+ const renderer=sceneState?.renderer;if(!renderer||typeof renderer.getArrayBufferAsync!=='function')return;
+ const meshes=[];sceneState?.obj?.traverse?.(o=>{if(!o.isMesh||!o.userData?.gpuResident||o.userData?.gpuPositionReady)return;if(key&&meshSegmentRanges(o,key).length===0)return;meshes.push(o)});
+ if(!meshes.length)return;
+ const previousBackend=gpuFilterRuntime.lastBackend;setGpuComputeBackend('WEBGPU GPU-RESIDENT READBACK');setProcessingBusy(true,label);
+ try{
+  for(const mesh of meshes){
+   if(mesh.userData.gpuCompletion)await mesh.userData.gpuCompletion;
+   const attr=mesh.geometry.getAttribute('position'),buffer=await renderer.getArrayBufferAsync(attr),values=new Float32Array(buffer);
+   if(values.length!==attr.array.length)throw new Error('GPU position readback size mismatch');
+   attr.array.set(values);mesh.userData.gpuPositionReady=true;
+  }
+ }finally{setProcessingBusy(false,label);setGpuComputeBackend(previousBackend)}
+}
+function eachGeometryTriangleRange(geometry,start,count,callback){
  const pos=geometry?.getAttribute?.('position');if(!pos)return;
- const index=geometry.index;
- const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3();
- const triCount=index?Math.floor(index.count/3):Math.floor(pos.count/3);
- for(let t=0;t<triCount;t++){
-  const ia=index?index.getX(t*3):t*3,ib=index?index.getX(t*3+1):t*3+1,ic=index?index.getX(t*3+2):t*3+2;
-  a.fromBufferAttribute(pos,ia);b.fromBufferAttribute(pos,ib);c.fromBufferAttribute(pos,ic);callback(a,b,c);
+ const index=geometry.index,total=index?index.count:pos.count,first=Math.max(0,start||0),end=Math.min(total,count==null?total:first+Math.max(0,count));
+ const a=new THREE.Vector3(),b=new THREE.Vector3(),cc=new THREE.Vector3();
+ for(let i=first;i+2<end;i+=3){
+  const ia=index?index.getX(i):i,ib=index?index.getX(i+1):i+1,ic=index?index.getX(i+2):i+2;
+  a.fromBufferAttribute(pos,ia);b.fromBufferAttribute(pos,ib);cc.fromBufferAttribute(pos,ic);callback(a,b,cc);
  }
 }
+function eachGeometryTriangle(geometry,callback){
+ const pos=geometry?.getAttribute?.('position');if(!pos)return;
+ eachGeometryTriangleRange(geometry,0,geometry.index?geometry.index.count:pos.count,callback);
+}
 function currentSegmentMeshes(key){
- const meshes=[];sceneState?.obj?.traverse?.(o=>{if(o.isMesh&&o.userData?.segmentKey===key&&o.geometry)meshes.push(o)});return meshes;
+ const meshes=[];sceneState?.obj?.traverse?.(o=>{if(o.isMesh&&o.geometry&&meshSegmentRanges(o,key).length)meshes.push(o)});return meshes;
 }
 function currentSegmentDisplayScale(key){
  const mesh=currentSegmentMeshes(key)[0];return Number(mesh?.userData?.displayScale)||1;
 }
 function currentSegmentVolumeMm3(key){
  const meshes=currentSegmentMeshes(key);if(!meshes.length)return 0;
- const scale=currentSegmentDisplayScale(key),inv3=1/Math.max(scale*scale*scale,1e-18);let signed=0;
- for(const mesh of meshes)eachGeometryTriangle(mesh.geometry,(a,b,c)=>{signed+=a.dot(new THREE.Vector3().crossVectors(b,c))/6});
+ const scale=currentSegmentDisplayScale(key),inv3=1/Math.max(scale*scale*scale,1e-18),cross=new THREE.Vector3();let signed=0;
+ for(const mesh of meshes)for(const range of meshSegmentRanges(mesh,key))eachGeometryTriangleRange(mesh.geometry,range.start,range.count,(a,b,c)=>{signed+=a.dot(cross.crossVectors(b,c))/6});
  return Math.abs(signed)*inv3;
 }
 function currentSegmentTriangleCount(key){
- let count=0;for(const mesh of currentSegmentMeshes(key)){const pos=mesh.geometry.getAttribute('position');count+=mesh.geometry.index?Math.floor(mesh.geometry.index.count/3):Math.floor((pos?.count||0)/3)}return count;
+ let count=0;for(const mesh of currentSegmentMeshes(key))for(const range of meshSegmentRanges(mesh,key))count+=Math.floor(range.count/3);return count;
 }
 function currentSegmentToBinaryStl(key){
  const meshes=currentSegmentMeshes(key);if(!meshes.length)return null;
  const triCount=currentSegmentTriangleCount(key),buffer=new ArrayBuffer(84+triCount*50),view=new DataView(buffer),header=new TextEncoder().encode('Virtual Rodent Lab '+key);
  new Uint8Array(buffer,0,Math.min(80,header.length)).set(header.slice(0,80));view.setUint32(80,triCount,true);
  const scale=currentSegmentDisplayScale(key),inverseScale=1/Math.max(scale,1e-12),ab=new THREE.Vector3(),ac=new THREE.Vector3(),n=new THREE.Vector3();let off=84;
- for(const mesh of meshes)eachGeometryTriangle(mesh.geometry,(aa,bb,cc)=>{
+ for(const mesh of meshes)for(const range of meshSegmentRanges(mesh,key))eachGeometryTriangleRange(mesh.geometry,range.start,range.count,(aa,bb,cc)=>{
   const a=aa.clone().multiplyScalar(inverseScale),b=bb.clone().multiplyScalar(inverseScale),c=cc.clone().multiplyScalar(inverseScale);
   ab.subVectors(b,a);ac.subVectors(c,a);n.crossVectors(ab,ac).normalize();
   for(const v of [n,a,b,c]){view.setFloat32(off,v.x,true);view.setFloat32(off+4,v.y,true);view.setFloat32(off+8,v.z,true);off+=12}
@@ -3295,8 +3379,9 @@ function currentSegmentToBinaryStl(key){
  });
  return new Blob([buffer],{type:'model/stl'});
 }
-function exportSegmentStl(key){
+async function exportSegmentStl(key){
  if(!sceneState?.obj||threeDDirty){footer.textContent=currentLanguage==='ja'?'STL: 先に3Dを再構築してください':'STL: rebuild 3D first';return}
+ try{await ensureGpuResidentCpuPositions(key,currentLanguage==='ja'?'STL用メッシュを取得中':'Preparing STL mesh')}catch(e){console.error(e);footer.textContent='STL readback error: '+String(e.message||e);return}
  const blob=currentSegmentToBinaryStl(key);
  if(!blob){footer.textContent='STL: segment is empty';return}
  const names={bone:'bone',soft:'soft-tissue',fat:'fat',lung:'lung'},a=document.createElement('a');
@@ -3357,7 +3442,7 @@ function taubinSmoothGeometry(geometry,strength){
 }
 
 function resetVolume(){sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;clearMemoryFilterPreviewCache();invalidateSourceFilters();clearSourceSliceCache();activeSeries=null;clearAnalysisHighlight();smoothingType.value='gaussian';filterOrder=[];for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();for(const key of SEGMENT_PRESET_ORDER){segmentState[key].active=false;segmentState[key].enabled=false;const enabled=$('[data-seg-enabled="'+key+'"]');if(enabled)enabled.checked=false}renderSegmentPresets();volumeAnalysisMode=false;volumeAnalysisBusy=false;volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');volumeAnalysisResult.classList.add('is-hidden');clearAnalysisHighlight();filterRebuildRevision++;filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;volume=null;sourceVolume=null;enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spatialPasses.disabled=true;spikeHoleStrength.disabled=true;spikeHoleThreshold.disabled=true;nlmStrength.disabled=true;nlmSearchRadius.disabled=true;nlmPatchRadius.disabled=true;anisotropicStrength.disabled=true;anisotropicIterations.disabled=true;bilateralStrength.disabled=true;bilateralSpatial.disabled=true;bilateralIntensity.disabled=true;bilateralPasses.disabled=true;tvWeight.disabled=true;tvIterations.disabled=true;unsharpRadius.disabled=true;unsharpAmount.disabled=true;unsharpThreshold.disabled=true;wc.disabled=ww.disabled=true;ctRangeProfile=null;ctRangeMode='auto';ctRangeAuto.disabled=ctRangeFull.disabled=true;ctRangeAuto.classList.add('is-active');ctRangeFull.classList.remove('is-active');for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity','opening','closing','min-component','hole-fill']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true;const removeBtn=$('[data-seg-remove="'+key+'"]');if(removeBtn)removeBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.scene.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}set3DBusy(false);request3DRender();set3DState('current');threeLabel.textContent=sceneState?.backend||'3D'}
-function dispose(o){o.traverse(c=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()})}
+function dispose(o){o.traverse(c=>{const release=()=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()};const pending=c.userData?.gpuCompletion;if(pending?.then)pending.then(release,release);else release()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
 function byteProgress(a,b,label){bar.style.width=Math.min(100,Math.round(a/b*100))+'%';progLabel.textContent=label+' '+fmt(a)+' / '+fmt(b)}
