@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-31';const APP_BUILD='31';
+const APP_VERSION='2026.09.22-32';const APP_BUILD='32';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -1132,15 +1132,29 @@ async function readSourceColumn(meta,column){
  return out;
 }
 async function decode(s,onProgress){
- const Ctor=s.compact?Int16Array:Float32Array,count=s.columns*s.rows*s.slices.length,bytesNeeded=count*Ctor.BYTES_PER_ELEMENT;
- let data;try{data=new Ctor(count)}catch(e){throw new Error('Volume memory allocation failed: '+fmt(bytesNeeded)+' ('+Ctor.name+')')}
- let min=Infinity,max=-Infinity;
- for(let z=0;z<s.slices.length;z++){
-  const slice=await decodeSourceSlice(s.slices[z]);data.set(slice,z*s.rows*s.columns);
-  for(let i=0;i<slice.length;i++){const v=slice[i];if(v<min)min=v;if(v>max)max=v}
-  onProgress?.(z+1,s.slices.length);if((z&7)===0)await frameYield();
- }
- return{data,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min,max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:Ctor.name,sourceBacked:false};
+ const Ctor=s.compact?Int16Array:Float32Array,w=s.columns,h=s.rows,d=s.slices.length,plane=w*h,count=plane*d,bytesNeeded=count*Ctor.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
+ let data,coronalAll=null,sagittalAll=null;
+ try{
+  data=new Ctor(count);
+  if(bytesNeeded*3<=limit){coronalAll=new Ctor(count);sagittalAll=new Ctor(count)}
+ }catch(e){throw new Error('Volume memory allocation failed: '+fmt(bytesNeeded)+' ('+Ctor.name+')')}
+ let next=0,completed=0,min=Infinity,max=-Infinity;
+ const decodeOne=async z=>{
+  const slice=await decodeSourceSlice(s.slices[z]),base=z*plane,corZ=d-1-z;let localMin=Infinity,localMax=-Infinity;
+  for(let y=0;y<h;y++){
+   const srcRow=y*w,baseRow=base+srcRow;
+   for(let x=0;x<w;x++){
+    const value=s.compact?slice[srcRow+x]:Number(slice[srcRow+x]);
+    data[baseRow+x]=value;if(value<localMin)localMin=value;if(value>localMax)localMax=value;
+    if(coronalAll)coronalAll[(y*d+corZ)*w+x]=value;
+    if(sagittalAll)sagittalAll[(x*d+corZ)*h+y]=value;
+   }
+  }
+  if(localMin<min)min=localMin;if(localMax>max)max=localMax;completed++;onProgress?.(completed,d);
+ };
+ const runner=async()=>{while(true){const z=next++;if(z>=d)return;await decodeOne(z);if((completed&3)===0)await frameYield()}};
+ const concurrency=Math.min(d,sourceMprDecodeConcurrency());await Promise.all(Array.from({length:concurrency},()=>runner()));
+ return{data,mprData:data,mprCtor:Ctor,mprCoronalAll:coronalAll,mprSagittalAll:sagittalAll,mprPlaneBuffers:{coronal:coronalAll?null:new Ctor(w*d),sagittal:sagittalAll?null:new Ctor(h*d)},columns:w,rows:h,slices:d,spacing:[s.spacingX,s.spacingY,s.spacingZ],min,max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:Ctor.name,sourceBacked:false};
 }
 
 
@@ -3037,11 +3051,11 @@ async function renderPlane(p,revision,idx){
  if(volume.sourceBacked)return renderPlaneSourceBacked(p,revision,idx);
  if(memoryGpuPreviewActive&&sourceFilterStages().length)return renderPlaneMemoryFiltered(p,revision,idx);
  const c=planes[p];c.label.textContent=idx+1;
- const dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],ctx=c.canvas.getContext('2d');c.canvas.width=dims[0];c.canvas.height=dims[1];
- const img=ctx.createImageData(...dims),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);let q=0;
+ const dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
+ const img=reusableMprImage(p,ctx,dims),values=volume.mprData?cachedSourceMprPlane(volume,p,idx):null,low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);let q=0;
  const segOrder=['lung','fat','soft','bone'],segMasks={};for(const key of segOrder){const seg=segmentState[key];if(seg.active&&seg.enabled&&segmentNeedsGlobalMask(seg))segMasks[key]=getProcessedSegmentMask(volume,seg)}
  for(let y=0;y<dims[1];y++)for(let x=0;x<dims[0];x++){
-  let v;if(p==='axial')v=volume.data[idx*volume.rows*volume.columns+y*volume.columns+x];else if(p==='coronal'){const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+idx*volume.columns+x]}else{const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+x*volume.columns+idx]}
+  let v;if(values)v=values[y*dims[0]+x];else if(p==='axial')v=volume.data[idx*volume.rows*volume.columns+y*volume.columns+x];else if(p==='coronal'){const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+idx*volume.columns+x]}else{const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+x*volume.columns+idx]}
   const g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
   const voxelIndex=p==='axial'?idx*volume.rows*volume.columns+y*volume.columns+x:p==='coronal'?(volume.slices-1-y)*volume.rows*volume.columns+idx*volume.columns+x:(volume.slices-1-y)*volume.rows*volume.columns+x*volume.columns+idx;
   const ix=p==='sagittal'?idx:x,iy=p==='coronal'?idx:(p==='sagittal'?x:y),iz=p==='axial'?idx:volume.slices-1-y;
