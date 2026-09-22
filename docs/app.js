@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-39';const APP_BUILD='39';
+const APP_VERSION='2026.09.23-40';const APP_BUILD='40';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -1843,7 +1843,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  loop{
   if(x1+1u>=tw){break;}
   if(!inside(src[localIdx(meta[3]+x1+1u,y,z)])){break;}
-  x1++;
+  x1=x1+1u;
  }
  let slot=atomicAdd(&counter.value,1u)*4u;
  dst[slot]=tz;dst[slot+1u]=ty;dst[slot+2u]=tx;dst[slot+3u]=x1;
