@@ -874,13 +874,15 @@ function setGpuComputeBackend(label,error=''){
 }
 async function gpuValidationScope(device,label,fn){
  if(!device?.pushErrorScope||!device?.popErrorScope)return fn();
- device.pushErrorScope('validation');
+ let popped=false;device.pushErrorScope('validation');
  try{
-  const result=await fn(),validation=await device.popErrorScope();
+  const result=await fn(),validation=await device.popErrorScope();popped=true;
   if(validation)throw new Error(label+': '+validation.message);
   return result;
  }catch(e){
-  try{const validation=await device.popErrorScope();if(validation&&!String(e?.message||e).includes(validation.message))throw new Error(label+': '+validation.message+' | '+String(e?.message||e))}catch(scopeError){if(scopeError!==e)throw scopeError}
+  if(!popped){
+   try{const validation=await device.popErrorScope();popped=true;if(validation&&!String(e?.message||e).includes(validation.message))throw new Error(label+': '+validation.message+' | '+String(e?.message||e))}catch(scopeError){if(scopeError!==e)throw scopeError}
+  }
   throw e;
  }
 }
@@ -2769,7 +2771,7 @@ async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
  let prevRows=null,done=0;const blockDepth=navigator.maxTouchPoints>0?4:16;
  try{
   for(let z0b=0;z0b<d;z0b+=blockDepth){
-   const coreDepth=Math.min(blockDepth,d-z0b),data=v.data.subarray(z0b*plane,(z0b+coreDepth)*plane),target={x:0,y:0,z:0,width:w,height:h,depth:coreDepth};
+   const coreDepth=Math.min(blockDepth,d-z0b),data=readMemoryRegion(v,{x:0,y:0,z:z0b,width:w,height:h,depth:coreDepth}),target={x:0,y:0,z:0,width:w,height:h,depth:coreDepth};
    const result=await gpuValidationScope(device,'analysis RLE',()=>runGpuSourceFilters(data,w,h,coreDepth,v.min,v.max,[],target,[{key,seg}],{analysisRuns:true}));
    if(!result?.analysisRuns)return null;
    prevRows=consumeGpuAnalysisRuns(result.items,z0b,coreDepth,w,h,seed,uf,prevRows,sliceRuns);done=z0b+coreDepth;
@@ -2782,7 +2784,7 @@ async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
 async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
  const w=v.columns,h=v.rows,d=v.slices,analysisRevision=sourceFilterRuntime.revision,uf=new RunUnionFind(),sliceRuns=new Array(d);
  const seed={x:Math.max(0,Math.min(w-1,x0)),y:Math.max(0,Math.min(h-1,y0)),z:Math.max(0,Math.min(d-1,z0)),label:null,bestDist2:Infinity};
- let prevRows=null,done=0,gpuUsed=false;const blockDepth=navigator.maxTouchPoints>0?4:16;
+ let prevRows=null,done=0,gpuUsed=false,hadFallback=false;const blockDepth=navigator.maxTouchPoints>0?4:16;
  for(let z0b=0;z0b<d;z0b+=blockDepth){
   if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   let gpuBlock=null;
@@ -2790,15 +2792,17 @@ async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
   if(gpuBlock){
    gpuUsed=true;prevRows=consumeGpuAnalysisRuns(gpuBlock.items,z0b,gpuBlock.coreDepth,w,h,seed,uf,prevRows,sliceRuns);done=z0b+gpuBlock.coreDepth;
   }else{
-   setGpuComputeBackend('CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'GPU analysis unavailable');
+   hadFallback=true;setGpuComputeBackend('CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'GPU analysis unavailable');
    const masks=await sourceSegmentMaskBlock(v,key,seg,z0b,blockDepth,analysisRevision);
    for(let local=0;local<masks.length;local++){const z=z0b+local,result=sourceRunSlice(masks[local],w,h,z,seed,uf,prevRows);sliceRuns[z]=result.records;prevRows=result.rows;done=z+1}
+   setGpuComputeBackend('CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'GPU analysis unavailable');
   }
-  analysisSummary.textContent=(gpuUsed?(currentLanguage==='ja'?'GPU連結成分解析中… ':'GPU connected-component analysis… '):(currentLanguage==='ja'?'連結成分を解析中… ':'Analyzing connected component… '))+done+' / '+d;await frameYield();
+  analysisSummary.textContent=((gpuUsed&&!hadFallback)?(currentLanguage==='ja'?'GPU連結成分解析中… ':'GPU connected-component analysis… '):(currentLanguage==='ja'?'連結成分を解析中… ':'Analyzing connected component… '))+done+' / '+d;await frameYield();
  }
  if(seed.label==null)throw new Error(currentLanguage==='ja'?'選択位置から連結成分を特定できませんでした':'Could not identify a connected component at the selected point');
  const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];
- if(gpuUsed&&gpuFilterRuntime.lastBackend!=='CPU ANALYSIS FALLBACK')setGpuComputeBackend('WEBGPU ANALYSIS RLE+CPU UNION');
+ if(gpuUsed&&!hadFallback)setGpuComputeBackend('WEBGPU ANALYSIS RLE+CPU UNION');
+ else if(gpuUsed&&hadFallback)setGpuComputeBackend('GPU PARTIAL · CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'Some analysis blocks used CPU fallback');
  return{voxels,mm3,root,uf,sliceRuns};
 }
 function sourceComponentSliceState(records,w,h,root,uf){
