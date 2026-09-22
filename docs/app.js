@@ -203,7 +203,7 @@ const appVersionBadge=$('#app-version-badge');
 const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spatialPasses=$('#spatial-passes'),spatialPassesValue=$('#spatial-passes-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),spikeHoleThreshold=$('#spike-hole-threshold'),spikeHoleThresholdValue=$('#spike-hole-threshold-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),nlmSearchRadius=$('#nlm-search-radius'),nlmSearchRadiusValue=$('#nlm-search-radius-value'),nlmPatchRadius=$('#nlm-patch-radius'),nlmPatchRadiusValue=$('#nlm-patch-radius-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),anisotropicIterations=$('#anisotropic-iterations'),anisotropicIterationsValue=$('#anisotropic-iterations-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),sigmoidCenter=$('#sigmoid-center'),sigmoidCenterValue=$('#sigmoid-center-value'),bilateralBtn=$('#filter-bilateral'),bilateralStrength=$('#bilateral-strength'),bilateralStrengthValue=$('#bilateral-strength-value'),bilateralSpatial=$('#bilateral-spatial'),bilateralSpatialValue=$('#bilateral-spatial-value'),bilateralIntensity=$('#bilateral-intensity'),bilateralIntensityValue=$('#bilateral-intensity-value'),bilateralPasses=$('#bilateral-passes'),bilateralPassesValue=$('#bilateral-passes-value'),tvBtn=$('#filter-tv'),tvWeight=$('#tv-weight'),tvWeightValue=$('#tv-weight-value'),tvIterations=$('#tv-iterations'),tvIterationsValue=$('#tv-iterations-value'),unsharpBtn=$('#filter-unsharp'),unsharpRadius=$('#unsharp-radius'),unsharpRadiusValue=$('#unsharp-radius-value'),unsharpAmount=$('#unsharp-amount'),unsharpAmountValue=$('#unsharp-amount-value'),unsharpThreshold=$('#unsharp-threshold'),unsharpThresholdValue=$('#unsharp-threshold-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),analysisSummary=$('#analysis-summary'),analysisMergeButton=$('#analysis-merge'),analysisClearButton=$('#analysis-clear'),analysisRegionList=$('#analysis-region-list'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button'),segmentAddSelect=$('#segment-add-select'),segmentAddButton=$('#segment-add-button'),segmentControls=$('#segment-controls');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
 const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),threeBusyCancel=$('#three-busy-cancel'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterRebuild3D=$('#filter-rebuild-3d'),filter3DState=$('#filter-3d-state'),renderModeToggle=$('#render-mode-toggle'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
-languageToggle.onclick=()=>{applyLanguage(currentLanguage==='ja'?'en':'ja');renderAnalysisResults();updateGpuStatus()};
+languageToggle.onclick=()=>{applyLanguage(currentLanguage==='ja'?'en':'ja');renderAnalysisResults();updateGpuStatus();updateRenderModeControl()};
 applyLanguage('ja');;
 if(appVersionBadge)appVersionBadge.textContent='Virtual Rodent Lab · v'+APP_VERSION+' · build '+APP_BUILD;
 let volume=null,sourceVolume=null,sceneState=null,activeId=null,activeSeries=null,volumeAnalysisMode=false,volumeAnalysisBusy=false,sourceRenderRevision=0;
@@ -3024,14 +3024,42 @@ function ensureAnalysisRoot(){
  if(sceneState?.analysisMesh?.parent===sceneState?.obj)return sceneState.analysisMesh;
  const root=new THREE.Group();root.name='analysis_regions';sceneState.analysisMesh=root;sceneState?.obj?.add(root);return root;
 }
+function analysisRunRows(records){
+ const rows=new Map();
+ if(records)for(let i=0;i<records.length;i+=3){const y=records[i],arr=rows.get(y)||[];arr.push(records[i+1],records[i+2]);rows.set(y,arr)}
+ return rows;
+}
+function forEachUncoveredRun(x0,x1,cover,fn){
+ let cursor=x0;
+ if(cover)for(let i=0;i<cover.length;i+=2){
+  const a=cover[i],b=cover[i+1];if(b<cursor)continue;if(a>x1)break;
+  if(a>cursor)fn(cursor,Math.min(x1,a-1));cursor=Math.max(cursor,b+1);if(cursor>x1)return;
+ }
+ if(cursor<=x1)fn(cursor,x1);
+}
+function appendAnalysisRunBoundaryFaces(builder,records,prevRecords,nextRecords,coords,z){
+ const {xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1],rows=analysisRunRows(records),prev=analysisRunRows(prevRecords),next=analysisRunRows(nextRecords);
+ const quad=(a,b,c,d)=>builder.push(...a,...b,...c,...a,...c,...d);
+ for(const [y,intervals] of rows){
+  const y0=ys[y],y1=ys[y+1],up=rows.get(y-1),down=rows.get(y+1),front=prev.get(y),back=next.get(y);
+  for(let r=0;r<intervals.length;r+=2){
+   const x0=intervals[r],x1=intervals[r+1],lx=xs[x0],rx=xs[x1+1];
+   quad([lx,y0,z0],[lx,y0,z1],[lx,y1,z1],[lx,y1,z0]);
+   quad([rx,y0,z0],[rx,y1,z0],[rx,y1,z1],[rx,y0,z1]);
+   const emit=(a,b,face)=>{for(let x=a;x<=b;x++){const xa=xs[x],xb=xs[x+1];face(xa,xb)}};
+   forEachUncoveredRun(x0,x1,up,(a,b)=>emit(a,b,(xa,xb)=>quad([xa,y0,z0],[xb,y0,z0],[xb,y0,z1],[xa,y0,z1])));
+   forEachUncoveredRun(x0,x1,down,(a,b)=>emit(a,b,(xa,xb)=>quad([xa,y1,z0],[xa,y1,z1],[xb,y1,z1],[xb,y1,z0])));
+   forEachUncoveredRun(x0,x1,front,(a,b)=>emit(a,b,(xa,xb)=>quad([xa,y0,z0],[xa,y1,z0],[xb,y1,z0],[xb,y0,z0])));
+   forEachUncoveredRun(x0,x1,back,(a,b)=>emit(a,b,(xa,xb)=>quad([xa,y0,z1],[xb,y0,z1],[xb,y1,z1],[xa,y1,z1])));
+  }
+ }
+}
 async function buildAnalysisRunsGroup(v,runsBySlice,key,id,color){
- const w=v.columns,h=v.rows,d=v.slices,coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),series={columns:w,rows:h},group=new THREE.Group(),builder=new Float32FaceBuilder(),floatLimit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
+ const d=v.slices,coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),group=new THREE.Group(),builder=new Float32FaceBuilder(),floatLimit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
  const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions),mesh=new THREE.Mesh(geometry,createAnalysisMaterial(color));mesh.name='analysis_'+key+'_'+id+'_'+z;mesh.renderOrder=20;group.add(mesh)};
- let prev=null,curr=analysisRunSliceState(runsBySlice[0],w,h),next=d>1?analysisRunSliceState(runsBySlice[1],w,h):null;
  for(let z=0;z<d;z++){
-  appendSourceSliceFacesFast(builder,series,z,prev,curr,next,coords);if(builder.length>=floatLimit)flush(z);
-  prev=curr;curr=next;next=z+2<d?analysisRunSliceState(runsBySlice[z+2],w,h):null;
-  if((z&31)===0)await frameYield();
+  appendAnalysisRunBoundaryFaces(builder,runsBySlice[z],z>0?runsBySlice[z-1]:null,z+1<d?runsBySlice[z+1]:null,coords,z);
+  if(builder.length>=floatLimit)flush(z);if((z&31)===0)await frameYield();
  }
  flush(d-1);return group.children.length?group:null;
 }
