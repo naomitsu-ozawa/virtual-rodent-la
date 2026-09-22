@@ -52,7 +52,6 @@ struct Uniforms{
 };
 @group(0) @binding(0) var<uniform> u:Uniforms;
 @group(0) @binding(1) var volumeTex:texture_3d<f32>;
-@group(0) @binding(2) var volumeSampler:sampler;
 @group(0) @binding(3) var<storage,read> brickMinMax:array<vec2<f32>>;
 
 struct VOut{@builtin(position) position:vec4<f32>};
@@ -171,7 +170,6 @@ struct Uniforms{
 };
 @group(0) @binding(0) var<uniform> u:Uniforms;
 @group(0) @binding(1) var volumeTex:texture_3d<f32>;
-@group(0) @binding(2) var volumeSampler:sampler;
 @group(0) @binding(3) var<storage,read> pick:array<f32>;
 @group(0) @binding(4) var<storage,read_write> result:array<u32>;
 fn hitBox(orig:vec3<f32>,dir:vec3<f32>,halfBox:vec3<f32>)->vec2<f32>{
@@ -268,7 +266,7 @@ export class MedicalVolumeRenderer{
   this.brickBuffer=this.device.createBuffer({label:'VRL volume minmax bricks',size:Math.max(8,brickCount*8),usage:GPUBufferUsage.STORAGE});
   const meta=smallStorage(this.device,new Uint32Array([s.columns,s.rows,s.slices.length,bx,by,bz,bs,0])),params=smallStorage(this.device,new Float32Array([first.slope,first.intercept,signed?32768:0,0]));
   const brickGroup=this.device.createBindGroup({layout:this.brickPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.texture.createView({dimension:'3d'})},{binding:1,resource:{buffer:meta}},{binding:2,resource:{buffer:params}},{binding:3,resource:{buffer:this.brickBuffer}}]}),brickEncoder=this.device.createCommandEncoder({label:'VRL volume minmax bricks'}),brickPass=brickEncoder.beginComputePass();brickPass.setPipeline(this.brickPipeline);brickPass.setBindGroup(0,brickGroup);brickPass.dispatchWorkgroups(Math.ceil(brickCount/64));brickPass.end();this.device.queue.submit([brickEncoder.finish()]);await this.device.queue.onSubmittedWorkDone();meta.destroy();params.destroy();
-  this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:2,resource:this.sampler},{binding:3,resource:{buffer:this.brickBuffer}}]});
+  this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:3,resource:{buffer:this.brickBuffer}}]});
   this.onStatus('WEBGPU VOLUME READY');
  }
  setActive(active){
@@ -300,7 +298,7 @@ export class MedicalVolumeRenderer{
   this.render(camera,obj,segmentState,segmentOrder);
   const rect=this.rendererCanvas.getBoundingClientRect(),x=(clientX-rect.left)/Math.max(rect.width,1)*this.canvas.width,y=(clientY-rect.top)/Math.max(rect.height,1)*this.canvas.height;
   this.device.queue.writeBuffer(this.pickBuffer,0,new Float32Array([x,y,0,0]));this.device.queue.writeBuffer(this.pickOutput,0,new Uint32Array(4));
-  const group=this.device.createBindGroup({layout:this.pickPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:2,resource:this.sampler},{binding:3,resource:{buffer:this.pickBuffer}},{binding:4,resource:{buffer:this.pickOutput}}]});
+  const group=this.device.createBindGroup({layout:this.pickPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:3,resource:{buffer:this.pickBuffer}},{binding:4,resource:{buffer:this.pickOutput}}]});
   const read=this.device.createBuffer({size:16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),encoder=this.device.createCommandEncoder({label:'VRL volume pick'}),pass=encoder.beginComputePass();pass.setPipeline(this.pickPipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(1);pass.end();encoder.copyBufferToBuffer(this.pickOutput,0,read,0,16);this.device.queue.submit([encoder.finish()]);
   await read.mapAsync(GPUMapMode.READ);const out=new Uint32Array(read.getMappedRange().slice(0));read.unmap();read.destroy();if(!out[3])return null;
   const index=out[3]-1;return{x:out[0],y:out[1],z:out[2],key:segmentOrder[index]};
