@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build09-final';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-10';const APP_BUILD='10';
+const APP_VERSION='2026.09.22-11';const APP_BUILD='11';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -1113,13 +1113,13 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
- if(c.x==0u||c.y==0u||c.z==0u||c.x+1u>=w||c.y+1u>=h||c.z+1u>=d){dst[i]=src[i];return;}
+ if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
  let plane=w*h;var vals:array<f32,7>;
  vals[0]=src[i];vals[1]=src[i-1u];vals[2]=src[i+1u];vals[3]=src[i-w];vals[4]=src[i+w];vals[5]=src[i-plane];vals[6]=src[i+plane];
  for(var q:u32=1u;q<7u;q=q+1u){
   let v=vals[q];var j=i32(q)-1;
   loop{
-   if(j<0||vals[u32(j)]<=v){break;}
+   if(j<0){break;}if(vals[u32(j)]<=v){break;}
    vals[u32(j+1)]=vals[u32(j)];j=j-1;
   }
   vals[u32(j+1)]=v;
@@ -1139,17 +1139,17 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
- if(c.x==0u||c.y==0u||c.z==0u||c.x+1u>=w||c.y+1u>=h||c.z+1u>=d){dst[i]=src[i];return;}
+ if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
  let n0=src[i-1u];let n1=src[i+1u];let n2=src[i-w];let n3=src[i+w];let plane=w*h;let n4=src[i-plane];let n5=src[i+plane];
  let mean=(n0+n1+n2+n3+n4+n5)/6.0;let lo=min(min(min(n0,n1),min(n2,n3)),min(n4,n5));let hi=max(max(max(n0,n1),max(n2,n3)),max(n4,n5));
  let range=max(1.0,params[1]-params[0]);let strength=params[2];let threshold=range*params[3];let guard=threshold*(0.55+0.35*strength);let diff=src[i]-mean;
- if(hi-lo<=guard&&abs(diff)>threshold){let target=mean+sign(diff)*threshold*0.08;let blend=0.20+0.75*strength;dst[i]=src[i]*(1.0-blend)+target*blend;}else{dst[i]=src[i];}
+ if(hi-lo<=guard){if(abs(diff)>threshold){let target=mean+sign(diff)*threshold*0.08;let blend=0.20+0.75*strength;dst[i]=src[i]*(1.0-blend)+target*blend;return;}}dst[i]=src[i];
 }`;
  if(kind==='anisotropic')return header+`
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
- if(c.x==0u||c.y==0u||c.z==0u||c.x+1u>=w||c.y+1u>=h||c.z+1u>=d){dst[i]=src[i];return;}
+ if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
  let center=src[i];let plane=w*h;let range=max(1.0,params[1]-params[0]);let strength=params[2];let k=range*(0.025+0.09*strength);let k2=max(k*k,0.000001);let lambda=0.06+0.14*strength;
  var flux=0.0;var diff=src[i-1u]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+1u]-center;flux+=exp(-(diff*diff)/k2)*diff;
  diff=src[i-w]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+w]-center;flux+=exp(-(diff*diff)/k2)*diff;
@@ -1160,7 +1160,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
- if(c.x==0u||c.y==0u||c.z==0u||c.x+1u>=w||c.y+1u>=h||c.z+1u>=d){dst[i]=src[i];return;}
+ if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
  let center=src[i];let plane=w*h;let range=max(1.0,params[1]-params[0]);let weight=params[2];let lambda=min(0.18,0.02+weight*0.45);let eps=range*0.0001;
  var flux=0.0;var diff=src[i-1u]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+1u]-center;flux+=diff/sqrt(diff*diff+eps*eps);
  diff=src[i-w]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+w]-center;flux+=diff/sqrt(diff*diff+eps*eps);
@@ -1172,9 +1172,9 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=i32(meta[0]);let h=i32(meta[1]);let d=i32(meta[2]);let r=i32(meta[4]);
  var sum=0.0;var count=0.0;
- for(var dz:i32=-r;dz<=r;dz=dz+1){let zz=i32(c.z)+dz;if(zz<0||zz>=d){continue;}
-  for(var dy:i32=-r;dy<=r;dy=dy+1){let yy=i32(c.y)+dy;if(yy<0||yy>=h){continue;}
-   for(var dx:i32=-r;dx<=r;dx=dx+1){let xx=i32(c.x)+dx;if(xx<0||xx>=w){continue;}sum+=src[u32(zz)*meta[0]*meta[1]+u32(yy)*meta[0]+u32(xx)];count+=1.0;}
+ for(var dz:i32=-r;dz<=r;dz=dz+1){let zz=i32(c.z)+dz;if(zz<0){continue;}if(zz>=d){continue;}
+  for(var dy:i32=-r;dy<=r;dy=dy+1){let yy=i32(c.y)+dy;if(yy<0){continue;}if(yy>=h){continue;}
+   for(var dx:i32=-r;dx<=r;dx=dx+1){let xx=i32(c.x)+dx;if(xx<0){continue;}if(xx>=w){continue;}sum+=src[u32(zz)*meta[0]*meta[1]+u32(yy)*meta[0]+u32(xx)];count+=1.0;}
   }
  }
  let blur=sum/max(count,1.0);let detail=src[i]-blur;let range=max(1.0,params[1]-params[0]);let threshold=params[3]*range;
@@ -1188,11 +1188,11 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let radius=i32(meta[4]);let sp2=2.0*spatialSigma*spatialSigma;let int2=2.0*intensitySigma*intensitySigma;
  var sum=0.0;var wsum=0.0;
  for(var dz:i32=-radius;dz<=radius;dz=dz+1){
-  let zz=i32(c.z)+dz;if(zz<0||zz>=i32(meta[2])){continue;}
+  let zz=i32(c.z)+dz;if(zz<0){continue;}if(zz>=i32(meta[2])){continue;}
   for(var dy:i32=-radius;dy<=radius;dy=dy+1){
-   let yy=i32(c.y)+dy;if(yy<0||yy>=i32(meta[1])){continue;}
+   let yy=i32(c.y)+dy;if(yy<0){continue;}if(yy>=i32(meta[1])){continue;}
    for(var dx:i32=-radius;dx<=radius;dx=dx+1){
-    let xx=i32(c.x)+dx;if(xx<0||xx>=i32(meta[0])){continue;}
+    let xx=i32(c.x)+dx;if(xx<0){continue;}if(xx>=i32(meta[0])){continue;}
     let j=idx(u32(xx),u32(yy),u32(zz));let dv=src[j]-center;
     let sw=exp(-f32(dx*dx+dy*dy+dz*dz)/sp2);let iw=exp(-(dv*dv)/int2);let ww=sw*iw;
     sum+=src[j]*ww;wsum+=ww;
@@ -1208,11 +1208,11 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let sr=i32(meta[4]);let pr=i32(meta[5]);let range=max(1.0,params[1]-params[0]);let hp=range*(0.018+0.11*params[2]);let h2=max(hp*hp,0.000001);
  var weighted=center;var weightSum=1.0;
  for(var dz:i32=-sr;dz<=sr;dz=dz+1){
-  let nz=i32(c.z)+dz;if(nz<0||nz>=i32(meta[2])){continue;}
+  let nz=i32(c.z)+dz;if(nz<0){continue;}if(nz>=i32(meta[2])){continue;}
   for(var dy:i32=-sr;dy<=sr;dy=dy+1){
-   let ny=i32(c.y)+dy;if(ny<0||ny>=i32(meta[1])){continue;}
+   let ny=i32(c.y)+dy;if(ny<0){continue;}if(ny>=i32(meta[1])){continue;}
    for(var dx:i32=-sr;dx<=sr;dx=dx+1){
-    let nx=i32(c.x)+dx;if(nx<0||nx>=i32(meta[0])||(dx==0&&dy==0&&dz==0)){continue;}
+    let nx=i32(c.x)+dx;if(nx<0){continue;}if(nx>=i32(meta[0])){continue;}if(dx==0){if(dy==0){if(dz==0){continue;}}}
     var dist2=0.0;var samples=1.0;
     var dv=src[cidx(i32(c.x),i32(c.y),i32(c.z))]-src[cidx(nx,ny,nz)];dist2+=dv*dv;
     for(var r:i32=1;r<=pr;r=r+1){
@@ -1237,7 +1237,12 @@ struct Counters{values:array<atomic<u32>,4>};
 @group(0) @binding(3) var<storage, read> thresholds:array<f32>;
 @group(0) @binding(4) var<storage, read_write> counters:Counters;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
-fn insideSegment(v:f32,s:u32)->bool{return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];}
+fn insideSegment(v:f32,s:u32)->bool{if(v<thresholds[s*2u]){return false;}if(v>thresholds[s*2u+1u]){return false;}return true;}
+fn outsideLocal(x:i32,y:i32,z:i32,s:u32)->bool{
+ if(x<0){return true;}if(y<0){return true;}if(z<0){return true;}
+ if(x>=i32(meta[0])){return true;}if(y>=i32(meta[1])){return true;}if(z>=i32(meta[2])){return true;}
+ return !insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s);
+}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
@@ -1245,12 +1250,12 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let gx=meta[11]+x;let gy=meta[12]+y;let gz=meta[13]+z;let center=src[localIdx(x,y,z)];
  for(var s:u32=0u;s<meta[10];s=s+1u){
   if(!insideSegment(center,s)){continue;}var count=0u;
-  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){count++;}
-  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){count++;}
-  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){count++;}
-  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){count++;}
-  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){count++;}
-  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){count++;}
+  if(outsideLocal(i32(x)-1,i32(y),i32(z),s)){count++;}
+  if(outsideLocal(i32(x)+1,i32(y),i32(z),s)){count++;}
+  if(outsideLocal(i32(x),i32(y)-1,i32(z),s)){count++;}
+  if(outsideLocal(i32(x),i32(y)+1,i32(z),s)){count++;}
+  if(outsideLocal(i32(x),i32(y),i32(z)-1,s)){count++;}
+  if(outsideLocal(i32(x),i32(y),i32(z)+1,s)){count++;}
   if(count>0u){atomicAdd(&counters.values[s],count);}
  }
 }`;
@@ -1263,7 +1268,12 @@ struct Counters{values:array<atomic<u32>,4>};
 @group(0) @binding(4) var<storage, read_write> counters:Counters;
 @group(0) @binding(5) var<storage, read> geom:array<f32>;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
-fn insideSegment(v:f32,s:u32)->bool{return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];}
+fn insideSegment(v:f32,s:u32)->bool{if(v<thresholds[s*2u]){return false;}if(v>thresholds[s*2u+1u]){return false;}return true;}
+fn outsideLocal(x:i32,y:i32,z:i32,s:u32)->bool{
+ if(x<0){return true;}if(y<0){return true;}if(z<0){return true;}
+ if(x>=i32(meta[0])){return true;}if(y>=i32(meta[1])){return true;}if(z>=i32(meta[2])){return true;}
+ return !insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s);
+}
 fn writeFace(base:u32,a:vec3<f32>,b:vec3<f32>,c:vec3<f32>,d:vec3<f32>,e:vec3<f32>,f:vec3<f32>){
  dst[base]=a.x;dst[base+1u]=a.y;dst[base+2u]=a.z;dst[base+3u]=b.x;dst[base+4u]=b.y;dst[base+5u]=b.z;
  dst[base+6u]=c.x;dst[base+7u]=c.y;dst[base+8u]=c.z;dst[base+9u]=d.x;dst[base+10u]=d.y;dst[base+11u]=d.z;
@@ -1281,12 +1291,12 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let z0=(f32(gz)*sz-pz*0.5)*scale;let z1=(f32(gz+1u)*sz-pz*0.5)*scale;
  for(var s:u32=0u;s<meta[10];s=s+1u){
   if(!insideSegment(center,s)){continue;}
-  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x0,y0,z1),vec3f(x0,y1,z1),vec3f(x0,y0,z0),vec3f(x0,y1,z1),vec3f(x0,y1,z0));}
-  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){let b=slotFor(s);writeFace(b,vec3f(x1,y0,z0),vec3f(x1,y1,z0),vec3f(x1,y1,z1),vec3f(x1,y0,z0),vec3f(x1,y1,z1),vec3f(x1,y0,z1));}
-  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x1,y0,z0),vec3f(x1,y0,z1),vec3f(x0,y0,z0),vec3f(x1,y0,z1),vec3f(x0,y0,z1));}
-  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y1,z0),vec3f(x0,y1,z1),vec3f(x1,y1,z1),vec3f(x0,y1,z0),vec3f(x1,y1,z1),vec3f(x1,y1,z0));}
-  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x0,y1,z0),vec3f(x1,y1,z0),vec3f(x0,y0,z0),vec3f(x1,y1,z0),vec3f(x1,y0,z0));}
-  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z1),vec3f(x1,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y1,z1));}
+  if(outsideLocal(i32(x)-1,i32(y),i32(z),s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x0,y0,z1),vec3f(x0,y1,z1),vec3f(x0,y0,z0),vec3f(x0,y1,z1),vec3f(x0,y1,z0));}
+  if(outsideLocal(i32(x)+1,i32(y),i32(z),s)){let b=slotFor(s);writeFace(b,vec3f(x1,y0,z0),vec3f(x1,y1,z0),vec3f(x1,y1,z1),vec3f(x1,y0,z0),vec3f(x1,y1,z1),vec3f(x1,y0,z1));}
+  if(outsideLocal(i32(x),i32(y)-1,i32(z),s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x1,y0,z0),vec3f(x1,y0,z1),vec3f(x0,y0,z0),vec3f(x1,y0,z1),vec3f(x0,y0,z1));}
+  if(outsideLocal(i32(x),i32(y)+1,i32(z),s)){let b=slotFor(s);writeFace(b,vec3f(x0,y1,z0),vec3f(x0,y1,z1),vec3f(x1,y1,z1),vec3f(x0,y1,z0),vec3f(x1,y1,z1),vec3f(x1,y1,z0));}
+  if(outsideLocal(i32(x),i32(y),i32(z)-1,s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z0),vec3f(x0,y1,z0),vec3f(x1,y1,z0),vec3f(x0,y0,z0),vec3f(x1,y1,z0),vec3f(x1,y0,z0));}
+  if(outsideLocal(i32(x),i32(y),i32(z)+1,s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z1),vec3f(x1,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y1,z1));}
  }
 }`;
  if(kind==='meshCornerInit')return `
@@ -1297,8 +1307,8 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @group(0) @binding(5) var<storage, read> geom:array<f32>;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
 fn insideSegmentAt(x:i32,y:i32,z:i32,s:u32)->bool{
- if(x<0||y<0||z<0||x>=i32(meta[0])||y>=i32(meta[1])||z>=i32(meta[2])){return false;}
- let v=src[localIdx(u32(x),u32(y),u32(z))];return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];
+ if(x<0){return false;}if(y<0){return false;}if(z<0){return false;}if(x>=i32(meta[0])){return false;}if(y>=i32(meta[1])){return false;}if(z>=i32(meta[2])){return false;}
+ let v=src[localIdx(u32(x),u32(y),u32(z))];if(v<thresholds[s*2u]){return false;}if(v>thresholds[s*2u+1u]){return false;}return true;
 }
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
@@ -1307,9 +1317,9 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let lx=i32(meta[3]+cx);let ly=i32(meta[4]+cy);let lz=i32(meta[5]+cz);var insideCount=0u;var sampleCount=0u;
  for(var dz:i32=-1;dz<=0;dz=dz+1){for(var dy:i32=-1;dy<=0;dy=dy+1){for(var dx:i32=-1;dx<=0;dx=dx+1){
   let vx=lx+dx;let vy=ly+dy;let vz=lz+dz;
-  if(vx>=0&&vy>=0&&vz>=0&&vx<i32(meta[0])&&vy<i32(meta[1])&&vz<i32(meta[2])){sampleCount++;if(insideSegmentAt(vx,vy,vz,s)){insideCount++;}}
+  var valid=true;if(vx<0){valid=false;}if(vy<0){valid=false;}if(vz<0){valid=false;}if(vx>=i32(meta[0])){valid=false;}if(vy>=i32(meta[1])){valid=false;}if(vz>=i32(meta[2])){valid=false;}if(valid){sampleCount++;if(insideSegmentAt(vx,vy,vz,s)){insideCount++;}}
  }}}
- let active=select(0.0,1.0,insideCount>0u&&insideCount<sampleCount);
+ var activeFlag=false;if(insideCount>0u){if(insideCount<sampleCount){activeFlag=true;}}let active=select(0.0,1.0,activeFlag);
  let gx=meta[11]+meta[3]+cx;let gy=meta[12]+meta[4]+cy;let gz=meta[13]+meta[5]+cz;
  let sx=geom[0];let sy=geom[1];let sz=geom[2];let scale=geom[3];let px=geom[4];let py=geom[5];let pz=geom[6];
  let base=q*4u;corners[base]=(f32(gx)*sx-px*0.5)*scale;corners[base+1u]=-(f32(gy)*sy-py*0.5)*scale;corners[base+2u]=(f32(gz)*sz-pz*0.5)*scale;corners[base+3u]=active;
@@ -1328,12 +1338,12 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;let total=cornerCount*meta[10];
  let q=gid.x;if(q>=total){return;}let s=q/cornerCount;let ci=q-s*cornerCount;let cx=ci%cw;let cy=(ci/cw)%ch;let cz=ci/(cw*ch);let base=q*4u;
  let active=srcCorners[base+3u];var px=srcCorners[base];var py=srcCorners[base+1u];var pz=srcCorners[base+2u];
- if(active<0.5||cx==0u||cy==0u||cz==0u||cx+1u>=cw||cy+1u>=ch||cz+1u>=cd){
+ var edge=false;if(active<0.5){edge=true;}if(cx==0u){edge=true;}if(cy==0u){edge=true;}if(cz==0u){edge=true;}if(cx+1u>=cw){edge=true;}if(cy+1u>=ch){edge=true;}if(cz+1u>=cd){edge=true;}if(edge){
   dstCorners[base]=px;dstCorners[base+1u]=py;dstCorners[base+2u]=pz;dstCorners[base+3u]=active;return;
  }
  var ax=0.0;var ay=0.0;var az=0.0;var count=0.0;
  for(var dz:i32=-1;dz<=1;dz=dz+1){for(var dy:i32=-1;dy<=1;dy=dy+1){for(var dx:i32=-1;dx<=1;dx=dx+1){
-  if(dx==0&&dy==0&&dz==0){continue;}if(abs(dx)+abs(dy)+abs(dz)>2){continue;}
+  if(dx==0){if(dy==0){if(dz==0){continue;}}}if(abs(dx)+abs(dy)+abs(dz)>2){continue;}
   let nb=baseIndex(s,u32(i32(cx)+dx),u32(i32(cy)+dy),u32(i32(cz)+dz));
   if(srcCorners[nb+3u]>0.5){ax+=srcCorners[nb];ay+=srcCorners[nb+1u];az+=srcCorners[nb+2u];count+=1.0;}
  }}}
@@ -1350,9 +1360,14 @@ struct Counters{values:array<atomic<u32>,4>};
 @group(0) @binding(5) var<storage, read> corners:array<f32>;
 @group(0) @binding(6) var<storage, read_write> normals:array<f32>;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
-fn insideSegment(v:f32,s:u32)->bool{return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];}
+fn insideSegment(v:f32,s:u32)->bool{if(v<thresholds[s*2u]){return false;}if(v>thresholds[s*2u+1u]){return false;}return true;}
+fn outsideLocal(x:i32,y:i32,z:i32,s:u32)->bool{
+ if(x<0){return true;}if(y<0){return true;}if(z<0){return true;}
+ if(x>=i32(meta[0])){return true;}if(y>=i32(meta[1])){return true;}if(z>=i32(meta[2])){return true;}
+ return !insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s);
+}
 fn insideAt(x:i32,y:i32,z:i32,s:u32)->f32{
- if(x<0||y<0||z<0||x>=i32(meta[0])||y>=i32(meta[1])||z>=i32(meta[2])){return 0.0;}
+ if(x<0){return 0.0;}if(y<0){return 0.0;}if(z<0){return 0.0;}if(x>=i32(meta[0])){return 0.0;}if(y>=i32(meta[1])){return 0.0;}if(z>=i32(meta[2])){return 0.0;}
  return select(0.0,1.0,insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s));
 }
 fn cornerBase(s:u32,cx:u32,cy:u32,cz:u32)->u32{
@@ -1385,12 +1400,12 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
   let p100=cornerPos(s,tx+1u,ty,tz);let p101=cornerPos(s,tx+1u,ty,tz+1u);let p110=cornerPos(s,tx+1u,ty+1u,tz);let p111=cornerPos(s,tx+1u,ty+1u,tz+1u);
   let n000=cornerNormal(s,tx,ty,tz);let n001=cornerNormal(s,tx,ty,tz+1u);let n010=cornerNormal(s,tx,ty+1u,tz);let n011=cornerNormal(s,tx,ty+1u,tz+1u);
   let n100=cornerNormal(s,tx+1u,ty,tz);let n101=cornerNormal(s,tx+1u,ty,tz+1u);let n110=cornerNormal(s,tx+1u,ty+1u,tz);let n111=cornerNormal(s,tx+1u,ty+1u,tz+1u);
-  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){let b=slotFor(s);writeFace(b,p000,n000,p001,n001,p011,n011,p000,n000,p011,n011,p010,n010);}
-  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){let b=slotFor(s);writeFace(b,p100,n100,p110,n110,p111,n111,p100,n100,p111,n111,p101,n101);}
-  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){let b=slotFor(s);writeFace(b,p000,n000,p100,n100,p101,n101,p000,n000,p101,n101,p001,n001);}
-  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){let b=slotFor(s);writeFace(b,p010,n010,p011,n011,p111,n111,p010,n010,p111,n111,p110,n110);}
-  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){let b=slotFor(s);writeFace(b,p000,n000,p010,n010,p110,n110,p000,n000,p110,n110,p100,n100);}
-  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,p001,n001,p101,n101,p111,n111,p001,n001,p111,n111,p011,n011);}
+  if(outsideLocal(i32(x)-1,i32(y),i32(z),s)){let b=slotFor(s);writeFace(b,p000,n000,p001,n001,p011,n011,p000,n000,p011,n011,p010,n010);}
+  if(outsideLocal(i32(x)+1,i32(y),i32(z),s)){let b=slotFor(s);writeFace(b,p100,n100,p110,n110,p111,n111,p100,n100,p111,n111,p101,n101);}
+  if(outsideLocal(i32(x),i32(y)-1,i32(z),s)){let b=slotFor(s);writeFace(b,p000,n000,p100,n100,p101,n101,p000,n000,p101,n101,p001,n001);}
+  if(outsideLocal(i32(x),i32(y)+1,i32(z),s)){let b=slotFor(s);writeFace(b,p010,n010,p011,n011,p111,n111,p010,n010,p111,n111,p110,n110);}
+  if(outsideLocal(i32(x),i32(y),i32(z)-1,s)){let b=slotFor(s);writeFace(b,p000,n000,p010,n010,p110,n110,p000,n000,p110,n110,p100,n100);}
+  if(outsideLocal(i32(x),i32(y),i32(z)+1,s)){let b=slotFor(s);writeFace(b,p001,n001,p101,n101,p111,n111,p001,n001,p111,n111,p011,n011);}
  }
 }`;
  if(kind==='faceCompact')return `
@@ -1401,7 +1416,12 @@ struct Counter{value:atomic<u32>};
 @group(0) @binding(3) var<storage, read> thresholds: array<f32>;
 @group(0) @binding(4) var<storage, read_write> counter:Counter;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
-fn insideSegment(value:f32,s:u32)->bool{return value>=thresholds[s*2u]&&value<=thresholds[s*2u+1u];}
+fn insideSegment(value:f32,s:u32)->bool{if(value<thresholds[s*2u]){return false;}if(value>thresholds[s*2u+1u]){return false;}return true;}
+fn outsideLocal(x:i32,y:i32,z:i32,s:u32)->bool{
+ if(x<0){return true;}if(y<0){return true;}if(z<0){return true;}
+ if(x>=i32(meta[0])){return true;}if(y>=i32(meta[1])){return true;}if(z>=i32(meta[2])){return true;}
+ return !insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s);
+}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;let count=meta[9];if(i>=count){return;}
@@ -1412,12 +1432,12 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  for(var s:u32=0u;s<meta[10];s=s+1u){
   if(!insideSegment(center,s)){continue;}
   let shift=s*6u;var faces=0u;
-  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){faces=faces|1u;}
-  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){faces=faces|2u;}
-  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){faces=faces|4u;}
-  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){faces=faces|8u;}
-  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){faces=faces|16u;}
-  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){faces=faces|32u;}
+  if(outsideLocal(i32(x)-1,i32(y),i32(z),s)){faces=faces|1u;}
+  if(outsideLocal(i32(x)+1,i32(y),i32(z),s)){faces=faces|2u;}
+  if(outsideLocal(i32(x),i32(y)-1,i32(z),s)){faces=faces|4u;}
+  if(outsideLocal(i32(x),i32(y)+1,i32(z),s)){faces=faces|8u;}
+  if(outsideLocal(i32(x),i32(y),i32(z)-1,s)){faces=faces|16u;}
+  if(outsideLocal(i32(x),i32(y),i32(z)+1,s)){faces=faces|32u;}
   packed=packed|(faces<<shift);
  }
  if(packed!=0u){
@@ -1431,7 +1451,12 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @group(0) @binding(2) var<storage, read> meta: array<u32>;
 @group(0) @binding(3) var<storage, read> thresholds: array<f32>;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
-fn insideSegment(value:f32,s:u32)->bool{return value>=thresholds[s*2u]&&value<=thresholds[s*2u+1u];}
+fn insideSegment(value:f32,s:u32)->bool{if(value<thresholds[s*2u]){return false;}if(value>thresholds[s*2u+1u]){return false;}return true;}
+fn outsideLocal(x:i32,y:i32,z:i32,s:u32)->bool{
+ if(x<0){return true;}if(y<0){return true;}if(z<0){return true;}
+ if(x>=i32(meta[0])){return true;}if(y>=i32(meta[1])){return true;}if(z>=i32(meta[2])){return true;}
+ return !insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s);
+}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;let count=meta[9];if(i>=count){return;}
@@ -1442,12 +1467,12 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  for(var s:u32=0u;s<meta[10];s=s+1u){
   if(!insideSegment(center,s)){continue;}
   let shift=s*6u;var faces=0u;
-  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){faces=faces|1u;}
-  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){faces=faces|2u;}
-  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){faces=faces|4u;}
-  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){faces=faces|8u;}
-  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){faces=faces|16u;}
-  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){faces=faces|32u;}
+  if(outsideLocal(i32(x)-1,i32(y),i32(z),s)){faces=faces|1u;}
+  if(outsideLocal(i32(x)+1,i32(y),i32(z),s)){faces=faces|2u;}
+  if(outsideLocal(i32(x),i32(y)-1,i32(z),s)){faces=faces|4u;}
+  if(outsideLocal(i32(x),i32(y)+1,i32(z),s)){faces=faces|8u;}
+  if(outsideLocal(i32(x),i32(y),i32(z)-1,s)){faces=faces|16u;}
+  if(outsideLocal(i32(x),i32(y),i32(z)+1,s)){faces=faces|32u;}
   packed=packed|(faces<<shift);
  }
  dst[i]=packed;
@@ -1464,7 +1489,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let sx=meta[3]+x;let sy=meta[4]+y;let sz=meta[5]+z;let value=src[sz*meta[0]*meta[1]+sy*meta[0]+sx];
  var bits=0u;let segmentCount=meta[10];
  for(var s:u32=0u;s<segmentCount;s=s+1u){
-  if(value>=thresholds[s*2u]&&value<=thresholds[s*2u+1u]){bits=bits|(1u<<s);}
+  if(value>=thresholds[s*2u]){if(value<=thresholds[s*2u+1u]){bits=bits|(1u<<s);}}
  }
  dst[i]=bits;
 }`;
@@ -1475,13 +1500,13 @@ struct Counter{value:atomic<u32>};
 @group(0) @binding(3) var<storage, read> thresholds:array<f32>;
 @group(0) @binding(4) var<storage, read_write> counter:Counter;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
-fn inside(v:f32)->bool{return v>=thresholds[0]&&v<=thresholds[1];}
+fn inside(v:f32)->bool{if(v<thresholds[0]){return false;}if(v>thresholds[1]){return false;}return true;}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
  let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th),x=meta[3]+tx,y=meta[4]+ty,z=meta[5]+tz;
  if(!inside(src[localIdx(x,y,z)])){return;}
- if(tx>0u&&inside(src[localIdx(x-1u,y,z)])){return;}
+ if(tx>0u){if(inside(src[localIdx(x-1u,y,z)])){return;}}
  atomicAdd(&counter.value,1u);
 }`;
  if(kind==='analysisRunWrite')return `
@@ -1492,13 +1517,13 @@ struct Counter{value:atomic<u32>};
 @group(0) @binding(3) var<storage, read> thresholds:array<f32>;
 @group(0) @binding(4) var<storage, read_write> counter:Counter;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
-fn inside(v:f32)->bool{return v>=thresholds[0]&&v<=thresholds[1];}
+fn inside(v:f32)->bool{if(v<thresholds[0]){return false;}if(v>thresholds[1]){return false;}return true;}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
  let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th),x=meta[3]+tx,y=meta[4]+ty,z=meta[5]+tz;
  if(!inside(src[localIdx(x,y,z)])){return;}
- if(tx>0u&&inside(src[localIdx(x-1u,y,z)])){return;}
+ if(tx>0u){if(inside(src[localIdx(x-1u,y,z)])){return;}}
  var x1=tx;
  loop{
   if(x1+1u>=tw){break;}
@@ -1525,8 +1550,12 @@ async function gpuFilterPipeline(kind){
  const device=await ensureGpuFilterDevice();if(!device)return null;
  if(gpuFilterRuntime.pipelines.has(kind))return gpuFilterRuntime.pipelines.get(kind);
  const module=device.createShaderModule({code:gpuFilterShader(kind),label:'VRL '+kind+' compute'});
+ if(typeof module.getCompilationInfo==='function'){
+  const info=await module.getCompilationInfo(),errors=(info.messages||[]).filter(m=>m.type==='error');
+  if(errors.length)throw new Error('WGSL '+kind+': '+errors.map(m=>m.message).join(' | '));
+ }
  const desc={layout:'auto',compute:{module,entryPoint:'main'},label:'VRL '+kind};
- const pipeline=device.createComputePipelineAsync?await device.createComputePipelineAsync(desc):device.createComputePipeline(desc);
+ const pipeline=await gpuValidationScope(device,'pipeline '+kind,async()=>device.createComputePipelineAsync?await device.createComputePipelineAsync(desc):device.createComputePipeline(desc));
  gpuFilterRuntime.pipelines.set(kind,pipeline);return pipeline;
 }
 const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite'];
@@ -1908,10 +1937,10 @@ async function processSourceRegion(series,target,stages,key,revision,preferFullS
     return gpuResult;
    }
   }catch(e){
-   if(!gpuFilterRuntime.warned){console.warn('WebGPU filter execution failed; using CPU worker.',e);gpuFilterRuntime.warned=true}
+   gpuFilterRuntime.lastError='filter: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU filter execution failed; using CPU worker.',e);gpuFilterRuntime.warned=true}
   }
  }
- setGpuComputeBackend('CPU WORKER');
+ setGpuComputeBackend(gpuFilterRuntime.lastError?'CPU WORKER · GPU FAIL':'CPU WORKER',gpuFilterRuntime.lastError);
  const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:localTarget};
  const result=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return result;
@@ -1931,10 +1960,10 @@ async function processSourceRegionMasks(series,target,stages,key,revision,segmen
    const bits=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments);
    if(bits instanceof Uint32Array){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return bits}
   }catch(e){
-   if(!gpuFilterRuntime.warned){console.warn('WebGPU mask execution failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
+   gpuFilterRuntime.lastError='mask: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU mask execution failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
   }
  }
- setGpuComputeBackend('CPU WORKER');
+ setGpuComputeBackend(gpuFilterRuntime.lastError?'CPU WORKER · GPU FAIL':'CPU WORKER',gpuFilterRuntime.lastError);
  const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:localTarget};
  const values=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
@@ -1975,10 +2004,10 @@ async function processSourceRegionFaces(series,target,stages,key,revision,segmen
    const compact=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:series.columns,globalH:series.rows,globalD:series.slices.length,spacingX:series.spacingX,spacingY:series.spacingY,spacingZ:series.spacingZ,mesh:true});
    if(compact?.mesh||compact?.compact){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return compact}
   }catch(e){
-   if(!gpuFilterRuntime.warned){console.warn('WebGPU face extraction failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
+   gpuFilterRuntime.lastError='mesh: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU face extraction failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
   }
  }
- setGpuComputeBackend('CPU WORKER');
+ setGpuComputeBackend(gpuFilterRuntime.lastError?'CPU WORKER · GPU FAIL':'CPU WORKER',gpuFilterRuntime.lastError);
  const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:{x:0,y:0,z:0,width:box.width,height:box.height,depth:box.depth}};
  const filtered=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
