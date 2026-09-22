@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build09-final';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-12';const APP_BUILD='12';
+const APP_VERSION='2026.09.22-13';const APP_BUILD='13';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -976,7 +976,7 @@ async function decode(s,onProgress){
 
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
-const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false};
+const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128};
 function isDesktopMac(){
  const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent||'';
  return /mac/i.test(platform)&&(navigator.maxTouchPoints||0)===0;
@@ -993,6 +993,30 @@ function gpuAdapterLabel(adapter){
   const info=adapter?.info;if(!info)return'';
   return [info.vendor,info.architecture,info.device,info.description].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
  }catch{return''}
+}
+function gpuDeviceMode(device){return device?.features?.has?.('core-features-and-limits')?'CORE':'COMPAT'}
+function gpuComputeWorkgroupSize(device=gpuFilterRuntime.device){
+ const a=Number(device?.limits?.maxComputeInvocationsPerWorkgroup)||128,b=Number(device?.limits?.maxComputeWorkgroupSizeX)||a;
+ const cap=Math.max(1,Math.min(256,a,b));return cap>=256?256:cap>=128?128:cap>=64?64:Math.max(1,cap);
+}
+function gpuDeviceRequestDescriptor(adapter){
+ const requiredFeatures=[];if(adapter?.features?.has?.('core-features-and-limits'))requiredFeatures.push('core-features-and-limits');
+ const requiredLimits={};
+ if((adapter?.limits?.maxComputeInvocationsPerWorkgroup||0)>=256)requiredLimits.maxComputeInvocationsPerWorkgroup=256;
+ if((adapter?.limits?.maxComputeWorkgroupSizeX||0)>=256)requiredLimits.maxComputeWorkgroupSizeX=256;
+ return{requiredFeatures,requiredLimits};
+}
+async function requestVrlGpuAdapter(){
+ let adapter=null;
+ try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'core'})}catch{}
+ if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'})}catch{}
+ if(!adapter)try{adapter=await navigator.gpu.requestAdapter()}catch{}
+ return adapter;
+}
+async function requestVrlGpuDevice(){
+ const adapter=await requestVrlGpuAdapter();if(!adapter)throw new Error('WebGPU core adapter unavailable');
+ const device=await adapter.requestDevice(gpuDeviceRequestDescriptor(adapter));
+ return{adapter,device};
 }
 function updateGpuStatus(){
  if(!status)return;
@@ -1068,24 +1092,35 @@ function clearGpuBufferPool(){
  gpuFilterRuntime.bufferPool.clear();gpuFilterRuntime.bufferPoolBytes=0;
 }
 async function verifyGpuComputeDevice(device){
- if(!device)return false;
+ if(!device)return false;const wg=gpuComputeWorkgroupSize(device);gpuFilterRuntime.workgroupSize=wg;
  const out=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),read=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
  try{
-  const module=device.createShaderModule({label:'VRL compute self-test',code:'@group(0) @binding(0) var<storage,read_write> out:array<u32>; @compute @workgroup_size(1) fn main(){out[0]=305419896u;}'});
+  const code=`struct TestBuffer {
+ data : array<u32, 1>
+}
+@group(0) @binding(0) var<storage, read_write> testBuffer : TestBuffer;
+@compute @workgroup_size(${wg})
+fn main(@builtin(local_invocation_index) localIndex : u32) {
+ if (localIndex == 0u) {
+  testBuffer.data[0] = 7u;
+ }
+}`;
+  const module=device.createShaderModule({label:'VRL compute self-test',code});
+  if(typeof module.getCompilationInfo==='function'){const info=await module.getCompilationInfo(),errors=(info.messages||[]).filter(m=>m.type==='error');if(errors.length)throw new Error('self-test WGSL: '+errors.map(m=>m.message).join(' | '))}
   const pipeline=await gpuValidationScope(device,'compute self-test pipeline',async()=>device.createComputePipelineAsync?await device.createComputePipelineAsync({layout:'auto',compute:{module,entryPoint:'main'}}):device.createComputePipeline({layout:'auto',compute:{module,entryPoint:'main'}}));
   const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:out}}]}),encoder=device.createCommandEncoder({label:'VRL compute self-test'}),pass=encoder.beginComputePass();
   pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(1);pass.end();encoder.copyBufferToBuffer(out,0,read,0,4);device.queue.submit([encoder.finish()]);
   await read.mapAsync(GPUMapMode.READ);const value=new Uint32Array(read.getMappedRange().slice(0))[0];read.unmap();
-  if(value!==0x12345678)throw new Error('compute self-test readback mismatch: '+value);
+  if(value!==7)throw new Error('compute self-test readback mismatch: '+value);
   return true;
  }finally{try{out.destroy()}catch{}try{read.destroy()}catch{}}
 }
-function adoptRendererGpuDevice(renderer){
+function adoptRendererGpuDevice(renderer,adapter=null){
  const device=renderer?.backend?.device;
  if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
- clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuPrewarmIndex=0;gpuPrewarmScheduled=false;installGpuErrorListener(device);
+ clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);gpuPrewarmIndex=0;gpuPrewarmScheduled=false;installGpuErrorListener(device);
  try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;setGpuComputeBackend('GPU DEVICE LOST','WebGPU device lost')}})}catch{}
- void verifyGpuComputeDevice(device).then(ok=>{if(gpuFilterRuntime.device===device&&ok){setGpuComputeBackend('WEBGPU VERIFIED');scheduleGpuPrewarm()}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='self-test: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
+ void verifyGpuComputeDevice(device).then(ok=>{if(gpuFilterRuntime.device===device&&ok){setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' VERIFIED · WG'+gpuFilterRuntime.workgroupSize);scheduleGpuPrewarm()}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='self-test: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
  updateGpuStatus();return true;
 }
 async function ensureGpuFilterDevice(){
@@ -1097,13 +1132,10 @@ async function ensureGpuFilterDevice(){
  gpuFilterRuntime.initPromise=(async()=>{
   gpuFilterRuntime.initAttempts++;setGpuComputeBackend('WEBGPU CHECKING');
   try{
-   let adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
-   if(!adapter)adapter=await navigator.gpu.requestAdapter();
-   if(!adapter)throw new Error('WebGPU adapter unavailable');
-   const device=await adapter.requestDevice();
-   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;installGpuErrorListener(device);setGpuComputeBackend('WEBGPU CHECKING');
+   const {adapter,device}=await requestVrlGpuDevice();
+   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);installGpuErrorListener(device);setGpuComputeBackend('WEBGPU CHECKING');
    device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',info?.message||'WebGPU device lost')}});
-   try{await verifyGpuComputeDevice(device);setGpuComputeBackend('WEBGPU VERIFIED');scheduleGpuPrewarm()}catch(testError){gpuFilterRuntime.lastError='self-test: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
+   try{await verifyGpuComputeDevice(device);setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' VERIFIED · WG'+gpuFilterRuntime.workgroupSize);scheduleGpuPrewarm()}catch(testError){gpuFilterRuntime.lastError='self-test: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
    return device;
   }catch(e){
    gpuFilterRuntime.device=null;gpuFilterRuntime.adapter=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.retryAfter=performance.now()+5000;
@@ -1131,7 +1163,7 @@ fn cidx(x:i32,y:i32,z:i32)->u32{
 }
 `;
  if(kind==='gaussian')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];let axis=meta[4];
  var x0=c.x;var x1=c.x;var y0=c.y;var y1=c.y;var z0=c.z;var z1=c.z;
@@ -1142,7 +1174,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let blur=(a+2.0*b+cc)*0.25;let s=params[0];dst[i]=b*(1.0-s)+blur*s;
 }`;
  if(kind==='median')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
@@ -1159,7 +1191,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let s=params[0];dst[i]=src[i]*(1.0-s)+vals[3]*s;
 }`;
  if(kind==='sigmoid')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let minv=params[0];let maxv=params[1];let strength=params[2];let centerValue=clamp(params[3],minv,maxv);
  let range=max(1.0,maxv-minv);let gain=2.0+strength*10.0;let center=(centerValue-minv)/range;
@@ -1168,7 +1200,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  dst[i]=minv+clamp(y,0.0,1.0)*range;
 }`;
  if(kind==='spikeHole')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
@@ -1178,7 +1210,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  if(hi-lo<=guard){if(abs(diff)>threshold){let target=mean+sign(diff)*threshold*0.08;let blend=0.20+0.75*strength;dst[i]=src[i]*(1.0-blend)+target*blend;return;}}dst[i]=src[i];
 }`;
  if(kind==='anisotropic')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
@@ -1189,7 +1221,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  dst[i]=center+lambda*flux;
 }`;
  if(kind==='tv')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
@@ -1200,7 +1232,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  dst[i]=center+lambda*flux;
 }`;
  if(kind==='unsharp')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=i32(meta[0]);let h=i32(meta[1]);let d=i32(meta[2]);let r=i32(meta[4]);
  var sum=0.0;var count=0.0;
@@ -1213,7 +1245,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  dst[i]=select(src[i],src[i]+params[2]*detail,abs(detail)>=threshold);
 }`;
  if(kind==='bilateral')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
  let strength=params[2];let spatialSigma=params[3];let intensitySigma=max(0.000001,params[4]*max(1.0,params[1]-params[0]));
@@ -1234,7 +1266,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let filtered=select(center,sum/wsum,wsum>0.0);dst[i]=center*(1.0-strength)+filtered*strength;
 }`;
  if(kind==='nlm')return header+`
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
  let sr=i32(meta[4]);let pr=i32(meta[5]);let range=max(1.0,params[1]-params[0]);let hp=range*(0.018+0.11*params[2]);let h2=max(hp*hp,0.000001);
@@ -1275,7 +1307,7 @@ fn outsideLocal(x:i32,y:i32,z:i32,s:u32)->bool{
  if(x>=i32(meta[0])){return true;}if(y>=i32(meta[1])){return true;}if(z>=i32(meta[2])){return true;}
  return !insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s);
 }
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
  let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
@@ -1312,7 +1344,7 @@ fn writeFace(base:u32,a:vec3<f32>,b:vec3<f32>,c:vec3<f32>,d:vec3<f32>,e:vec3<f32
  dst[base+12u]=e.x;dst[base+13u]=e.y;dst[base+14u]=e.z;dst[base+15u]=f.x;dst[base+16u]=f.y;dst[base+17u]=f.z;
 }
 fn slotFor(s:u32)->u32{return (meta[17u+s]+atomicAdd(&counters.values[s],1u))*18u;}
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
  let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
@@ -1342,7 +1374,7 @@ fn insideSegmentAt(x:i32,y:i32,z:i32,s:u32)->bool{
  if(x<0){return false;}if(y<0){return false;}if(z<0){return false;}if(x>=i32(meta[0])){return false;}if(y>=i32(meta[1])){return false;}if(z>=i32(meta[2])){return false;}
  let v=src[localIdx(u32(x),u32(y),u32(z))];if(v<thresholds[s*2u]){return false;}if(v>thresholds[s*2u+1u]){return false;}return true;
 }
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;let total=cornerCount*meta[10];
  let q=gid.x;if(q>=total){return;}let s=q/cornerCount;let ci=q-s*cornerCount;let cx=ci%cw;let cy=(ci/cw)%ch;let cz=ci/(cw*ch);
@@ -1365,7 +1397,7 @@ fn baseIndex(s:u32,cx:u32,cy:u32,cz:u32)->u32{
  let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;
  return (s*cornerCount+cz*cw*ch+cy*cw+cx)*4u;
 }
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;let total=cornerCount*meta[10];
  let q=gid.x;if(q>=total){return;}let s=q/cornerCount;let ci=q-s*cornerCount;let cx=ci%cw;let cy=(ci/cw)%ch;let cz=ci/(cw*ch);let base=q*4u;
@@ -1421,7 +1453,7 @@ fn writeFace(base:u32,a:vec3<f32>,na:vec3<f32>,b:vec3<f32>,nb:vec3<f32>,c:vec3<f
  writeVertex(base,a,na);writeVertex(base+3u,b,nb);writeVertex(base+6u,c,nc);writeVertex(base+9u,d,nd);writeVertex(base+12u,e,ne);writeVertex(base+15u,f,nf);
 }
 fn slotFor(s:u32)->u32{return (meta[17u+s]+atomicAdd(&counters.values[s],1u))*18u;}
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
  let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
@@ -1454,7 +1486,7 @@ fn outsideLocal(x:i32,y:i32,z:i32,s:u32)->bool{
  if(x>=i32(meta[0])){return true;}if(y>=i32(meta[1])){return true;}if(z>=i32(meta[2])){return true;}
  return !insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s);
 }
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;let count=meta[9];if(i>=count){return;}
  let tw=meta[6];let th=meta[7];let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);
@@ -1489,7 +1521,7 @@ fn outsideLocal(x:i32,y:i32,z:i32,s:u32)->bool{
  if(x>=i32(meta[0])){return true;}if(y>=i32(meta[1])){return true;}if(z>=i32(meta[2])){return true;}
  return !insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s);
 }
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;let count=meta[9];if(i>=count){return;}
  let tw=meta[6];let th=meta[7];let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);
@@ -1514,7 +1546,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @group(0) @binding(1) var<storage, read_write> dst: array<u32>;
 @group(0) @binding(2) var<storage, read> meta: array<u32>;
 @group(0) @binding(3) var<storage, read> thresholds: array<f32>;
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;let count=meta[9];if(i>=count){return;}
  let tw=meta[6];let th=meta[7];let x=i%tw;let y=(i/tw)%th;let z=i/(tw*th);
@@ -1533,7 +1565,7 @@ struct Counter{value:atomic<u32>};
 @group(0) @binding(4) var<storage, read_write> counter:Counter;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
 fn inside(v:f32)->bool{if(v<thresholds[0]){return false;}if(v>thresholds[1]){return false;}return true;}
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
  let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th),x=meta[3]+tx,y=meta[4]+ty,z=meta[5]+tz;
@@ -1550,7 +1582,7 @@ struct Counter{value:atomic<u32>};
 @group(0) @binding(4) var<storage, read_write> counter:Counter;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
 fn inside(v:f32)->bool{if(v<thresholds[0]){return false;}if(v>thresholds[1]){return false;}return true;}
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
  let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th),x=meta[3]+tx,y=meta[4]+ty,z=meta[5]+tz;
@@ -1569,7 +1601,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @group(0) @binding(0) var<storage, read> src: array<f32>;
 @group(0) @binding(1) var<storage, read_write> dst: array<f32>;
 @group(0) @binding(2) var<storage, read> meta: array<u32>;
-@compute @workgroup_size(256)
+@compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;let count=meta[9];if(i>=count){return;}
  let tw=meta[6];let th=meta[7];let x=i%tw;let y=(i/tw)%th;let z=i/(tw*th);
@@ -1643,7 +1675,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   const group=device.createBindGroup({layout:bind,entries:[
    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}}
   ]});
-  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(n/256));pass.end();
+  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
   const t=current;current=next;next=t;
  };
  for(const stage of stages){
@@ -1672,7 +1704,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   const countPipeline=await gpuFilterPipeline('analysisRunCount'),countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
   ]});
-  const countPass=encoder.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);countPass.dispatchWorkgroups(Math.ceil(targetCount/256));countPass.end();
+  const countPass=encoder.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);countPass.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));countPass.end();
   const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});encoder.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([encoder.finish()]);
   await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
   if(!runCount){releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();for(const buf of small)buf.destroy();setGpuComputeBackend('WEBGPU ANALYSIS RLE');return{analysisRuns:true,items:new Uint32Array(0),count:0}}
@@ -1682,7 +1714,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   const writePipeline=await gpuFilterPipeline('analysisRunWrite'),writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
   ]}),writeEncoder=device.createCommandEncoder({label:'VRL analysis RLE'});
-  const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);writePass.dispatchWorkgroups(Math.ceil(targetCount/256));writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
+  const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);writePass.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
   await readback.mapAsync(GPUMapMode.READ);const items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();
   releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();records.destroy();readback.destroy();for(const buf of small)buf.destroy();setGpuComputeBackend('WEBGPU ANALYSIS RLE');return{analysisRuns:true,items,count:runCount};
  }
@@ -1696,7 +1728,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   const countPipeline=await gpuFilterPipeline('meshCount'),countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}}
   ]});
-  const cp=encoder.beginComputePass();cp.setPipeline(countPipeline);cp.setBindGroup(0,countGroup);cp.dispatchWorkgroups(Math.ceil(targetCount/256));cp.end();
+  const cp=encoder.beginComputePass();cp.setPipeline(countPipeline);cp.setBindGroup(0,countGroup);cp.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));cp.end();
   const countRead=device.createBuffer({size:16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});encoder.copyBufferToBuffer(counters,0,countRead,0,16);device.queue.submit([encoder.finish()]);
   await countRead.mapAsync(GPUMapMode.READ);const counts=new Uint32Array(countRead.getMappedRange().slice(0));countRead.unmap();countRead.destroy();
   const totalFaces=counts[0]+counts[1]+counts[2]+counts[3],vertexBytes=totalFaces*18*4,maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
@@ -1725,14 +1757,14 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
     const initPipeline=await gpuFilterPipeline('meshCornerInit'),initGroup=device.createBindGroup({layout:initPipeline.getBindGroupLayout(0),entries:[
      {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:cornerA}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:5,resource:{buffer:gb}}
     ]});
-    await gpuValidationScope(device,'mesh corner init',async()=>{const initEncoder=device.createCommandEncoder({label:'VRL GPU corner init'}),pass=initEncoder.beginComputePass();pass.setPipeline(initPipeline);pass.setBindGroup(0,initGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/256));pass.end();device.queue.submit([initEncoder.finish()])});
+    await gpuValidationScope(device,'mesh corner init',async()=>{const initEncoder=device.createCommandEncoder({label:'VRL GPU corner init'}),pass=initEncoder.beginComputePass();pass.setPipeline(initPipeline);pass.setBindGroup(0,initGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/gpuFilterRuntime.workgroupSize));pass.end();device.queue.submit([initEncoder.finish()])});
     const baseStrength=Math.min(smoothStrength,1),lambda=.34*baseStrength,mu=-.36*baseStrength,iterations=Math.max(1,Math.round(smoothStrength<=1?2+smoothStrength*4:6+(smoothStrength-1)*18));
     const smoothPipeline=await gpuFilterPipeline('meshCornerSmooth'),pbLambda=gpuSmallBuffer(device,new Float32Array([lambda,0,0,0])),pbMu=gpuSmallBuffer(device,new Float32Array([mu,0,0,0]));small.push(pbLambda,pbMu);let srcCorner=cornerA,dstCorner=cornerB;
     for(let k=0;k<iterations;k++)for(const pbSmooth of [pbLambda,pbMu]){
      const smoothGroup=device.createBindGroup({layout:smoothPipeline.getBindGroupLayout(0),entries:[
       {binding:0,resource:{buffer:srcCorner}},{binding:1,resource:{buffer:dstCorner}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pbSmooth}}
      ]});
-     await gpuValidationScope(device,'mesh smooth pass',async()=>{const smoothEncoder=device.createCommandEncoder({label:'VRL GPU smooth pass'}),pass=smoothEncoder.beginComputePass();pass.setPipeline(smoothPipeline);pass.setBindGroup(0,smoothGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/256));pass.end();device.queue.submit([smoothEncoder.finish()])});
+     await gpuValidationScope(device,'mesh smooth pass',async()=>{const smoothEncoder=device.createCommandEncoder({label:'VRL GPU smooth pass'}),pass=smoothEncoder.beginComputePass();pass.setPipeline(smoothPipeline);pass.setBindGroup(0,smoothGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/gpuFilterRuntime.workgroupSize));pass.end();device.queue.submit([smoothEncoder.finish()])});
      const t=srcCorner;srcCorner=dstCorner;dstCorner=t;
     }
     cornerCurrent=srcCorner;
@@ -1742,7 +1774,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
     {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:output}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}}
    ];
    entries.push({binding:5,resource:{buffer:gpuSmooth?cornerCurrent:gb}});if(gpuSmooth)entries.push({binding:6,resource:{buffer:normalOutput}});
-   const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/256));wp.end();
+   const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));wp.end();
    if(gpuResident){
     device.queue.submit([writeEncoder.finish()]);
     const cleanup=()=>{cornerA?.destroy();cornerB?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy()};
@@ -1788,7 +1820,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:targetBuffer}},{binding:2,resource:{buffer:emb}}
   ]});
  }
- const ep=encoder.beginComputePass();ep.setPipeline(extractPipeline);ep.setBindGroup(0,extractGroup);ep.dispatchWorkgroups(Math.ceil(targetCount/256));ep.end();
+ const ep=encoder.beginComputePass();ep.setPipeline(extractPipeline);ep.setBindGroup(0,extractGroup);ep.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));ep.end();
  if(compactFaces){
   counterReadback=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
   encoder.copyBufferToBuffer(counter,0,counterReadback,0,4);device.queue.submit([encoder.finish()]);
@@ -2847,9 +2879,9 @@ async function start3D(){
  let renderer,backend='WEBGL';
  if('gpu' in navigator){
   try{
-   const gpuRenderer=new THREE.WebGPURenderer({antialias:true,alpha:true});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';adoptRendererGpuDevice(gpuRenderer);
+   const core=await requestVrlGpuDevice(),gpuRenderer=new THREE.WebGPURenderer({antialias:true,alpha:true,device:core.device});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';adoptRendererGpuDevice(gpuRenderer,core.adapter);
   }catch(error){
-   console.warn('WebGPU init failed; falling back to WebGL.',error);
+   console.warn('WebGPU core init failed; falling back to WebGL.',error);
   }
  }
  if(!renderer){
