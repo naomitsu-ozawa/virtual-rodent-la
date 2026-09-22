@@ -124,6 +124,52 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
 }`;
 }
 
+function volumePickShader(){
+ return `
+struct Uniforms{
+ camOrigin:vec4<f32>,camRightTan:vec4<f32>,camUpAspect:vec4<f32>,camForward:vec4<f32>,
+ halfStep:vec4<f32>,dimsSlope:vec4<f32>,calibration:vec4<f32>,viewport:vec4<f32>,segments:array<vec4<f32>,8>
+};
+@group(0) @binding(0) var<uniform> u:Uniforms;
+@group(0) @binding(1) var volumeTex:texture_3d<f32>;
+@group(0) @binding(2) var volumeSampler:sampler;
+@group(0) @binding(3) var<storage,read> pick:array<f32>;
+@group(0) @binding(4) var<storage,read_write> result:array<u32>;
+fn hitBox(orig:vec3<f32>,dir:vec3<f32>,halfBox:vec3<f32>)->vec2<f32>{
+ let inv=1.0/dir;let a=(-halfBox-orig)*inv;let b=(halfBox-orig)*inv;let lo=min(a,b);let hi=max(a,b);
+ return vec2<f32>(max(lo.x,max(lo.y,lo.z)),min(hi.x,min(hi.y,hi.z)));
+}
+fn texCoord(p:vec3<f32>)->vec3<f32>{return vec3<f32>(p.x/(2.0*u.halfStep.x)+0.5,0.5-p.y/(2.0*u.halfStep.y),p.z/(2.0*u.halfStep.z)+0.5);}
+fn huAt(tc0:vec3<f32>)->f32{
+ let q=textureSampleLevel(volumeTex,volumeSampler,clamp(tc0,vec3<f32>(0.0),vec3<f32>(1.0)),0.0).rg*255.0;
+ return (q.x+q.y*256.0-u.calibration.y)*u.dimsSlope.w+u.calibration.x;
+}
+fn segmentIndex(v:f32)->i32{
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&v>=a.x&&v<=a.y){return i32(s);}}return -1;
+}
+@compute @workgroup_size(1)
+fn main(){
+ result[0]=0u;result[1]=0u;result[2]=0u;result[3]=0u;
+ let ndc=vec2<f32>(pick[0]/max(u.viewport.x,1.0)*2.0-1.0,1.0-pick[1]/max(u.viewport.y,1.0)*2.0);
+ let dir=normalize(u.camForward.xyz+u.camRightTan.xyz*(ndc.x*u.camRightTan.w*u.camUpAspect.w)+u.camUpAspect.xyz*(ndc.y*u.camRightTan.w));
+ let bounds=hitBox(u.camOrigin.xyz,dir,u.halfStep.xyz);if(bounds.x>bounds.y){return;}
+ var t=max(bounds.x,0.0);let endT=bounds.y;let step=max(u.halfStep.w,0.00001);var previousT=t;
+ for(var iter:u32=0u;iter<4096u;iter=iter+1u){
+  if(t>endT){return;}let idx=segmentIndex(huAt(texCoord(u.camOrigin.xyz+dir*t)));
+  if(idx>=0){
+   var lo=previousT;var hi=t;
+   for(var r:u32=0u;r<5u;r=r+1u){let mid=(lo+hi)*0.5;if(segmentIndex(huAt(texCoord(u.camOrigin.xyz+dir*mid)))==idx){hi=mid;}else{lo=mid;}}
+   let tc=clamp(texCoord(u.camOrigin.xyz+dir*hi),vec3<f32>(0.0),vec3<f32>(0.999999));
+   result[0]=min(u32(tc.x*u.dimsSlope.x),u32(u.dimsSlope.x)-1u);
+   result[1]=min(u32(tc.y*u.dimsSlope.y),u32(u.dimsSlope.y)-1u);
+   result[2]=min(u32(tc.z*u.dimsSlope.z),u32(u.dimsSlope.z)-1u);
+   result[3]=u32(idx)+1u;return;
+  }
+  previousT=t;t+=step;
+ }
+}`;
+}
+
 export class MedicalVolumeRenderer{
  constructor({device,host,rendererCanvas,onProgress,onStatus}){
   this.device=device;this.host=host;this.rendererCanvas=rendererCanvas;this.onProgress=onProgress||(()=>{});this.onStatus=onStatus||(()=>{});
@@ -136,6 +182,7 @@ export class MedicalVolumeRenderer{
   this.sampler=this.device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge',addressModeW:'clamp-to-edge'});
   const module=this.device.createShaderModule({label:'VRL medical volume raycast',code:volumeShader()});
   this.pipeline=this.device.createRenderPipeline({label:'VRL medical volume raycast',layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
+  const pickModule=this.device.createShaderModule({label:'VRL medical volume pick',code:volumePickShader()});this.pickPipeline=this.device.createComputePipeline({label:'VRL medical volume pick',layout:'auto',compute:{module:pickModule,entryPoint:'main'}});this.pickBuffer=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});this.pickOutput=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
   this.texture=null;this.bindGroup=null;this.seriesId=null;this.active=false;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;
  }
  support(v){
@@ -202,8 +249,18 @@ export class MedicalVolumeRenderer{
   const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();this.device.queue.submit([encoder.finish()]);
  }
+ async pick(clientX,clientY,camera,obj,segmentState,segmentOrder){
+  if(!this.active||!this.texture||!this.bindGroup||!obj)return null;
+  this.render(camera,obj,segmentState,segmentOrder);
+  const rect=this.rendererCanvas.getBoundingClientRect(),x=(clientX-rect.left)/Math.max(rect.width,1)*this.canvas.width,y=(clientY-rect.top)/Math.max(rect.height,1)*this.canvas.height;
+  this.device.queue.writeBuffer(this.pickBuffer,0,new Float32Array([x,y,0,0]));this.device.queue.writeBuffer(this.pickOutput,0,new Uint32Array(4));
+  const group=this.device.createBindGroup({layout:this.pickPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:2,resource:this.sampler},{binding:3,resource:{buffer:this.pickBuffer}},{binding:4,resource:{buffer:this.pickOutput}}]});
+  const read=this.device.createBuffer({size:16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),encoder=this.device.createCommandEncoder({label:'VRL volume pick'}),pass=encoder.beginComputePass();pass.setPipeline(this.pickPipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(1);pass.end();encoder.copyBufferToBuffer(this.pickOutput,0,read,0,16);this.device.queue.submit([encoder.finish()]);
+  await read.mapAsync(GPUMapMode.READ);const out=new Uint32Array(read.getMappedRange().slice(0));read.unmap();read.destroy();if(!out[3])return null;
+  const index=out[3]-1;return{x:out[0],y:out[1],z:out[2],key:segmentOrder[index]};
+ }
  resetData(){this.setActive(false);this.texture?.destroy?.();this.texture=null;this.bindGroup=null;this.seriesId=null;this.volume=null}
- destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.canvas.remove()}
+ destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.canvas.remove()}
 }
 
 
