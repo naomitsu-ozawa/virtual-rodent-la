@@ -3,7 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.w
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.21-1849';const APP_BUILD='05';
+const APP_VERSION='2026.09.22-0955';const APP_BUILD='06';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -20,7 +20,7 @@ const I18N={
   segmentation:'セグメンテーション',segments:'組織セグメント',
   bone:'骨',soft:'軟部組織',fat:'脂肪',lung:'肺',min:'最小',max:'最大',opacity:'不透明度',segmentPreset:'セグメントプリセット',addSegment:'セグメントを追加',removeSegment:'削除',opening:'Opening',closing:'Closing',minComponent:'最小連結成分',holeFill:'Hole Filling',
   surfaceSmooth:'表面平滑化',strength:'強度',sigmoidCenter:'中心',filterThreshold:'検出閾値',iterations:'反復回数',passes:'Pass数',searchRadius:'探索半径',patchRadius:'パッチ半径',spatialSigma:'空間Sigma',intensitySigma:'強度Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'STL書き出し',volumeMode:'体積解析',volumeOff:'体積解析を終了',volumeHint:'3D上の部品をクリックしてください',analysisRegions:'解析領域',mergeSelected:'選択を統合',clearRegions:'すべて解除',showRegion:'表示',hideRegion:'非表示',deleteRegion:'削除',mergedRegion:'統合領域',analysisRegion:'領域',mergeNeedsTwo:'2件以上の領域を選択してください',mergingRegions:'領域を統合中…',resetFilters:'画像フィルターをリセット',
-  controls:'断面画像: 左右スワイプ / マウスホイールでスライス移動',
+  controls:'3D: 左ドラッグで回転 / Shift+左ドラッグ・右ドラッグ・中ドラッグで平行移動 / ホイールでズーム。断面画像: 左右スワイプ / マウスホイールでスライス移動',
   seriesUnselected:'シリーズ未選択',selectSeries:'左の一覧からCTシリーズを選択してください。',
   footer:'元のキャリブレーション済みCT値は保持されます。',
   slices:'スライス',matrix:'マトリクス',voxel:'ボクセル',stored:'保存形式',
@@ -41,7 +41,7 @@ const I18N={
   segmentation:'SEGMENTATION',segments:'Tissue segments',
   bone:'Bone',soft:'Soft tissue',fat:'Fat',lung:'Lung',min:'Min',max:'Max',opacity:'Opacity',segmentPreset:'Segment preset',addSegment:'Add segment',removeSegment:'Remove',opening:'Opening',closing:'Closing',minComponent:'Min Component',holeFill:'Hole Filling',
   surfaceSmooth:'Surface Smooth',strength:'Strength',sigmoidCenter:'Center',filterThreshold:'Threshold',iterations:'Iterations',passes:'Passes',searchRadius:'Search Radius',patchRadius:'Patch Radius',spatialSigma:'Spatial Sigma',intensitySigma:'Intensity Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'Export STL',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',volumeHint:'Click a 3D component',analysisRegions:'Analysis regions',mergeSelected:'Merge selected',clearRegions:'Clear all',showRegion:'Show',hideRegion:'Hide',deleteRegion:'Delete',mergedRegion:'Merged region',analysisRegion:'Region',mergeNeedsTwo:'Select at least two regions',mergingRegions:'Merging regions…',resetFilters:'Reset image filters',
-  controls:'MPR slices: swipe left/right or use the mouse wheel',
+  controls:'3D: left-drag to rotate / Shift+left-drag, right-drag, or middle-drag to pan / wheel to zoom. MPR: swipe left/right or use the mouse wheel',
   seriesUnselected:'No Series selected',selectSeries:'Select a CT Series from the list on the left.',
   footer:'Original calibrated CT values are preserved.',
   slices:'Slices',matrix:'Matrix',voxel:'Voxel',stored:'Stored',
@@ -193,7 +193,7 @@ app.innerHTML=`
     <label class="segment-range"><span data-i18n="filterThreshold">検出閾値</span><output id="unsharp-threshold-value">0.02</output><input id="unsharp-threshold" type="range" min="0" max="0.20" step="0.01" value="0.02" disabled></label>
   </div>
   <button id="filter-reset" class="tool-chip filter-reset" data-i18n="resetFilters" disabled>画像フィルターをリセット</button>
-</div><p class="hint" data-i18n="controls">1本指: 3D回転 / 2本指: ズーム・移動 / MPRは上下ドラッグでスライス移動</p></section></div></aside>
+</div><p class="hint" data-i18n="controls">3D: 左ドラッグで回転 / Shift+左ドラッグ・右ドラッグ・中ドラッグで平行移動 / ホイールでズーム。タッチ: 1本指で回転 / 2本指でズーム・移動。断面画像: 左右スワイプ / マウスホイールでスライス移動</p></section></div></aside>
 <section class="viewer-grid" id="viewer-grid"><section id="main-view-slot" class="view-slot view-slot-main"><article class="viewport-card view-card view-card-3d" data-view-key="3d"><div class="viewport-label view-toolbar"><strong>3D</strong><span id="three-label">WebGPU</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="3d" data-i18n="mainView">メインへ</button></div><div class="volume-analysis-panel"><button id="volume-analysis-toggle" class="tool-chip" data-i18n="volumeMode" disabled>体積解析</button><div id="volume-analysis-result" class="volume-analysis-result is-hidden"><div id="analysis-summary" class="analysis-summary"></div><div class="analysis-actions"><button id="analysis-merge" type="button" disabled data-i18n="mergeSelected">選択を統合</button><button id="analysis-clear" type="button" disabled data-i18n="clearRegions">すべて解除</button></div><div id="analysis-region-list" class="analysis-region-list"></div></div></div><div id="viewport-3d" class="viewport viewport-3d"></div><div id="three-busy" class="three-busy is-hidden" role="status" aria-live="polite"><div class="three-busy-spinner" aria-hidden="true"></div><strong id="three-busy-label">3D構築中…</strong><button id="three-busy-cancel" class="three-busy-cancel" type="button" data-i18n="cancel3D">再構築をキャンセル</button></div><div id="selected" class="selected-series-overlay"><strong data-i18n="seriesUnselected">シリーズ未選択</strong><span data-i18n="selectSeries">左の一覧からCTシリーズを選択してください。</span></div></article></section><section id="sub-view-slots" class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<section class="view-slot view-slot-sub"><article class="viewport-card view-card view-card-mpr" data-view-key="${p}"><div class="viewport-label view-toolbar"><strong>${p[0].toUpperCase()+p.slice(1)}</strong><span id="${p}-label">—</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="${p}" data-i18n="mainView">メインへ</button></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article></section>`).join('')}</section></section></section>
 <div id="app-version-badge" class="app-version-badge" aria-label="Application version"></div><footer><span id="footer" data-i18n="footer">元のキャリブレーション済みCT値は保持されます。</span><a href="https://github.com/naomitsu-ozawa/virtual-rodent-la" target="_blank" rel="noopener">Source / License</a></footer></main>`;
 
@@ -834,6 +834,12 @@ async function decode(s,onProgress){
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
 const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false};
+function isDesktopMac(){
+ const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent||'';
+ return /mac/i.test(platform)&&(navigator.maxTouchPoints||0)===0;
+}
+function gpuMeshBlockDepth(){return navigator.maxTouchPoints>0?2:(isDesktopMac()?8:4)}
+function gpuMeshTileStart(){return isDesktopMac()?[256,96]:[192,64]}
 function gpuAdapterLabel(adapter){
  try{
   const info=adapter?.info;if(!info)return'';
@@ -858,7 +864,7 @@ const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','aniso
 function gpuStagesSupported(stages){
  return stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
 }
-function gpuPoolLimit(){return navigator.maxTouchPoints>0?64*1024*1024:192*1024*1024}
+function gpuPoolLimit(){return navigator.maxTouchPoints>0?64*1024*1024:(isDesktopMac()?256:192)*1024*1024}
 function gpuBufferBucketSize(bytes){
  let size=4096;while(size<bytes)size*=2;return size;
 }
@@ -1590,7 +1596,11 @@ async function processSourceRegionFaces(series,target,stages,key,revision,segmen
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return compactFaceFlags(valuesToFaceFlags(filtered,box.width,box.height,box.depth,localTarget,segments,box,series));
 }
-function sourceTileBudget(){return navigator.maxTouchPoints>0?8*1024*1024:16*1024*1024}
+function sourceTileBudget(){
+ if(navigator.maxTouchPoints>0)return 8*1024*1024;
+ if(isDesktopMac()&&gpuFilterRuntime.device){const cap=Number(gpuFilterRuntime.device.limits?.maxStorageBufferBindingSize)||128*1024*1024;return Math.max(16*1024*1024,Math.min(32*1024*1024,Math.floor(cap*.25)))}
+ return 16*1024*1024;
+}
 function fitSourceTile(a,b,fixed,halo,startA,startB){
  let ca=Math.max(1,Math.min(a,startA)),cb=Math.max(1,Math.min(b,startB)),budget=sourceTileBudget();
  const bytes=()=>Math.min(a,ca+2*halo)*Math.min(b,cb+2*halo)*Math.max(1,fixed+2*halo)*4;
@@ -1643,7 +1653,7 @@ async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d
 }
 async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,keyPrefix='3d-face-block'){
  const stages=sourceFilterStages();
- const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tx,ty]=fitSourceTile(w,h,outDepth,halo,192,64);
+ const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(w,h,outDepth,halo,tileStartX,tileStartY);
  for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),compact=await processSourceRegionFaces(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart+':'+x+':'+y,revision,segments);
@@ -1704,7 +1714,7 @@ async function processMemoryRegion(v,target,stages){
  return result;
 }
 async function applyGpuFiltersToMemoryVolume(v,stages,revision){
- const w=v.columns,h=v.rows,d=v.slices,out=new Float32Array(w*h*d),halo=sourceFilterHalo(stages),coreDepth=navigator.maxTouchPoints>0?2:4,[tx,ty]=fitSourceTile(w,h,coreDepth,halo,navigator.maxTouchPoints>0?256:384,navigator.maxTouchPoints>0?96:128);
+ const w=v.columns,h=v.rows,d=v.slices,out=new Float32Array(w*h*d),halo=sourceFilterHalo(stages),coreDepth=gpuMeshBlockDepth(),[tx,ty]=fitSourceTile(w,h,coreDepth,halo,navigator.maxTouchPoints>0?256:(isDesktopMac()?512:384),navigator.maxTouchPoints>0?96:(isDesktopMac()?160:128));
  for(let z=0;z<d;z+=coreDepth){
   const td=Math.min(coreDepth,d-z);
   for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
@@ -1728,7 +1738,7 @@ async function processMemoryMeshRegion(v,target,segments){
  throw new Error('__GPU_UNAVAILABLE__');
 }
 async function getMemoryGpuMeshBlock(v,zStart,coreDepth,segments){
- const outDepth=Math.min(v.slices-zStart,coreDepth),tiles=[],[tx,ty]=fitSourceTile(v.columns,v.rows,outDepth,1,192,64);
+ const outDepth=Math.min(v.slices-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(v.columns,v.rows,outDepth,1,tileStartX,tileStartY);
  for(let y=0;y<v.rows;y+=ty)for(let x=0;x<v.columns;x+=tx){
   const tw=Math.min(tx,v.columns-x),th=Math.min(ty,v.rows-y),result=await processMemoryMeshRegion(v,{x,y,z:zStart,width:tw,height:th,depth:outDepth},segments);
   if(result.mesh){if(result.vertices.length)tiles.push({mesh:true,vertices:result.vertices,counts:result.counts})}
@@ -2373,6 +2383,8 @@ async function start3D(){
  threeLabel.textContent=backend;
  viewport.appendChild(renderer.domElement);sceneState={scene,camera,renderer,obj:null,analysisMesh:null,backend,needsRender:true};updateGpuStatus();void ensureGpuFilterDevice().then(()=>updateGpuStatus());
  const pointers=new Map();const pointerStarts=new Map();let distance=5.2,lastPinch=0,lastCenter=null;
+ const isMousePanStart=e=>e.pointerType==='mouse'&&(e.button===1||e.button===2||e.shiftKey);
+ const pan3D=(dx,dy)=>{if(!sceneState.obj)return;const h=Math.max(renderer.domElement.clientHeight,1),worldPerPixel=2*distance*Math.tan(THREE.MathUtils.degToRad(camera.fov*.5))/h;sceneState.obj.position.x+=dx*worldPerPixel;sceneState.obj.position.y-=dy*worldPerPixel};
  const clear3DPointerState=(pointerId=null)=>{
   if(pointerId!=null){
    pointers.delete(pointerId);pointerStarts.delete(pointerId);
@@ -2385,9 +2397,9 @@ async function start3D(){
  };
  sceneState.clearPointerState=clear3DPointerState;
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
- renderer.domElement.onpointerdown=e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY});renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
- renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId);if(!prev)return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),2.2,12);camera.position.z=distance}if(lastCenter){const ps=distance*.0015;sceneState.obj.position.x+=(center.x-lastCenter.x)*ps;sceneState.obj.position.y-=(center.y-lastCenter.y)*ps}lastPinch=d;lastCenter=center;request3DRender()};
- const endPointer=e=>{const start=pointerStarts.get(e.pointerId);const wasSingle=pointers.size===1;clear3DPointerState(e.pointerId);if(e.type==='pointerup'&&wasSingle&&start&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
+ renderer.domElement.onpointerdown=e=>{const mode=isMousePanStart(e)?'pan':'rotate',point={x:e.clientX,y:e.clientY,mode,pointerType:e.pointerType};pointers.set(e.pointerId,point);pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY,mode});renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
+ renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId);if(!prev)return;pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),2.2,12);camera.position.z=distance}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}lastPinch=d;lastCenter=center;request3DRender()};
+ const endPointer=e=>{const start=pointerStarts.get(e.pointerId);const wasSingle=pointers.size===1;clear3DPointerState(e.pointerId);if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
  renderer.domElement.onlostpointercapture=e=>clear3DPointerState(e.pointerId);
  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,2.2,12);camera.position.z=distance;request3DRender()},{passive:false});
@@ -2794,22 +2806,34 @@ function surfaceSmoothingActive(){
  return !!surfaceSmoothEnabled?.checked&&Number(surfaceSmoothStrength?.value)>0;
 }
 function indexedGeometryFromTrianglePositions(positions){
- const unique=[],indices=[],map=new Map();
- for(let i=0;i<positions.length;i+=3){
-  const x=positions[i],y=positions[i+1],z=positions[i+2],key=x+'|'+y+'|'+z;
-  let id=map.get(key);
-  if(id===undefined){id=unique.length/3;map.set(key,id);unique.push(x,y,z)}
-  indices.push(id);
+ const vertexRefs=Math.floor((positions?.length||0)/3);
+ if(!vertexRefs)return new THREE.BufferGeometry();
+ let tableSize=1;while(tableSize<vertexRefs*2)tableSize*=2;
+ const table=new Uint32Array(tableSize),mask=tableSize-1,srcBits=new Uint32Array(positions.buffer,positions.byteOffset,positions.length);
+ const unique=new Float32Array(positions.length),uniqueBits=new Uint32Array(unique.buffer),indices=new Uint32Array(vertexRefs);
+ let uniqueCount=0;
+ const normZero=v=>v===0x80000000?0:v;
+ const hash3=(x,y,z)=>{let h=Math.imul((x^(x>>>16))>>>0,0x45d9f3b);h=(h^Math.imul((y^(y>>>16))>>>0,0x27d4eb2d))>>>0;h=(h^Math.imul((z^(z>>>16))>>>0,0x165667b1))>>>0;return(h^(h>>>16))>>>0};
+ for(let v=0;v<vertexRefs;v++){
+  const o=v*3,xb=normZero(srcBits[o]),yb=normZero(srcBits[o+1]),zb=normZero(srcBits[o+2]);let slot=hash3(xb,yb,zb)&mask,id=-1;
+  while(table[slot]){
+   const candidate=table[slot]-1,u=candidate*3;
+   if(normZero(uniqueBits[u])===xb&&normZero(uniqueBits[u+1])===yb&&normZero(uniqueBits[u+2])===zb){id=candidate;break}
+   slot=(slot+1)&mask;
+  }
+  if(id<0){id=uniqueCount++;const u=id*3;unique[u]=positions[o];unique[u+1]=positions[o+1];unique[u+2]=positions[o+2];table[slot]=id+1}
+  indices[v]=id;
  }
  const geometry=new THREE.BufferGeometry();
- geometry.setAttribute('position',new THREE.Float32BufferAttribute(unique,3));
- geometry.setIndex(indices);
+ geometry.setAttribute('position',new THREE.BufferAttribute(unique.slice(0,uniqueCount*3),3));
+ geometry.setIndex(new THREE.BufferAttribute(indices,1));
  return geometry;
 }
 function geometryFromSourcePositions(positions){
  if(!positions||!positions.length)return null;
  let geometry;
  if(surfaceSmoothingActive()){
+  if(gpuFilterRuntime.lastBackend.startsWith('WEBGPU'))setGpuComputeBackend('WEBGPU MESH + CPU SMOOTH');
   geometry=indexedGeometryFromTrianglePositions(positions);
   taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
  }else{
@@ -2966,7 +2990,7 @@ async function render3DSourceBacked(v){
  try{
   const filtered=sourceFilterStages().length>0,useGpuMesh=filtered||('gpu' in navigator&&!gpuFilterRuntime.disabled);
   if(useGpuMesh){
-   const filterBlockDepth=navigator.maxTouchPoints>0?2:4;
+   const filterBlockDepth=gpuMeshBlockDepth();
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
     const block=await getFilteredSourceAxialFaceBlock(z0,filterBlockDepth,series,active,'3d:'+revision);
@@ -3017,7 +3041,7 @@ async function render3DMemoryGpu(v){
   const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));mesh.name='segment_'+key+'_gpu_'+z;mesh.userData.segmentKey=key;mesh.userData.displayScale=coords.scale;group.add(mesh);
  };
  try{
-  const blockDepth=navigator.maxTouchPoints>0?2:4;
+  const blockDepth=gpuMeshBlockDepth();
   for(let z0=0;z0<v.slices;z0+=blockDepth){
    if(revision!==sourceRenderRevision){dispose(group);return null}
    const block=await getMemoryGpuMeshBlock(v,z0,blockDepth,active);
@@ -3171,13 +3195,14 @@ function taubinSmoothGeometry(geometry,strength){
  const index=geometry.index;
  if(!pos||!index||strength<=0)return;
  const vertexCount=pos.count;
- const neighbors=Array.from({length:vertexCount},()=>new Set());
+ const neighbors=Array.from({length:vertexCount},()=>[]);
+ const addNeighbor=(a,b)=>{const list=neighbors[a];for(let i=0;i<list.length;i++)if(list[i]===b)return;list.push(b)};
  const idx=index.array;
  for(let i=0;i<idx.length;i+=3){
   const a=idx[i],b=idx[i+1],c=idx[i+2];
-  neighbors[a].add(b);neighbors[a].add(c);
-  neighbors[b].add(a);neighbors[b].add(c);
-  neighbors[c].add(a);neighbors[c].add(b);
+  addNeighbor(a,b);addNeighbor(a,c);
+  addNeighbor(b,a);addNeighbor(b,c);
+  addNeighbor(c,a);addNeighbor(c,b);
  }
  const coords=new Float32Array(pos.array);
  const tmp=new Float32Array(coords.length);
@@ -3185,10 +3210,10 @@ function taubinSmoothGeometry(geometry,strength){
  const pass=(src,dst,factor)=>{
   for(let i=0;i<vertexCount;i++){
    const ns=neighbors[i];
-   if(ns.size===0){dst[i*3]=src[i*3];dst[i*3+1]=src[i*3+1];dst[i*3+2]=src[i*3+2];continue}
+   if(ns.length===0){dst[i*3]=src[i*3];dst[i*3+1]=src[i*3+1];dst[i*3+2]=src[i*3+2];continue}
    let ax=0,ay=0,az=0;
    for(const j of ns){ax+=src[j*3];ay+=src[j*3+1];az+=src[j*3+2]}
-   const inv=1/ns.size;ax*=inv;ay*=inv;az*=inv;
+   const inv=1/ns.length;ax*=inv;ay*=inv;az*=inv;
    const o=i*3;dst[o]=src[o]+factor*(ax-src[o]);dst[o+1]=src[o+1]+factor*(ay-src[o+1]);dst[o+2]=src[o+2]+factor*(az-src[o+2]);
   }
  };
