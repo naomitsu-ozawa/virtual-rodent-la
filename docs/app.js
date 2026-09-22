@@ -1017,31 +1017,52 @@ function sourceMprCacheLimit(){
  if(navigator.maxTouchPoints>0)return deviceMemory>=8?384*1024*1024:256*1024*1024;
  return deviceMemory>=16?1024*1024*1024:768*1024*1024;
 }
-async function prepareSourceMprCache(v,onProgress){
- const s=v?.series;if(!s||!s.compact)return false;
- const count=s.columns*s.rows*s.slices.length,bytes=count*Int16Array.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
- if(bytes>limit)return false;
- let data;try{data=new Int16Array(count)}catch{return false}
+async async function prepareSourceMprCache(v,onProgress){
+ const s=v?.series;if(!s)return false;
+ const Ctor=s.compact?Int16Array:Float32Array,count=s.columns*s.rows*s.slices.length,volumeBytes=count*Ctor.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
+ if(volumeBytes>limit)return false;
+ let data;try{data=new Ctor(count)}catch{return false}
  let min=Infinity,max=-Infinity;
  for(let z=0;z<s.slices.length;z++){
   const slice=await decodeSourceSlice(s.slices[z]),base=z*s.rows*s.columns;
-  for(let i=0;i<slice.length;i++){const value=Math.round(slice[i]);data[base+i]=value;if(value<min)min=value;if(value>max)max=value}
+  for(let i=0;i<slice.length;i++){const value=s.compact?slice[i]:Number(slice[i]);data[base+i]=value;if(value<min)min=value;if(value>max)max=value}
   onProgress?.(z+1,s.slices.length);if((z&7)===0)await frameYield();
  }
- v.mprData=data;v.mprPlaneBuffers={coronal:new Int16Array(s.columns*s.slices.length),sagittal:new Int16Array(s.rows*s.slices.length)};
+ v.mprData=data;v.mprCtor=Ctor;v.mprPlaneBuffers={coronal:new Ctor(s.columns*s.slices.length),sagittal:new Ctor(s.rows*s.slices.length)};
  if(Number.isFinite(min))v.min=min;if(Number.isFinite(max))v.max=max;
+ const transposeBytes=volumeBytes*2;
+ if(volumeBytes+transposeBytes<=limit){
+  try{
+   const coronalAll=new Ctor(count),sagittalAll=new Ctor(count),w=s.columns,h=s.rows,d=s.slices.length,plane=w*h;
+   for(let z=0;z<d;z++){
+    const srcZ=z*plane,corZ=d-1-z;
+    for(let y=0;y<h;y++){
+     const srcRow=srcZ+y*w;
+     for(let x=0;x<w;x++){
+      const value=data[srcRow+x];
+      coronalAll[(y*d+corZ)*w+x]=value;
+      sagittalAll[(x*d+corZ)*h+y]=value;
+     }
+    }
+    if((z&3)===0)await frameYield();
+   }
+   v.mprCoronalAll=coronalAll;v.mprSagittalAll=sagittalAll;
+  }catch{v.mprCoronalAll=null;v.mprSagittalAll=null}
+ }
  return true;
 }
 function cachedSourceMprPlane(v,p,idx){
  const data=v?.mprData;if(!data)return null;
- const w=v.columns,h=v.rows,d=v.slices,plane=w*h;
+ const Ctor=v.mprCtor||data.constructor,w=v.columns,h=v.rows,d=v.slices,plane=w*h;
  if(p==='axial')return data.subarray(idx*plane,(idx+1)*plane);
  if(p==='coronal'){
-  const out=v.mprPlaneBuffers?.coronal||new Int16Array(w*d);
+  if(v.mprCoronalAll)return v.mprCoronalAll.subarray(idx*d*w,(idx+1)*d*w);
+  const out=v.mprPlaneBuffers?.coronal||new Ctor(w*d);
   for(let z=0;z<d;z++){const src=z*plane+idx*w,dst=(d-1-z)*w;out.set(data.subarray(src,src+w),dst)}
   return out;
  }
- const out=v.mprPlaneBuffers?.sagittal||new Int16Array(h*d);
+ if(v.mprSagittalAll)return v.mprSagittalAll.subarray(idx*d*h,(idx+1)*d*h);
+ const out=v.mprPlaneBuffers?.sagittal||new Ctor(h*d);
  for(let z=0;z<d;z++){const base=z*plane,dst=(d-1-z)*h;for(let y=0;y<h;y++)out[dst+y]=data[base+y*w+idx]}
  return out;
 }
