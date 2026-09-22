@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-43';const APP_BUILD='43';
+const APP_VERSION='2026.09.23-44';const APP_BUILD='44';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -974,18 +974,24 @@ function parsedSliceMeta(f,ds){
  const ps=multi(ds.string('x00280030'),2),pos=multi(ds.string('x00200032'),3);
  return{file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,bitsStored:ds.uint16('x00280101')||ds.uint16('x00280100')||16,highBit:ds.uint16('x00280102'),signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,photometricInterpretation:ds.string('x00280004')?.trim()||'MONOCHROME2',planarConfiguration:ds.uint16('x00280006')||0,numberOfFrames:Number(ds.string('x00280008')||1),pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),windowCenter:num(ds.string('x00281050')),windowWidth:num(ds.string('x00281051')),smallest:ds.uint16('x00280106'),largest:ds.uint16('x00280107'),pixelOffset:ds.elements.x7fe00010?.dataOffset??null,pixelLength:ds.elements.x7fe00010?.length??null,ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'};
 }
+function expandParsedFrames(meta){
+ const frames=Math.max(1,meta.numberOfFrames||1);
+ if(frames===1||!COMPRESSED_DICOM_TRANSFER_SYNTAXES.has(meta.ts))return[meta];
+ const dz=meta.spacingBetween||meta.thickness||1,baseInstance=Number.isFinite(meta.instance)?meta.instance:0;
+ return Array.from({length:frames},(_,frameIndex)=>({...meta,frameIndex,sortIndex:baseInstance+frameIndex/Math.max(frames,1),instance:baseInstance+frameIndex,pos:meta.pos?[meta.pos[0],meta.pos[1],meta.pos[2]+frameIndex*dz]:null}));
+}
 async function parseFiles(files,onProgress){
  const out=new Array(files.length),workers=navigator.maxTouchPoints>0?2:Math.min(4,Math.max(2,navigator.hardwareConcurrency||2));let cursor=0,done=0;
  const work=async()=>{
   while(true){
    const i=cursor++;if(i>=files.length)return;const f=files[i];
-   try{const ds=await parseDicomHeader(f);out[i]=parsedSliceMeta(f,ds)}catch{}
+   try{const ds=await parseDicomHeader(f),meta=parsedSliceMeta(f,ds);out[i]=meta?expandParsedFrames(meta):null}catch{}
    done++;onProgress?.(done,files.length);
    if((done&31)===0)await frameYield();
   }
  };
  await Promise.all(Array.from({length:Math.min(workers,files.length)},()=>work()));
- return out.filter(Boolean);
+ return out.flatMap(item=>item||[]);
 }
 
 function canDecodeToInt16(slices){
@@ -1019,7 +1025,7 @@ function groupSeries(slices){
  const m=new Map();
  for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}
  return[...m.entries()].map(([id,g])=>{
-  g.sort((a,b)=>((a.pos?.[2]??a.instance??0)-(b.pos?.[2]??b.instance??0)));
+  g.sort((a,b)=>((a.pos?.[2]??a.sortIndex??a.instance??0)-(b.pos?.[2]??b.sortIndex??b.instance??0)));
   const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),compact=canDecodeToInt16(g),count=rows*columns*g.length,decodedBytes=count*(compact?2:4),sourceBacked=decodedBytes>256*1024*1024,range=sourceRangeFromMetadata(g);
   let z=f.spacingBetween||f.thickness||1;
   if(g.length>1&&g[0].pos&&g[1].pos)z=Math.abs(g[1].pos[2]-g[0].pos[2])||z;
@@ -1125,17 +1131,23 @@ function dicomImageFrameInfo(meta){
  const bits=meta.bitsStored||meta.bits,bytesPerPixel=meta.bits<=8?1:2;
  return{samplesPerPixel:meta.samples||1,photometricInterpretation:meta.photometricInterpretation||'MONOCHROME2',planarConfiguration:meta.planarConfiguration||0,rows:meta.rows,columns:meta.columns,bitsAllocated:meta.bits,bitsStored:bits,highBit:meta.highBit??bits-1,pixelRepresentation:meta.signed?1:0,smallestPixelValue:meta.smallest??(meta.signed?-(2**(bits-1)):0),largestPixelValue:meta.largest??(meta.signed?(2**(bits-1)-1):(2**bits-1)),bytesPerPixel,signed:!!meta.signed,componentsPerPixel:meta.samples||1};
 }
-function encapsulatedFrameBytes(ds,element,ts){
+function encapsulatedFrameBytes(ds,element,ts,frameIndex=0){
  if(!element?.encapsulatedPixelData||!element.fragments?.length)throw new Error('Encapsulated Pixel Data missing');
- if((Number(ds.string('x00280008')||1))!==1)throw new Error('Multi-frame compressed DICOM is not supported yet');
- if(ts==='1.2.840.10008.1.2.5')return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,0,element.fragments.length);
- if(element.basicOffsetTable?.length)return dicomParser.readEncapsulatedImageFrame(ds,element,0,element.basicOffsetTable);
- return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,0,element.fragments.length);
+ const frames=Math.max(1,Number(ds.string('x00280008')||1));if(frameIndex<0||frameIndex>=frames)throw new Error('Compressed DICOM frame out of range: '+frameIndex+' / '+frames);
+ if(ts==='1.2.840.10008.1.2.5')return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,frameIndex,1);
+ let bot=element.basicOffsetTable||[];
+ if(!bot.length&&frames>1){
+  if(typeof dicomParser.createJPEGBasicOffsetTable!=='function')throw new Error('Compressed multi-frame DICOM has no Basic Offset Table');
+  bot=dicomParser.createJPEGBasicOffsetTable(ds,element);
+ }
+ if(bot.length)return dicomParser.readEncapsulatedImageFrame(ds,element,frameIndex,bot);
+ if(frames===1)return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,0,element.fragments.length);
+ throw new Error('Unable to resolve compressed DICOM frame boundaries');
 }
 async function decodeCompressedDicomSlice(meta){
  if(!COMPRESSED_DICOM_TRANSFER_SYNTAXES.has(meta.ts))throw new Error('Unsupported compressed DICOM transfer syntax: '+meta.ts);
  if((meta.samples||1)!==1)throw new Error('Compressed color DICOM is outside the CT viewer scope');
- const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),element=ds.elements.x7fe00010,pixelData=encapsulatedFrameBytes(ds,element,meta.ts),frame=dicomImageFrameInfo(meta),module=await getDicomCodecModule(),decoders=module.decoders;
+ const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),element=ds.elements.x7fe00010,pixelData=encapsulatedFrameBytes(ds,element,meta.ts,meta.frameIndex||0),frame=dicomImageFrameInfo(meta),module=await getDicomCodecModule(),decoders=module.decoders;
  let decoded;
  if(meta.ts==='1.2.840.10008.1.2.5')decoded=await decoders.RLE(frame,pixelData);
  else if(meta.ts==='1.2.840.10008.1.2.4.50')decoded=await decoders.JPEGBaseline8Bit(pixelData,frame);
