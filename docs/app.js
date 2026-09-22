@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-24';const APP_BUILD='24';
+const APP_VERSION='2026.09.22-25';const APP_BUILD='25';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -767,9 +767,10 @@ installFilterReorder();
 
 const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 function schedulePlaneRender(p,immediate=false){
- updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);planes[p].label.textContent=(+planes[p].slider.value)+1;if(sectionViewPlane===p)updateSectionViewUi();
- const sourceHeavy=volume?.sourceBacked&&p!=='axial',wait=immediate?0:sourceFilterStages().length?60:sourceHeavy?28:0;
- planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;safeRenderPlane(p)},wait);
+ updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
+ const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;if(sectionViewPlane===p)updateSectionViewUi();
+ const wait=immediate?0:sourceFilterStages().length?40:0;
+ planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;if(revision===planeRenderRevision[p])safeRenderPlane(p,revision,idx)},wait);
 }
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>schedulePlaneRender(p,true);installMprTouch(p)}
 
@@ -2649,8 +2650,8 @@ async function getFilteredMemoryPlaneValues(p,idx,v,requestRevision){
  }
  if(stale())throw new Error('__SUPERSEDED__');memoryFilterPreviewSet(cacheKey,out);return out;
 }
-async function renderPlaneMemoryFiltered(p){
- const c=planes[p],idx=+c.slider.value,revision=++planeRenderRevision[p];c.label.textContent=idx+1;
+async function renderPlaneMemoryFiltered(p,revision,idx){
+ const c=planes[p];c.label.textContent=idx+1;if(revision!==planeRenderRevision[p])return;
  try{
   const values=await getFilteredMemoryPlaneValues(p,idx,sourceVolume,revision);
   if(revision!==planeRenderRevision[p])return;
@@ -2827,8 +2828,10 @@ function updateSegmentOutputs(key){
 }
 function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);sourceRenderRevision++;mark3DStale();if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){request3DRender();threeLabel.textContent=(sceneState.backend||'3D')+' · GPU volume'}}
 const planeRenderRevision={axial:0,coronal:0,sagittal:0};
-function safeRenderPlane(p){
- void renderPlane(p).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('MPR render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
+function safeRenderPlane(p,revision=null,idx=null){
+ if(revision==null)revision=++planeRenderRevision[p];
+ if(idx==null)idx=+planes[p].slider.value;
+ void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('MPR render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
 }
 function renderMainMprPreview(){
  if(!volume)return;
@@ -2840,11 +2843,11 @@ function renderAll(){
  wcVal.value=formatCtValue(+wc.value,+wc.step);wwVal.value=formatCtValue(+ww.value,+ww.step);
  for(const p of Object.keys(planes))safeRenderPlane(p);
 }
-async function renderPlane(p){
- if(!volume)return;
- if(volume.sourceBacked)return renderPlaneSourceBacked(p);
- if(memoryGpuPreviewActive&&sourceFilterStages().length)return renderPlaneMemoryFiltered(p);
- const c=planes[p],idx=+c.slider.value;c.label.textContent=idx+1;
+async function renderPlane(p,revision,idx){
+ if(!volume||revision!==planeRenderRevision[p])return;
+ if(volume.sourceBacked)return renderPlaneSourceBacked(p,revision,idx);
+ if(memoryGpuPreviewActive&&sourceFilterStages().length)return renderPlaneMemoryFiltered(p,revision,idx);
+ const c=planes[p];c.label.textContent=idx+1;
  const dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],ctx=c.canvas.getContext('2d');c.canvas.width=dims[0];c.canvas.height=dims[1];
  const img=ctx.createImageData(...dims),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);let q=0;
  const segOrder=['lung','fat','soft','bone'],segMasks={};for(const key of segOrder){const seg=segmentState[key];if(seg.active&&seg.enabled&&segmentNeedsGlobalMask(seg))segMasks[key]=getProcessedSegmentMask(volume,seg)}
@@ -2869,8 +2872,8 @@ function paintSourcePlane(c,dims,values,p='axial',idx=0){
  }
  ctx.putImageData(img,0,0);drawAnalysisOverlay(p,idx,ctx);refreshMpr3DPlaneTexture(p);
 }
-async function renderPlaneSourceBacked(p){
- const c=planes[p],idx=+c.slider.value,series=volume.series,revision=++planeRenderRevision[p];c.label.textContent=idx+1;
+async function renderPlaneSourceBacked(p,revision,idx){
+ const c=planes[p],series=volume.series;c.label.textContent=idx+1;if(revision!==planeRenderRevision[p])return;
  try{
   if(sourceFilterStages().length){
    const values=await getFilteredSourcePlaneValues(p,idx,series,'mpr:'+p,revision);
