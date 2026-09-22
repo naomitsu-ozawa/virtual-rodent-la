@@ -53,6 +53,7 @@ struct Uniforms{
 @group(0) @binding(0) var<uniform> u:Uniforms;
 @group(0) @binding(1) var volumeTex:texture_3d<f32>;
 @group(0) @binding(2) var volumeSampler:sampler;
+@group(0) @binding(3) var<storage,read> brickMinMax:array<vec2<f32>>;
 
 struct VOut{@builtin(position) position:vec4<f32>};
 @vertex fn vs(@builtin(vertex_index) i:u32)->VOut{
@@ -81,6 +82,21 @@ fn segmentIndex(v:f32)->i32{
  }
  return -1;
 }
+fn brickMayContain(p:vec3<f32>)->bool{
+ let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999)),dims=max(u.dimsSlope.xyz,vec3<f32>(1.0)),bs=max(u.viewport.w,1.0);
+ let voxel=vec3<u32>(tc*dims),bx=voxel.x/u32(bs),by=voxel.y/u32(bs),bz=voxel.z/u32(bs),bcx=u32(u.calibration.z),bcy=u32(u.calibration.w);
+ let mm=brickMinMax[bz*bcx*bcy+by*bcx+bx];
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){return true;}}
+ return false;
+}
+fn brickExitDistance(p:vec3<f32>,dir:vec3<f32>)->f32{
+ let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999)),dims=max(u.dimsSlope.xyz,vec3<f32>(1.0)),bs=max(u.viewport.w,1.0),voxel=vec3<u32>(tc*dims);
+ let b=voxel/u32(bs),voxelSize=2.0*u.halfStep.xyz/dims;var best=1e20;
+ if(abs(dir.x)>1e-8){let edge=select(f32(b.x*u32(bs)),min(f32((b.x+1u)*u32(bs)),dims.x),dir.x>0.0);let q=-u.halfStep.x+edge*voxelSize.x;let dt=(q-p.x)/dir.x;if(dt>1e-7){best=min(best,dt);}}
+ if(abs(dir.y)>1e-8){let edge=select(f32(b.y*u32(bs)),min(f32((b.y+1u)*u32(bs)),dims.y),dir.y<0.0);let q=u.halfStep.y-edge*voxelSize.y;let dt=(q-p.y)/dir.y;if(dt>1e-7){best=min(best,dt);}}
+ if(abs(dir.z)>1e-8){let edge=select(f32(b.z*u32(bs)),min(f32((b.z+1u)*u32(bs)),dims.z),dir.z>0.0);let q=-u.halfStep.z+edge*voxelSize.z;let dt=(q-p.z)/dir.z;if(dt>1e-7){best=min(best,dt);}}
+ return best;
+}
 fn gradientAt(tc:vec3<f32>)->vec3<f32>{
  let d=vec3<f32>(1.0/max(u.dimsSlope.x,1.0),1.0/max(u.dimsSlope.y,1.0),1.0/max(u.dimsSlope.z,1.0));
  let gx=huAt(tc+vec3<f32>(d.x,0.0,0.0))-huAt(tc-vec3<f32>(d.x,0.0,0.0));
@@ -99,7 +115,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
  var previousT=t;var lastIndex:i32=-1;var acc=vec4<f32>(0.0);
  for(var iter:u32=0u;iter<4096u;iter=iter+1u){
   if(t>endT||acc.a>0.985){break;}
-  let p=u.camOrigin.xyz+dir*t;let value=huAt(texCoord(p));let idx=segmentIndex(value);
+  let p=u.camOrigin.xyz+dir*t;if(!brickMayContain(p)){let skip=brickExitDistance(p,dir);previousT=t;t+=max(skip+step*0.05,step);lastIndex=-1;continue;}let value=huAt(texCoord(p));let idx=segmentIndex(value);
   if(idx!=lastIndex){
    if(idx>=0){
     var lo=previousT;var hi=t;
@@ -121,6 +137,27 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
  }
  let bg=vec3<f32>(0.035,0.045,0.05);
  return vec4<f32>(acc.rgb+bg*(1.0-acc.a),1.0);
+}`;
+}
+
+function brickShader(){
+ return `
+@group(0) @binding(0) var volumeTex:texture_3d<f32>;
+@group(0) @binding(1) var<storage,read> meta:array<u32>;
+@group(0) @binding(2) var<storage,read> params:array<f32>;
+@group(0) @binding(3) var<storage,read_write> outMinMax:array<vec2<f32>>;
+fn huAt(x:u32,y:u32,z:u32)->f32{
+ let q=textureLoad(volumeTex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg*255.0;
+ return (q.x+q.y*256.0-params[2])*params[0]+params[1];
+}
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let bxCount=meta[3];let byCount=meta[4];let bzCount=meta[5];let total=bxCount*byCount*bzCount;let i=gid.x;if(i>=total){return;}
+ let bx=i%bxCount;let by=(i/bxCount)%byCount;let bz=i/(bxCount*byCount);let bs=meta[6];
+ let x0=bx*bs;let y0=by*bs;let z0=bz*bs;let x1=min(x0+bs,meta[0]);let y1=min(y0+bs,meta[1]);let z1=min(z0+bs,meta[2]);
+ var lo=1e30;var hi=-1e30;
+ for(var z=z0;z<z1;z=z+1u){for(var y=y0;y<y1;y=y+1u){for(var x=x0;x<x1;x=x+1u){let v=huAt(x,y,z);lo=min(lo,v);hi=max(hi,v);}}}
+ outMinMax[i]=vec2<f32>(lo,hi);
 }`;
 }
 
@@ -182,7 +219,8 @@ export class MedicalVolumeRenderer{
   this.sampler=this.device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge',addressModeW:'clamp-to-edge'});
   const module=this.device.createShaderModule({label:'VRL medical volume raycast',code:volumeShader()});
   this.pipeline=this.device.createRenderPipeline({label:'VRL medical volume raycast',layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
-  const pickModule=this.device.createShaderModule({label:'VRL medical volume pick',code:volumePickShader()});this.pickPipeline=this.device.createComputePipeline({label:'VRL medical volume pick',layout:'auto',compute:{module:pickModule,entryPoint:'main'}});this.pickBuffer=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});this.pickOutput=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+  const pickModule=this.device.createShaderModule({label:'VRL medical volume pick',code:volumePickShader()});this.pickPipeline=this.device.createComputePipeline({label:'VRL medical volume pick',layout:'auto',compute:{module:pickModule,entryPoint:'main'}});this.pickBuffer=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});this.pickOutput=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
+  const brickModule=this.device.createShaderModule({label:'VRL volume minmax bricks',code:brickShader()});this.brickPipeline=this.device.createComputePipeline({label:'VRL volume minmax bricks',layout:'auto',compute:{module:brickModule,entryPoint:'main'}});this.brickBuffer=null;this.brickDims=[1,1,1];this.brickSize=8;
   this.texture=null;this.bindGroup=null;this.seriesId=null;this.active=false;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;
  }
  support(v){
@@ -221,7 +259,11 @@ export class MedicalVolumeRenderer{
   const px=s.columns*s.spacingX,py=s.rows*s.spacingY,pz=s.slices.length*s.spacingZ,maxP=Math.max(px,py,pz,1),scale=3.3/maxP;
   this.halfExtents=[px*scale*.5,py*scale*.5,pz*scale*.5];this.step=Math.max(1e-5,Math.min(s.spacingX,s.spacingY,s.spacingZ)*scale*.85);
   this.calibration={slope:first.slope,intercept:first.intercept,signedBias:signed?32768:0};this.texture=texture;this.seriesId=s.id;
-  this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:2,resource:this.sampler}]});
+  const bs=this.brickSize,bx=Math.ceil(s.columns/bs),by=Math.ceil(s.rows/bs),bz=Math.ceil(s.slices.length/bs),brickCount=bx*by*bz;this.brickDims=[bx,by,bz];
+  this.brickBuffer=this.device.createBuffer({label:'VRL volume minmax bricks',size:Math.max(8,brickCount*8),usage:GPUBufferUsage.STORAGE});
+  const meta=smallStorage(this.device,new Uint32Array([s.columns,s.rows,s.slices.length,bx,by,bz,bs,0])),params=smallStorage(this.device,new Float32Array([first.slope,first.intercept,signed?32768:0,0]));
+  const brickGroup=this.device.createBindGroup({layout:this.brickPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.texture.createView({dimension:'3d'})},{binding:1,resource:{buffer:meta}},{binding:2,resource:{buffer:params}},{binding:3,resource:{buffer:this.brickBuffer}}]}),brickEncoder=this.device.createCommandEncoder({label:'VRL volume minmax bricks'}),brickPass=brickEncoder.beginComputePass();brickPass.setPipeline(this.brickPipeline);brickPass.setBindGroup(0,brickGroup);brickPass.dispatchWorkgroups(Math.ceil(brickCount/64));brickPass.end();this.device.queue.submit([brickEncoder.finish()]);await this.device.queue.onSubmittedWorkDone();meta.destroy();params.destroy();
+  this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:2,resource:this.sampler},{binding:3,resource:{buffer:this.brickBuffer}}]});
   this.onStatus('WEBGPU VOLUME READY');
  }
  setActive(active){
@@ -240,7 +282,7 @@ export class MedicalVolumeRenderer{
   const data=new Float32Array(64),put=(slot,a,b,c,d)=>{const i=slot*4;data[i]=a;data[i+1]=b;data[i+2]=c;data[i+3]=d};
   put(0,origin.x,origin.y,origin.z,0);put(1,right.x,right.y,right.z,Math.tan(THREE.MathUtils.degToRad(camera.fov*.5)));put(2,up.x,up.y,up.z,camera.aspect);put(3,forward.x,forward.y,forward.z,0);
   put(4,this.halfExtents[0],this.halfExtents[1],this.halfExtents[2],this.step);
-  put(5,this.volume.columns,this.volume.rows,this.volume.slices,this.calibration.slope);put(6,this.calibration.intercept,this.calibration.signedBias,4,0);put(7,this.canvas.width,this.canvas.height,0,0);
+  put(5,this.volume.columns,this.volume.rows,this.volume.slices,this.calibration.slope);put(6,this.calibration.intercept,this.calibration.signedBias,this.brickDims[0],this.brickDims[1]);put(7,this.canvas.width,this.canvas.height,this.brickDims[2],this.brickSize);
   for(let s=0;s<4;s++){
    const key=segmentOrder[s],seg=segmentState[key],enabled=seg?.active&&seg?.enabled?1:0,color=new THREE.Color(seg?.color||'#ffffff');
    put(8+s*2,seg?.min||0,seg?.max||0,seg?.opacity??1,enabled);put(9+s*2,color.r,color.g,color.b,1);
@@ -259,7 +301,7 @@ export class MedicalVolumeRenderer{
   await read.mapAsync(GPUMapMode.READ);const out=new Uint32Array(read.getMappedRange().slice(0));read.unmap();read.destroy();if(!out[3])return null;
   const index=out[3]-1;return{x:out[0],y:out[1],z:out[2],key:segmentOrder[index]};
  }
- resetData(){this.setActive(false);this.texture?.destroy?.();this.texture=null;this.bindGroup=null;this.seriesId=null;this.volume=null}
+ resetData(){this.setActive(false);this.texture?.destroy?.();this.brickBuffer?.destroy?.();this.texture=null;this.brickBuffer=null;this.bindGroup=null;this.seriesId=null;this.volume=null}
  destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.canvas.remove()}
 }
 
