@@ -211,7 +211,7 @@ export class MedicalVolumeRenderer{
  constructor({device,host,rendererCanvas,onProgress,onStatus}){
   this.device=device;this.host=host;this.rendererCanvas=rendererCanvas;this.onProgress=onProgress||(()=>{});this.onStatus=onStatus||(()=>{});
   this.canvas=document.createElement('canvas');this.canvas.className='gpu-medical-volume-canvas';
-  Object.assign(this.canvas.style,{position:'absolute',inset:'0',width:'100%',height:'100%',display:'none',pointerEvents:'none',zIndex:'1'});
+  Object.assign(this.canvas.style,{position:'absolute',inset:'0',width:'100%',height:'100%',display:'none',pointerEvents:'none',zIndex:'0'});
   this.host.style.position='relative';this.host.appendChild(this.canvas);
   this.context=this.canvas.getContext('webgpu');this.format=navigator.gpu.getPreferredCanvasFormat();
   this.context.configure({device:this.device,format:this.format,alphaMode:'opaque'});
@@ -268,7 +268,6 @@ export class MedicalVolumeRenderer{
  }
  setActive(active){
   this.active=!!active;this.canvas.style.display=this.active?'block':'none';
-  if(this.rendererCanvas)this.rendererCanvas.style.opacity=this.active?'0':'1';
  }
  resize(){
   const ratio=Math.min(window.devicePixelRatio||1,1.5),w=Math.max(1,Math.floor(this.host.clientWidth*ratio)),h=Math.max(1,Math.floor(this.host.clientHeight*ratio));
