@@ -1017,7 +1017,7 @@ function sourceMprCacheLimit(){
  if(navigator.maxTouchPoints>0)return deviceMemory>=8?384*1024*1024:256*1024*1024;
  return deviceMemory>=16?1024*1024*1024:768*1024*1024;
 }
-async async function prepareSourceMprCache(v,onProgress){
+async function prepareSourceMprCache(v,onProgress){
  const s=v?.series;if(!s)return false;
  const Ctor=s.compact?Int16Array:Float32Array,count=s.columns*s.rows*s.slices.length,volumeBytes=count*Ctor.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
  if(volumeBytes>limit)return false;
