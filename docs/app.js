@@ -3349,14 +3349,15 @@ async function applyCutStroke(points){
  await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs);footer.textContent=currentLanguage==='ja'?'領域を切断しました':'Region cut applied';
 }
 function updateAnalysisEditorControls(){
- const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,key=single?region.segmentKeys[0]:null,st=key?segmentEditState[key]:null,usable=!!region&&single&&threeRenderMode==='surface'&&!!sceneState?.obj;
+ const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,key=single?region.segmentKeys[0]:null,usable=!!region&&single&&threeRenderMode==='surface'&&!!sceneState?.obj;
+ const historyKey=key||SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length||segmentEditState[k].redo.length||segmentEditActive(k)),historyState=historyKey?segmentEditState[historyKey]:null;
  if(analysisEditToggle){analysisEditToggle.disabled=!usable;analysisEditToggle.classList.toggle('is-active',analysisEditEnabled)}
  if(analysisCutButton){analysisCutButton.disabled=!usable||!analysisEditEnabled;analysisCutButton.classList.toggle('is-active',analysisEditEnabled&&analysisEditTool==='cut')}
  if(analysisRemoveSelected)analysisRemoveSelected.disabled=!usable;
  if(analysisKeepSelected)analysisKeepSelected.disabled=!usable;
- if(analysisUndo)analysisUndo.disabled=!st?.undo?.length;
- if(analysisRedo)analysisRedo.disabled=!st?.redo?.length;
- if(analysisResetEdit)analysisResetEdit.disabled=!st||!segmentEditActive(key);
+ if(analysisUndo)analysisUndo.disabled=!historyState?.undo?.length;
+ if(analysisRedo)analysisRedo.disabled=!historyState?.redo?.length;
+ if(analysisResetEdit)analysisResetEdit.disabled=!historyKey||!segmentEditActive(historyKey);
  if(analysisExportSelected)analysisExportSelected.disabled=!region;
 }
 function analysisRunSliceState(records,w,h){
