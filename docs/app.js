@@ -964,6 +964,14 @@ async function readSourceRow(meta,row){
  for(let x=0;x<meta.columns;x++){let raw;if(meta.bits===8){raw=bytes[x];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(x*2,little):view.getUint16(x*2,little);out[x]=raw*meta.slope+meta.intercept}
  return out;
 }
+async function readSourceRows(meta,rowStart,rowCount){
+ const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
+ const count=Math.max(0,Math.min(rowCount,meta.rows-rowStart));if(!count)return new Float32Array();
+ if(meta.pixelOffset==null){const full=await decodeSourceSlice(meta);return full.slice(rowStart*meta.columns,(rowStart+count)*meta.columns)}
+ const start=meta.pixelOffset+rowStart*meta.columns*bpp,end=start+count*meta.columns*bpp,bytes=new Uint8Array(await meta.file.slice(start,end).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer),out=new Float32Array(count*meta.columns);
+ for(let i=0;i<out.length;i++){let raw;if(meta.bits===8){raw=bytes[i];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(i*2,little):view.getUint16(i*2,little);out[i]=raw*meta.slope+meta.intercept}
+ return out;
+}
 async function readSourceColumn(meta,column){
  const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
  if(meta.pixelOffset==null){const full=await decodeSourceSlice(meta),out=new Float32Array(meta.rows);for(let y=0;y<meta.rows;y++)out[y]=full[y*meta.columns+column];return out}
@@ -1880,9 +1888,36 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
  setGpuComputeBackend(segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE');return result;
 }
 
-const sourceSliceCache={map:new Map(),bytes:0};
+const sourceSliceCache={map:new Map(),bytes:0},sourceOrthogonalPlaneCache=new Map();
 function sourceSliceCacheLimit(){return navigator.maxTouchPoints>0?48*1024*1024:128*1024*1024}
-function clearSourceSliceCache(){sourceSliceCache.map.clear();sourceSliceCache.bytes=0}
+function clearSourceSliceCache(){sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear()}
+function sourceOrthogonalCacheGet(p,idx){
+ const key=p+':'+idx,v=sourceOrthogonalPlaneCache.get(key);if(!v)return null;sourceOrthogonalPlaneCache.delete(key);sourceOrthogonalPlaneCache.set(key,v);return v;
+}
+function sourceOrthogonalCacheSet(p,idx,v){
+ const key=p+':'+idx;sourceOrthogonalPlaneCache.set(key,v);
+ while(sourceOrthogonalPlaneCache.size>20)sourceOrthogonalPlaneCache.delete(sourceOrthogonalPlaneCache.keys().next().value);
+}
+async function buildSourceOrthogonalNeighborhood(p,idx,series,revision){
+ const cached=sourceOrthogonalCacheGet(p,idx);if(cached)return cached;
+ const max=p==='coronal'?series.rows-1:series.columns-1,radius=navigator.maxTouchPoints>0?3:5,a=Math.max(0,idx-radius),b=Math.min(max,idx+radius),indices=[];for(let i=a;i<=b;i++)if(!sourceOrthogonalCacheGet(p,i))indices.push(i);
+ const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],built=new Map(indices.map(i=>[i,new Float32Array(dims[0]*dims[1])]));
+ if(!indices.length)return sourceOrthogonalCacheGet(p,idx);
+ for(let z=0;z<series.slices.length;z++){
+  if(revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
+  const meta=series.slices[z],base=(series.slices.length-1-z)*dims[0];
+  if(p==='coronal'){
+   const lo=indices[0],hi=indices[indices.length-1],block=await readSourceRows(meta,lo,hi-lo+1);
+   for(const i of indices)built.get(i).set(block.subarray((i-lo)*series.columns,(i-lo+1)*series.columns),base);
+  }else{
+   const full=await decodeSourceSlice(meta);
+   for(const i of indices){const dst=built.get(i);for(let y=0;y<series.rows;y++)dst[base+y]=full[y*series.columns+i]}
+  }
+  if((z&15)===0)await frameYield();
+ }
+ for(const [i,v] of built)sourceOrthogonalCacheSet(p,i,v);
+ return sourceOrthogonalCacheGet(p,idx);
+}
 async function getCachedSourceSlice(meta){
  const hit=sourceSliceCache.map.get(meta);
  if(hit){sourceSliceCache.map.delete(meta);sourceSliceCache.map.set(meta,hit);return hit}
@@ -2847,24 +2882,8 @@ async function renderPlaneSourceBacked(p){
    const values=await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
    paintSourcePlane(c,[series.columns,series.rows],values,p,idx);return;
   }
-  if(p==='coronal'){
-   const values=new Float32Array(series.columns*series.slices.length);
-   for(let z=0;z<series.slices.length;z++){
-    const row=await readSourceRow(series.slices[z],idx);
-    values.set(row,(series.slices.length-1-z)*series.columns);
-    if((z&31)===0)await frameYield();
-    if(revision!==planeRenderRevision[p])return;
-   }
-   paintSourcePlane(c,[series.columns,series.slices.length],values,p,idx);return;
-  }
-  const values=new Float32Array(series.rows*series.slices.length);
-  for(let z=0;z<series.slices.length;z++){
-   const column=await readSourceColumn(series.slices[z],idx),base=(series.slices.length-1-z)*series.rows;
-   values.set(column,base);
-   if((z&15)===0)await frameYield();
-   if(revision!==planeRenderRevision[p])return;
-  }
-  paintSourcePlane(c,[series.rows,series.slices.length],values,p,idx);
+  const values=await buildSourceOrthogonalNeighborhood(p,idx,series,revision);if(revision!==planeRenderRevision[p]||!values)return;
+  paintSourcePlane(c,p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],values,p,idx);
  }catch(e){if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);footer.textContent='MPR read error: '+String(e.message||e)}}
 }
 
