@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-45';const APP_BUILD='45';
+const APP_VERSION='2026.09.23-46';const APP_BUILD='46';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -3669,8 +3669,8 @@ function surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey=null){
  const hits=raycaster.intersectObjects(sceneState.obj.children,true),hit=preferredKey?hits.find(h=>segmentKeyFromIntersection(h)===preferredKey):hits.find(h=>segmentKeyFromIntersection(h));
  if(!hit)return null;
  const key=segmentKeyFromIntersection(hit);if(!key)return null;
- const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=sceneState.obj.worldToLocal(hit.point.clone());
- return{x:Math.max(0,Math.min(w-1,Math.round((local.x/scale+px/2)/vx))),y:Math.max(0,Math.min(h-1,Math.round((-local.y/scale+py/2)/vy))),z:Math.max(0,Math.min(d-1,Math.round((local.z/scale+pz/2)/vz))),hit,key};
+ const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=sceneState.obj.worldToLocal(hit.point.clone()),inv=sceneState.obj.matrixWorld.clone().invert(),localRay=raycaster.ray.direction.clone().transformDirection(inv).normalize();
+ return{x:Math.max(0,Math.min(w-1,Math.round((local.x/scale+px/2)/vx))),y:Math.max(0,Math.min(h-1,Math.round((-local.y/scale+py/2)/vy))),z:Math.max(0,Math.min(d-1,Math.round((local.z/scale+pz/2)/vz))),ray:{x:localRay.x,y:-localRay.y,z:localRay.z},hit,key};
 }
 async function segmentKeyAtVoxel(v,x,y,z){
  const w=v.columns,h=v.rows,d=v.slices;if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return null;
@@ -4078,15 +4078,32 @@ async function redoSegmentEdit(){
 async function resetFocusedSegmentEdit(){
  const region=analysisRegionById(analysisFocusedRegionId),key=analysisEditTargetKey||(region?.segmentKeys?.length===1?region.segmentKeys[0]:null)||SEGMENT_PRESET_ORDER.find(k=>segmentEditActive(k));if(!key)return;analysisEditTargetKey=key;const refs=snapshotAnalysisRegionsForSegment(key);pushEditUndo(key);const st=segmentEditState[key];st.keepRuns=null;st.excludeRuns=null;st.finalRuns=null;st.revision++;await refreshEditedSegmentSurface(key);if(refs.length)await rebuildEditedAnalysisForSegment(key,refs);updateAnalysisEditorControls();footer.textContent=currentLanguage==='ja'?'編集をリセットしました':'Edits reset';
 }
-function cutRunsFromVoxelStroke(v,points,radiusMm){
- const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,rows=Array.from({length:d},()=>new Map()),samples=[];
- for(let i=0;i<points.length;i++){
-  if(i===0){samples.push(points[i]);continue}const a=points[i-1],b=points[i],dist=Math.hypot((b.x-a.x)*sx,(b.y-a.y)*sy,(b.z-a.z)*sz),steps=Math.max(1,Math.ceil(dist/Math.max(radiusMm*.4,.1)));
-  for(let s=1;s<=steps;s++){const t=s/steps;samples.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t})}
- }
- for(const p of samples){
+function cutRunsFromVoxelStroke(v,points,widthMm){
+ const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,rows=Array.from({length:d},()=>new Map()),samples=[],radiusMm=Math.max(Math.min(sx,sy,sz)*.45,widthMm*.5);
+ const addInterval=(z,y,x0,x1)=>{const map=rows[z],arr=map.get(y)||[];arr.push([x0,x1]);map.set(y,arr)};
+ const stamp=p=>{
   const rz=Math.ceil(radiusMm/sz),ry=Math.ceil(radiusMm/sy);
-  for(let z=Math.max(0,Math.floor(p.z-rz));z<=Math.min(d-1,Math.ceil(p.z+rz));z++){const dz=(z-p.z)*sz;for(let y=Math.max(0,Math.floor(p.y-ry));y<=Math.min(h-1,Math.ceil(p.y+ry));y++){const dy=(y-p.y)*sy,remain=radiusMm*radiusMm-dz*dz-dy*dy;if(remain<0)continue;const rx=Math.sqrt(remain)/sx,x0=Math.max(0,Math.floor(p.x-rx)),x1=Math.min(w-1,Math.ceil(p.x+rx)),map=rows[z],arr=map.get(y)||[];arr.push([x0,x1]);map.set(y,arr)}}}
+  for(let z=Math.max(0,Math.floor(p.z-rz));z<=Math.min(d-1,Math.ceil(p.z+rz));z++){const dz=(z-p.z)*sz;for(let y=Math.max(0,Math.floor(p.y-ry));y<=Math.min(h-1,Math.ceil(p.y+ry));y++){const dy=(y-p.y)*sy,remain=radiusMm*radiusMm-dz*dz-dy*dy;if(remain<0)continue;const rx=Math.sqrt(remain)/sx;addInterval(z,y,Math.max(0,Math.floor(p.x-rx)),Math.min(w-1,Math.ceil(p.x+rx)))}}};
+ const rayBounds=(p,ray)=>{
+  let lo=-Infinity,hi=Infinity;
+  for(const [coord,dir,spacing,max] of [[p.x,ray.x,sx,w-1],[p.y,ray.y,sy,h-1],[p.z,ray.z,sz,d-1]]){
+   if(Math.abs(dir)<1e-6){if(coord<0||coord>max)return null;continue}
+   let a=(0-coord)*spacing/dir,b=(max-coord)*spacing/dir;if(a>b)[a,b]=[b,a];lo=Math.max(lo,a);hi=Math.min(hi,b);if(lo>hi)return null
+  }
+  return[lo,hi];
+ };
+ for(let i=0;i<points.length;i++){
+  if(i===0){samples.push(points[i]);continue}
+  const a=points[i-1],b=points[i],dist=Math.hypot((b.x-a.x)*sx,(b.y-a.y)*sy,(b.z-a.z)*sz),steps=Math.max(1,Math.ceil(dist/Math.max(radiusMm*.75,Math.min(sx,sy,sz))));
+  for(let s=1;s<=steps;s++){const t=s/steps,ray=a.ray&&b.ray?{x:a.ray.x+(b.ray.x-a.ray.x)*t,y:a.ray.y+(b.ray.y-a.ray.y)*t,z:a.ray.z+(b.ray.z-a.ray.z)*t}:b.ray||a.ray;samples.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t,ray})}
+ }
+ const seen=new Set(),stepMm=Math.max(Math.min(sx,sy,sz)*.8,radiusMm*.7,.08);
+ for(const p of samples){
+  const ray=p.ray;if(!ray){stamp(p);continue}
+  const norm=Math.hypot(ray.x,ray.y,ray.z)||1,r={x:ray.x/norm,y:ray.y/norm,z:ray.z/norm},bounds=rayBounds(p,r);if(!bounds){stamp(p);continue}
+  const [t0,t1]=bounds,steps=Math.max(1,Math.ceil((t1-t0)/stepMm));
+  for(let i=0;i<=steps;i++){const t=t0+(t1-t0)*(i/steps),q={x:p.x+r.x*t/sx,y:p.y+r.y*t/sy,z:p.z+r.z*t/sz},key=Math.round(q.x)+','+Math.round(q.y)+','+Math.round(q.z);if(seen.has(key))continue;seen.add(key);stamp(q)}
+ }
  return rows.map(rowsToRunSlice);
 }
 async function applyCutStroke(points,key=analysisEditTargetKey){
