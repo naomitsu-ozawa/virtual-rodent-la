@@ -769,7 +769,11 @@ const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 function schedulePlaneRender(p,immediate=false){
  updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;if(sectionViewPlane===p)updateSectionViewUi();
- const wait=immediate?0:sourceFilterStages().length?40:0;
+ if(volume?.sourceBacked&&p!=='axial'&&!sourceFilterStages().length){
+  const cached=sourceOrthogonalCacheGet(p,idx);
+  if(cached){paintSourcePlane(planes[p],p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],cached,p,idx);return}
+ }
+ const wait=immediate?0:sourceFilterStages().length?24:0;
  planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;if(revision===planeRenderRevision[p])safeRenderPlane(p,revision,idx)},wait);
 }
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>schedulePlaneRender(p,true);installMprTouch(p)}
@@ -2955,7 +2959,7 @@ function ensureMpr3DPlanes(){
  return entries;
 }
 function updateMpr3DPlanePositions(){
- if(!sceneState||!volume)return;
+ if(!sceneState||!volume||(!mpr3DVisibility.axial&&!mpr3DVisibility.coronal&&!mpr3DVisibility.sagittal))return;
  const entries=ensureMpr3DPlanes();if(!entries)return;
  const w=volume.columns,h=volume.rows,d=volume.slices,[sx,sy,sz]=volume.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
  const ai=+planes.axial.slider.value,ci=+planes.coronal.slider.value,si=+planes.sagittal.slider.value;
