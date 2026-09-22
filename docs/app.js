@@ -2,7 +2,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer } from './medical-volume.js?v=20260922-build09';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build09b';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
 const APP_VERSION='2026.09.22-09';const APP_BUILD='09';
 
@@ -2792,11 +2792,15 @@ function consumeGpuAnalysisRuns(items,zStart,depth,w,h,seed,uf,prevRows,sliceRun
  return rows;
 }
 async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision){
- const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),halo=sourceFilterHalo(stages),z0=Math.max(0,zStart-halo),z1=Math.min(series.slices.length,zStart+coreDepth+halo);
- const box={x:0,y:0,z:z0,width:series.columns,height:series.rows,depth:z1-z0},data=await readSourceRegion(series,box,analysisRevision,true);
+ const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),device=await ensureGpuFilterDevice();if(!device)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
+ if(!stages.length){
+  const raw=await gpuValidationScope(device,'raw DICOM analysis RLE',()=>extractSourceThresholdRuns(device,series,zStart,coreDepth,seg));
+  if(raw){setGpuComputeBackend('WEBGPU ANALYSIS RAW-RLE');return raw}
+ }
+ const halo=sourceFilterHalo(stages),z0=Math.max(0,zStart-halo),z1=Math.min(series.slices.length,zStart+coreDepth+halo),box={x:0,y:0,z:z0,width:series.columns,height:series.rows,depth:z1-z0},data=await readSourceRegion(series,box,analysisRevision,true);
  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  const target={x:0,y:0,z:zStart-z0,width:series.columns,height:series.rows,depth:coreDepth};
- const result=await gpuValidationScope(await ensureGpuFilterDevice(),'analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg}],{analysisRuns:true}));
+ const result=await gpuValidationScope(device,'analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg}],{analysisRuns:true}));
  if(!result?.analysisRuns)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
  return{items:result.items,coreDepth};
 }
@@ -2836,7 +2840,7 @@ async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
  }
  if(seed.label==null)throw new Error(currentLanguage==='ja'?'選択位置から連結成分を特定できませんでした':'Could not identify a connected component at the selected point');
  const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];
- if(gpuUsed&&!hadFallback)setGpuComputeBackend('WEBGPU ANALYSIS RLE+CPU UNION');
+ if(gpuUsed&&!hadFallback)setGpuComputeBackend(sourceFilterStages().length?'WEBGPU ANALYSIS RLE+CPU UNION':'WEBGPU ANALYSIS RAW-RLE+CPU UNION');
  else if(gpuUsed&&hadFallback)setGpuComputeBackend('GPU PARTIAL · CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'Some analysis blocks used CPU fallback');
  return{voxels,mm3,root,uf,sliceRuns};
 }
