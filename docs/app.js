@@ -397,6 +397,7 @@ function set3DState(mode){
   const exportBtn=$('[data-seg-export="'+key+'"]');
   if(exportBtn)exportBtn.disabled=!hasSurface3D||!segmentState[key].active||!segmentState[key].enabled;
  }
+ updateAnalysisEditorControls();
 }
 function mark3DStale(){if(volume)set3DState('stale')}
 function mark3DCurrent(){set3DState('current')}
@@ -564,16 +565,16 @@ function removeSegmentPreset(key){
 segmentAddButton.onclick=()=>addSegmentPreset(segmentAddSelect.value);
 analysisMergeButton.onclick=()=>void mergeSelectedAnalysisRegions();
 analysisClearButton.onclick=()=>clearAnalysisHighlight();
-analysisNavigateButton.onclick=()=>{analysisEditTool='select';updateAnalysisEditorControls()};
+analysisNavigateButton.onclick=()=>{analysisEditTool='select';analysisCutStroke=null;analysisCutScreen=[];updateAnalysisEditorControls();request3DRender()};
 analysisCutButton.onclick=async()=>{if(analysisEditTool==='pen'){analysisEditTool='select';updateAnalysisEditorControls();return}try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'3D編集データを準備中':'Preparing 3D edit data');analysisEditTool='pen'}catch(e){console.error(e);footer.textContent='3D edit preparation error: '+String(e.message||e)}updateAnalysisEditorControls()};
 analysisLineCutButton.onclick=async()=>{if(analysisEditTool==='line'){analysisEditTool='select';updateAnalysisEditorControls();return}try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'3D編集データを準備中':'Preparing 3D edit data');analysisEditTool='line'}catch(e){console.error(e);footer.textContent='3D edit preparation error: '+String(e.message||e)}updateAnalysisEditorControls()};
-analysisEditTargetSelect.onchange=()=>{analysisEditTargetMode=analysisEditTargetSelect.value;analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateAnalysisEditorControls()};
+analysisEditTargetSelect.onchange=()=>{analysisEditTargetMode=analysisEditTargetSelect.value;analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateAnalysisEditorControls();request3DRender()};
 analysisRemoveSelected.onclick=()=>void applyEditRemoveSelected();
 analysisKeepSelected.onclick=()=>void applyEditKeepSelected();
 analysisUndo.onclick=()=>void undoSegmentEdit();
 analysisRedo.onclick=()=>void redoSegmentEdit();
 analysisResetEdit.onclick=()=>void resetFocusedSegmentEdit();
-analysisCutWidth.oninput=()=>{analysisCutWidthValue.value=(+analysisCutWidth.value).toFixed(1)+' mm'};
+analysisCutWidth.oninput=()=>{analysisCutWidthValue.value=(+analysisCutWidth.value).toFixed(1)+' mm';updateThreeEditUi()};
 analysisExportSelected.onclick=()=>void exportFocusedAnalysisRegionStl();
 renderModeToggle.onclick=()=>{if(threeRenderMode==='volume')deactivateMedicalVolume();else void activateMedicalVolume()};
 sectionViewToggle.onclick=()=>{if(!volume)return;sectionViewOpen=!sectionViewOpen;if(!sectionViewOpen)clearSectionView();else updateSectionViewUi()};
@@ -3876,7 +3877,8 @@ async function applyCutStroke(points,key=analysisEditTargetKey){
  footer.textContent=(currentLanguage==='ja'?(tr(key)||key)+'を切断しました':'Cut '+(tr(key)||key));
 }
 function updateThreeEditUi(message=null){
- const surfaceUsable=threeRenderMode==='surface'&&!!sceneState?.obj&&SEGMENT_PRESET_ORDER.some(k=>segmentState[k].active&&segmentState[k].enabled);
+ const enabledKeys=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k].active&&segmentState[k].enabled);
+ const surfaceUsable=threeRenderMode==='surface'&&!!sceneState?.obj&&enabledKeys.length>0;
  const modeLabel=analysisEditTool==='pen'?tr('cutRegion'):analysisEditTool==='line'?tr('lineCutRegion'):tr('editNavigate');
  const targetLabel=analysisEditTargetMode==='auto'?tr('editAuto'):(tr(analysisEditTargetMode)||analysisEditTargetMode);
  analysisNavigateButton?.classList.toggle('is-active',analysisEditTool==='select');
@@ -3887,9 +3889,21 @@ function updateThreeEditUi(message=null){
   if(analysisEditTargetMode!=='auto'&&analysisEditTargetSelect.querySelector('option[value="'+analysisEditTargetMode+'"]')?.disabled){analysisEditTargetMode='auto';analysisEditTargetKey=null}
   analysisEditTargetSelect.value=analysisEditTargetMode;analysisEditTargetSelect.disabled=!surfaceUsable
  }
- if(threeEditStatus)threeEditStatus.textContent=message||modeLabel+' · '+targetLabel;
- if(threeEditHelp)threeEditHelp.textContent=analysisEditTool==='pen'?tr('editPenHint'):analysisEditTool==='line'?tr('editLineHint'):tr('editAutoHint');
+ if(threeEditStatus){
+  if(message)threeEditStatus.textContent=message;
+  else if(!sceneState?.obj)threeEditStatus.textContent=currentLanguage==='ja'?'3Dを構築すると編集できます':'Build the 3D surface to edit';
+  else if(!enabledKeys.length)threeEditStatus.textContent=currentLanguage==='ja'?'編集する組織セグメントを追加してください':'Add a tissue segment to edit';
+  else threeEditStatus.textContent=modeLabel+' · '+targetLabel+' · '+(+analysisCutWidth.value).toFixed(1)+' mm';
+ }
+ if(threeEditHelp){
+  if(analysisEditTool==='pen')threeEditHelp.textContent=tr('editPenHint');
+  else if(analysisEditTool==='line')threeEditHelp.textContent=tr('editLineHint');
+  else if(surfaceUsable)threeEditHelp.textContent=currentLanguage==='ja'?'ペン切断または直線切断を選択してください。対象「自動」は最初に触れた組織を編集します。':'Choose Pen cut or Line cut. Auto targets the first tissue you touch.';
+  else threeEditHelp.textContent=tr('editAutoHint');
+ }
  viewport?.classList.toggle('is-editing-3d',analysisEditTool==='pen'||analysisEditTool==='line');
+ viewport?.classList.toggle('is-editing-pen',analysisEditTool==='pen');
+ viewport?.classList.toggle('is-editing-line',analysisEditTool==='line');
 }
 function updateAnalysisEditorControls(){
  const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,regionKey=single?region.segmentKeys[0]:null;
