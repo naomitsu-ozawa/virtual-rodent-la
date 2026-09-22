@@ -70,8 +70,10 @@ fn texCoord(p:vec3<f32>)->vec3<f32>{
  return vec3<f32>(p.x/(2.0*u.halfStep.x)+0.5,0.5-p.y/(2.0*u.halfStep.y),p.z/(2.0*u.halfStep.z)+0.5);
 }
 fn huAt(tc0:vec3<f32>)->f32{
- let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(1.0));
- let q=textureSampleLevel(volumeTex,volumeSampler,tc,0.0).rg*255.0;
+ let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
  let raw=q.x+q.y*256.0-u.calibration.y;
  return raw*u.dimsSlope.w+u.calibration.x;
 }
@@ -178,7 +180,10 @@ fn hitBox(orig:vec3<f32>,dir:vec3<f32>,halfBox:vec3<f32>)->vec2<f32>{
 }
 fn texCoord(p:vec3<f32>)->vec3<f32>{return vec3<f32>(p.x/(2.0*u.halfStep.x)+0.5,0.5-p.y/(2.0*u.halfStep.y),p.z/(2.0*u.halfStep.z)+0.5);}
 fn huAt(tc0:vec3<f32>)->f32{
- let q=textureSampleLevel(volumeTex,volumeSampler,clamp(tc0,vec3<f32>(0.0),vec3<f32>(1.0)),0.0).rg*255.0;
+ let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
  return (q.x+q.y*256.0-u.calibration.y)*u.dimsSlope.w+u.calibration.x;
 }
 fn segmentIndex(v:f32)->i32{
