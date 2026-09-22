@@ -356,3 +356,6 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 }
 
 .three-overlay-controls{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:260px}.three-overlay-controls .tool-chip{min-height:28px;padding:4px 7px;font-size:10px}
+
+.three-edit-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:7;pointer-events:none}
+.section-view-actions{display:flex;flex-wrap:wrap;gap:4px}.section-view-actions button{border:1px solid #3b4850;border-radius:7px;background:#11171a;color:#d8e4e9;padding:5px 7px;font-size:10px;font-weight:800;cursor:pointer}
