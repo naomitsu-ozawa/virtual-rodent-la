@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build09-final';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-11';const APP_BUILD='11';
+const APP_VERSION='2026.09.22-12';const APP_BUILD='12';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -999,8 +999,9 @@ function updateGpuStatus(){
  const render=sceneState?.backend||'INIT';
  const compute=gpuFilterRuntime.lastBackend||(gpuFilterRuntime.device?'WEBGPU READY':'CPU');
  const adapter=gpuFilterRuntime.adapterLabel?(' · '+gpuFilterRuntime.adapterLabel):'';
+ const failure=/FAIL|FALLBACK|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError.slice(0,96)):'';
  status.removeAttribute('data-i18n');
- status.textContent='Render '+render+' · Compute '+compute+adapter;
+ status.textContent='Render '+render+' · Compute '+compute+failure+adapter;
  const computeGpu=compute.startsWith('WEBGPU'),gpuActive=render==='WEBGPU'||computeGpu;
  status.className=gpuActive?'status status-ok':'status status-warning';
  status.title=gpuFilterRuntime.lastError||'';
@@ -1010,6 +1011,22 @@ function setGpuComputeBackend(label,error=''){
  if(error)gpuFilterRuntime.lastError=String(error);
  else if(label.startsWith('WEBGPU'))gpuFilterRuntime.lastError='';
  updateGpuStatus();
+}
+function installGpuErrorListener(device){
+ if(!device||device.__vrlErrorListenerInstalled)return;
+ try{
+  device.__vrlErrorListenerInstalled=true;
+  device.addEventListener?.('uncapturederror',event=>{
+   const message=String(event?.error?.message||event?.message||'uncaptured WebGPU error');
+   gpuFilterRuntime.lastError='uncaptured: '+message;
+   setGpuComputeBackend('WEBGPU GPU FAIL',gpuFilterRuntime.lastError);
+   console.error('Virtual Rodent Lab WebGPU error:',event?.error||event);
+  });
+ }catch{}
+}
+function gpuCapacityError(error){
+ const m=String(error?.message||error||'').toLowerCase();
+ return m.includes('__gpu_smooth_capacity__')||m.includes('out of memory')||m.includes('allocation')||m.includes('buffer limit')||m.includes('binding size')||m.includes('maxstoragebufferbindingsize')||m.includes('maxbuffersize');
 }
 async function gpuValidationScope(device,label,fn){
  if(!device?.pushErrorScope||!device?.popErrorScope)return fn();
@@ -1066,7 +1083,7 @@ async function verifyGpuComputeDevice(device){
 function adoptRendererGpuDevice(renderer){
  const device=renderer?.backend?.device;
  if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
- clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuPrewarmIndex=0;gpuPrewarmScheduled=false;
+ clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuPrewarmIndex=0;gpuPrewarmScheduled=false;installGpuErrorListener(device);
  try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;setGpuComputeBackend('GPU DEVICE LOST','WebGPU device lost')}})}catch{}
  void verifyGpuComputeDevice(device).then(ok=>{if(gpuFilterRuntime.device===device&&ok){setGpuComputeBackend('WEBGPU VERIFIED');scheduleGpuPrewarm()}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='self-test: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
  updateGpuStatus();return true;
@@ -1084,7 +1101,7 @@ async function ensureGpuFilterDevice(){
    if(!adapter)adapter=await navigator.gpu.requestAdapter();
    if(!adapter)throw new Error('WebGPU adapter unavailable');
    const device=await adapter.requestDevice();
-   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;setGpuComputeBackend('WEBGPU CHECKING');
+   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;installGpuErrorListener(device);setGpuComputeBackend('WEBGPU CHECKING');
    device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',info?.message||'WebGPU device lost')}});
    try{await verifyGpuComputeDevice(device);setGpuComputeBackend('WEBGPU VERIFIED');scheduleGpuPrewarm()}catch(testError){gpuFilterRuntime.lastError='self-test: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
    return device;
@@ -1697,7 +1714,6 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    const sx=faceContext.spacingX,sy=faceContext.spacingY,sz=faceContext.spacingZ,px=faceContext.globalW*sx,py=faceContext.globalH*sy,pz=faceContext.globalD*sz,scale=3.3/Math.max(px,py,pz,1);
    const gb=gpuSmallBuffer(device,new Float32Array([sx,sy,sz,scale,px,py,pz,0]));small.push(gb);
    let cornerA=null,cornerB=null,cornerCurrent=null;
-   const writeEncoder=device.createCommandEncoder({label:gpuSmooth?'VRL GPU mesh + smoothing':'VRL GPU mesh vertices'});
    if(gpuSmooth){
     const cornerCount=(target.width+1)*(target.height+1)*(target.depth+1)*meta[10],cornerBytes=cornerCount*16;
     if(cornerBytes>maxOut){
@@ -1709,19 +1725,19 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
     const initPipeline=await gpuFilterPipeline('meshCornerInit'),initGroup=device.createBindGroup({layout:initPipeline.getBindGroupLayout(0),entries:[
      {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:cornerA}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:5,resource:{buffer:gb}}
     ]});
-    let pass=writeEncoder.beginComputePass();pass.setPipeline(initPipeline);pass.setBindGroup(0,initGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/256));pass.end();
+    await gpuValidationScope(device,'mesh corner init',async()=>{const initEncoder=device.createCommandEncoder({label:'VRL GPU corner init'}),pass=initEncoder.beginComputePass();pass.setPipeline(initPipeline);pass.setBindGroup(0,initGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/256));pass.end();device.queue.submit([initEncoder.finish()])});
     const baseStrength=Math.min(smoothStrength,1),lambda=.34*baseStrength,mu=-.36*baseStrength,iterations=Math.max(1,Math.round(smoothStrength<=1?2+smoothStrength*4:6+(smoothStrength-1)*18));
-    const smoothPipeline=await gpuFilterPipeline('meshCornerSmooth');let srcCorner=cornerA,dstCorner=cornerB;
-    for(let k=0;k<iterations;k++)for(const factor of [lambda,mu]){
-     const pbSmooth=gpuSmallBuffer(device,new Float32Array([factor,0,0,0]));small.push(pbSmooth);
+    const smoothPipeline=await gpuFilterPipeline('meshCornerSmooth'),pbLambda=gpuSmallBuffer(device,new Float32Array([lambda,0,0,0])),pbMu=gpuSmallBuffer(device,new Float32Array([mu,0,0,0]));small.push(pbLambda,pbMu);let srcCorner=cornerA,dstCorner=cornerB;
+    for(let k=0;k<iterations;k++)for(const pbSmooth of [pbLambda,pbMu]){
      const smoothGroup=device.createBindGroup({layout:smoothPipeline.getBindGroupLayout(0),entries:[
       {binding:0,resource:{buffer:srcCorner}},{binding:1,resource:{buffer:dstCorner}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pbSmooth}}
      ]});
-     pass=writeEncoder.beginComputePass();pass.setPipeline(smoothPipeline);pass.setBindGroup(0,smoothGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/256));pass.end();
+     await gpuValidationScope(device,'mesh smooth pass',async()=>{const smoothEncoder=device.createCommandEncoder({label:'VRL GPU smooth pass'}),pass=smoothEncoder.beginComputePass();pass.setPipeline(smoothPipeline);pass.setBindGroup(0,smoothGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/256));pass.end();device.queue.submit([smoothEncoder.finish()])});
      const t=srcCorner;srcCorner=dstCorner;dstCorner=t;
     }
     cornerCurrent=srcCorner;
    }
+   const writeEncoder=device.createCommandEncoder({label:gpuSmooth?'VRL GPU mesh write smooth':'VRL GPU mesh vertices'});
    const writeKind=gpuSmooth?'meshWriteSmooth':'meshWrite',writePipeline=await gpuFilterPipeline(writeKind),entries=[
     {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:output}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}}
    ];
