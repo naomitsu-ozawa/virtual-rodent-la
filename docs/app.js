@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-33';const APP_BUILD='33';
+const APP_VERSION='2026.09.23-34';const APP_BUILD='34';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -3590,7 +3590,7 @@ async function analyzeVolumeAtVoxel(x,y,z,keyHint=null){
  }catch(e){
   if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);renderAnalysisResults((currentLanguage==='ja'?'体積解析エラー: ':'Volume analysis error: ')+String(e.message||e))}
   return false;
- }finally{volumeAnalysisBusy=false;sceneState?.clearPointerState?.();renderAnalysisResults()}
+ }finally{volumeAnalysisBusy=false;renderAnalysisResults()}
 }
 async function analyzeVolumeAtPointer(event,canvas,camera){
  if(!volume||!sceneState?.obj||volumeAnalysisBusy)return;
@@ -4072,7 +4072,7 @@ async function mergeSelectedAnalysisRegions(){
   for(const region of selected)disposeAnalysisRegionMesh(region);
   const ids=new Set(selected.map(r=>r.id));analysisRegions=analysisRegions.filter(r=>!ids.has(r.id));
   const id=nextAnalysisRegionId++,region={id,regionId:'r'+id,groupId:'g'+id,key,segmentKeys,runsBySlice,voxels,mm3,merged:true,selected:false,focused:false,visible:true,meshGroup:null,color:nextAnalysisColor()};analysisRegions.push(region);await attachAnalysisRegion(region,v);setAnalysisFocusedRegion(region.id);
- }finally{volumeAnalysisBusy=false;sceneState?.clearPointerState?.();renderAnalysisResults()}
+ }finally{volumeAnalysisBusy=false;renderAnalysisResults()}
 }
 function resetAnalysisRegistryAfterRebuild(){
  analysisRegions=[];analysisFocusedRegionId=null;nextAnalysisRegionId=1;nextAnalysisColorIndex=0;if(sceneState)sceneState.analysisMesh=null;renderAnalysisResults();
