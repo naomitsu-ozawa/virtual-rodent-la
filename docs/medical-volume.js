@@ -2,6 +2,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.w
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 
 const UNCOMPRESSED_TS=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
+const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 
 async function rawPixelBytes(meta){
  if(meta.bits!==16||meta.samples!==1)throw new Error('GPU volume requires single-channel 16-bit DICOM');
@@ -220,10 +221,10 @@ export class MedicalVolumeRenderer{
   this.context.configure({device:this.device,format:this.format,alphaMode:'opaque'});
   this.uniformBuffer=this.device.createBuffer({size:256,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
   this.sampler=this.device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge',addressModeW:'clamp-to-edge'});
-  const module=this.device.createShaderModule({label:'VRL medical volume raycast',code:volumeShader()});
+  const module=this.device.createShaderModule({label:'VRL medical volume raycast',code:safeWgsl(volumeShader())});
   this.pipeline=this.device.createRenderPipeline({label:'VRL medical volume raycast',layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
-  const pickModule=this.device.createShaderModule({label:'VRL medical volume pick',code:volumePickShader()});this.pickPipeline=this.device.createComputePipeline({label:'VRL medical volume pick',layout:'auto',compute:{module:pickModule,entryPoint:'main'}});this.pickBuffer=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});this.pickOutput=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
-  const brickModule=this.device.createShaderModule({label:'VRL volume minmax bricks',code:brickShader()});this.brickPipeline=this.device.createComputePipeline({label:'VRL volume minmax bricks',layout:'auto',compute:{module:brickModule,entryPoint:'main'}});this.brickBuffer=null;this.brickDims=[1,1,1];this.brickSize=8;
+  const pickModule=this.device.createShaderModule({label:'VRL medical volume pick',code:safeWgsl(volumePickShader())});this.pickPipeline=this.device.createComputePipeline({label:'VRL medical volume pick',layout:'auto',compute:{module:pickModule,entryPoint:'main'}});this.pickBuffer=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});this.pickOutput=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
+  const brickModule=this.device.createShaderModule({label:'VRL volume minmax bricks',code:safeWgsl(brickShader())});this.brickPipeline=this.device.createComputePipeline({label:'VRL volume minmax bricks',layout:'auto',compute:{module:brickModule,entryPoint:'main'}});this.brickBuffer=null;this.brickDims=[1,1,1];this.brickSize=8;
   this.texture=null;this.bindGroup=null;this.seriesId=null;this.active=false;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;
  }
  support(v){
@@ -311,7 +312,7 @@ export class MedicalVolumeRenderer{
 const runPipelineCache=new WeakMap();
 function runPipeline(device){
  let pipeline=runPipelineCache.get(device);if(pipeline)return pipeline;
- const module=device.createShaderModule({label:'VRL raw DICOM analysis RLE',code:`
+ const module=device.createShaderModule({label:'VRL raw DICOM analysis RLE',code:safeWgsl(`
 struct Counter{value:atomic<u32>};
 @group(0) @binding(0) var volumeTex:texture_3d<f32>;
 @group(0) @binding(1) var<storage,read> meta:array<u32>;
@@ -329,7 +330,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let x=i%w;let y=(i/w)%h;let z=i/(w*h);if(!inside(x,y,z)){return;}if(x>0u&&inside(x-1u,y,z)){return;}
  var x1=x;loop{if(x1+1u>=w||!inside(x1+1u,y,z)){break;}x1++;}
  let slot=atomicAdd(&counter.value,1u)*4u;records[slot]=z;records[slot+1u]=y;records[slot+2u]=x;records[slot+3u]=x1;
-}`});
+}`)});
  pipeline=device.createComputePipeline({label:'VRL raw DICOM analysis RLE',layout:'auto',compute:{module,entryPoint:'main'}});runPipelineCache.set(device,pipeline);return pipeline;
 }
 function smallStorage(device,data){
