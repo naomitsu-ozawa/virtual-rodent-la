@@ -255,10 +255,11 @@ function mprEventVoxel(p,event){
  return{x:idx,y:cx,z:d-1-cy};
 }
 function selectAnalysisRegionFromMpr(p,event){
- if(!volumeAnalysisMode||!analysisRegions.length)return false;
+ if(!volumeAnalysisMode)return false;
  const voxel=mprEventVoxel(p,event);if(!voxel)return false;
- const region=analysisRegionAtVoxel(voxel.x,voxel.y,voxel.z);if(!region)return false;
- setAnalysisFocusedRegion(region.id,voxel);return true;
+ const region=analysisRegionAtVoxel(voxel.x,voxel.y,voxel.z);
+ if(region){setAnalysisFocusedRegion(region.id,voxel);return true}
+ void analyzeVolumeAtVoxel(voxel.x,voxel.y,voxel.z);return true;
 }
 function drawAnalysisOverlay(p,idx,ctx){
  if(!volumeAnalysisMode||!analysisRegions.length||!ctx)return;
@@ -2989,54 +2990,83 @@ function surfacePointerVoxel(event,canvas,camera,preferredKey=null){
  const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=sceneState.obj.worldToLocal(hit.point.clone());
  return{x:Math.max(0,Math.min(w-1,Math.round((local.x/scale+px/2)/vx))),y:Math.max(0,Math.min(h-1,Math.round((-local.y/scale+py/2)/vy))),z:Math.max(0,Math.min(d-1,Math.round((local.z/scale+pz/2)/vz))),hit};
 }
-async function analyzeVolumeAtPointer(event,canvas,camera){
- if(!volume||!sceneState?.obj)return;
- const analysisVolume=current3DVolume||volume;
+async function segmentKeyAtVoxel(v,x,y,z){
+ const w=v.columns,h=v.rows,d=v.slices;if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return null;
+ for(const key of SEGMENT_PRESET_ORDER){
+  const seg=segmentState[key];if(!seg.active||!seg.enabled||!segmentEditActive(key))continue;
+  const runs=await getFinalSegmentRuns(key,v);if(analysisRunsContain(runs,x,y,z))return key;
+ }
+ let value=null;
+ if(v.sourceBacked){
+  if(sourceFilterStages().length){
+   const values=await getFilteredSourcePlaneValues('axial',z,v.series,'analysis-pick');value=values[y*w+x];
+  }else{
+   const values=await getCachedSourceSlice(v.series.slices[z]);value=values[y*w+x];
+  }
+ }else value=v.data[z*h*w+y*w+x];
+ for(const key of SEGMENT_PRESET_ORDER){
+  const seg=segmentState[key];if(!seg.active||!seg.enabled||segmentEditActive(key))continue;
+  if(!v.sourceBacked&&segmentNeedsGlobalMask(seg)){const mask=getProcessedSegmentMask(v,seg);if(mask[z*h*w+y*w+x]===1)return key}
+  else if(value>=seg.min&&value<=seg.max)return key;
+ }
+ return null;
+}
+async function analyzeVolumeComponentAtVoxel(analysisVolume,key,x,y,z){
+ const [vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices,seg=segmentState[key];
+ if(segmentEditActive(key)){
+  const runs=await getFinalSegmentRuns(key,analysisVolume),comp=componentAtVoxel(runs,w,h,d,x,y,z);
+  if(!comp)throw new Error(currentLanguage==='ja'?'編集後の領域を特定できませんでした':'Could not identify the edited component');
+  const mm3=comp.voxels*vx*vy*vz;setGpuComputeBackend('EDITED RLE · CPU UNION');return addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice:comp.runsBySlice,voxels:comp.voxels,mm3});
+ }
+ if(analysisVolume.sourceBacked){
+  const result=await connectedComponentVolumeSource(analysisVolume,key,seg,x,y,z),runsBySlice=sourceResultToAnalysisRuns(result,d);
+  return addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice,voxels:result.voxels,mm3:result.mm3});
+ }
+ const gpuResult=await connectedComponentVolumeGpuRuns(analysisVolume,key,seg,x,y,z);
+ if(gpuResult){
+  const runsBySlice=sourceResultToAnalysisRuns(gpuResult,d);return addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice,voxels:gpuResult.voxels,mm3:gpuResult.mm3});
+ }
+ setGpuComputeBackend('CPU ANALYSIS');
+ const processedMask=getProcessedSegmentMask(analysisVolume,seg),inside=(ix,iy,iz)=>ix>=0&&iy>=0&&iz>=0&&ix<w&&iy<h&&iz<d&&processedMask[iz*h*w+iy*w+ix]===1;
+ if(!inside(x,y,z)){
+  let found=null;for(let r=1;r<=2&&!found;r++)for(let dz=-r;dz<=r&&!found;dz++)for(let dy=-r;dy<=r&&!found;dy++)for(let dx=-r;dx<=r;dx++){const ix=x+dx,iy=y+dy,iz=z+dz;if(inside(ix,iy,iz)){found=[ix,iy,iz];break}}
+  if(!found)throw new Error(currentLanguage==='ja'?'選択位置から領域を特定できませんでした':'Could not identify a component at the selected point');
+  [x,y,z]=found;
+ }
+ const result=await connectedComponentVolume(analysisVolume,seg,x,y,z,processedMask),runsBySlice=maskToAnalysisRuns(result.mask,w,h,d);
+ return addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice,voxels:result.voxels,mm3:result.mm3});
+}
+async function analyzeVolumeAtVoxel(x,y,z,keyHint=null){
+ if(!volume||volumeAnalysisBusy)return false;const analysisVolume=current3DVolume||volume;
  volumeAnalysisBusy=true;volumeAnalysisResult.classList.remove('is-hidden');renderAnalysisResults(currentLanguage==='ja'?'解析中…':'Analyzing…');
  try{
-  const [vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices,px=w*vx,py=h*vy,pz=d*vz;
-  let key,x,y,z;
-  if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){
-   setGpuComputeBackend('WEBGPU VOLUME PICK');
-   const picked=await sceneState.medicalVolume.pick(event.clientX,event.clientY,camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER);
-   if(!picked){renderAnalysisResults(tr('volumeHint'));return}
-   key=picked.key;x=picked.x;y=picked.y;z=picked.z;
-  }else{
-   const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/rect.width)*2-1,-((event.clientY-rect.top)/rect.height)*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
-   const hits=raycaster.intersectObjects(sceneState.obj.children,true),analysisHit=hits.find(h=>h.object?.userData?.analysisRegionId!=null);
-   if(analysisHit){const region=analysisRegionById(analysisHit.object.userData.analysisRegionId);if(region){const picked=surfacePointerVoxel(event,canvas,camera,region.segmentKeys[0]);setAnalysisFocusedRegion(region.id,picked?{x:picked.x,y:picked.y,z:picked.z}:null);return}}
-   const hit=hits.find(h=>segmentKeyFromIntersection(h));
-   if(!hit){renderAnalysisResults(tr('volumeHint'));return}
-   key=segmentKeyFromIntersection(hit);const scale=hit.object.userData.displayScale,local=hit.object.worldToLocal(hit.point.clone());
-   x=Math.round((local.x/scale+px/2)/vx);y=Math.round((-local.y/scale+py/2)/vy);z=Math.round((local.z/scale+pz/2)/vz);
-  }
-  const seg=segmentState[key];
-  if(segmentEditActive(key)){
-   const runs=await getFinalSegmentRuns(key,analysisVolume),comp=componentAtVoxel(runs,w,h,d,x,y,z);
-   if(!comp){renderAnalysisResults(currentLanguage==='ja'?'編集後の領域を特定できませんでした':'Could not identify the edited component');return}
-   const mm3=comp.voxels*vx*vy*vz;setGpuComputeBackend('EDITED RLE · CPU UNION');await addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice:comp.runsBySlice,voxels:comp.voxels,mm3});return;
-  }
-  if(analysisVolume.sourceBacked){
-   const result=await connectedComponentVolumeSource(analysisVolume,key,seg,x,y,z),runsBySlice=sourceResultToAnalysisRuns(result,d);
-   await addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice,voxels:result.voxels,mm3:result.mm3});
-   return;
-  }
-  const gpuResult=await connectedComponentVolumeGpuRuns(analysisVolume,key,seg,x,y,z);
-  if(gpuResult){
-   const runsBySlice=sourceResultToAnalysisRuns(gpuResult,d);await addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice,voxels:gpuResult.voxels,mm3:gpuResult.mm3});return;
-  }
-  setGpuComputeBackend('CPU ANALYSIS');
-  const processedMask=getProcessedSegmentMask(analysisVolume,seg),inside=(ix,iy,iz)=>ix>=0&&iy>=0&&iz>=0&&ix<w&&iy<h&&iz<d&&processedMask[iz*h*w+iy*w+ix]===1;
-  if(!inside(x,y,z)){
-   let found=null;for(let r=1;r<=2&&!found;r++)for(let dz=-r;dz<=r&&!found;dz++)for(let dy=-r;dy<=r&&!found;dy++)for(let dx=-r;dx<=r;dx++){const ix=x+dx,iy=y+dy,iz=z+dz;if(inside(ix,iy,iz)){found=[ix,iy,iz];break}}
-   if(!found){renderAnalysisResults(currentLanguage==='ja'?'選択位置から領域を特定できませんでした':'Could not identify a component at the selected point');return}
-   [x,y,z]=found;
-  }
-  const result=await connectedComponentVolume(analysisVolume,seg,x,y,z,processedMask),runsBySlice=maskToAnalysisRuns(result.mask,w,h,d);
-  await addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice,voxels:result.voxels,mm3:result.mm3});
+  const key=keyHint||await segmentKeyAtVoxel(analysisVolume,x,y,z);
+  if(!key){renderAnalysisResults(currentLanguage==='ja'?'選択位置に解析対象の領域がありません':'No analyzable segment at the selected point');return false}
+  await analyzeVolumeComponentAtVoxel(analysisVolume,key,x,y,z);return true;
  }catch(e){
   if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);renderAnalysisResults((currentLanguage==='ja'?'体積解析エラー: ':'Volume analysis error: ')+String(e.message||e))}
+  return false;
  }finally{volumeAnalysisBusy=false;sceneState?.clearPointerState?.();renderAnalysisResults()}
+}
+async function analyzeVolumeAtPointer(event,canvas,camera){
+ if(!volume||!sceneState?.obj||volumeAnalysisBusy)return;
+ const analysisVolume=current3DVolume||volume,[vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices,px=w*vx,py=h*vy,pz=d*vz;
+ let key,x,y,z;
+ if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){
+  setGpuComputeBackend('WEBGPU VOLUME PICK');
+  const picked=await sceneState.medicalVolume.pick(event.clientX,event.clientY,camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER);
+  if(!picked){renderAnalysisResults(tr('volumeHint'));return}
+  key=picked.key;x=picked.x;y=picked.y;z=picked.z;
+ }else{
+  const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/rect.width)*2-1,-((event.clientY-rect.top)/rect.height)*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
+  const hits=raycaster.intersectObjects(sceneState.obj.children,true),analysisHit=hits.find(h=>h.object?.userData?.analysisRegionId!=null);
+  if(analysisHit){const region=analysisRegionById(analysisHit.object.userData.analysisRegionId);if(region){const picked=surfacePointerVoxel(event,canvas,camera,region.segmentKeys[0]);setAnalysisFocusedRegion(region.id,picked?{x:picked.x,y:picked.y,z:picked.z}:null);return}}
+  const hit=hits.find(h=>segmentKeyFromIntersection(h));
+  if(!hit){renderAnalysisResults(tr('volumeHint'));return}
+  key=segmentKeyFromIntersection(hit);const scale=hit.object.userData.displayScale,local=hit.object.worldToLocal(hit.point.clone());
+  x=Math.round((local.x/scale+px/2)/vx);y=Math.round((-local.y/scale+py/2)/vy);z=Math.round((local.z/scale+pz/2)/vz);
+ }
+ await analyzeVolumeAtVoxel(x,y,z,key);
 }
 async function connectedComponentVolume(v,seg,x0,y0,z0,mask=getProcessedSegmentMask(v,seg)){
  const w=v.columns,h=v.rows,d=v.slices,n=w*h*d,data=v.data,visited=new Uint8Array(n);
