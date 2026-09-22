@@ -281,10 +281,16 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .volume-analysis-result{min-width:290px;max-width:390px;gap:8px}
 .analysis-summary{font-size:11px;color:#cfe0e7;min-height:16px}
 .analysis-actions{display:flex;gap:6px}
-.analysis-actions button,.analysis-region-button{min-height:32px;border:1px solid #3b4850;border-radius:7px;background:#151c20;color:#dbe7eb;padding:5px 8px;font-size:10px;font-weight:750;cursor:pointer}
-.analysis-actions button:disabled,.analysis-region-button:disabled{opacity:.4;cursor:default}
+.analysis-actions button,.analysis-region-button,.analysis-editor-actions button{min-height:32px;border:1px solid #3b4850;border-radius:7px;background:#151c20;color:#dbe7eb;padding:5px 8px;font-size:10px;font-weight:750;cursor:pointer}
+.analysis-actions button:disabled,.analysis-region-button:disabled,.analysis-editor-actions button:disabled{opacity:.4;cursor:default}
+.analysis-editor-actions{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding-top:2px;border-top:1px solid #28343a}
+.analysis-editor-actions button.is-active{border-color:#67b2d1;background:#17313d;color:#dff6ff}
+.analysis-cut-width{display:grid;grid-template-columns:auto auto;gap:2px 6px;align-items:center;min-width:150px;padding:3px 0;color:#afc3cb;font-size:9px}
+.analysis-cut-width input{grid-column:1 / -1;width:150px}
+.analysis-cut-width output{font-variant-numeric:tabular-nums;text-align:right;color:#e0edf1}
 .analysis-region-list{display:grid;gap:6px;max-height:240px;overflow:auto;overscroll-behavior:contain}
 .analysis-region-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:7px;border:1px solid #2d3940;border-radius:8px;background:rgba(17,23,26,.88)}
+.analysis-region-row.is-focused{border-color:#69b8d8;background:rgba(27,54,66,.92);box-shadow:0 0 0 1px rgba(105,184,216,.18) inset}
 .analysis-region-select{width:18px;height:18px}
 .analysis-region-info{display:grid;gap:2px;min-width:0}
 .analysis-region-info strong{font-size:11px;color:#e6f3f7}
