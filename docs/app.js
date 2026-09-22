@@ -1183,16 +1183,30 @@ struct Counters{values:array<atomic<u32>,4>};
 @group(0) @binding(3) var<storage, read> thresholds:array<f32>;
 @group(0) @binding(4) var<storage, read_write> counters:Counters;
 @group(0) @binding(5) var<storage, read> corners:array<f32>;
+@group(0) @binding(6) var<storage, read_write> normals:array<f32>;
 fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
 fn insideSegment(v:f32,s:u32)->bool{return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];}
-fn cornerPos(s:u32,cx:u32,cy:u32,cz:u32)->vec3<f32>{
- let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;let b=(s*cornerCount+cz*cw*ch+cy*cw+cx)*4u;
- return vec3f(corners[b],corners[b+1u],corners[b+2u]);
+fn insideAt(x:i32,y:i32,z:i32,s:u32)->f32{
+ if(x<0||y<0||z<0||x>=i32(meta[0])||y>=i32(meta[1])||z>=i32(meta[2])){return 0.0;}
+ return select(0.0,1.0,insideSegment(src[localIdx(u32(x),u32(y),u32(z))],s));
 }
-fn writeFace(base:u32,a:vec3<f32>,b:vec3<f32>,c:vec3<f32>,d:vec3<f32>,e:vec3<f32>,f:vec3<f32>){
- dst[base]=a.x;dst[base+1u]=a.y;dst[base+2u]=a.z;dst[base+3u]=b.x;dst[base+4u]=b.y;dst[base+5u]=b.z;
- dst[base+6u]=c.x;dst[base+7u]=c.y;dst[base+8u]=c.z;dst[base+9u]=d.x;dst[base+10u]=d.y;dst[base+11u]=d.z;
- dst[base+12u]=e.x;dst[base+13u]=e.y;dst[base+14u]=e.z;dst[base+15u]=f.x;dst[base+16u]=f.y;dst[base+17u]=f.z;
+fn cornerBase(s:u32,cx:u32,cy:u32,cz:u32)->u32{
+ let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;return (s*cornerCount+cz*cw*ch+cy*cw+cx)*4u;
+}
+fn cornerPos(s:u32,cx:u32,cy:u32,cz:u32)->vec3<f32>{
+ let b=cornerBase(s,cx,cy,cz);return vec3f(corners[b],corners[b+1u],corners[b+2u]);
+}
+fn cornerNormal(s:u32,cx:u32,cy:u32,cz:u32)->vec3<f32>{
+ let vx=i32(meta[3]+cx);let vy=i32(meta[4]+cy);let vz=i32(meta[5]+cz);
+ var nx=0.0;var ny=0.0;var nz=0.0;
+ for(var dz:i32=-1;dz<=0;dz=dz+1){for(var dy:i32=-1;dy<=0;dy=dy+1){nx+=insideAt(vx-1,vy+dy,vz+dz,s)-insideAt(vx,vy+dy,vz+dz,s);}}
+ for(var dz:i32=-1;dz<=0;dz=dz+1){for(var dx:i32=-1;dx<=0;dx=dx+1){ny+=insideAt(vx+dx,vy-1,vz+dz,s)-insideAt(vx+dx,vy,vz+dz,s);}}
+ for(var dy:i32=-1;dy<=0;dy=dy+1){for(var dx:i32=-1;dx<=0;dx=dx+1){nz+=insideAt(vx+dx,vy+dy,vz-1,s)-insideAt(vx+dx,vy+dy,vz,s);}}
+ let n=vec3f(nx,-ny,nz);let len=length(n);return select(vec3f(0.0,0.0,1.0),n/len,len>0.00001);
+}
+fn writeVertex(base:u32,v:vec3<f32>,n:vec3<f32>){dst[base]=v.x;dst[base+1u]=v.y;dst[base+2u]=v.z;normals[base]=n.x;normals[base+1u]=n.y;normals[base+2u]=n.z;}
+fn writeFace(base:u32,a:vec3<f32>,na:vec3<f32>,b:vec3<f32>,nb:vec3<f32>,c:vec3<f32>,nc:vec3<f32>,d:vec3<f32>,nd:vec3<f32>,e:vec3<f32>,ne:vec3<f32>,f:vec3<f32>,nf:vec3<f32>){
+ writeVertex(base,a,na);writeVertex(base+3u,b,nb);writeVertex(base+6u,c,nc);writeVertex(base+9u,d,nd);writeVertex(base+12u,e,ne);writeVertex(base+15u,f,nf);
 }
 fn slotFor(s:u32)->u32{return (meta[17u+s]+atomicAdd(&counters.values[s],1u))*18u;}
 @compute @workgroup_size(256)
@@ -1204,12 +1218,14 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
   if(!insideSegment(center,s)){continue;}
   let p000=cornerPos(s,tx,ty,tz);let p001=cornerPos(s,tx,ty,tz+1u);let p010=cornerPos(s,tx,ty+1u,tz);let p011=cornerPos(s,tx,ty+1u,tz+1u);
   let p100=cornerPos(s,tx+1u,ty,tz);let p101=cornerPos(s,tx+1u,ty,tz+1u);let p110=cornerPos(s,tx+1u,ty+1u,tz);let p111=cornerPos(s,tx+1u,ty+1u,tz+1u);
-  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){let b=slotFor(s);writeFace(b,p000,p001,p011,p000,p011,p010);}
-  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){let b=slotFor(s);writeFace(b,p100,p110,p111,p100,p111,p101);}
-  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){let b=slotFor(s);writeFace(b,p000,p100,p101,p000,p101,p001);}
-  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){let b=slotFor(s);writeFace(b,p010,p011,p111,p010,p111,p110);}
-  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){let b=slotFor(s);writeFace(b,p000,p010,p110,p000,p110,p100);}
-  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,p001,p101,p111,p001,p111,p011);}
+  let n000=cornerNormal(s,tx,ty,tz);let n001=cornerNormal(s,tx,ty,tz+1u);let n010=cornerNormal(s,tx,ty+1u,tz);let n011=cornerNormal(s,tx,ty+1u,tz+1u);
+  let n100=cornerNormal(s,tx+1u,ty,tz);let n101=cornerNormal(s,tx+1u,ty,tz+1u);let n110=cornerNormal(s,tx+1u,ty+1u,tz);let n111=cornerNormal(s,tx+1u,ty+1u,tz+1u);
+  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){let b=slotFor(s);writeFace(b,p000,n000,p001,n001,p011,n011,p000,n000,p011,n011,p010,n010);}
+  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){let b=slotFor(s);writeFace(b,p100,n100,p110,n110,p111,n111,p100,n100,p111,n111,p101,n101);}
+  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){let b=slotFor(s);writeFace(b,p000,n000,p100,n100,p101,n101,p000,n000,p101,n101,p001,n001);}
+  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){let b=slotFor(s);writeFace(b,p010,n010,p011,n011,p111,n111,p010,n010,p111,n111,p110,n110);}
+  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){let b=slotFor(s);writeFace(b,p000,n000,p010,n010,p110,n110,p000,n000,p110,n110,p100,n100);}
+  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,p001,n001,p101,n101,p111,n111,p001,n001,p111,n111,p011,n011);}
  }
 }`;
  if(kind==='faceCompact')return `
@@ -1384,6 +1400,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   if(vertexBytes<=maxOut){
    let offset=0;for(let i=0;i<4;i++){meta[17+i]=offset;offset+=counts[i]}device.queue.writeBuffer(mb,0,meta);device.queue.writeBuffer(counters,0,new Uint32Array(4));
    const output=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+   const normalOutput=surfaceSmoothingActive()?device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}):null;
    const sx=faceContext.spacingX,sy=faceContext.spacingY,sz=faceContext.spacingZ,px=faceContext.globalW*sx,py=faceContext.globalH*sy,pz=faceContext.globalD*sz,scale=3.3/Math.max(px,py,pz,1);
    const gb=gpuSmallBuffer(device,new Float32Array([sx,sy,sz,scale,px,py,pz,0]));small.push(gb);
    const gpuSmooth=surfaceSmoothingActive(),smoothStrength=gpuSmooth?Number(surfaceSmoothStrength.value):0;
@@ -1391,7 +1408,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    const writeEncoder=device.createCommandEncoder({label:gpuSmooth?'VRL GPU mesh + smoothing':'VRL GPU mesh vertices'});
    if(gpuSmooth){
     const cornerCount=(target.width+1)*(target.height+1)*(target.depth+1)*meta[10],cornerBytes=cornerCount*16;
-    if(cornerBytes>maxOut){output.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();throw new Error('__GPU_SMOOTH_CAPACITY__')}
+    if(cornerBytes>maxOut){output.destroy();normalOutput?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();throw new Error('__GPU_SMOOTH_CAPACITY__')}
     cornerA=device.createBuffer({size:Math.max(16,cornerBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
     cornerB=device.createBuffer({size:Math.max(16,cornerBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
     const initPipeline=await gpuFilterPipeline('meshCornerInit'),initGroup=device.createBindGroup({layout:initPipeline.getBindGroupLayout(0),entries:[
@@ -1413,12 +1430,12 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    const writeKind=gpuSmooth?'meshWriteSmooth':'meshWrite',writePipeline=await gpuFilterPipeline(writeKind),entries=[
     {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:output}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}}
    ];
-   entries.push({binding:5,resource:{buffer:gpuSmooth?cornerCurrent:gb}});
+   entries.push({binding:5,resource:{buffer:gpuSmooth?cornerCurrent:gb}});if(gpuSmooth)entries.push({binding:6,resource:{buffer:normalOutput}});
    const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/256));wp.end();
-   const readback=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});writeEncoder.copyBufferToBuffer(output,0,readback,0,vertexBytes);device.queue.submit([writeEncoder.finish()]);
-   await readback.mapAsync(GPUMapMode.READ);const vertices=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();
-   output.destroy();readback.destroy();cornerA?.destroy();cornerB?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();
-   setGpuComputeBackend(gpuSmooth?'WEBGPU FILTER+MESH+SMOOTH':'WEBGPU FILTER+MESH');return{mesh:true,vertices,counts,gpuSmoothed:gpuSmooth};
+   const readback=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),normalReadback=gpuSmooth?device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}):null;writeEncoder.copyBufferToBuffer(output,0,readback,0,vertexBytes);if(gpuSmooth)writeEncoder.copyBufferToBuffer(normalOutput,0,normalReadback,0,vertexBytes);device.queue.submit([writeEncoder.finish()]);
+   await readback.mapAsync(GPUMapMode.READ);const vertices=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();let normals=null;if(gpuSmooth){await normalReadback.mapAsync(GPUMapMode.READ);normals=new Float32Array(normalReadback.getMappedRange().slice(0));normalReadback.unmap()}
+   output.destroy();normalOutput?.destroy();readback.destroy();normalReadback?.destroy();cornerA?.destroy();cornerB?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();
+   setGpuComputeBackend(gpuSmooth?'WEBGPU FILTER+MESH+SMOOTH':'WEBGPU FILTER+MESH');return{mesh:true,vertices,normals,counts,gpuSmoothed:gpuSmooth};
   }
   counters.destroy();
   encoder=device.createCommandEncoder({label:'VRL compact face fallback'});
@@ -2942,7 +2959,7 @@ function indexedGeometryFromTrianglePositions(positions){
  geometry.setIndex(new THREE.BufferAttribute(indices,1));
  return geometry;
 }
-function geometryFromSourcePositions(positions,alreadyGpuSmoothed=false){
+function geometryFromSourcePositions(positions,alreadyGpuSmoothed=false,normals=null){
  if(!positions||!positions.length)return null;
  let geometry;
  if(surfaceSmoothingActive()&&!alreadyGpuSmoothed){
@@ -2951,7 +2968,7 @@ function geometryFromSourcePositions(positions,alreadyGpuSmoothed=false){
  }else{
   geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
-  if(alreadyGpuSmoothed)geometry.computeVertexNormals();
+  if(alreadyGpuSmoothed&&normals?.length===positions.length)geometry.setAttribute('normal',new THREE.BufferAttribute(normals,3));
   geometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,0,0),3);
  }
  return geometry;
@@ -3010,11 +3027,11 @@ function makeSource3DCoordinates(series){
  for(let z=0;z<=d;z++)zs[z]=(z*sz-pz/2)*scale;
  return{xs,ys,zs,scale};
 }
-function appendGpuMeshTile(positionsByKey,tile,active){
+function appendGpuMeshTile(positionsByKey,normalsByKey,tile,active){
  let faceOffset=0;
  for(let s=0;s<active.length&&s<4;s++){
   const faces=tile.counts[s]||0,floatCount=faces*18;
-  if(floatCount){const builder=positionsByKey.get(active[s].key);if(builder){builder.appendArray(tile.vertices.subarray(faceOffset*18,faceOffset*18+floatCount));builder.hasGpuMesh=true;if(!tile.gpuSmoothed)builder.allGpuSmoothed=false;}}
+  if(floatCount){const builder=positionsByKey.get(active[s].key);if(builder){builder.appendArray(tile.vertices.subarray(faceOffset*18,faceOffset*18+floatCount));builder.hasGpuMesh=true;if(!tile.gpuSmoothed)builder.allGpuSmoothed=false;}if(tile.gpuSmoothed&&tile.normals){normalsByKey.get(active[s].key)?.appendArray(tile.normals.subarray(faceOffset*18,faceOffset*18+floatCount));}}
   faceOffset+=faces;
  }
 }
@@ -3090,11 +3107,11 @@ async function render3DSourceBacked(v){
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);threeLabel.textContent=(sceneState.backend||'3D')+' · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
- const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeSource3DCoordinates(series),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()]));
+ const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeSource3DCoordinates(series),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),normalsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()]));
  const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}]));
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
-  const alreadyGpuSmoothed=builder.hasGpuMesh&&!builder.hasCpuMesh&&builder.allGpuSmoothed,positions=builder.take(),geometry=geometryFromSourcePositions(positions,alreadyGpuSmoothed);
+  const alreadyGpuSmoothed=builder.hasGpuMesh&&!builder.hasCpuMesh&&builder.allGpuSmoothed,normalsBuilder=normalsByKey.get(key),normals=alreadyGpuSmoothed?normalsBuilder?.take():null,positions=builder.take(),geometry=geometryFromSourcePositions(positions,alreadyGpuSmoothed,normals);if(!alreadyGpuSmoothed)normalsBuilder?.take();
   if(geometry){
    const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));
    mesh.name='segment_'+key+'_full_'+z;mesh.userData.segmentKey=key;mesh.userData.displayScale=coords.scale;group.add(mesh);
@@ -3107,7 +3124,7 @@ async function render3DSourceBacked(v){
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
     const block=await getFilteredSourceAxialFaceBlock(z0,filterBlockDepth,series,active,'3d:'+revision);
-    for(const tile of block.tiles){if(tile.mesh)appendGpuMeshTile(positionsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords)}
+    for(const tile of block.tiles){if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords)}
     const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===series.slices.length-1||[...positionsByKey.values()].some(b=>b.length>=meshFloatLimit);
     if(flush){for(const {key} of active)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+series.slices.length);await frameYield()}
    }
@@ -3147,10 +3164,10 @@ async function render3DMemoryGpu(v){
   if(previous){sceneState.scene.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
- const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}]));
+ const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),normalsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}]));
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
-  const alreadyGpuSmoothed=builder.hasGpuMesh&&!builder.hasCpuMesh&&builder.allGpuSmoothed,geometry=geometryFromSourcePositions(builder.take(),alreadyGpuSmoothed);if(!geometry)return;
+  const alreadyGpuSmoothed=builder.hasGpuMesh&&!builder.hasCpuMesh&&builder.allGpuSmoothed,normalsBuilder=normalsByKey.get(key),normals=alreadyGpuSmoothed?normalsBuilder?.take():null,geometry=geometryFromSourcePositions(builder.take(),alreadyGpuSmoothed,normals);if(!alreadyGpuSmoothed)normalsBuilder?.take();if(!geometry)return;
   const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));mesh.name='segment_'+key+'_gpu_'+z;mesh.userData.segmentKey=key;mesh.userData.displayScale=coords.scale;group.add(mesh);
  };
  try{
@@ -3158,7 +3175,7 @@ async function render3DMemoryGpu(v){
   for(let z0=0;z0<v.slices;z0+=blockDepth){
    if(revision!==sourceRenderRevision){dispose(group);return null}
    const block=await getMemoryGpuMeshBlock(v,z0,blockDepth,active);
-   for(const tile of block.tiles){if(tile.mesh)appendGpuMeshTile(positionsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,{columns:v.columns,rows:v.rows},tile,active,coords)}
+   for(const tile of block.tiles){if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,{columns:v.columns,rows:v.rows},tile,active,coords)}
    const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===v.slices-1||[...positionsByKey.values()].some(b=>b.length>=meshFloatLimit);
    if(flush){for(const {key} of active)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+v.slices;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+v.slices);await frameYield()}
   }
