@@ -565,7 +565,7 @@ function removeSegmentPreset(key){
 segmentAddButton.onclick=()=>addSegmentPreset(segmentAddSelect.value);
 analysisMergeButton.onclick=()=>void mergeSelectedAnalysisRegions();
 analysisClearButton.onclick=()=>clearAnalysisHighlight();
-analysisNavigateButton.onclick=()=>{analysisEditTool='select';analysisCutStroke=null;analysisCutScreen=[];updateAnalysisEditorControls();request3DRender()};
+analysisNavigateButton.onclick=()=>{analysisEditTool='select';analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;analysisCutStroke=null;analysisCutScreen=[];updateAnalysisEditorControls();request3DRender()};
 analysisCutButton.onclick=async()=>{if(analysisEditTool==='pen'){analysisEditTool='select';updateAnalysisEditorControls();return}try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'3D編集データを準備中':'Preparing 3D edit data');analysisEditTool='pen'}catch(e){console.error(e);footer.textContent='3D edit preparation error: '+String(e.message||e)}updateAnalysisEditorControls()};
 analysisLineCutButton.onclick=async()=>{if(analysisEditTool==='line'){analysisEditTool='select';updateAnalysisEditorControls();return}try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'3D編集データを準備中':'Preparing 3D edit data');analysisEditTool='line'}catch(e){console.error(e);footer.textContent='3D edit preparation error: '+String(e.message||e)}updateAnalysisEditorControls()};
 analysisEditTargetSelect.onchange=()=>{analysisEditTargetMode=analysisEditTargetSelect.value;analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateAnalysisEditorControls();request3DRender()};
@@ -3876,6 +3876,26 @@ async function applyCutStroke(points,key=analysisEditTargetKey){
  updateAnalysisEditorControls();
  footer.textContent=(currentLanguage==='ja'?(tr(key)||key)+'を切断しました':'Cut '+(tr(key)||key));
 }
+function setEditTargetHighlight(key=null){
+ if(!sceneState?.obj)return;
+ sceneState.obj.traverse(o=>{
+  if(!o.isMesh)return;
+  const direct=o.userData?.segmentKey||null,ranges=Array.isArray(o.userData?.segmentRanges)?o.userData.segmentRanges:null;
+  const mats=Array.isArray(o.material)?o.material:[o.material];
+  if(direct){
+   for(const m of mats){if(!m)continue;if(m.userData._editBaseEmissive===undefined){m.userData._editBaseEmissive=m.emissiveIntensity??0;m.userData._editBaseOpacity=m.opacity}
+    m.emissiveIntensity=key&&direct===key?Math.max(.55,m.userData._editBaseEmissive):m.userData._editBaseEmissive;
+    if(key)m.opacity=direct===key?Math.max(.92,m.userData._editBaseOpacity??1):Math.min(.42,m.userData._editBaseOpacity??1);else if(m.userData._editBaseOpacity!==undefined)m.opacity=m.userData._editBaseOpacity;
+   }
+  }else if(ranges&&Array.isArray(o.material)){
+   for(const r of ranges){const m=o.material[r.materialIndex];if(!m)continue;if(m.userData._editBaseEmissive===undefined){m.userData._editBaseEmissive=m.emissiveIntensity??0;m.userData._editBaseOpacity=m.opacity}
+    m.emissiveIntensity=key&&r.key===key?Math.max(.55,m.userData._editBaseEmissive):m.userData._editBaseEmissive;
+    if(key)m.opacity=r.key===key?Math.max(.92,m.userData._editBaseOpacity??1):Math.min(.42,m.userData._editBaseOpacity??1);else if(m.userData._editBaseOpacity!==undefined)m.opacity=m.userData._editBaseOpacity;
+   }
+  }
+ });
+ request3DRender();
+}
 function updateThreeEditUi(message=null){
  const enabledKeys=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k].active&&segmentState[k].enabled);
  const surfaceUsable=threeRenderMode==='surface'&&!!sceneState?.obj&&enabledKeys.length>0;
@@ -3904,6 +3924,8 @@ function updateThreeEditUi(message=null){
  viewport?.classList.toggle('is-editing-3d',analysisEditTool==='pen'||analysisEditTool==='line');
  viewport?.classList.toggle('is-editing-pen',analysisEditTool==='pen');
  viewport?.classList.toggle('is-editing-line',analysisEditTool==='line');
+ const visualTarget=analysisEditTool==='select'?null:(analysisEditTargetMode==='auto'?analysisEditTargetKey:analysisEditTargetMode);
+ setEditTargetHighlight(visualTarget);
 }
 function updateAnalysisEditorControls(){
  const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,regionKey=single?region.segmentKeys[0]:null;
