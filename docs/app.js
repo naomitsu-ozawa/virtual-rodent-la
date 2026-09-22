@@ -3,7 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.w
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-0955';const APP_BUILD='06';
+const APP_VERSION='2026.09.22-1028';const APP_BUILD='07';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -1124,6 +1124,94 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
   if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z1),vec3f(x1,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y1,z1));}
  }
 }`;
+ if(kind==='meshCornerInit')return \`
+@group(0) @binding(0) var<storage, read> src:array<f32>;
+@group(0) @binding(1) var<storage, read_write> corners:array<f32>;
+@group(0) @binding(2) var<storage, read> meta:array<u32>;
+@group(0) @binding(3) var<storage, read> thresholds:array<f32>;
+@group(0) @binding(5) var<storage, read> geom:array<f32>;
+fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
+fn insideSegmentAt(x:i32,y:i32,z:i32,s:u32)->bool{
+ if(x<0||y<0||z<0||x>=i32(meta[0])||y>=i32(meta[1])||z>=i32(meta[2])){return false;}
+ let v=src[localIdx(u32(x),u32(y),u32(z))];return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];
+}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;let total=cornerCount*meta[10];
+ let q=gid.x;if(q>=total){return;}let s=q/cornerCount;let ci=q-s*cornerCount;let cx=ci%cw;let cy=(ci/cw)%ch;let cz=ci/(cw*ch);
+ let lx=i32(meta[3]+cx);let ly=i32(meta[4]+cy);let lz=i32(meta[5]+cz);var insideCount=0u;var sampleCount=0u;
+ for(var dz:i32=-1;dz<=0;dz=dz+1){for(var dy:i32=-1;dy<=0;dy=dy+1){for(var dx:i32=-1;dx<=0;dx=dx+1){
+  let vx=lx+dx;let vy=ly+dy;let vz=lz+dz;
+  if(vx>=0&&vy>=0&&vz>=0&&vx<i32(meta[0])&&vy<i32(meta[1])&&vz<i32(meta[2])){sampleCount++;if(insideSegmentAt(vx,vy,vz,s)){insideCount++;}}
+ }}}
+ let active=select(0.0,1.0,insideCount>0u&&insideCount<sampleCount);
+ let gx=meta[11]+meta[3]+cx;let gy=meta[12]+meta[4]+cy;let gz=meta[13]+meta[5]+cz;
+ let sx=geom[0];let sy=geom[1];let sz=geom[2];let scale=geom[3];let px=geom[4];let py=geom[5];let pz=geom[6];
+ let base=q*4u;corners[base]=(f32(gx)*sx-px*0.5)*scale;corners[base+1u]=-(f32(gy)*sy-py*0.5)*scale;corners[base+2u]=(f32(gz)*sz-pz*0.5)*scale;corners[base+3u]=active;
+}\`;
+ if(kind==='meshCornerSmooth')return \`
+@group(0) @binding(0) var<storage, read> srcCorners:array<f32>;
+@group(0) @binding(1) var<storage, read_write> dstCorners:array<f32>;
+@group(0) @binding(2) var<storage, read> meta:array<u32>;
+@group(0) @binding(3) var<storage, read> params:array<f32>;
+fn baseIndex(s:u32,cx:u32,cy:u32,cz:u32)->u32{
+ let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;
+ return (s*cornerCount+cz*cw*ch+cy*cw+cx)*4u;
+}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;let total=cornerCount*meta[10];
+ let q=gid.x;if(q>=total){return;}let s=q/cornerCount;let ci=q-s*cornerCount;let cx=ci%cw;let cy=(ci/cw)%ch;let cz=ci/(cw*ch);let base=q*4u;
+ let active=srcCorners[base+3u];var px=srcCorners[base];var py=srcCorners[base+1u];var pz=srcCorners[base+2u];
+ if(active<0.5||cx==0u||cy==0u||cz==0u||cx+1u>=cw||cy+1u>=ch||cz+1u>=cd){
+  dstCorners[base]=px;dstCorners[base+1u]=py;dstCorners[base+2u]=pz;dstCorners[base+3u]=active;return;
+ }
+ var ax=0.0;var ay=0.0;var az=0.0;var count=0.0;
+ for(var dz:i32=-1;dz<=1;dz=dz+1){for(var dy:i32=-1;dy<=1;dy=dy+1){for(var dx:i32=-1;dx<=1;dx=dx+1){
+  if(dx==0&&dy==0&&dz==0){continue;}if(abs(dx)+abs(dy)+abs(dz)>2){continue;}
+  let nb=baseIndex(s,u32(i32(cx)+dx),u32(i32(cy)+dy),u32(i32(cz)+dz));
+  if(srcCorners[nb+3u]>0.5){ax+=srcCorners[nb];ay+=srcCorners[nb+1u];az+=srcCorners[nb+2u];count+=1.0;}
+ }}}
+ if(count>0.0){let factor=params[0];px+=factor*(ax/count-px);py+=factor*(ay/count-py);pz+=factor*(az/count-pz);}
+ dstCorners[base]=px;dstCorners[base+1u]=py;dstCorners[base+2u]=pz;dstCorners[base+3u]=active;
+}\`;
+ if(kind==='meshWriteSmooth')return \`
+struct Counters{values:array<atomic<u32>,4>};
+@group(0) @binding(0) var<storage, read> src:array<f32>;
+@group(0) @binding(1) var<storage, read_write> dst:array<f32>;
+@group(0) @binding(2) var<storage, read> meta:array<u32>;
+@group(0) @binding(3) var<storage, read> thresholds:array<f32>;
+@group(0) @binding(4) var<storage, read_write> counters:Counters;
+@group(0) @binding(5) var<storage, read> corners:array<f32>;
+fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
+fn insideSegment(v:f32,s:u32)->bool{return v>=thresholds[s*2u]&&v<=thresholds[s*2u+1u];}
+fn cornerPos(s:u32,cx:u32,cy:u32,cz:u32)->vec3<f32>{
+ let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;let b=(s*cornerCount+cz*cw*ch+cy*cw+cx)*4u;
+ return vec3f(corners[b],corners[b+1u],corners[b+2u]);
+}
+fn writeFace(base:u32,a:vec3<f32>,b:vec3<f32>,c:vec3<f32>,d:vec3<f32>,e:vec3<f32>,f:vec3<f32>){
+ dst[base]=a.x;dst[base+1u]=a.y;dst[base+2u]=a.z;dst[base+3u]=b.x;dst[base+4u]=b.y;dst[base+5u]=b.z;
+ dst[base+6u]=c.x;dst[base+7u]=c.y;dst[base+8u]=c.z;dst[base+9u]=d.x;dst[base+10u]=d.y;dst[base+11u]=d.z;
+ dst[base+12u]=e.x;dst[base+13u]=e.y;dst[base+14u]=e.z;dst[base+15u]=f.x;dst[base+16u]=f.y;dst[base+17u]=f.z;
+}
+fn slotFor(s:u32)->u32{return (meta[17u+s]+atomicAdd(&counters.values[s],1u))*18u;}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
+ let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
+ let gx=meta[11]+x;let gy=meta[12]+y;let gz=meta[13]+z;let center=src[localIdx(x,y,z)];
+ for(var s:u32=0u;s<meta[10];s=s+1u){
+  if(!insideSegment(center,s)){continue;}
+  let p000=cornerPos(s,tx,ty,tz);let p001=cornerPos(s,tx,ty,tz+1u);let p010=cornerPos(s,tx,ty+1u,tz);let p011=cornerPos(s,tx,ty+1u,tz+1u);
+  let p100=cornerPos(s,tx+1u,ty,tz);let p101=cornerPos(s,tx+1u,ty,tz+1u);let p110=cornerPos(s,tx+1u,ty+1u,tz);let p111=cornerPos(s,tx+1u,ty+1u,tz+1u);
+  if(gx==0u||!insideSegment(src[localIdx(x-1u,y,z)],s)){let b=slotFor(s);writeFace(b,p000,p001,p011,p000,p011,p010);}
+  if(gx+1u>=meta[14]||!insideSegment(src[localIdx(x+1u,y,z)],s)){let b=slotFor(s);writeFace(b,p100,p110,p111,p100,p111,p101);}
+  if(gy==0u||!insideSegment(src[localIdx(x,y-1u,z)],s)){let b=slotFor(s);writeFace(b,p000,p100,p101,p000,p101,p001);}
+  if(gy+1u>=meta[15]||!insideSegment(src[localIdx(x,y+1u,z)],s)){let b=slotFor(s);writeFace(b,p010,p011,p111,p010,p111,p110);}
+  if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){let b=slotFor(s);writeFace(b,p000,p010,p110,p000,p110,p100);}
+  if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,p001,p101,p111,p001,p111,p011);}
+ }
+}\`;
  if(kind==='faceCompact')return `
 struct Counter{value:atomic<u32>};
 @group(0) @binding(0) var<storage, read> src: array<f32>;
@@ -1220,7 +1308,7 @@ async function gpuFilterPipeline(kind){
  const pipeline=device.createComputePipelineAsync?await device.createComputePipelineAsync(desc):device.createComputePipeline(desc);
  gpuFilterRuntime.pipelines.set(kind,pipeline);return pipeline;
 }
-const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite'];
+const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth'];
 let gpuPrewarmScheduled=false,gpuPrewarmIndex=0;
 function scheduleGpuPrewarm(){
  if(gpuPrewarmScheduled||gpuFilterRuntime.disabled||gpuPrewarmIndex>=GPU_PREWARM_KINDS.length)return;
@@ -1298,14 +1386,39 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    const output=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
    const sx=faceContext.spacingX,sy=faceContext.spacingY,sz=faceContext.spacingZ,px=faceContext.globalW*sx,py=faceContext.globalH*sy,pz=faceContext.globalD*sz,scale=3.3/Math.max(px,py,pz,1);
    const gb=gpuSmallBuffer(device,new Float32Array([sx,sy,sz,scale,px,py,pz,0]));small.push(gb);
-   const writePipeline=await gpuFilterPipeline('meshWrite'),writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries:[
-    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:output}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}},{binding:5,resource:{buffer:gb}}
-   ]});
-   const writeEncoder=device.createCommandEncoder({label:'VRL GPU mesh vertices'}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/256));wp.end();
+   const gpuSmooth=surfaceSmoothingActive(),smoothStrength=gpuSmooth?Number(surfaceSmoothStrength.value):0;
+   let cornerA=null,cornerB=null,cornerCurrent=null;
+   const writeEncoder=device.createCommandEncoder({label:gpuSmooth?'VRL GPU mesh + smoothing':'VRL GPU mesh vertices'});
+   if(gpuSmooth){
+    const cornerCount=(target.width+1)*(target.height+1)*(target.depth+1)*meta[10],cornerBytes=cornerCount*16;
+    if(cornerBytes>maxOut){output.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();throw new Error('__GPU_SMOOTH_CAPACITY__')}
+    cornerA=device.createBuffer({size:Math.max(16,cornerBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
+    cornerB=device.createBuffer({size:Math.max(16,cornerBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
+    const initPipeline=await gpuFilterPipeline('meshCornerInit'),initGroup=device.createBindGroup({layout:initPipeline.getBindGroupLayout(0),entries:[
+     {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:cornerA}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:5,resource:{buffer:gb}}
+    ]});
+    let pass=writeEncoder.beginComputePass();pass.setPipeline(initPipeline);pass.setBindGroup(0,initGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/256));pass.end();
+    const baseStrength=Math.min(smoothStrength,1),lambda=.34*baseStrength,mu=-.36*baseStrength,iterations=Math.max(1,Math.round(smoothStrength<=1?2+smoothStrength*4:6+(smoothStrength-1)*18));
+    const smoothPipeline=await gpuFilterPipeline('meshCornerSmooth');let srcCorner=cornerA,dstCorner=cornerB;
+    for(let k=0;k<iterations;k++)for(const factor of [lambda,mu]){
+     const pbSmooth=gpuSmallBuffer(device,new Float32Array([factor,0,0,0]));small.push(pbSmooth);
+     const smoothGroup=device.createBindGroup({layout:smoothPipeline.getBindGroupLayout(0),entries:[
+      {binding:0,resource:{buffer:srcCorner}},{binding:1,resource:{buffer:dstCorner}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pbSmooth}}
+     ]});
+     pass=writeEncoder.beginComputePass();pass.setPipeline(smoothPipeline);pass.setBindGroup(0,smoothGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/256));pass.end();
+     const t=srcCorner;srcCorner=dstCorner;dstCorner=t;
+    }
+    cornerCurrent=srcCorner;
+   }
+   const writeKind=gpuSmooth?'meshWriteSmooth':'meshWrite',writePipeline=await gpuFilterPipeline(writeKind),entries=[
+    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:output}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}}
+   ];
+   entries.push({binding:5,resource:{buffer:gpuSmooth?cornerCurrent:gb}});
+   const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/256));wp.end();
    const readback=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});writeEncoder.copyBufferToBuffer(output,0,readback,0,vertexBytes);device.queue.submit([writeEncoder.finish()]);
    await readback.mapAsync(GPUMapMode.READ);const vertices=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();
-   output.destroy();readback.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();
-   setGpuComputeBackend('WEBGPU FILTER+MESH');return{mesh:true,vertices,counts};
+   output.destroy();readback.destroy();cornerA?.destroy();cornerB?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();
+   setGpuComputeBackend(gpuSmooth?'WEBGPU FILTER+MESH+SMOOTH':'WEBGPU FILTER+MESH');return{mesh:true,vertices,counts,gpuSmoothed:gpuSmooth};
   }
   counters.destroy();
   encoder=device.createCommandEncoder({label:'VRL compact face fallback'});
@@ -2779,7 +2892,7 @@ function appendSourceSliceFaces(positions,series,z,prev,curr,next){
  }
 }
 class Float32FaceBuilder{
- constructor(initial=131072){this.data=new Float32Array(initial);this.length=0}
+ constructor(initial=131072){this.data=new Float32Array(initial);this.length=0;this.hasGpuMesh=false;this.hasCpuMesh=false;this.allGpuSmoothed=true}
  ensure(extra){
   const need=this.length+extra;if(need<=this.data.length)return;
   let size=this.data.length;while(size<need)size*=2;
@@ -2799,7 +2912,7 @@ class Float32FaceBuilder{
   if(!this.length)return null;
   const out=this.data.subarray(0,this.length);
   const nextSize=Math.max(131072,Math.min(this.data.length,1048576));
-  this.data=new Float32Array(nextSize);this.length=0;return out;
+  this.data=new Float32Array(nextSize);this.length=0;this.hasGpuMesh=false;this.hasCpuMesh=false;this.allGpuSmoothed=true;return out;
  }
 }
 function surfaceSmoothingActive(){
@@ -2829,16 +2942,16 @@ function indexedGeometryFromTrianglePositions(positions){
  geometry.setIndex(new THREE.BufferAttribute(indices,1));
  return geometry;
 }
-function geometryFromSourcePositions(positions){
+function geometryFromSourcePositions(positions,alreadyGpuSmoothed=false){
  if(!positions||!positions.length)return null;
  let geometry;
- if(surfaceSmoothingActive()){
-  if(gpuFilterRuntime.lastBackend.startsWith('WEBGPU'))setGpuComputeBackend('WEBGPU MESH + CPU SMOOTH');
+ if(surfaceSmoothingActive()&&!alreadyGpuSmoothed){
   geometry=indexedGeometryFromTrianglePositions(positions);
   taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
  }else{
   geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  if(alreadyGpuSmoothed)geometry.computeVertexNormals();
   geometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,0,0),3);
  }
  return geometry;
@@ -2901,7 +3014,7 @@ function appendGpuMeshTile(positionsByKey,tile,active){
  let faceOffset=0;
  for(let s=0;s<active.length&&s<4;s++){
   const faces=tile.counts[s]||0,floatCount=faces*18;
-  if(floatCount){positionsByKey.get(active[s].key)?.appendArray(tile.vertices.subarray(faceOffset*18,faceOffset*18+floatCount));}
+  if(floatCount){const builder=positionsByKey.get(active[s].key);if(builder){builder.appendArray(tile.vertices.subarray(faceOffset*18,faceOffset*18+floatCount));builder.hasGpuMesh=true;if(!tile.gpuSmoothed)builder.allGpuSmoothed=false;}}
   faceOffset+=faces;
  }
 }
@@ -2911,7 +3024,7 @@ function appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coor
   const i=items[q],packed=items[q+1],tz=Math.floor(i/plane),rem=i-tz*plane,ty=Math.floor(rem/tile.width),tx=rem-ty*tile.width;
   const x=tile.x+tx,y=tile.y+ty,z=tile.z+tz,x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1],z0=zs[z],z1=zs[z+1];
   for(let s=0;s<active.length&&s<4;s++){
-   const faces=(packed>>>(s*6))&63;if(!faces)continue;const positions=positionsByKey.get(active[s].key);if(!positions)continue;
+   const faces=(packed>>>(s*6))&63;if(!faces)continue;const positions=positionsByKey.get(active[s].key);if(!positions)continue;positions.hasCpuMesh=true;
    if(faces&1)positions.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
    if(faces&2)positions.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
    if(faces&4)positions.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
@@ -2981,7 +3094,7 @@ async function render3DSourceBacked(v){
  const materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}]));
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
-  const positions=builder.take(),geometry=geometryFromSourcePositions(positions);
+  const alreadyGpuSmoothed=builder.hasGpuMesh&&!builder.hasCpuMesh&&builder.allGpuSmoothed,positions=builder.take(),geometry=geometryFromSourcePositions(positions,alreadyGpuSmoothed);
   if(geometry){
    const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));
    mesh.name='segment_'+key+'_full_'+z;mesh.userData.segmentKey=key;mesh.userData.displayScale=coords.scale;group.add(mesh);
@@ -3037,7 +3150,7 @@ async function render3DMemoryGpu(v){
  const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}]));
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
-  const geometry=geometryFromSourcePositions(builder.take());if(!geometry)return;
+  const alreadyGpuSmoothed=builder.hasGpuMesh&&!builder.hasCpuMesh&&builder.allGpuSmoothed,geometry=geometryFromSourcePositions(builder.take(),alreadyGpuSmoothed);if(!geometry)return;
   const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(materialParamsByKey.get(key)));mesh.name='segment_'+key+'_gpu_'+z;mesh.userData.segmentKey=key;mesh.userData.displayScale=coords.scale;group.add(mesh);
  };
  try{
