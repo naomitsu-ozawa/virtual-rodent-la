@@ -329,3 +329,22 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 @media(max-width:640px){
   .analysis-region-row{grid-template-columns:auto auto minmax(0,1fr) auto}
 }
+
+/* Keep 3D rotation available under the volume-analysis overlay.
+   Only actual controls consume pointer input. */
+.volume-analysis-panel,
+.volume-analysis-result,
+.analysis-summary,
+.analysis-region-list,
+.analysis-region-row,
+.analysis-region-info,
+.analysis-region-swatch{
+  pointer-events:none;
+}
+.volume-analysis-panel button,
+.volume-analysis-panel input,
+.volume-analysis-panel select,
+.volume-analysis-panel label{
+  pointer-events:auto;
+  touch-action:manipulation;
+}
