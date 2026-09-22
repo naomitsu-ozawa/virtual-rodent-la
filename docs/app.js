@@ -282,7 +282,7 @@ function setSectionView(key){
  if(sectionPosition){sectionPosition.max=planes[key].slider.max;sectionPosition.value=planes[key].slider.value}
  updateSectionClipPlaneWorld();syncSectionClipParent();applySectionClippingMaterials(sceneState?.obj);updateMpr3DPlanePositions();updateSectionViewUi();request3DRender();
 }
-let analysisRegions=[],nextAnalysisRegionId=1,nextAnalysisColorIndex=0,analysisFocusedRegionId=null,analysisEditTool='select',analysisCutStroke=null,analysisCutScreen=[];
+let analysisRegions=[],nextAnalysisRegionId=1,nextAnalysisColorIndex=0,analysisFocusedRegionId=null,analysisEditTool='select',analysisEditTargetKey=null,analysisCutStroke=null,analysisCutScreen=[];
 const ANALYSIS_REGION_COLORS=[0x00d8ff,0xff9f1c,0x7ae582,0xff4d8d,0xf4e409,0x9b5cff,0xff5a5f,0x2ec4b6];
 function nextAnalysisColor(){
  const color=ANALYSIS_REGION_COLORS[nextAnalysisColorIndex%ANALYSIS_REGION_COLORS.length];
@@ -558,8 +558,8 @@ function removeSegmentPreset(key){
 segmentAddButton.onclick=()=>addSegmentPreset(segmentAddSelect.value);
 analysisMergeButton.onclick=()=>void mergeSelectedAnalysisRegions();
 analysisClearButton.onclick=()=>clearAnalysisHighlight();
-analysisCutButton.onclick=()=>{analysisEditTool=analysisEditTool==='pen'?'select':'pen';updateAnalysisEditorControls()};
-analysisLineCutButton.onclick=()=>{analysisEditTool=analysisEditTool==='line'?'select':'line';updateAnalysisEditorControls()};
+analysisCutButton.onclick=async()=>{if(analysisEditTool==='pen'){analysisEditTool='select';updateAnalysisEditorControls();return}try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'3D編集データを準備中':'Preparing 3D edit data');analysisEditTool='pen'}catch(e){console.error(e);footer.textContent='3D edit preparation error: '+String(e.message||e)}updateAnalysisEditorControls()};
+analysisLineCutButton.onclick=async()=>{if(analysisEditTool==='line'){analysisEditTool='select';updateAnalysisEditorControls();return}try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'3D編集データを準備中':'Preparing 3D edit data');analysisEditTool='line'}catch(e){console.error(e);footer.textContent='3D edit preparation error: '+String(e.message||e)}updateAnalysisEditorControls()};
 analysisRemoveSelected.onclick=()=>void applyEditRemoveSelected();
 analysisKeepSelected.onclick=()=>void applyEditKeepSelected();
 analysisUndo.onclick=()=>void undoSegmentEdit();
@@ -3447,6 +3447,15 @@ function surfacePointerVoxel(event,canvas,camera,preferredKey=null){
  const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=sceneState.obj.worldToLocal(hit.point.clone());
  return{x:Math.max(0,Math.min(w-1,Math.round((local.x/scale+px/2)/vx))),y:Math.max(0,Math.min(h-1,Math.round((-local.y/scale+py/2)/vy))),z:Math.max(0,Math.min(d-1,Math.round((local.z/scale+pz/2)/vz))),hit};
 }
+function surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey=null){
+ if(!sceneState?.obj||!volume)return null;
+ const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/Math.max(rect.width,1))*2-1,-((event.clientY-rect.top)/Math.max(rect.height,1))*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
+ const hits=raycaster.intersectObjects(sceneState.obj.children,true),hit=preferredKey?hits.find(h=>segmentKeyFromIntersection(h)===preferredKey):hits.find(h=>segmentKeyFromIntersection(h));
+ if(!hit)return null;
+ const key=segmentKeyFromIntersection(hit);if(!key)return null;
+ const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=sceneState.obj.worldToLocal(hit.point.clone());
+ return{x:Math.max(0,Math.min(w-1,Math.round((local.x/scale+px/2)/vx))),y:Math.max(0,Math.min(h-1,Math.round((-local.y/scale+py/2)/vy))),z:Math.max(0,Math.min(d-1,Math.round((local.z/scale+pz/2)/vz))),hit,key};
+}
 async function segmentKeyAtVoxel(v,x,y,z){
  const w=v.columns,h=v.rows,d=v.slices;if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return null;
  for(const key of SEGMENT_PRESET_ORDER){
@@ -3782,13 +3791,13 @@ async function applyEditRemoveSelected(){
  await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs);footer.textContent=currentLanguage==='ja'?'選択領域を削除しました':'Deleted the selected region';
 }
 async function undoSegmentEdit(){
- const region=analysisRegionById(analysisFocusedRegionId),key=region?.segmentKeys?.length===1?region.segmentKeys[0]:SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length);if(!key)return;const st=segmentEditState[key],snap=st.undo.pop();if(!snap)return;st.redo.push(editSnapshot(key));restoreEditSnapshot(key,snap);await refreshEditedSegmentSurface(key);await rebuildEditedAnalysisForSegment(key,snap.analysisRefs||[]);footer.textContent='Undo';
+ const region=analysisRegionById(analysisFocusedRegionId),key=analysisEditTargetKey||(region?.segmentKeys?.length===1?region.segmentKeys[0]:null)||SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length);if(!key)return;analysisEditTargetKey=key;const st=segmentEditState[key],snap=st.undo.pop();if(!snap)return;st.redo.push(editSnapshot(key));restoreEditSnapshot(key,snap);await refreshEditedSegmentSurface(key);if(snap.analysisRefs?.length)await rebuildEditedAnalysisForSegment(key,snap.analysisRefs);updateAnalysisEditorControls();footer.textContent='Undo';
 }
 async function redoSegmentEdit(){
- const key=SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].redo.length);if(!key)return;const st=segmentEditState[key],snap=st.redo.pop();if(!snap)return;st.undo.push(editSnapshot(key));restoreEditSnapshot(key,snap);await refreshEditedSegmentSurface(key);await rebuildEditedAnalysisForSegment(key,snap.analysisRefs||[]);footer.textContent='Redo';
+ const key=analysisEditTargetKey&&segmentEditState[analysisEditTargetKey].redo.length?analysisEditTargetKey:SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].redo.length);if(!key)return;analysisEditTargetKey=key;const st=segmentEditState[key],snap=st.redo.pop();if(!snap)return;st.undo.push(editSnapshot(key));restoreEditSnapshot(key,snap);await refreshEditedSegmentSurface(key);if(snap.analysisRefs?.length)await rebuildEditedAnalysisForSegment(key,snap.analysisRefs);updateAnalysisEditorControls();footer.textContent='Redo';
 }
 async function resetFocusedSegmentEdit(){
- const region=analysisRegionById(analysisFocusedRegionId),key=region?.segmentKeys?.length===1?region.segmentKeys[0]:SEGMENT_PRESET_ORDER.find(k=>segmentEditActive(k));if(!key)return;const refs=snapshotAnalysisRegionsForSegment(key);pushEditUndo(key);const st=segmentEditState[key];st.keepRuns=null;st.excludeRuns=null;st.finalRuns=null;st.revision++;await refreshEditedSegmentSurface(key);await rebuildEditedAnalysisForSegment(key,refs);footer.textContent=currentLanguage==='ja'?'編集をリセットしました':'Edits reset';
+ const region=analysisRegionById(analysisFocusedRegionId),key=analysisEditTargetKey||(region?.segmentKeys?.length===1?region.segmentKeys[0]:null)||SEGMENT_PRESET_ORDER.find(k=>segmentEditActive(k));if(!key)return;analysisEditTargetKey=key;const refs=snapshotAnalysisRegionsForSegment(key);pushEditUndo(key);const st=segmentEditState[key];st.keepRuns=null;st.excludeRuns=null;st.finalRuns=null;st.revision++;await refreshEditedSegmentSurface(key);if(refs.length)await rebuildEditedAnalysisForSegment(key,refs);updateAnalysisEditorControls();footer.textContent=currentLanguage==='ja'?'編集をリセットしました':'Edits reset';
 }
 function cutRunsFromVoxelStroke(v,points,radiusMm){
  const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,rows=Array.from({length:d},()=>new Map()),samples=[];
@@ -3801,18 +3810,25 @@ function cutRunsFromVoxelStroke(v,points,radiusMm){
   for(let z=Math.max(0,Math.floor(p.z-rz));z<=Math.min(d-1,Math.ceil(p.z+rz));z++){const dz=(z-p.z)*sz;for(let y=Math.max(0,Math.floor(p.y-ry));y<=Math.min(h-1,Math.ceil(p.y+ry));y++){const dy=(y-p.y)*sy,remain=radiusMm*radiusMm-dz*dz-dy*dy;if(remain<0)continue;const rx=Math.sqrt(remain)/sx,x0=Math.max(0,Math.floor(p.x-rx)),x1=Math.min(w-1,Math.ceil(p.x+rx)),map=rows[z],arr=map.get(y)||[];arr.push([x0,x1]);map.set(y,arr)}}}
  return rows.map(rowsToRunSlice);
 }
-async function applyCutStroke(points){
- const region=analysisRegionById(analysisFocusedRegionId);if(!region||region.segmentKeys.length!==1||points.length<1)return;const key=region.segmentKeys[0],v=current3DVolume||volume,st=segmentEditState[key],refs=snapshotAnalysisRegionsForSegment(key),cut=cutRunsFromVoxelStroke(v,points,+analysisCutWidth.value||.8);pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,cut,v.slices);st.finalRuns=null;st.revision++;
- await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs);footer.textContent=currentLanguage==='ja'?'領域を切断しました':'Region cut applied';
+async function applyCutStroke(points,key=analysisEditTargetKey){
+ if(!key||!SEGMENT_PRESET_ORDER.includes(key)||points.length<1)return;
+ const v=current3DVolume||volume;if(!v)return;
+ const st=segmentEditState[key],refs=snapshotAnalysisRegionsForSegment(key),cut=cutRunsFromVoxelStroke(v,points,+analysisCutWidth.value||.8);
+ pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,cut,v.slices);st.finalRuns=null;st.revision++;analysisEditTargetKey=key;
+ await refreshEditedSegmentSurface(key,v);
+ if(refs.length)await rebuildEditedAnalysisForSegment(key,refs);
+ updateAnalysisEditorControls();
+ footer.textContent=(currentLanguage==='ja'?(tr(key)||key)+'を切断しました':'Cut '+(tr(key)||key));
 }
 function updateAnalysisEditorControls(){
- const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,key=single?region.segmentKeys[0]:null,usable=!!region&&single&&threeRenderMode==='surface'&&!!sceneState?.obj;
- const historyKey=key||SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length||segmentEditState[k].redo.length||segmentEditActive(k)),historyState=historyKey?segmentEditState[historyKey]:null;
- if(!usable&&(analysisEditTool==='pen'||analysisEditTool==='line'))analysisEditTool='select';
- if(analysisCutButton){analysisCutButton.disabled=!usable;analysisCutButton.classList.toggle('is-active',analysisEditTool==='pen')}
- if(analysisLineCutButton){analysisLineCutButton.disabled=!usable;analysisLineCutButton.classList.toggle('is-active',analysisEditTool==='line')}
- if(analysisRemoveSelected)analysisRemoveSelected.disabled=!usable;
- if(analysisKeepSelected)analysisKeepSelected.disabled=!usable;
+ const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,regionKey=single?region.segmentKeys[0]:null;
+ const surfaceUsable=threeRenderMode==='surface'&&!!sceneState?.obj&&SEGMENT_PRESET_ORDER.some(k=>segmentState[k].active&&segmentState[k].enabled);
+ const historyKey=analysisEditTargetKey||regionKey||SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length||segmentEditState[k].redo.length||segmentEditActive(k)),historyState=historyKey?segmentEditState[historyKey]:null;
+ if(!surfaceUsable&&(analysisEditTool==='pen'||analysisEditTool==='line'))analysisEditTool='select';
+ if(analysisCutButton){analysisCutButton.disabled=!surfaceUsable;analysisCutButton.classList.toggle('is-active',analysisEditTool==='pen')}
+ if(analysisLineCutButton){analysisLineCutButton.disabled=!surfaceUsable;analysisLineCutButton.classList.toggle('is-active',analysisEditTool==='line')}
+ if(analysisRemoveSelected)analysisRemoveSelected.disabled=!regionKey;
+ if(analysisKeepSelected)analysisKeepSelected.disabled=!regionKey;
  if(analysisUndo)analysisUndo.disabled=!historyState?.undo?.length;
  if(analysisRedo)analysisRedo.disabled=!historyState?.redo?.length;
  if(analysisResetEdit)analysisResetEdit.disabled=!historyKey||!segmentEditActive(historyKey);
