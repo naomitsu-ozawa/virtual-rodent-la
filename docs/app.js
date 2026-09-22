@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-28';const APP_BUILD='28';
+const APP_VERSION='2026.09.22-29';const APP_BUILD='29';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -1023,38 +1023,47 @@ function sourceMprCacheLimit(){
  if(navigator.maxTouchPoints>0)return deviceMemory>=8?768*1024*1024:512*1024*1024;
  return deviceMemory>=16?1536*1024*1024:1024*1024*1024;
 }
+function sourceMprDecodeConcurrency(){
+ const hc=Math.max(2,Number(navigator.hardwareConcurrency)||4);
+ return navigator.maxTouchPoints>0?Math.max(2,Math.min(4,hc-1)):Math.max(4,Math.min(8,hc-1));
+}
 async function prepareSourceMprCache(v,onProgress){
  const s=v?.series;if(!s)return false;
- const Ctor=s.compact?Int16Array:Float32Array,count=s.columns*s.rows*s.slices.length,volumeBytes=count*Ctor.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
+ const Ctor=s.compact?Int16Array:Float32Array,w=s.columns,h=s.rows,d=s.slices.length,plane=w*h,count=plane*d,volumeBytes=count*Ctor.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
  if(volumeBytes>limit)return false;
- let data;try{data=new Ctor(count)}catch{return false}
- let min=Infinity,max=-Infinity;
- for(let z=0;z<s.slices.length;z++){
-  const slice=await decodeSourceSlice(s.slices[z]),base=z*s.rows*s.columns;
-  for(let i=0;i<slice.length;i++){const value=s.compact?slice[i]:Number(slice[i]);data[base+i]=value;if(value<min)min=value;if(value>max)max=value}
-  onProgress?.(z+1,s.slices.length);if((z&7)===0)await frameYield();
- }
- v.mprData=data;v.mprCtor=Ctor;v.mprPlaneBuffers={coronal:new Ctor(s.columns*s.slices.length),sagittal:new Ctor(s.rows*s.slices.length)};
- if(Number.isFinite(min))v.min=min;if(Number.isFinite(max))v.max=max;
- const transposeBytes=volumeBytes*2;
- if(volumeBytes+transposeBytes<=limit){
-  try{
-   const coronalAll=new Ctor(count),sagittalAll=new Ctor(count),w=s.columns,h=s.rows,d=s.slices.length,plane=w*h;
-   for(let z=0;z<d;z++){
-    const srcZ=z*plane,corZ=d-1-z;
-    for(let y=0;y<h;y++){
-     const srcRow=srcZ+y*w;
-     for(let x=0;x<w;x++){
-      const value=data[srcRow+x];
-      coronalAll[(y*d+corZ)*w+x]=value;
-      sagittalAll[(x*d+corZ)*h+y]=value;
-     }
-    }
-    if((z&3)===0)await frameYield();
+ let data,coronalAll=null,sagittalAll=null;
+ try{
+  data=new Ctor(count);
+  if(volumeBytes*3<=limit){coronalAll=new Ctor(count);sagittalAll=new Ctor(count)}
+ }catch{return false}
+ let next=0,completed=0,min=Infinity,max=-Infinity;
+ const decodeOne=async z=>{
+  const slice=await decodeSourceSlice(s.slices[z]),base=z*plane,corZ=d-1-z;
+  let localMin=Infinity,localMax=-Infinity;
+  for(let y=0;y<h;y++){
+   const srcRow=y*w,baseRow=base+srcRow;
+   for(let x=0;x<w;x++){
+    const value=s.compact?slice[srcRow+x]:Number(slice[srcRow+x]);
+    data[baseRow+x]=value;if(value<localMin)localMin=value;if(value>localMax)localMax=value;
+    if(coronalAll)coronalAll[(y*d+corZ)*w+x]=value;
+    if(sagittalAll)sagittalAll[(x*d+corZ)*h+y]=value;
    }
-   v.mprCoronalAll=coronalAll;v.mprSagittalAll=sagittalAll;
-  }catch{v.mprCoronalAll=null;v.mprSagittalAll=null}
- }
+  }
+  if(localMin<min)min=localMin;if(localMax>max)max=localMax;
+  completed++;onProgress?.(completed,d);
+ };
+ const runner=async()=>{
+  while(true){
+   const z=next++;if(z>=d)return;
+   await decodeOne(z);
+   if((completed&3)===0)await frameYield();
+  }
+ };
+ const concurrency=Math.min(d,sourceMprDecodeConcurrency());
+ await Promise.all(Array.from({length:concurrency},()=>runner()));
+ v.mprData=data;v.mprCtor=Ctor;v.mprCoronalAll=coronalAll;v.mprSagittalAll=sagittalAll;
+ v.mprPlaneBuffers={coronal:coronalAll?null:new Ctor(w*d),sagittal:sagittalAll?null:new Ctor(h*d)};
+ if(Number.isFinite(min))v.min=min;if(Number.isFinite(max))v.max=max;
  return true;
 }
 function cachedSourceMprPlane(v,p,idx){
