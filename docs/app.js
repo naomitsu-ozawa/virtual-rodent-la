@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-35';const APP_BUILD='35';
+const APP_VERSION='2026.09.23-36';const APP_BUILD='36';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -4066,8 +4066,9 @@ function disposeAnalysisRegionMesh(region){
 function removeAnalysisRegion(id){
  const idx=analysisRegions.findIndex(r=>r.id===id);if(idx<0)return;
  disposeAnalysisRegionMesh(analysisRegions[idx]);analysisRegions.splice(idx,1);
+ if(analysisFocusedRegionId===id)analysisFocusedRegionId=null;
  if(!analysisRegions.length&&sceneState?.analysisMesh){if(sceneState.analysisMesh.parent)sceneState.analysisMesh.parent.remove(sceneState.analysisMesh);sceneState.analysisMesh=null}
- request3DRender();renderAnalysisResults();
+ request3DRender();renderAnalysisResults();for(const p of Object.keys(planes))schedulePlaneRender(p);
 }
 async function attachAnalysisRegion(region,v){
  const group=await buildAnalysisRunsGroup(v,region.runsBySlice,region.key,region.id,region.color);region.meshGroup=group;if(group){group.visible=region.visible;ensureAnalysisRoot().add(group)}request3DRender();
