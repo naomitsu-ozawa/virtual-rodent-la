@@ -2,7 +2,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build09-final';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build14-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
 const APP_VERSION='2026.09.22-14';const APP_BUILD='14';
 
