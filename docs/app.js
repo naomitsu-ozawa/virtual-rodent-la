@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-17';const APP_BUILD='17';
+const APP_VERSION='2026.09.22-18';const APP_BUILD='18';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -2901,7 +2901,19 @@ function installViewSwapping(){
 }
 installViewSwapping();
 async function start3D(){
- const scene=new THREE.Scene();scene.background=new THREE.Color(0x090c0e);const camera=new THREE.PerspectiveCamera(38,1,.1,100);camera.position.z=5.2;scene.add(new THREE.HemisphereLight(0xffffff,0x182028,2.0));const keyLight=new THREE.DirectionalLight(0xffffff,2.4);keyLight.position.set(2,3,4);scene.add(keyLight);
+ const scene=new THREE.Scene();scene.background=new THREE.Color(0x090c0e);const camera=new THREE.PerspectiveCamera(38,1,.005,100);camera.position.z=5.2;scene.add(camera);scene.add(new THREE.HemisphereLight(0xffffff,0x182028,2.0));const keyLight=new THREE.DirectionalLight(0xffffff,2.4);keyLight.position.set(2,3,4);scene.add(keyLight);
+ const axisWidget=new THREE.Group();axisWidget.name='orientation_axes';camera.add(axisWidget);
+ const axisLength=.34,axisOrigin=new THREE.Vector3(0,0,0),axisDefs=[['X',new THREE.Vector3(1,0,0),0xff5a5a],['Y',new THREE.Vector3(0,1,0),0x62d96b],['Z',new THREE.Vector3(0,0,1),0x5d8dff]];
+ const makeAxisLabel=(label,color)=>{
+  const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const ctx=canvas.getContext('2d');ctx.clearRect(0,0,64,64);ctx.font='700 38px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=7;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(label,32,33);ctx.fillStyle='#'+color.toString(16).padStart(6,'0');ctx.fillText(label,32,33);
+  const texture=new THREE.CanvasTexture(canvas),material=new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false,depthWrite:false}),sprite=new THREE.Sprite(material);sprite.scale.set(.16,.16,1);sprite.renderOrder=1002;return sprite;
+ };
+ for(const[label,dir,color]of axisDefs){
+  const arrow=new THREE.ArrowHelper(dir,axisOrigin,axisLength,color,.085,.05);arrow.renderOrder=1001;arrow.line.material.depthTest=false;arrow.line.material.depthWrite=false;arrow.cone.material.depthTest=false;arrow.cone.material.depthWrite=false;axisWidget.add(arrow);
+  const marker=makeAxisLabel(label,color);marker.position.copy(dir).multiplyScalar(axisLength+.09);axisWidget.add(marker);
+ }
+ const updateAxisWidget=()=>{const depth=1.8,halfH=Math.tan(THREE.MathUtils.degToRad(camera.fov*.5))*depth/Math.max(camera.zoom,1e-6),halfW=halfH*camera.aspect,margin=.46;axisWidget.position.set(Math.max(-halfW+.12,halfW-margin),Math.min(halfH-.12,-halfH+margin),-depth)};
+
  let renderer,backend='WEBGL';
  if('gpu' in navigator){
   try{
@@ -2917,7 +2929,7 @@ async function start3D(){
  viewport.appendChild(renderer.domElement);sceneState={scene,camera,renderer,obj:null,analysisMesh:null,backend,needsRender:true,medicalVolume:null};
  if(backend==='WEBGPU')try{sceneState.medicalVolume=new MedicalVolumeRenderer({device:renderer.backend.device,host:viewport,rendererCanvas:renderer.domElement,onProgress:(a,b)=>set3DBusy(true,(currentLanguage==='ja'?'GPUボリューム準備中… ':'Preparing GPU volume… ')+a+' / '+b),onStatus:label=>setGpuComputeBackend(label)})}catch(e){console.warn('Medical volume renderer unavailable.',e)}
  updateGpuStatus();updateRenderModeControl();void ensureGpuFilterDevice().then(()=>updateGpuStatus());
- const pointers=new Map();const pointerStarts=new Map();let distance=5.2,lastPinch=0,lastCenter=null;
+ const pointers=new Map();const pointerStarts=new Map();const MIN_3D_DISTANCE=.05,MAX_3D_DISTANCE=12;let distance=5.2,lastPinch=0,lastCenter=null;
  const full3DPixelRatio=Math.min(devicePixelRatio,2),interactive3DPixelRatio=Math.min(full3DPixelRatio,navigator.maxTouchPoints>0?1:1.25);let active3DPixelRatio=full3DPixelRatio,wheelQualityTimer=null;
  const set3DPixelRatio=ratio=>{const next=Math.max(.75,Math.min(full3DPixelRatio,ratio));if(Math.abs(next-active3DPixelRatio)<.01)return;active3DPixelRatio=next;renderer.setPixelRatio(next);renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);request3DRender()};
  const begin3DInteraction=()=>{if(threeRenderMode==='surface')set3DPixelRatio(interactive3DPixelRatio)};
@@ -2937,13 +2949,13 @@ async function start3D(){
  sceneState.clearPointerState=clear3DPointerState;
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
  renderer.domElement.onpointerdown=e=>{const focused=analysisRegionById(analysisFocusedRegionId),cutReady=analysisEditEnabled&&analysisEditTool==='cut'&&e.button===0&&!e.altKey&&focused?.segmentKeys?.length===1,mode=cutReady?'cut':isMousePanStart(e)?'pan':'rotate',point={x:e.clientX,y:e.clientY,mode,pointerType:e.pointerType};if(!cutReady)begin3DInteraction();pointers.set(e.pointerId,point);pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY,mode});if(cutReady){analysisCutStroke=[];const v=surfacePointerVoxel(e,renderer.domElement,camera,focused.segmentKeys[0]);if(v)analysisCutStroke.push(v)}renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
- renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId);if(!prev)return;pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='cut'){if(Math.hypot(dx,dy)>=1){const focused=analysisRegionById(analysisFocusedRegionId),v=surfacePointerVoxel(e,renderer.domElement,camera,focused?.segmentKeys?.[0]);if(v){const last=analysisCutStroke?.[analysisCutStroke.length-1];if(!last||Math.hypot(v.x-last.x,v.y-last.y,v.z-last.z)>.2)analysisCutStroke.push(v)}}return}if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),2.2,12);camera.position.z=distance}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}lastPinch=d;lastCenter=center;request3DRender()};
+ renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId);if(!prev)return;pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='cut'){if(Math.hypot(dx,dy)>=1){const focused=analysisRegionById(analysisFocusedRegionId),v=surfacePointerVoxel(e,renderer.domElement,camera,focused?.segmentKeys?.[0]);if(v){const last=analysisCutStroke?.[analysisCutStroke.length-1];if(!last||Math.hypot(v.x-last.x,v.y-last.y,v.z-last.z)>.2)analysisCutStroke.push(v)}}return}if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}lastPinch=d;lastCenter=center;request3DRender()};
  const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,stroke=start?.mode==='cut'?[...(analysisCutStroke||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&start?.mode!=='cut')end3DInteraction();if(start?.mode==='cut'){analysisCutStroke=null;if(e.type==='pointerup'&&stroke?.length)void applyCutStroke(stroke);return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
  renderer.domElement.onlostpointercapture=e=>{clear3DPointerState(e.pointerId);if(!pointers.size)end3DInteraction()};
- renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,2.2,12);camera.position.z=distance;request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
- const resize=()=>{camera.aspect=viewport.clientWidth/Math.max(viewport.clientHeight,1);camera.updateProjectionMatrix();renderer.setPixelRatio(active3DPixelRatio);renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);sceneState?.medicalVolume?.resize();request3DRender()};sceneState.resize=resize;new ResizeObserver(resize).observe(viewport);resize();
- renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;sceneState.needsRender=false;if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){sceneState.medicalVolume.render(camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER);renderer.render(scene,camera)}else renderer.render(scene,camera)});
+ renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
+ const resize=()=>{camera.aspect=viewport.clientWidth/Math.max(viewport.clientHeight,1);camera.updateProjectionMatrix();updateAxisWidget();renderer.setPixelRatio(active3DPixelRatio);renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);sceneState?.medicalVolume?.resize();request3DRender()};sceneState.resize=resize;new ResizeObserver(resize).observe(viewport);resize();
+ renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;sceneState.needsRender=false;if(sceneState.obj)axisWidget.quaternion.copy(sceneState.obj.quaternion);if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){sceneState.medicalVolume.render(camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER);renderer.render(scene,camera)}else renderer.render(scene,camera)});
 }
 class RunUnionFind{
  constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
