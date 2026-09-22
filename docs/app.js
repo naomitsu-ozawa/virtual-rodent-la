@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-15';const APP_BUILD='15';
+const APP_VERSION='2026.09.22-16';const APP_BUILD='16';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -988,6 +988,17 @@ function gpuMeshBlockDepth(){
  return cap>=256*1024*1024?32:cap>=128*1024*1024?16:12;
 }
 function gpuMeshTileStart(){return isDesktopMac()?[1024,1024]:[192,64]}
+function gpuResidentSurfaceDrawBudget(){
+ if(navigator.maxTouchPoints>0)return 0;
+ return isDesktopMac()?48:24;
+}
+function shouldUseGpuResidentSurface(w,h,d,tx,ty,blockDepth,segmentCount){
+ const budget=gpuResidentSurfaceDrawBudget();if(budget<=0)return false;
+ const tilesPerBlock=Math.ceil(w/Math.max(1,tx))*Math.ceil(h/Math.max(1,ty));
+ const blocks=Math.ceil(d/Math.max(1,blockDepth));
+ const estimatedDraws=tilesPerBlock*blocks*Math.max(1,segmentCount||1);
+ return estimatedDraws<=budget;
+}
 function gpuAdapterLabel(adapter){
  try{
   const info=adapter?.info;if(!info)return'';
@@ -1751,7 +1762,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    let offset=0;for(let i=0;i<4;i++){meta[17+i]=offset;offset+=counts[i]}device.queue.writeBuffer(mb,0,meta);device.queue.writeBuffer(counters,0,new Uint32Array(4));
    const vertexCount=totalFaces*6,gpuSmooth=surfaceSmoothingActive(),smoothStrength=gpuSmooth?Number(surfaceSmoothStrength.value):0;
    let residentPosition=createGpuResidentFloat3Attribute(device,vertexCount,'VRL GPU resident position'),residentNormal=gpuSmooth?createGpuResidentFloat3Attribute(device,vertexCount,'VRL GPU resident normal'):null;
-   let gpuResident=!!residentPosition&&(!gpuSmooth||!!residentNormal);
+   let gpuResident=faceContext?.gpuResident!==false&&!!residentPosition&&(!gpuSmooth||!!residentNormal);
    if(!gpuResident){destroyGpuResidentAttribute(residentPosition);destroyGpuResidentAttribute(residentNormal);residentPosition=residentNormal=null}
    const output=gpuResident?residentPosition.buffer:device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
    const normalOutput=gpuSmooth?(gpuResident?residentNormal.buffer:device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC})):null;
@@ -2069,14 +2080,14 @@ function compactFaceFlags(flags){
  for(let i=0;i<flags.length;i++)if(flags[i]){items[q++]=i;items[q++]=flags[i]}
  return{compact:true,items};
 }
-async function processSourceRegionFaces(series,target,stages,key,revision,segments){
+async function processSourceRegionFaces(series,target,stages,key,revision,segments,gpuResident=true){
  const halo=Math.max(1,sourceFilterHalo(stages)),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  const localTarget={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
  if(gpuStagesSupported(stages)){
   try{
-   const compact=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:series.columns,globalH:series.rows,globalD:series.slices.length,spacingX:series.spacingX,spacingY:series.spacingY,spacingZ:series.spacingZ,mesh:true});
+   const compact=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:series.columns,globalH:series.rows,globalD:series.slices.length,spacingX:series.spacingX,spacingY:series.spacingY,spacingZ:series.spacingZ,mesh:true,gpuResident});
    if(compact?.mesh||compact?.compact){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return compact}
   }catch(e){
    if(gpuCapacityError(e))throw e;
@@ -2147,12 +2158,13 @@ async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d
 async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,keyPrefix='3d-face-block'){
  const stages=sourceFilterStages();
  const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(w,h,outDepth,halo,tileStartX,tileStartY),queue=[];
+ const gpuResident=shouldUseGpuResidentSurface(w,h,d,tx,ty,coreDepth,segments?.length||0);
  for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx)queue.push({x,y,z:zStart,width:Math.min(tx,w-x),height:Math.min(ty,h-y),depth:outDepth});
  while(queue.length){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   const target=queue.shift();
   try{
-   const compact=await processSourceRegionFaces(series,target,stages,keyPrefix+':'+zStart+':'+target.x+':'+target.y,revision,segments);
+   const compact=await processSourceRegionFaces(series,target,stages,keyPrefix+':'+zStart+':'+target.x+':'+target.y,revision,segments,gpuResident);
    if(compact.mesh){if(compact.gpuResident||compact.vertices?.length)tiles.push(compact);}
    else if(compact.items.length)tiles.push({...target,items:compact.items});
   }catch(e){
@@ -2234,21 +2246,22 @@ async function applyGpuFiltersToMemoryVolume(v,stages,revision){
  if(revision!==filterRebuildRevision)throw new Error('__SUPERSEDED__');
  return out;
 }
-async function processMemoryMeshRegion(v,target,segments){
+async function processMemoryMeshRegion(v,target,segments,gpuResident=true){
  const halo=1,x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(v.columns,target.x+target.width+halo),y1=Math.min(v.rows,target.y+target.height+halo),z1=Math.min(v.slices,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=readMemoryRegion(v,box),local={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
  const [sx,sy,sz]=v.spacing;
- const result=await runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,[],local,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:v.columns,globalH:v.rows,globalD:v.slices,spacingX:sx,spacingY:sy,spacingZ:sz,mesh:true});
+ const result=await runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,[],local,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:v.columns,globalH:v.rows,globalD:v.slices,spacingX:sx,spacingY:sy,spacingZ:sz,mesh:true,gpuResident});
  if(result?.mesh||result?.compact)return result;
  throw new Error('__GPU_UNAVAILABLE__');
 }
 async function getMemoryGpuMeshBlock(v,zStart,coreDepth,segments){
  const outDepth=Math.min(v.slices-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(v.columns,v.rows,outDepth,1,tileStartX,tileStartY),queue=[];
+ const gpuResident=shouldUseGpuResidentSurface(v.columns,v.rows,v.slices,tx,ty,coreDepth,segments?.length||0);
  for(let y=0;y<v.rows;y+=ty)for(let x=0;x<v.columns;x+=tx)queue.push({x,y,z:zStart,width:Math.min(tx,v.columns-x),height:Math.min(ty,v.rows-y),depth:outDepth});
  while(queue.length){
   const target=queue.shift();
   try{
-   const result=await processMemoryMeshRegion(v,target,segments);
+   const result=await processMemoryMeshRegion(v,target,segments,gpuResident);
    if(result.mesh){if(result.gpuResident||result.vertices?.length)tiles.push(result)}
    else if(result.items.length)tiles.push({...target,items:result.items});
   }catch(e){
