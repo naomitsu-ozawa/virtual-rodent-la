@@ -373,3 +373,17 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .three-edit-panel button.is-active{outline:2px solid rgba(0,229,255,.45);outline-offset:1px}
 
 #viewport-3d.is-editing-3d,#viewport-3d.is-editing-3d canvas{cursor:crosshair!important}
+
+/* 3D edit controls stay out of the viewport until explicitly opened. */
+.three-edit-panel{max-width:min(390px,88%);padding:0;overflow:hidden}
+.three-edit-panel-head{padding:6px 8px;cursor:pointer;list-style:none;user-select:none;touch-action:manipulation}
+.three-edit-panel-head::-webkit-details-marker{display:none}
+.three-edit-panel-head::after{content:'▾';margin-left:auto;color:#91a5ae;font-size:10px;transition:transform .12s ease}
+.three-edit-panel[open] .three-edit-panel-head::after{transform:rotate(180deg)}
+.three-edit-panel:not([open]) .three-edit-status{max-width:170px}
+.three-edit-panel[open] .analysis-editor-actions{padding:6px 8px 2px}
+.three-edit-panel[open] .three-edit-help{padding:0 8px 7px}
+@media(max-width:640px){
+ .three-edit-panel{max-width:min(310px,calc(100vw - 80px))}
+ .three-edit-panel:not([open]) .three-edit-status{max-width:130px}
+}
