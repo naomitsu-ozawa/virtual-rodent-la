@@ -371,3 +371,5 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .three-edit-target select{min-height:28px;border:1px solid #3b4850;border-radius:7px;background:#11171a;color:#d8e4e9;padding:4px 6px}
 .viewport.is-editing-3d{cursor:crosshair}
 .three-edit-panel button.is-active{outline:2px solid rgba(0,229,255,.45);outline-offset:1px}
+
+#viewport-3d.is-editing-3d,#viewport-3d.is-editing-3d canvas{cursor:crosshair!important}
