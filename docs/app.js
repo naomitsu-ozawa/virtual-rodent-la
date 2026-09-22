@@ -204,7 +204,7 @@ const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
 const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),threeBusyCancel=$('#three-busy-cancel'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterRebuild3D=$('#filter-rebuild-3d'),filter3DState=$('#filter-3d-state'),renderModeToggle=$('#render-mode-toggle'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
 const analysisNavigateButton=$('#analysis-navigate'),analysisCutButton=$('#analysis-cut'),analysisLineCutButton=$('#analysis-line-cut'),analysisEditTargetSelect=$('#analysis-edit-target'),threeEditStatus=$('#three-edit-status'),threeEditHelp=$('#three-edit-help'),threeEditOverlay=$('#three-edit-overlay'),analysisRemoveSelected=$('#analysis-remove-selected'),analysisKeepSelected=$('#analysis-keep-selected'),analysisUndo=$('#analysis-undo'),analysisRedo=$('#analysis-redo'),analysisResetEdit=$('#analysis-reset-edit'),analysisExportSelected=$('#analysis-export-selected'),analysisCutWidth=$('#analysis-cut-width'),analysisCutWidthValue=$('#analysis-cut-width-value');
-languageToggle.onclick=()=>{applyLanguage(currentLanguage==='ja'?'en':'ja');renderAnalysisResults();updateSectionViewUi();updateGpuStatus();updateRenderModeControl()};
+languageToggle.onclick=()=>{applyLanguage(currentLanguage==='ja'?'en':'ja');renderAnalysisResults();updateSectionViewUi();updateThreeEditUi();updateGpuStatus();updateRenderModeControl()};
 applyLanguage('ja');;
 if(appVersionBadge)appVersionBadge.textContent='Virtual Rodent Lab · v'+APP_VERSION+' · build '+APP_BUILD;
 let volume=null,sourceVolume=null,sceneState=null,activeId=null,activeSeries=null,volumeAnalysisMode=false,volumeAnalysisBusy=false,sourceRenderRevision=0;
@@ -3858,7 +3858,11 @@ function updateThreeEditUi(message=null){
  analysisNavigateButton?.classList.toggle('is-active',analysisEditTool==='select');
  analysisCutButton?.classList.toggle('is-active',analysisEditTool==='pen');
  analysisLineCutButton?.classList.toggle('is-active',analysisEditTool==='line');
- if(analysisEditTargetSelect){analysisEditTargetSelect.value=analysisEditTargetMode;analysisEditTargetSelect.disabled=!surfaceUsable}
+ if(analysisEditTargetSelect){
+  for(const option of analysisEditTargetSelect.options){if(option.value==='auto'){option.disabled=false;continue}option.disabled=!(segmentState[option.value]?.active&&segmentState[option.value]?.enabled)}
+  if(analysisEditTargetMode!=='auto'&&analysisEditTargetSelect.querySelector('option[value="'+analysisEditTargetMode+'"]')?.disabled){analysisEditTargetMode='auto';analysisEditTargetKey=null}
+  analysisEditTargetSelect.value=analysisEditTargetMode;analysisEditTargetSelect.disabled=!surfaceUsable
+ }
  if(threeEditStatus)threeEditStatus.textContent=message||modeLabel+' · '+targetLabel;
  if(threeEditHelp)threeEditHelp.textContent=analysisEditTool==='pen'?tr('editPenHint'):analysisEditTool==='line'?tr('editLineHint'):tr('editAutoHint');
  viewport?.classList.toggle('is-editing-3d',analysisEditTool==='pen'||analysisEditTool==='line');
