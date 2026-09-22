@@ -221,13 +221,20 @@ function updateSectionViewUi(){
  if(sectionReverse)sectionReverse.disabled=!active;
  if(sectionViewReadout)sectionViewReadout.textContent=active?sectionPlaneLabel(sectionViewPlane)+' · '+(idx+1)+' / '+(max+1)+(sectionViewReverse?' · '+tr('sectionReverse'):''):tr('sliceAnalysisHint');
 }
+function sectionLocalPoint(p=sectionViewPlane,idx=p?+planes[p].slider.value:0){
+ if(!volume||!p)return null;
+ const w=volume.columns,h=volume.rows,d=volume.slices,[sx,sy,sz]=volume.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
+ if(p==='axial')return new THREE.Vector3(0,0,((idx+.5)*sz-pz/2)*scale);
+ if(p==='coronal')return new THREE.Vector3(0,-((idx+.5)*sy-py/2)*scale,0);
+ return new THREE.Vector3(((idx+.5)*sx-px/2)*scale,0,0);
+}
+function sectionLocalStep(p=sectionViewPlane){
+ if(!volume||!p)return null;const[sx,sy,sz]=volume.spacing,w=volume.columns,h=volume.rows,d=volume.slices,scale=3.3/Math.max(w*sx,h*sy,d*sz,1);
+ return p==='axial'?new THREE.Vector3(0,0,sz*scale):p==='coronal'?new THREE.Vector3(0,-sy*scale,0):new THREE.Vector3(sx*scale,0,0);
+}
 function sectionLocalPlane(){
  if(!volume||!sectionViewPlane)return null;
- const w=volume.columns,h=volume.rows,d=volume.slices,[sx,sy,sz]=volume.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),idx=+planes[sectionViewPlane].slider.value;
- let normal,point;
- if(sectionViewPlane==='axial'){normal=new THREE.Vector3(0,0,1);point=new THREE.Vector3(0,0,((idx+.5)*sz-pz/2)*scale)}
- else if(sectionViewPlane==='coronal'){normal=new THREE.Vector3(0,1,0);point=new THREE.Vector3(0,-((idx+.5)*sy-py/2)*scale,0)}
- else{normal=new THREE.Vector3(1,0,0);point=new THREE.Vector3(((idx+.5)*sx-px/2)*scale,0,0)}
+ const point=sectionLocalPoint(),normal=sectionViewPlane==='axial'?new THREE.Vector3(0,0,1):sectionViewPlane==='coronal'?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
  if(sectionViewReverse)normal.negate();
  return new THREE.Plane(normal,-normal.dot(point));
 }
