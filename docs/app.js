@@ -3,7 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.w
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.21-1849';const APP_BUILD='04';
+const APP_VERSION='2026.09.21-1849';const APP_BUILD='05';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -202,7 +202,7 @@ const appVersionBadge=$('#app-version-badge');
 const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spatialPasses=$('#spatial-passes'),spatialPassesValue=$('#spatial-passes-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),spikeHoleThreshold=$('#spike-hole-threshold'),spikeHoleThresholdValue=$('#spike-hole-threshold-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),nlmSearchRadius=$('#nlm-search-radius'),nlmSearchRadiusValue=$('#nlm-search-radius-value'),nlmPatchRadius=$('#nlm-patch-radius'),nlmPatchRadiusValue=$('#nlm-patch-radius-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),anisotropicIterations=$('#anisotropic-iterations'),anisotropicIterationsValue=$('#anisotropic-iterations-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),sigmoidCenter=$('#sigmoid-center'),sigmoidCenterValue=$('#sigmoid-center-value'),bilateralBtn=$('#filter-bilateral'),bilateralStrength=$('#bilateral-strength'),bilateralStrengthValue=$('#bilateral-strength-value'),bilateralSpatial=$('#bilateral-spatial'),bilateralSpatialValue=$('#bilateral-spatial-value'),bilateralIntensity=$('#bilateral-intensity'),bilateralIntensityValue=$('#bilateral-intensity-value'),bilateralPasses=$('#bilateral-passes'),bilateralPassesValue=$('#bilateral-passes-value'),tvBtn=$('#filter-tv'),tvWeight=$('#tv-weight'),tvWeightValue=$('#tv-weight-value'),tvIterations=$('#tv-iterations'),tvIterationsValue=$('#tv-iterations-value'),unsharpBtn=$('#filter-unsharp'),unsharpRadius=$('#unsharp-radius'),unsharpRadiusValue=$('#unsharp-radius-value'),unsharpAmount=$('#unsharp-amount'),unsharpAmountValue=$('#unsharp-amount-value'),unsharpThreshold=$('#unsharp-threshold'),unsharpThresholdValue=$('#unsharp-threshold-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),analysisSummary=$('#analysis-summary'),analysisMergeButton=$('#analysis-merge'),analysisClearButton=$('#analysis-clear'),analysisRegionList=$('#analysis-region-list'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button'),segmentAddSelect=$('#segment-add-select'),segmentAddButton=$('#segment-add-button'),segmentControls=$('#segment-controls');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
 const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),threeBusyCancel=$('#three-busy-cancel'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterRebuild3D=$('#filter-rebuild-3d'),filter3DState=$('#filter-3d-state'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
-languageToggle.onclick=()=>{applyLanguage(currentLanguage==='ja'?'en':'ja');renderAnalysisResults()};
+languageToggle.onclick=()=>{applyLanguage(currentLanguage==='ja'?'en':'ja');renderAnalysisResults();updateGpuStatus()};
 applyLanguage('ja');;
 if(appVersionBadge)appVersionBadge.textContent='Virtual Rodent Lab · v'+APP_VERSION+' · build '+APP_BUILD;
 let volume=null,sourceVolume=null,sceneState=null,activeId=null,activeSeries=null,volumeAnalysisMode=false,volumeAnalysisBusy=false,sourceRenderRevision=0;
@@ -833,7 +833,27 @@ async function decode(s,onProgress){
 
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
-const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false};
+const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false};
+function gpuAdapterLabel(adapter){
+ try{
+  const info=adapter?.info;if(!info)return'';
+  return [info.vendor,info.architecture,info.device,info.description].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+ }catch{return''}
+}
+function updateGpuStatus(){
+ if(!status)return;
+ const render=sceneState?.backend||'INIT';
+ const compute=gpuFilterRuntime.device?(gpuFilterRuntime.lastBackend.startsWith('WEBGPU')?gpuFilterRuntime.lastBackend:'WEBGPU READY'):(gpuFilterRuntime.lastBackend||'CPU');
+ const adapter=gpuFilterRuntime.adapterLabel?(' · '+gpuFilterRuntime.adapterLabel):'';
+ status.removeAttribute('data-i18n');
+ status.textContent='Render '+render+' · Compute '+compute+adapter;
+ const gpuActive=render==='WEBGPU'||compute.startsWith('WEBGPU');
+ status.className=gpuActive?'status status-ok':'status status-warning';
+ status.title=gpuFilterRuntime.lastError||'';
+}
+function setGpuComputeBackend(label,error=''){
+ gpuFilterRuntime.lastBackend=label;if(error)gpuFilterRuntime.lastError=String(error);updateGpuStatus();
+}
 const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','anisotropic','tv','bilateral','nlm']);
 function gpuStagesSupported(stages){
  return stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
@@ -862,25 +882,30 @@ function clearGpuBufferPool(){
 function adoptRendererGpuDevice(renderer){
  const device=renderer?.backend?.device;
  if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
- clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuPrewarmIndex=0;gpuPrewarmScheduled=false;
- try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false}})}catch{}
- return true;
+ clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.lastBackend='WEBGPU READY';gpuPrewarmIndex=0;gpuPrewarmScheduled=false;
+ try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;setGpuComputeBackend('GPU DEVICE LOST','WebGPU device lost')}})}catch{}
+ updateGpuStatus();return true;
 }
 async function ensureGpuFilterDevice(){
- if(gpuFilterRuntime.disabled||!('gpu' in navigator))return null;
+ if(!('gpu' in navigator)){gpuFilterRuntime.disabled=true;setGpuComputeBackend('CPU · WebGPU unavailable','navigator.gpu is unavailable');return null}
+ gpuFilterRuntime.disabled=false;
  if(gpuFilterRuntime.device)return gpuFilterRuntime.device;
  if(gpuFilterRuntime.initPromise)return gpuFilterRuntime.initPromise;
+ const now=performance.now();if(gpuFilterRuntime.retryAfter>now)return null;
  gpuFilterRuntime.initPromise=(async()=>{
+  gpuFilterRuntime.initAttempts++;setGpuComputeBackend('WEBGPU CHECKING');
   try{
-   const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
+   let adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
+   if(!adapter)adapter=await navigator.gpu.requestAdapter();
    if(!adapter)throw new Error('WebGPU adapter unavailable');
    const device=await adapter.requestDevice();
-   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;
-   device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false}});
+   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;setGpuComputeBackend('WEBGPU READY');
+   device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',info?.message||'WebGPU device lost')}});
    return device;
   }catch(e){
-   gpuFilterRuntime.disabled=true;
-   if(!gpuFilterRuntime.warned){console.warn('WebGPU compute unavailable; CPU filter fallback active.',e);gpuFilterRuntime.warned=true}
+   gpuFilterRuntime.device=null;gpuFilterRuntime.adapter=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.retryAfter=performance.now()+5000;
+   setGpuComputeBackend('CPU FALLBACK',e?.message||e);
+   console.warn('WebGPU compute unavailable for this attempt; CPU fallback active. GPU will be retried.',e);
    return null;
   }finally{gpuFilterRuntime.initPromise=null}
  })();
@@ -1260,7 +1285,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   await countRead.mapAsync(GPUMapMode.READ);const counts=new Uint32Array(countRead.getMappedRange().slice(0));countRead.unmap();countRead.destroy();
   const totalFaces=counts[0]+counts[1]+counts[2]+counts[3],vertexBytes=totalFaces*18*4,maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
   if(totalFaces===0){
-   releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();gpuFilterRuntime.lastBackend='WEBGPU FILTER+MESH';return{mesh:true,vertices:new Float32Array(0),counts};
+   releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();setGpuComputeBackend('WEBGPU FILTER+MESH');return{mesh:true,vertices:new Float32Array(0),counts};
   }
   if(vertexBytes<=maxOut){
    let offset=0;for(let i=0;i<4;i++){meta[17+i]=offset;offset+=counts[i]}device.queue.writeBuffer(mb,0,meta);device.queue.writeBuffer(counters,0,new Uint32Array(4));
@@ -1274,7 +1299,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    const readback=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});writeEncoder.copyBufferToBuffer(output,0,readback,0,vertexBytes);device.queue.submit([writeEncoder.finish()]);
    await readback.mapAsync(GPUMapMode.READ);const vertices=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();
    output.destroy();readback.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();
-   gpuFilterRuntime.lastBackend='WEBGPU FILTER+MESH';return{mesh:true,vertices,counts};
+   setGpuComputeBackend('WEBGPU FILTER+MESH');return{mesh:true,vertices,counts};
   }
   counters.destroy();
   encoder=device.createCommandEncoder({label:'VRL compact face fallback'});
@@ -1321,14 +1346,14 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    await readback.mapAsync(GPUMapMode.READ);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();readback.destroy();
   }
   releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);targetBuffer.destroy();counter.destroy();counterReadback.destroy();for(const buf of small)buf.destroy();
-  gpuFilterRuntime.lastBackend='WEBGPU FILTER+COMPACT FACES';return{compact:true,items};
+  setGpuComputeBackend('WEBGPU FILTER+COMPACT FACES');return{compact:true,items};
  }
  const readback=device.createBuffer({size:targetBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
  encoder.copyBufferToBuffer(targetBuffer,0,readback,0,targetBytes);device.queue.submit([encoder.finish()]);
  await readback.mapAsync(GPUMapMode.READ);
  const copy=readback.getMappedRange().slice(0),result=segments?.length?new Uint32Array(copy):new Float32Array(copy);readback.unmap();
  releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
- gpuFilterRuntime.lastBackend=segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE';return result;
+ setGpuComputeBackend(segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE');return result;
 }
 
 const sourceSliceCache={map:new Map(),bytes:0};
@@ -1492,7 +1517,7 @@ async function processSourceRegion(series,target,stages,key,revision,preferFullS
    if(!gpuFilterRuntime.warned){console.warn('WebGPU filter execution failed; using CPU worker.',e);gpuFilterRuntime.warned=true}
   }
  }
- gpuFilterRuntime.lastBackend='CPU WORKER';
+ setGpuComputeBackend('CPU WORKER');
  const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:localTarget};
  const result=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return result;
@@ -1515,7 +1540,7 @@ async function processSourceRegionMasks(series,target,stages,key,revision,segmen
    if(!gpuFilterRuntime.warned){console.warn('WebGPU mask execution failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
   }
  }
- gpuFilterRuntime.lastBackend='CPU WORKER';
+ setGpuComputeBackend('CPU WORKER');
  const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:localTarget};
  const values=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
@@ -1559,7 +1584,7 @@ async function processSourceRegionFaces(series,target,stages,key,revision,segmen
    if(!gpuFilterRuntime.warned){console.warn('WebGPU face extraction failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
   }
  }
- gpuFilterRuntime.lastBackend='CPU WORKER';
+ setGpuComputeBackend('CPU WORKER');
  const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:{x:0,y:0,z:0,width:box.width,height:box.height,depth:box.depth}};
  const filtered=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
@@ -2345,8 +2370,8 @@ async function start3D(){
  if(!renderer){
   renderer=new WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,2));backend='WEBGL';
  }
- status.textContent=backend+' ACTIVE';status.className=backend==='WEBGPU'?'status status-ok':'status status-warning';threeLabel.textContent=backend;
- viewport.appendChild(renderer.domElement);sceneState={scene,camera,renderer,obj:null,analysisMesh:null,backend,needsRender:true};
+ threeLabel.textContent=backend;
+ viewport.appendChild(renderer.domElement);sceneState={scene,camera,renderer,obj:null,analysisMesh:null,backend,needsRender:true};updateGpuStatus();void ensureGpuFilterDevice().then(()=>updateGpuStatus());
  const pointers=new Map();const pointerStarts=new Map();let distance=5.2,lastPinch=0,lastCenter=null;
  const clear3DPointerState=(pointerId=null)=>{
   if(pointerId!=null){
