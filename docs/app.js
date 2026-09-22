@@ -3072,11 +3072,17 @@ function reusableMprImage(p,ctx,dims){
  }
  return cache.image;
 }
+function sourceMprMemoryView(v){
+ if(!v?.mprData)return null;
+ if(!v._mprMemoryView||v._mprMemoryView.data!==v.mprData)v._mprMemoryView={data:v.mprData,columns:v.columns,rows:v.rows,slices:v.slices,spacing:v.spacing,min:v.min,max:v.max};
+ return v._mprMemoryView;
+}
 function activeMprSegments(){
- const out=[];
+ const out=[],baseView=volume?.sourceBacked?sourceMprMemoryView(volume):volume;
  for(const key of ['lung','fat','soft','bone']){
   const seg=segmentState[key];if(!seg.active||!seg.enabled)continue;
-  out.push({key,seg,edit:segmentEditState[key],rgb:hexRgb(seg.color),alpha:Math.min(.75,seg.opacity*.65)});
+  const processedMask=baseView&&segmentNeedsGlobalMask(seg)?getProcessedSegmentMask(baseView,seg):null;
+  out.push({key,seg,edit:segmentEditState[key],processedMask,rgb:hexRgb(seg.color),alpha:Math.min(.75,seg.opacity*.65)});
  }
  return out;
 }
@@ -3087,7 +3093,7 @@ function paintSourcePlane(c,dims,values,p='axial',idx=0){
   const i=py*dims[0]+px,v=values[i],g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
   if(hasSegments){
    const ix=p==='sagittal'?idx:px,iy=p==='coronal'?idx:(p==='sagittal'?px:py),iz=p==='axial'?idx:(volume.slices-1-py);
-   for(const item of activeSegs){const {key,seg,edit,rgb,alpha}=item,inside=segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(v>=seg.min&&v<=seg.max);if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha)}
+   for(const item of activeSegs){const {key,seg,edit,processedMask,rgb,alpha}=item,inside=segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(processedMask?processedMask[iz*volume.rows*volume.columns+iy*volume.columns+ix]===1:(v>=seg.min&&v<=seg.max));if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha)}
   }
   img.data[q++]=rr;img.data[q++]=gg;img.data[q++]=bb;img.data[q++]=255;
  }
@@ -3743,7 +3749,7 @@ function thresholdRunsFromMemory(v,seg){
 }
 async function sourceRunsForSegment(v,key,seg){
  if(segmentNeedsGlobalMask(seg)&&v.mprData){
-  const memoryView={data:v.mprData,columns:v.columns,rows:v.rows,slices:v.slices,spacing:v.spacing,min:v.min,max:v.max};
+  const memoryView=sourceMprMemoryView(v);
   return thresholdRunsFromMemory(memoryView,seg);
  }
  const d=v.slices,w=v.columns,h=v.rows,out=Array.from({length:d},()=>new Uint32Array(0)),revision=sourceFilterRuntime.revision,blockDepth=navigator.maxTouchPoints>0?4:16;
@@ -4277,7 +4283,7 @@ async function render3DSourceBacked(v){
  };
  try{
   for(const {key,seg} of processedActive){
-   const memoryView={data:v.mprData,columns:v.columns,rows:v.rows,slices:v.slices,spacing:v.spacing,min:v.min,max:v.max,sourceBacked:true,series:v.series};
+   const memoryView=sourceMprMemoryView(v);
    const runs=thresholdRunsFromMemory(memoryView,seg),processedGroup=await buildEditableRunsGroup(v,runs,key);
    if(processedGroup){processedGroup.name='processed_segment_'+key;group.add(processedGroup)}
    await frameYield();
@@ -4292,8 +4298,8 @@ async function render3DSourceBacked(v){
     const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===series.slices.length-1||[...positionsByKey.values()].some(b=>b.length>=meshFloatLimit);
     if(flush){for(const {key} of streamActive)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+series.slices.length);await frameYield()}
    }
-  }else{
-   let prev=null,curr=streamActive.length?await decodeSourceSegmentMasks(series.slices[0],streamActive):new Map();
+  }else if(streamActive.length){
+   let prev=null,curr=await decodeSourceSegmentMasks(series.slices[0],streamActive);
    let next=streamActive.length&&series.slices.length>1?await decodeSourceSegmentMasks(series.slices[1],streamActive):null;
    for(let z=0;z<series.slices.length;z++){
     if(revision!==sourceRenderRevision){dispose(group);return}
