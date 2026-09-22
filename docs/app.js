@@ -2,7 +2,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build09b';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build09-final';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
 const APP_VERSION='2026.09.22-09';const APP_BUILD='09';
 
@@ -2684,7 +2684,7 @@ async function start3D(){
  let renderer,backend='WEBGL';
  if('gpu' in navigator){
   try{
-   const gpuRenderer=new THREE.WebGPURenderer({antialias:true});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';adoptRendererGpuDevice(gpuRenderer);
+   const gpuRenderer=new THREE.WebGPURenderer({antialias:true,alpha:true});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';adoptRendererGpuDevice(gpuRenderer);
   }catch(error){
    console.warn('WebGPU init failed; falling back to WebGL.',error);
   }
