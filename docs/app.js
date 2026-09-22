@@ -1050,11 +1050,25 @@ function clearGpuBufferPool(){
  for(const bucket of gpuFilterRuntime.bufferPool.values())for(const buffer of bucket){try{buffer.destroy()}catch{}}
  gpuFilterRuntime.bufferPool.clear();gpuFilterRuntime.bufferPoolBytes=0;
 }
+async function verifyGpuComputeDevice(device){
+ if(!device)return false;
+ const out=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),read=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+ try{
+  const module=device.createShaderModule({label:'VRL compute self-test',code:'@group(0) @binding(0) var<storage,read_write> out:array<u32>; @compute @workgroup_size(1) fn main(){out[0]=305419896u;}'});
+  const pipeline=await gpuValidationScope(device,'compute self-test pipeline',async()=>device.createComputePipelineAsync?await device.createComputePipelineAsync({layout:'auto',compute:{module,entryPoint:'main'}}):device.createComputePipeline({layout:'auto',compute:{module,entryPoint:'main'}}));
+  const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:out}}]}),encoder=device.createCommandEncoder({label:'VRL compute self-test'}),pass=encoder.beginComputePass();
+  pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(1);pass.end();encoder.copyBufferToBuffer(out,0,read,0,4);device.queue.submit([encoder.finish()]);
+  await read.mapAsync(GPUMapMode.READ);const value=new Uint32Array(read.getMappedRange().slice(0))[0];read.unmap();
+  if(value!==0x12345678)throw new Error('compute self-test readback mismatch: '+value);
+  return true;
+ }finally{try{out.destroy()}catch{}try{read.destroy()}catch{}}
+}
 function adoptRendererGpuDevice(renderer){
  const device=renderer?.backend?.device;
  if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
- clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.lastBackend='WEBGPU READY';gpuPrewarmIndex=0;gpuPrewarmScheduled=false;
+ clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuPrewarmIndex=0;gpuPrewarmScheduled=false;
  try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;setGpuComputeBackend('GPU DEVICE LOST','WebGPU device lost')}})}catch{}
+ void verifyGpuComputeDevice(device).then(ok=>{if(gpuFilterRuntime.device===device&&ok){setGpuComputeBackend('WEBGPU VERIFIED');scheduleGpuPrewarm()}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='self-test: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
  updateGpuStatus();return true;
 }
 async function ensureGpuFilterDevice(){
@@ -1070,8 +1084,9 @@ async function ensureGpuFilterDevice(){
    if(!adapter)adapter=await navigator.gpu.requestAdapter();
    if(!adapter)throw new Error('WebGPU adapter unavailable');
    const device=await adapter.requestDevice();
-   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;setGpuComputeBackend('WEBGPU READY');
+   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;setGpuComputeBackend('WEBGPU CHECKING');
    device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',info?.message||'WebGPU device lost')}});
+   try{await verifyGpuComputeDevice(device);setGpuComputeBackend('WEBGPU VERIFIED');scheduleGpuPrewarm()}catch(testError){gpuFilterRuntime.lastError='self-test: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
    return device;
   }catch(e){
    gpuFilterRuntime.device=null;gpuFilterRuntime.adapter=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.retryAfter=performance.now()+5000;
