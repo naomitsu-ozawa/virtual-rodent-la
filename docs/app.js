@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-26';const APP_BUILD='26';
+const APP_VERSION='2026.09.22-27';const APP_BUILD='27';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -835,6 +835,10 @@ function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();updateSectionViewUi();request3DRender()}
+ if(volume?.sourceBacked&&volume.mprData&&!sourceFilterStages().length){
+  const values=cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
+  paintSourcePlane(planes[p],dims,values,p,idx);return;
+ }
  if(volume?.sourceBacked&&p!=='axial'&&!sourceFilterStages().length){
   const cached=sourceOrthogonalCacheGet(p,idx);
   if(cached){paintSourcePlane(planes[p],p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],cached,p,idx);return}
@@ -996,16 +1000,50 @@ async function selectSeries(s){
  try{
   invalidateSourceFilters();
   sourceVolume=s.sourceBacked?openSourceBackedVolume(s):await decode(s,(x,y)=>progress(x,y));
+  if(s.sourceBacked)await prepareSourceMprCache(sourceVolume,(x,y)=>{progress(x,y);const badge=selected.querySelector('.ready-badge');if(badge)badge.textContent='MPR cache '+x+' / '+y});
   volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);scheduleGpuPrewarm();phase='render';renderAll();mark3DStale();
-  selected.querySelector('.ready-badge').textContent=s.sourceBacked?'CT source ready · 2D ready':'CT volume ready · 2D ready';
-  footer.textContent=s.sourceBacked?'Full-resolution source-backed DICOM · no resampling':'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
+  selected.querySelector('.ready-badge').textContent=s.sourceBacked?(volume.mprData?'CT source ready · MPR cached':'CT source ready · streaming MPR'):'CT volume ready · 2D ready';
+  footer.textContent=s.sourceBacked?(volume.mprData?'Full-resolution source DICOM · MPR memory cache '+fmt(volume.mprData.byteLength):'Full-resolution source-backed DICOM · streaming MPR'):'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
  }catch(e){
   console.error(e);const label=phase==='decode'?'Decode failed':phase==='configure'?'Configure failed':'Render failed';
   selected.querySelector('.ready-badge').textContent=label;footer.textContent=label+': '+String(e.message||e)
  }finally{prog.classList.add('is-hidden');busy(false)}
 }
 function openSourceBackedVolume(s){
- return{data:null,sourceBacked:true,series:s,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min:s.min,max:s.max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:'DICOM source'};
+ return{data:null,mprData:null,mprPlaneBuffers:null,sourceBacked:true,series:s,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min:s.min,max:s.max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:'DICOM source'};
+}
+function sourceMprCacheLimit(){
+ const deviceMemory=Number(navigator.deviceMemory)||0;
+ if(navigator.maxTouchPoints>0)return deviceMemory>=8?384*1024*1024:256*1024*1024;
+ return deviceMemory>=16?1024*1024*1024:768*1024*1024;
+}
+async function prepareSourceMprCache(v,onProgress){
+ const s=v?.series;if(!s||!s.compact)return false;
+ const count=s.columns*s.rows*s.slices.length,bytes=count*Int16Array.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
+ if(bytes>limit)return false;
+ let data;try{data=new Int16Array(count)}catch{return false}
+ let min=Infinity,max=-Infinity;
+ for(let z=0;z<s.slices.length;z++){
+  const slice=await decodeSourceSlice(s.slices[z]),base=z*s.rows*s.columns;
+  for(let i=0;i<slice.length;i++){const value=Math.round(slice[i]);data[base+i]=value;if(value<min)min=value;if(value>max)max=value}
+  onProgress?.(z+1,s.slices.length);if((z&7)===0)await frameYield();
+ }
+ v.mprData=data;v.mprPlaneBuffers={coronal:new Int16Array(s.columns*s.slices.length),sagittal:new Int16Array(s.rows*s.slices.length)};
+ if(Number.isFinite(min))v.min=min;if(Number.isFinite(max))v.max=max;
+ return true;
+}
+function cachedSourceMprPlane(v,p,idx){
+ const data=v?.mprData;if(!data)return null;
+ const w=v.columns,h=v.rows,d=v.slices,plane=w*h;
+ if(p==='axial')return data.subarray(idx*plane,(idx+1)*plane);
+ if(p==='coronal'){
+  const out=v.mprPlaneBuffers?.coronal||new Int16Array(w*d);
+  for(let z=0;z<d;z++){const src=z*plane+idx*w,dst=(d-1-z)*w;out.set(data.subarray(src,src+w),dst)}
+  return out;
+ }
+ const out=v.mprPlaneBuffers?.sagittal||new Int16Array(h*d);
+ for(let z=0;z<d;z++){const base=z*plane,dst=(d-1-z)*h;for(let y=0;y<h;y++)out[dst+y]=data[base+y*w+idx]}
+ return out;
 }
 async function decodeSourceSlice(meta){
  if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);
@@ -2942,6 +2980,10 @@ function renderMainMprPreview(){
 function renderAll(){
  if(!volume)return;
  wcVal.value=formatCtValue(+wc.value,+wc.step);wwVal.value=formatCtValue(+ww.value,+ww.step);
+ if(volume.sourceBacked&&!sourceFilterStages().length&&volume.mprData){
+  for(const p of Object.keys(planes))safeRenderPlane(p);
+  return;
+ }
  if(volume.sourceBacked&&!sourceFilterStages().length){
   safeRenderPlane('axial');
   for(const p of ['coronal','sagittal']){
@@ -2984,6 +3026,11 @@ function paintSourcePlane(c,dims,values,p='axial',idx=0){
 async function renderPlaneSourceBacked(p,revision,idx){
  const c=planes[p],series=volume.series;c.label.textContent=idx+1;if(revision!==planeRenderRevision[p])return;
  try{
+  if(!sourceFilterStages().length&&volume.mprData){
+   const values=cachedSourceMprPlane(volume,p,idx);if(revision!==planeRenderRevision[p]||!values)return;
+   const dims=p==='axial'?[series.columns,series.rows]:p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length];
+   paintSourcePlane(c,dims,values,p,idx);return;
+  }
   if(sourceFilterStages().length){
    const values=await getFilteredSourcePlaneValues(p,idx,series,'mpr:'+p,revision);
    if(revision!==planeRenderRevision[p])return;
