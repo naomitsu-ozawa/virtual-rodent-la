@@ -1124,7 +1124,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
   if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,vec3f(x0,y0,z1),vec3f(x1,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y0,z1),vec3f(x1,y1,z1),vec3f(x0,y1,z1));}
  }
 }`;
- if(kind==='meshCornerInit')return \`
+ if(kind==='meshCornerInit')return `
 @group(0) @binding(0) var<storage, read> src:array<f32>;
 @group(0) @binding(1) var<storage, read_write> corners:array<f32>;
 @group(0) @binding(2) var<storage, read> meta:array<u32>;
@@ -1148,8 +1148,8 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let gx=meta[11]+meta[3]+cx;let gy=meta[12]+meta[4]+cy;let gz=meta[13]+meta[5]+cz;
  let sx=geom[0];let sy=geom[1];let sz=geom[2];let scale=geom[3];let px=geom[4];let py=geom[5];let pz=geom[6];
  let base=q*4u;corners[base]=(f32(gx)*sx-px*0.5)*scale;corners[base+1u]=-(f32(gy)*sy-py*0.5)*scale;corners[base+2u]=(f32(gz)*sz-pz*0.5)*scale;corners[base+3u]=active;
-}\`;
- if(kind==='meshCornerSmooth')return \`
+}`;
+ if(kind==='meshCornerSmooth')return `
 @group(0) @binding(0) var<storage, read> srcCorners:array<f32>;
 @group(0) @binding(1) var<storage, read_write> dstCorners:array<f32>;
 @group(0) @binding(2) var<storage, read> meta:array<u32>;
@@ -1174,8 +1174,8 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  }}}
  if(count>0.0){let factor=params[0];px+=factor*(ax/count-px);py+=factor*(ay/count-py);pz+=factor*(az/count-pz);}
  dstCorners[base]=px;dstCorners[base+1u]=py;dstCorners[base+2u]=pz;dstCorners[base+3u]=active;
-}\`;
- if(kind==='meshWriteSmooth')return \`
+}`;
+ if(kind==='meshWriteSmooth')return `
 struct Counters{values:array<atomic<u32>,4>};
 @group(0) @binding(0) var<storage, read> src:array<f32>;
 @group(0) @binding(1) var<storage, read_write> dst:array<f32>;
@@ -1211,7 +1211,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
   if(gz==0u||!insideSegment(src[localIdx(x,y,z-1u)],s)){let b=slotFor(s);writeFace(b,p000,p010,p110,p000,p110,p100);}
   if(gz+1u>=meta[16]||!insideSegment(src[localIdx(x,y,z+1u)],s)){let b=slotFor(s);writeFace(b,p001,p101,p111,p001,p111,p011);}
  }
-}\`;
+}`;
  if(kind==='faceCompact')return `
 struct Counter{value:atomic<u32>};
 @group(0) @binding(0) var<storage, read> src: array<f32>;
