@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-34';const APP_BUILD='34';
+const APP_VERSION='2026.09.23-35';const APP_BUILD='35';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -629,8 +629,22 @@ for(const key of Object.keys(segmentState)){
  exportBtn.onclick=()=>void exportSegmentStl(key);
  removeBtn.onclick=()=>removeSegmentPreset(key);
 }
-surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;scheduleSegment3D()};
-surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);scheduleSegment3D()};
+function refreshAnalysisSurfacesForSmoothing(v=current3DVolume||volume){
+ if(!v||!analysisRegions.length)return;
+ const regions=[...analysisRegions],focus=analysisFocusedRegionId;
+ void (async()=>{
+  for(const region of regions){
+   if(!analysisRegions.includes(region))continue;
+   disposeAnalysisRegionMesh(region);await attachAnalysisRegion(region,v);
+  }
+  if(focus!=null&&analysisRegionById(focus))setAnalysisFocusedRegion(focus);else{request3DRender();renderAnalysisResults()}
+ })().catch(e=>{console.error('Analysis smoothing refresh failed.',e);request3DRender()});
+}
+function refreshSmoothingSurfaces(){
+ scheduleSegment3D();refreshAnalysisSurfacesForSmoothing();
+}
+surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;refreshSmoothingSurfaces()};
+surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);refreshSmoothingSurfaces()};
 const liveFilterState={timer:null,base:null,key:null};
 function beginLiveFilter(key){
  if(!volume)return;
