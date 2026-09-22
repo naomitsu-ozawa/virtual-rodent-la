@@ -839,7 +839,7 @@ function isDesktopMac(){
  return /mac/i.test(platform)&&(navigator.maxTouchPoints||0)===0;
 }
 function gpuMeshBlockDepth(){return navigator.maxTouchPoints>0?2:(isDesktopMac()?8:4)}
-function gpuMeshTileStart(){return isDesktopMac()?[256,96]:[192,64]}
+function gpuMeshTileStart(){return isDesktopMac()?[1024,1024]:[192,64]}
 function gpuAdapterLabel(adapter){
  try{
   const info=adapter?.info;if(!info)return'';
@@ -1202,7 +1202,7 @@ fn cornerNormal(s:u32,cx:u32,cy:u32,cz:u32)->vec3<f32>{
  for(var dz:i32=-1;dz<=0;dz=dz+1){for(var dy:i32=-1;dy<=0;dy=dy+1){nx+=insideAt(vx-1,vy+dy,vz+dz,s)-insideAt(vx,vy+dy,vz+dz,s);}}
  for(var dz:i32=-1;dz<=0;dz=dz+1){for(var dx:i32=-1;dx<=0;dx=dx+1){ny+=insideAt(vx+dx,vy-1,vz+dz,s)-insideAt(vx+dx,vy,vz+dz,s);}}
  for(var dy:i32=-1;dy<=0;dy=dy+1){for(var dx:i32=-1;dx<=0;dx=dx+1){nz+=insideAt(vx+dx,vy+dy,vz-1,s)-insideAt(vx+dx,vy+dy,vz,s);}}
- let n=vec3f(nx,-ny,nz);let len=length(n);return select(vec3f(0.0,0.0,1.0),n/len,len>0.00001);
+ let n=vec3f(nx,-ny,nz);let len=length(n);if(len>0.00001){return n/len;}return vec3f(0.0,0.0,1.0);
 }
 fn writeVertex(base:u32,v:vec3<f32>,n:vec3<f32>){dst[base]=v.x;dst[base+1u]=v.y;dst[base+2u]=v.z;normals[base]=n.x;normals[base+1u]=n.y;normals[base+2u]=n.z;}
 fn writeFace(base:u32,a:vec3<f32>,na:vec3<f32>,b:vec3<f32>,nb:vec3<f32>,c:vec3<f32>,nc:vec3<f32>,d:vec3<f32>,nd:vec3<f32>,e:vec3<f32>,ne:vec3<f32>,f:vec3<f32>,nf:vec3<f32>){
