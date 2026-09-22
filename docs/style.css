@@ -354,3 +354,5 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
   pointer-events:auto;
   touch-action:manipulation;
 }
+
+.three-overlay-controls{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:260px}.three-overlay-controls .tool-chip{min-height:28px;padding:4px 7px;font-size:10px}
