@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-37';const APP_BUILD='37';
+const APP_VERSION='2026.09.23-38';const APP_BUILD='38';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -964,7 +964,7 @@ async function parseDicomHeader(file){
 function parsedSliceMeta(f,ds){
  const seriesUid=ds.string('x0020000e')?.trim();if(!seriesUid)return null;
  const ps=multi(ds.string('x00280030'),2),pos=multi(ds.string('x00200032'),3);
- return{file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,bitsStored:ds.uint16('x00280101')||ds.uint16('x00280100')||16,highBit:ds.uint16('x00280102'),signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),windowCenter:num(ds.string('x00281050')),windowWidth:num(ds.string('x00281051')),smallest:ds.uint16('x00280106'),largest:ds.uint16('x00280107'),pixelOffset:ds.elements.x7fe00010?.dataOffset??null,pixelLength:ds.elements.x7fe00010?.length??null,ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'};
+ return{file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,bitsStored:ds.uint16('x00280101')||ds.uint16('x00280100')||16,highBit:ds.uint16('x00280102'),signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,photometricInterpretation:ds.string('x00280004')?.trim()||'MONOCHROME2',planarConfiguration:ds.uint16('x00280006')||0,numberOfFrames:Number(ds.string('x00280008')||1),pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),windowCenter:num(ds.string('x00281050')),windowWidth:num(ds.string('x00281051')),smallest:ds.uint16('x00280106'),largest:ds.uint16('x00280107'),pixelOffset:ds.elements.x7fe00010?.dataOffset??null,pixelLength:ds.elements.x7fe00010?.length??null,ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'};
 }
 async function parseFiles(files,onProgress){
  const out=new Array(files.length),workers=navigator.maxTouchPoints>0?2:Math.min(4,Math.max(2,navigator.hardwareConcurrency||2));let cursor=0,done=0;
@@ -1105,8 +1105,43 @@ function cachedSourceMprPlane(v,p,idx){
  for(let z=0;z<d;z++){const base=z*plane,dst=(d-1-z)*h;for(let y=0;y<h;y++)out[dst+y]=data[base+y*w+idx]}
  return out;
 }
+const NATIVE_DICOM_TRANSFER_SYNTAXES=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
+const COMPRESSED_DICOM_TRANSFER_SYNTAXES=new Set(['1.2.840.10008.1.2.5','1.2.840.10008.1.2.4.50','1.2.840.10008.1.2.4.51','1.2.840.10008.1.2.4.57','1.2.840.10008.1.2.4.70','1.2.840.10008.1.2.4.80','1.2.840.10008.1.2.4.81','1.2.840.10008.1.2.4.90','1.2.840.10008.1.2.4.91','1.2.840.10008.1.2.4.201','1.2.840.10008.1.2.4.202','1.2.840.10008.1.2.4.203']);
+let dicomCodecModulePromise=null;
+function isNativeDicomTransferSyntax(ts){return NATIVE_DICOM_TRANSFER_SYNTAXES.has(ts)}
+async function getDicomCodecModule(){
+ if(!dicomCodecModulePromise)dicomCodecModulePromise=import('https://esm.sh/@cornerstonejs/dicom-image-loader@5.10.8?bundle').catch(e=>{dicomCodecModulePromise=null;throw e});
+ return dicomCodecModulePromise;
+}
+function dicomImageFrameInfo(meta){
+ const bits=meta.bitsStored||meta.bits,bytesPerPixel=meta.bits<=8?1:2;
+ return{samplesPerPixel:meta.samples||1,photometricInterpretation:meta.photometricInterpretation||'MONOCHROME2',planarConfiguration:meta.planarConfiguration||0,rows:meta.rows,columns:meta.columns,bitsAllocated:meta.bits,bitsStored:bits,highBit:meta.highBit??bits-1,pixelRepresentation:meta.signed?1:0,smallestPixelValue:meta.smallest??(meta.signed?-(2**(bits-1)):0),largestPixelValue:meta.largest??(meta.signed?(2**(bits-1)-1):(2**bits-1)),bytesPerPixel,signed:!!meta.signed,componentsPerPixel:meta.samples||1};
+}
+function encapsulatedFrameBytes(ds,element,ts){
+ if(!element?.encapsulatedPixelData||!element.fragments?.length)throw new Error('Encapsulated Pixel Data missing');
+ if((Number(ds.string('x00280008')||1))!==1)throw new Error('Multi-frame compressed DICOM is not supported yet');
+ if(ts==='1.2.840.10008.1.2.5')return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,0,element.fragments.length);
+ if(element.basicOffsetTable?.length)return dicomParser.readEncapsulatedImageFrame(ds,element,0,element.basicOffsetTable);
+ return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,0,element.fragments.length);
+}
+async function decodeCompressedDicomSlice(meta){
+ if(!COMPRESSED_DICOM_TRANSFER_SYNTAXES.has(meta.ts))throw new Error('Unsupported compressed DICOM transfer syntax: '+meta.ts);
+ if((meta.samples||1)!==1)throw new Error('Compressed color DICOM is outside the CT viewer scope');
+ const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),element=ds.elements.x7fe00010,pixelData=encapsulatedFrameBytes(ds,element,meta.ts),frame=dicomImageFrameInfo(meta),module=await getDicomCodecModule(),decoders=module.decoders;
+ let decoded;
+ if(meta.ts==='1.2.840.10008.1.2.5')decoded=await decoders.RLE(frame,pixelData);
+ else if(meta.ts==='1.2.840.10008.1.2.4.50')decoded=await decoders.JPEGBaseline8Bit(pixelData,frame);
+ else if(meta.ts==='1.2.840.10008.1.2.4.51')decoded=await decoders.JPEGBaseline12Bit(frame,pixelData);
+ else if(meta.ts==='1.2.840.10008.1.2.4.57'||meta.ts==='1.2.840.10008.1.2.4.70')decoded=await decoders.JPEGLossless(frame,pixelData);
+ else if(meta.ts==='1.2.840.10008.1.2.4.80'||meta.ts==='1.2.840.10008.1.2.4.81')decoded=await decoders.JPEGLS(pixelData,frame);
+ else if(meta.ts==='1.2.840.10008.1.2.4.90'||meta.ts==='1.2.840.10008.1.2.4.91')decoded=await decoders.JPEG2000(pixelData,frame);
+ else decoded=await decoders.HTJ2K(pixelData,frame);
+ const stored=decoded?.pixelData;if(!stored||stored.length<meta.rows*meta.columns)throw new Error('Compressed DICOM decoder returned incomplete pixel data');
+ const n=meta.rows*meta.columns,out=new Float32Array(n);for(let i=0;i<n;i++)out[i]=Number(stored[i])*meta.slope+meta.intercept;
+ return out;
+}
 async function decodeSourceSlice(meta){
- if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);
+ if(!isNativeDicomTransferSyntax(meta.ts))return decodeCompressedDicomSlice(meta);
  const bpp=meta.bits===8?1:meta.bits===16?2:0;
  if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
  let bytes,offset=meta.pixelOffset;
@@ -1128,7 +1163,7 @@ async function decodeSourceSlice(meta){
 }
 async function readSourceRow(meta,row){
  const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
- if(meta.pixelOffset==null){const full=await decodeSourceSlice(meta);return full.slice(row*meta.columns,(row+1)*meta.columns)}
+ if(!isNativeDicomTransferSyntax(meta.ts)||meta.pixelOffset==null){const full=await decodeSourceSlice(meta);return full.slice(row*meta.columns,(row+1)*meta.columns)}
  const start=meta.pixelOffset+row*meta.columns*bpp,end=start+meta.columns*bpp,bytes=new Uint8Array(await meta.file.slice(start,end).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer),out=new Float32Array(meta.columns);
  for(let x=0;x<meta.columns;x++){let raw;if(meta.bits===8){raw=bytes[x];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(x*2,little):view.getUint16(x*2,little);out[x]=raw*meta.slope+meta.intercept}
  return out;
@@ -1136,14 +1171,14 @@ async function readSourceRow(meta,row){
 async function readSourceRows(meta,rowStart,rowCount){
  const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
  const count=Math.max(0,Math.min(rowCount,meta.rows-rowStart));if(!count)return new Float32Array();
- if(meta.pixelOffset==null){const full=await decodeSourceSlice(meta);return full.slice(rowStart*meta.columns,(rowStart+count)*meta.columns)}
+ if(!isNativeDicomTransferSyntax(meta.ts)||meta.pixelOffset==null){const full=await decodeSourceSlice(meta);return full.slice(rowStart*meta.columns,(rowStart+count)*meta.columns)}
  const start=meta.pixelOffset+rowStart*meta.columns*bpp,end=start+count*meta.columns*bpp,bytes=new Uint8Array(await meta.file.slice(start,end).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer),out=new Float32Array(count*meta.columns);
  for(let i=0;i<out.length;i++){let raw;if(meta.bits===8){raw=bytes[i];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(i*2,little):view.getUint16(i*2,little);out[i]=raw*meta.slope+meta.intercept}
  return out;
 }
 async function readSourceColumn(meta,column){
  const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
- if(meta.pixelOffset==null){const full=await decodeSourceSlice(meta),out=new Float32Array(meta.rows);for(let y=0;y<meta.rows;y++)out[y]=full[y*meta.columns+column];return out}
+ if(!isNativeDicomTransferSyntax(meta.ts)||meta.pixelOffset==null){const full=await decodeSourceSlice(meta),out=new Float32Array(meta.rows);for(let y=0;y<meta.rows;y++)out[y]=full[y*meta.columns+column];return out}
  const bytes=new Uint8Array(await meta.file.slice(meta.pixelOffset,meta.pixelOffset+meta.rows*meta.columns*bpp).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),out=new Float32Array(meta.rows);
  for(let y=0;y<meta.rows;y++){
   const off=(y*meta.columns+column)*bpp;let raw;
@@ -2215,12 +2250,11 @@ function runSourceFilterWorker(message,key){
 }
 async function readSourceSubregion(meta,x0,y0,width,height,preferFullSliceCache=false){
  const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
- if(preferFullSliceCache){
+ if(preferFullSliceCache||!isNativeDicomTransferSyntax(meta.ts)){
   const full=await getCachedSourceSlice(meta),out=new Float32Array(width*height);let q=0;
   for(let y=0;y<height;y++){out.set(full.subarray((y0+y)*meta.columns+x0,(y0+y)*meta.columns+x0+width),q);q+=width}
   return out;
  }
- if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);
  if(meta.pixelOffset==null){
   const full=await decodeSourceSlice(meta),out=new Float32Array(width*height);let q=0;
   for(let y=0;y<height;y++){out.set(full.subarray((y0+y)*meta.columns+x0,(y0+y)*meta.columns+x0+width),q);q+=width}
@@ -4201,7 +4235,12 @@ function thresholdSourceMask(data,seg){
  return mask;
 }
 async function decodeSourceSegmentMasks(meta,segments){
- if(!['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2'].includes(meta.ts))throw new Error('Compressed DICOMは次段階で対応: '+meta.ts);
+ if(!isNativeDicomTransferSyntax(meta.ts)){
+  const values=await getCachedSourceSlice(meta),n=meta.rows*meta.columns,blockSize=16384,states=new Map(segments.map(({key,seg})=>[key,{mask:new Uint8Array(n),blocks:[],block:new Uint32Array(blockSize),used:0,min:seg.min,max:seg.max}]));
+  for(let i=0;i<n;i++){const value=values[i];for(const state of states.values())if(value>=state.min&&value<=state.max){state.mask[i]=1;if(state.used===state.block.length){state.blocks.push(state.block);state.block=new Uint32Array(blockSize);state.used=0}state.block[state.used++]=i}}
+  for(const state of states.values()){if(state.used)state.blocks.push(state.block.subarray(0,state.used));state.block=null;delete state.used;delete state.min;delete state.max}
+  return states;
+ }
  const bpp=meta.bits===8?1:meta.bits===16?2:0;
  if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
  let bytes,offset=meta.pixelOffset;
