@@ -2035,6 +2035,7 @@ async function processSourceRegionFaces(series,target,stages,key,revision,segmen
    const compact=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments,{boxX:x0,boxY:y0,boxZ:z0,globalW:series.columns,globalH:series.rows,globalD:series.slices.length,spacingX:series.spacingX,spacingY:series.spacingY,spacingZ:series.spacingZ,mesh:true});
    if(compact?.mesh||compact?.compact){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return compact}
   }catch(e){
+   if(gpuCapacityError(e))throw e;
    gpuFilterRuntime.lastError='mesh: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU face extraction failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
   }
  }
@@ -2101,12 +2102,24 @@ async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d
 }
 async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,keyPrefix='3d-face-block'){
  const stages=sourceFilterStages();
- const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(w,h,outDepth,halo,tileStartX,tileStartY);
- for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
+ const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(w,h,outDepth,halo,tileStartX,tileStartY),queue=[];
+ for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx)queue.push({x,y,z:zStart,width:Math.min(tx,w-x),height:Math.min(ty,h-y),depth:outDepth});
+ while(queue.length){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
-  const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),compact=await processSourceRegionFaces(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart+':'+x+':'+y,revision,segments);
-  if(compact.mesh){if(compact.gpuResident||compact.vertices?.length)tiles.push(compact);}
-  else if(compact.items.length)tiles.push({x,y,z:zStart,width:tw,height:th,depth:outDepth,items:compact.items});
+  const target=queue.shift();
+  try{
+   const compact=await processSourceRegionFaces(series,target,stages,keyPrefix+':'+zStart+':'+target.x+':'+target.y,revision,segments);
+   if(compact.mesh){if(compact.gpuResident||compact.vertices?.length)tiles.push(compact);}
+   else if(compact.items.length)tiles.push({...target,items:compact.items});
+  }catch(e){
+   if(!gpuCapacityError(e)||target.width<=16&&target.height<=16)throw e;
+   if(target.width>=target.height&&target.width>16){
+    const a=Math.floor(target.width/2),b=target.width-a;queue.unshift({...target,x:target.x+a,width:b},{...target,width:a});
+   }else{
+    const a=Math.floor(target.height/2),b=target.height-a;queue.unshift({...target,y:target.y+a,height:b},{...target,height:a});
+   }
+   setGpuComputeBackend('WEBGPU RETILE',String(e?.message||e));
+  }
  }
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return{tiles,coreDepth:outDepth};
@@ -2186,11 +2199,23 @@ async function processMemoryMeshRegion(v,target,segments){
  throw new Error('__GPU_UNAVAILABLE__');
 }
 async function getMemoryGpuMeshBlock(v,zStart,coreDepth,segments){
- const outDepth=Math.min(v.slices-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(v.columns,v.rows,outDepth,1,tileStartX,tileStartY);
- for(let y=0;y<v.rows;y+=ty)for(let x=0;x<v.columns;x+=tx){
-  const tw=Math.min(tx,v.columns-x),th=Math.min(ty,v.rows-y),result=await processMemoryMeshRegion(v,{x,y,z:zStart,width:tw,height:th,depth:outDepth},segments);
-  if(result.mesh){if(result.gpuResident||result.vertices?.length)tiles.push(result)}
-  else if(result.items.length)tiles.push({x,y,z:zStart,width:tw,height:th,depth:outDepth,items:result.items});
+ const outDepth=Math.min(v.slices-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(v.columns,v.rows,outDepth,1,tileStartX,tileStartY),queue=[];
+ for(let y=0;y<v.rows;y+=ty)for(let x=0;x<v.columns;x+=tx)queue.push({x,y,z:zStart,width:Math.min(tx,v.columns-x),height:Math.min(ty,v.rows-y),depth:outDepth});
+ while(queue.length){
+  const target=queue.shift();
+  try{
+   const result=await processMemoryMeshRegion(v,target,segments);
+   if(result.mesh){if(result.gpuResident||result.vertices?.length)tiles.push(result)}
+   else if(result.items.length)tiles.push({...target,items:result.items});
+  }catch(e){
+   if(!gpuCapacityError(e)||target.width<=16&&target.height<=16)throw e;
+   if(target.width>=target.height&&target.width>16){
+    const a=Math.floor(target.width/2),b=target.width-a;queue.unshift({...target,x:target.x+a,width:b},{...target,width:a});
+   }else{
+    const a=Math.floor(target.height/2),b=target.height-a;queue.unshift({...target,y:target.y+a,height:b},{...target,height:a});
+   }
+   setGpuComputeBackend('WEBGPU RETILE',String(e?.message||e));
+  }
  }
  return{tiles,coreDepth:outDepth};
 }
