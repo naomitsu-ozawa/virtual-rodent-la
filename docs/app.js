@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-38';const APP_BUILD='38';
+const APP_VERSION='2026.09.23-39';const APP_BUILD='39';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -3484,16 +3484,25 @@ function consumeGpuAnalysisRuns(items,zStart,depth,w,h,seed,uf,prevRows,sliceRun
 }
 async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision){
  const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),device=await ensureGpuFilterDevice();if(!device)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
- if(!stages.length){
-  const raw=await gpuValidationScope(device,'raw DICOM analysis RLE',()=>extractSourceThresholdRuns(device,series,zStart,coreDepth,seg));
-  if(raw){setGpuComputeBackend('WEBGPU ANALYSIS RAW-RLE');return raw}
+ let rawError=null;
+ if(!stages.length&&series.slices.slice(zStart,zStart+coreDepth).every(meta=>isNativeDicomTransferSyntax(meta.ts))){
+  try{
+   const raw=await gpuValidationScope(device,'raw DICOM analysis RLE',()=>extractSourceThresholdRuns(device,series,zStart,coreDepth,seg));
+   if(raw){setGpuComputeBackend('WEBGPU ANALYSIS RAW-RLE');return raw}
+  }catch(e){rawError=e;console.warn('Raw DICOM GPU RLE unavailable; retrying decoded CT on WebGPU.',e)}
  }
  const halo=sourceFilterHalo(stages),z0=Math.max(0,zStart-halo),z1=Math.min(series.slices.length,zStart+coreDepth+halo),box={x:0,y:0,z:z0,width:series.columns,height:series.rows,depth:z1-z0},data=await readSourceRegion(series,box,analysisRevision,true);
  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  const target={x:0,y:0,z:zStart-z0,width:series.columns,height:series.rows,depth:coreDepth};
- const result=await gpuValidationScope(device,'analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg}],{analysisRuns:true}));
- if(!result?.analysisRuns)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
- return{items:result.items,coreDepth};
+ try{
+  const result=await gpuValidationScope(device,'decoded CT analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg}],{analysisRuns:true}));
+  if(!result?.analysisRuns)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
+  setGpuComputeBackend(stages.length?'WEBGPU ANALYSIS FILTER+RLE':'WEBGPU ANALYSIS DECODED-RLE',rawError?.message||null);
+  return{items:result.items,coreDepth};
+ }catch(e){
+  if(rawError&&String(e.message||e)==='__GPU_ANALYSIS_UNAVAILABLE__')gpuFilterRuntime.lastError='raw RLE: '+String(rawError.message||rawError);
+  throw e;
+ }
 }
 async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
  const device=await ensureGpuFilterDevice();if(!device||segmentNeedsGlobalMask(seg))return null;
@@ -3509,7 +3518,7 @@ async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
   }
  }catch(e){setGpuComputeBackend('CPU ANALYSIS FALLBACK',e?.message||e);console.warn('GPU connected-component run extraction failed; CPU analysis will be used.',e);return null}
  if(seed.label==null)throw new Error(currentLanguage==='ja'?'選択位置から連結成分を特定できませんでした':'Could not identify a connected component at the selected point');
- const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];setGpuComputeBackend('WEBGPU ANALYSIS RLE+CPU UNION');return{voxels,mm3,root,uf,sliceRuns};
+ const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];setGpuComputeBackend('WEBGPU ANALYSIS RLE · CPU CONNECTIVITY');return{voxels,mm3,root,uf,sliceRuns};
 }
 async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
  const w=v.columns,h=v.rows,d=v.slices,analysisRevision=sourceFilterRuntime.revision,uf=new RunUnionFind(),sliceRuns=new Array(d);
@@ -3531,7 +3540,7 @@ async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
  }
  if(seed.label==null)throw new Error(currentLanguage==='ja'?'選択位置から連結成分を特定できませんでした':'Could not identify a connected component at the selected point');
  const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];
- if(gpuUsed&&!hadFallback)setGpuComputeBackend(sourceFilterStages().length?'WEBGPU ANALYSIS RLE+CPU UNION':'WEBGPU ANALYSIS RAW-RLE+CPU UNION');
+ if(gpuUsed&&!hadFallback)setGpuComputeBackend(sourceFilterStages().length?'WEBGPU ANALYSIS FILTER+RLE · CPU CONNECTIVITY':'WEBGPU ANALYSIS RLE · CPU CONNECTIVITY');
  else if(gpuUsed&&hadFallback)setGpuComputeBackend('GPU PARTIAL · CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'Some analysis blocks used CPU fallback');
  return{voxels,mm3,root,uf,sliceRuns};
 }
