@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-23';const APP_BUILD='23';
+const APP_VERSION='2026.09.22-24';const APP_BUILD='24';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -2894,6 +2894,10 @@ function installMprTouch(p){const c=planes[p];let id=null,startX=0,startY=0,star
 function setMpr3DInteractive(active){
  if(!sceneState)return;sceneState.mprInteractionActive=!!active;
  if(sceneState.mprPlaneGroup)sceneState.mprPlaneGroup.visible=!active&&!!sceneState.obj;
+ if(sceneState.analysisMesh){
+  if(active){sceneState._analysisVisibleBeforeInteraction=sceneState.analysisMesh.visible;sceneState.analysisMesh.visible=false}
+  else if(sceneState._analysisVisibleBeforeInteraction!==undefined){sceneState.analysisMesh.visible=sceneState._analysisVisibleBeforeInteraction;delete sceneState._analysisVisibleBeforeInteraction}
+ }
  request3DRender();
 }
 function setMpr3DOverlayVisible(key,visible){
@@ -3036,7 +3040,7 @@ async function start3D(){
  if(backend==='WEBGPU')try{sceneState.medicalVolume=new MedicalVolumeRenderer({device:renderer.backend.device,host:viewport,rendererCanvas:renderer.domElement,onProgress:(a,b)=>set3DBusy(true,(currentLanguage==='ja'?'GPUボリューム準備中… ':'Preparing GPU volume… ')+a+' / '+b),onStatus:label=>setGpuComputeBackend(label)})}catch(e){console.warn('Medical volume renderer unavailable.',e)}
  updateGpuStatus();updateRenderModeControl();void ensureGpuFilterDevice().then(()=>updateGpuStatus());
  const pointers=new Map();const pointerStarts=new Map();const MIN_3D_DISTANCE=.05,MAX_3D_DISTANCE=12;let distance=5.2,lastPinch=0,lastCenter=null;
- const full3DPixelRatio=Math.min(devicePixelRatio,2),interactive3DPixelRatio=Math.min(full3DPixelRatio,navigator.maxTouchPoints>0?.75:1);let active3DPixelRatio=full3DPixelRatio,wheelQualityTimer=null;
+ const full3DPixelRatio=Math.min(devicePixelRatio,2),interactive3DPixelRatio=Math.min(full3DPixelRatio,navigator.maxTouchPoints>0 ? .75 : 1);let active3DPixelRatio=full3DPixelRatio,wheelQualityTimer=null;
  const set3DPixelRatio=ratio=>{const next=Math.max(.75,Math.min(full3DPixelRatio,ratio));if(Math.abs(next-active3DPixelRatio)<.01)return;active3DPixelRatio=next;renderer.setPixelRatio(next);renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);request3DRender()};
  const begin3DInteraction=()=>{if(threeRenderMode==='surface'){set3DPixelRatio(interactive3DPixelRatio);setMpr3DInteractive(true)}};
  const end3DInteraction=()=>{if(threeRenderMode==='surface'){setMpr3DInteractive(false);set3DPixelRatio(full3DPixelRatio)}};
@@ -3492,7 +3496,7 @@ function clearSegmentEditCache(key,clearEdits=false){
 }
 function clearAllSegmentEdits(){
  for(const key of SEGMENT_PRESET_ORDER){const st=segmentEditState[key];if(st.surfaceGroup?.parent)st.surfaceGroup.parent.remove(st.surfaceGroup);st.surfaceGroup=null;clearSegmentEditCache(key,true)}
- analysisEditEnabled=false;analysisEditTool='select';analysisCutStroke=null;
+ analysisEditTool='select';analysisCutStroke=null;analysisCutScreen=[];
 }
 function thresholdRunsFromMemory(v,seg){
  const w=v.columns,h=v.rows,d=v.slices,out=new Array(d),plane=w*h;
