@@ -3039,13 +3039,31 @@ async function renderPlane(p,revision,idx){
  }
  ctx.putImageData(img,0,0);drawAnalysisOverlay(p,idx,ctx);refreshMpr3DPlaneTexture(p)
 }
+const mprPaintCache={axial:null,coronal:null,sagittal:null};
+function reusableMprImage(p,ctx,dims){
+ let cache=mprPaintCache[p];
+ if(!cache||cache.width!==dims[0]||cache.height!==dims[1]){
+  cache={width:dims[0],height:dims[1],image:ctx.createImageData(dims[0],dims[1])};mprPaintCache[p]=cache;
+ }
+ return cache.image;
+}
+function activeMprSegments(){
+ const out=[];
+ for(const key of ['lung','fat','soft','bone']){
+  const seg=segmentState[key];if(!seg.active||!seg.enabled)continue;
+  out.push({key,seg,edit:segmentEditState[key],rgb:hexRgb(seg.color),alpha:Math.min(.75,seg.opacity*.65)});
+ }
+ return out;
+}
 function paintSourcePlane(c,dims,values,p='axial',idx=0){
- const ctx=c.canvas.getContext('2d');c.canvas.width=dims[0];c.canvas.height=dims[1];
- const img=ctx.createImageData(...dims),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),segOrder=['lung','fat','soft','bone'];let q=0;
+ const ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
+ const img=reusableMprImage(p,ctx,dims),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments(),hasSegments=activeSegs.length>0;let q=0;
  for(let py=0;py<dims[1];py++)for(let px=0;px<dims[0];px++){
   const i=py*dims[0]+px,v=values[i],g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
-  const ix=p==='sagittal'?idx:px,iy=p==='coronal'?idx:(p==='sagittal'?px:py),iz=p==='axial'?idx:(volume.slices-1-py);
-  for(const key of segOrder){const seg=segmentState[key],edit=segmentEditState[key];if(!seg.active||!seg.enabled)continue;const inside=segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(v>=seg.min&&v<=seg.max);if(!inside)continue;const rgb=hexRgb(seg.color),a=Math.min(.75,seg.opacity*.65);rr=Math.round(rr*(1-a)+rgb[0]*a);gg=Math.round(gg*(1-a)+rgb[1]*a);bb=Math.round(bb*(1-a)+rgb[2]*a)}
+  if(hasSegments){
+   const ix=p==='sagittal'?idx:px,iy=p==='coronal'?idx:(p==='sagittal'?px:py),iz=p==='axial'?idx:(volume.slices-1-py);
+   for(const item of activeSegs){const {key,seg,edit,rgb,alpha}=item,inside=segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(v>=seg.min&&v<=seg.max);if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha)}
+  }
   img.data[q++]=rr;img.data[q++]=gg;img.data[q++]=bb;img.data[q++]=255;
  }
  ctx.putImageData(img,0,0);drawAnalysisOverlay(p,idx,ctx);refreshMpr3DPlaneTexture(p);
@@ -3132,6 +3150,7 @@ function ensureMpr3DPlanes(){
   group.add(root);entries[key]={root,texture,mesh,highlight,border,label};
  }
  sceneState.mprPlaneGroup=group;sceneState.mprPlaneEntries=entries;sceneState.mprPlaneSignature=sig;
+ if(sectionViewOpen&&sectionViewPlane)showSectionPlaneOverlay(sectionViewPlane);
  return entries;
 }
 function updateMpr3DPlanePositions(){
