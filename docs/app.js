@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build14-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.22-14';const APP_BUILD='14';
+const APP_VERSION='2026.09.22-15';const APP_BUILD='15';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -1120,7 +1120,7 @@ function adoptRendererGpuDevice(renderer,adapter=null){
  if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
  clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);gpuPrewarmIndex=0;gpuPrewarmScheduled=false;installGpuErrorListener(device);
  try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;setGpuComputeBackend('GPU DEVICE LOST','WebGPU device lost')}})}catch{}
- void verifyGpuComputeDevice(device).then(ok=>{if(gpuFilterRuntime.device===device&&ok){setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' VERIFIED · WG'+gpuFilterRuntime.workgroupSize);scheduleGpuPrewarm()}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='self-test: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
+ void verifyGpuComputeDevice(device).then(async ok=>{if(gpuFilterRuntime.device===device&&ok){await verifyGpuPipelineSet();if(gpuFilterRuntime.device===device)setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' FULL VERIFIED · WG'+gpuFilterRuntime.workgroupSize)}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='verify ['+(gpuFilterRuntime.lastShaderKind||'self-test')+']: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
  updateGpuStatus();return true;
 }
 async function ensureGpuFilterDevice(){
@@ -1135,7 +1135,7 @@ async function ensureGpuFilterDevice(){
    const {adapter,device}=await requestVrlGpuDevice();
    gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);installGpuErrorListener(device);setGpuComputeBackend('WEBGPU CHECKING');
    device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',info?.message||'WebGPU device lost')}});
-   try{await verifyGpuComputeDevice(device);setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' VERIFIED · WG'+gpuFilterRuntime.workgroupSize);scheduleGpuPrewarm()}catch(testError){gpuFilterRuntime.lastError='self-test: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
+   try{await verifyGpuComputeDevice(device);await verifyGpuPipelineSet();setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' FULL VERIFIED · WG'+gpuFilterRuntime.workgroupSize)}catch(testError){gpuFilterRuntime.lastError='verify ['+(gpuFilterRuntime.lastShaderKind||'self-test')+']: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
    return device;
   }catch(e){
    gpuFilterRuntime.device=null;gpuFilterRuntime.adapter=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.retryAfter=performance.now()+5000;
@@ -1568,7 +1568,7 @@ fn inside(v:f32)->bool{if(v<thresholds[0]){return false;}if(v>thresholds[1]){ret
 @compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
- let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th),x=meta[3]+tx,y=meta[4]+ty,z=meta[5]+tz;
+ let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
  if(!inside(src[localIdx(x,y,z)])){return;}
  if(tx>0u){if(inside(src[localIdx(x-1u,y,z)])){return;}}
  atomicAdd(&counter.value,1u);
@@ -1585,7 +1585,7 @@ fn inside(v:f32)->bool{if(v<thresholds[0]){return false;}if(v>thresholds[1]){ret
 @compute @workgroup_size(${gpuFilterRuntime.workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
- let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th),x=meta[3]+tx,y=meta[4]+ty,z=meta[5]+tz;
+ let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
  if(!inside(src[localIdx(x,y,z)])){return;}
  if(tx>0u){if(inside(src[localIdx(x-1u,y,z)])){return;}}
  var x1=tx;
@@ -1627,6 +1627,14 @@ async function gpuFilterPipeline(kind){
  gpuFilterRuntime.pipelines.set(kind,pipeline);return pipeline;
 }
 const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite'];
+async function verifyGpuPipelineSet(){
+ for(const kind of GPU_PREWARM_KINDS){
+  gpuFilterRuntime.lastShaderKind=kind;
+  await gpuFilterPipeline(kind);
+ }
+ gpuFilterRuntime.lastShaderKind='';
+ return true;
+}
 let gpuPrewarmScheduled=false,gpuPrewarmIndex=0;
 function scheduleGpuPrewarm(){
  if(gpuPrewarmScheduled||gpuFilterRuntime.disabled||gpuPrewarmIndex>=GPU_PREWARM_KINDS.length)return;
