@@ -205,3 +205,57 @@ export class MedicalVolumeRenderer{
  resetData(){this.setActive(false);this.texture?.destroy?.();this.texture=null;this.bindGroup=null;this.seriesId=null;this.volume=null}
  destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.canvas.remove()}
 }
+
+
+const runPipelineCache=new WeakMap();
+function runPipeline(device){
+ let pipeline=runPipelineCache.get(device);if(pipeline)return pipeline;
+ const module=device.createShaderModule({label:'VRL raw DICOM analysis RLE',code:`
+struct Counter{value:atomic<u32>};
+@group(0) @binding(0) var volumeTex:texture_3d<f32>;
+@group(0) @binding(1) var<storage,read> meta:array<u32>;
+@group(0) @binding(2) var<storage,read> params:array<f32>;
+@group(0) @binding(3) var<storage,read_write> records:array<u32>;
+@group(0) @binding(4) var<storage,read_write> counter:Counter;
+fn valueAt(x:u32,y:u32,z:u32)->f32{
+ let q=textureLoad(volumeTex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg*255.0;
+ let raw=q.x+q.y*256.0-params[4];return raw*params[2]+params[3];
+}
+fn inside(x:u32,y:u32,z:u32)->bool{let v=valueAt(x,y,z);return v>=params[0]&&v<=params[1];}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let w=meta[0];let h=meta[1];let d=meta[2];let n=w*h*d;let i=gid.x;if(i>=n){return;}
+ let x=i%w;let y=(i/w)%h;let z=i/(w*h);if(!inside(x,y,z)){return;}if(x>0u&&inside(x-1u,y,z)){return;}
+ var x1=x;loop{if(x1+1u>=w||!inside(x1+1u,y,z)){break;}x1++;}
+ let slot=atomicAdd(&counter.value,1u)*4u;records[slot]=z;records[slot+1u]=y;records[slot+2u]=x;records[slot+3u]=x1;
+}`});
+ pipeline=device.createComputePipeline({label:'VRL raw DICOM analysis RLE',layout:'auto',compute:{module,entryPoint:'main'}});runPipelineCache.set(device,pipeline);return pipeline;
+}
+function smallStorage(device,data){
+ const buffer=device.createBuffer({size:Math.max(16,Math.ceil(data.byteLength/4)*4),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(buffer,0,data);return buffer;
+}
+export async function extractSourceThresholdRuns(device,series,zStart,depth,seg){
+ const coreDepth=Math.min(depth,series.slices.length-zStart),w=series.columns,h=series.rows,first=series.slices[zStart];
+ if(coreDepth<=0)return{items:new Uint32Array(0),coreDepth:0};
+ if(first.bits!==16||first.samples!==1||!UNCOMPRESSED_TS.has(first.ts))return null;
+ if(series.slices.slice(zStart,zStart+coreDepth).some(m=>m.rows!==h||m.columns!==w||m.bits!==16||m.samples!==1||!UNCOMPRESSED_TS.has(m.ts)||Math.abs(m.slope-first.slope)>1e-9||Math.abs(m.intercept-first.intercept)>1e-6||!!m.signed!==!!first.signed))return null;
+ const texture=device.createTexture({label:'VRL analysis DICOM block',size:{width:w,height:h,depthOrArrayLayers:coreDepth},dimension:'3d',format:'rg8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
+ try{
+  for(let z=0;z<coreDepth;z++){
+   const packed=await packedRgSlice(series.slices[zStart+z]);device.queue.writeTexture({texture,origin:{x:0,y:0,z}},packed,{bytesPerRow:w*2,rowsPerImage:h},{width:w,height:h,depthOrArrayLayers:1});
+  }
+  const maxRuns=Math.ceil(w/2)*h*coreDepth,recordBytes=Math.max(16,maxRuns*16);
+  if(recordBytes>device.limits.maxStorageBufferBindingSize)return null;
+  const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),counter=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
+  const meta=smallStorage(device,new Uint32Array([w,h,coreDepth,0])),params=smallStorage(device,new Float32Array([seg.min,seg.max,first.slope,first.intercept,first.signed?32768:0,0,0,0]));device.queue.writeBuffer(counter,0,new Uint32Array([0]));
+  const pipeline=runPipeline(device),group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:texture.createView({dimension:'3d'})},{binding:1,resource:{buffer:meta}},{binding:2,resource:{buffer:params}},{binding:3,resource:{buffer:records}},{binding:4,resource:{buffer:counter}}]});
+  const counterRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),encoder=device.createCommandEncoder({label:'VRL raw DICOM analysis RLE'}),pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(w*h*coreDepth/256));pass.end();encoder.copyBufferToBuffer(counter,0,counterRead,0,4);device.queue.submit([encoder.finish()]);
+  await counterRead.mapAsync(GPUMapMode.READ);const count=Math.min(maxRuns,new Uint32Array(counterRead.getMappedRange().slice(0))[0]);counterRead.unmap();counterRead.destroy();
+  let items=new Uint32Array(0);
+  if(count){
+   const bytes=count*16,read=device.createBuffer({size:bytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),copy=device.createCommandEncoder({label:'VRL analysis RLE readback'});copy.copyBufferToBuffer(records,0,read,0,bytes);device.queue.submit([copy.finish()]);
+   await read.mapAsync(GPUMapMode.READ);items=new Uint32Array(read.getMappedRange().slice(0));read.unmap();read.destroy();
+  }
+  records.destroy();counter.destroy();meta.destroy();params.destroy();return{items,coreDepth};
+ }finally{texture.destroy()}
+}
