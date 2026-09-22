@@ -767,7 +767,7 @@ installFilterReorder();
 
 const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 function schedulePlaneRender(p,immediate=false){
- updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
+ cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;if(sectionViewPlane===p)updateSectionViewUi();
  if(volume?.sourceBacked&&p!=='axial'&&!sourceFilterStages().length){
   const cached=sourceOrthogonalCacheGet(p,idx);
@@ -1895,7 +1895,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
 
 const sourceSliceCache={map:new Map(),bytes:0},sourceOrthogonalPlaneCache=new Map();
 function sourceSliceCacheLimit(){return navigator.maxTouchPoints>0?48*1024*1024:128*1024*1024}
-function clearSourceSliceCache(){sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear()}
+function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear()}
 function sourceOrthogonalCacheGet(p,idx){
  const key=p+':'+idx,v=sourceOrthogonalPlaneCache.get(key);if(!v)return null;sourceOrthogonalPlaneCache.delete(key);sourceOrthogonalPlaneCache.set(key,v);return v;
 }
@@ -2832,6 +2832,30 @@ function updateSegmentOutputs(key){
 }
 function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);sourceRenderRevision++;mark3DStale();if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){request3DRender();threeLabel.textContent=(sceneState.backend||'3D')+' · GPU volume'}}
 const planeRenderRevision={axial:0,coronal:0,sagittal:0};
+let sourceMprWarmupToken=0,sourceMprWarmupPlane=null;
+function cancelSourceMprWarmup(){
+ sourceMprWarmupToken++;
+ if(sourceMprWarmupPlane){planeRenderRevision[sourceMprWarmupPlane]++;sourceMprWarmupPlane=null}
+}
+function scheduleSourceMprWarmup(){
+ if(!volume?.sourceBacked||sourceFilterStages().length)return;
+ const token=++sourceMprWarmupToken;
+ const run=async()=>{
+  if(token!==sourceMprWarmupToken||!volume?.sourceBacked)return;
+  for(const p of ['coronal','sagittal']){
+   if(token!==sourceMprWarmupToken)return;
+   const idx=+planes[p].slider.value;
+   if(sourceOrthogonalCacheGet(p,idx))continue;
+   sourceMprWarmupPlane=p;
+   const revision=++planeRenderRevision[p];
+   try{await renderPlane(p,revision,idx)}catch(e){if(String(e.message||e)!=='__SUPERSEDED__')console.warn('MPR warmup failed.',e)}
+   if(sourceMprWarmupPlane===p)sourceMprWarmupPlane=null;
+   await frameYield();
+  }
+ };
+ if('requestIdleCallback' in window)requestIdleCallback(()=>void run(),{timeout:700});
+ else setTimeout(()=>void run(),120);
+}
 function safeRenderPlane(p,revision=null,idx=null){
  if(revision==null)revision=++planeRenderRevision[p];
  if(idx==null)idx=+planes[p].slider.value;
@@ -2845,6 +2869,14 @@ function renderMainMprPreview(){
 function renderAll(){
  if(!volume)return;
  wcVal.value=formatCtValue(+wc.value,+wc.step);wwVal.value=formatCtValue(+ww.value,+ww.step);
+ if(volume.sourceBacked&&!sourceFilterStages().length){
+  safeRenderPlane('axial');
+  for(const p of ['coronal','sagittal']){
+   const idx=+planes[p].slider.value,cached=sourceOrthogonalCacheGet(p,idx);
+   if(cached)paintSourcePlane(planes[p],p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],cached,p,idx);
+  }
+  scheduleSourceMprWarmup();return;
+ }
  for(const p of Object.keys(planes))safeRenderPlane(p);
 }
 async function renderPlane(p,revision,idx){
