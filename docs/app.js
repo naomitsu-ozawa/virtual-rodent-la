@@ -243,11 +243,11 @@ function set3DState(mode){
  filterRebuild3D.dataset.i18n=actionKey;filterRebuild3D.textContent=tr(actionKey);
  filterRebuild3D.classList.toggle('is-cancel',mode==='updating');
  filterRebuild3D.disabled=!volume||mode==='current';
- const hasCurrent3D=mode==='current'&&!!sceneState?.obj&&threeRenderMode==='surface';
- if(volumeAnalysisToggle)volumeAnalysisToggle.disabled=!hasCurrent3D;
+ const volumeCurrent=threeRenderMode==='volume'&&!!sceneState?.medicalVolume?.active,hasSurface3D=mode==='current'&&!!sceneState?.obj&&threeRenderMode==='surface';
+ if(volumeAnalysisToggle)volumeAnalysisToggle.disabled=!(volumeCurrent||hasSurface3D);
  for(const key of SEGMENT_PRESET_ORDER){
   const exportBtn=$('[data-seg-export="'+key+'"]');
-  if(exportBtn)exportBtn.disabled=!hasCurrent3D||!segmentState[key].active||!segmentState[key].enabled;
+  if(exportBtn)exportBtn.disabled=!hasSurface3D||!segmentState[key].active||!segmentState[key].enabled;
  }
 }
 function mark3DStale(){if(volume)set3DState('stale')}
@@ -271,7 +271,7 @@ async function activateMedicalVolume(){
  const support=mv.support(target);if(!support.ok){footer.textContent='GPU Volume: '+support.reason;updateRenderModeControl(target);return}
  set3DBusy(true,currentLanguage==='ja'?'GPUボリューム準備中…':'Preparing GPU volume…');
  try{
-  await mv.ensure(target);ensureVolumeTransformProxy();threeRenderMode='volume';mv.setActive(true);volumeAnalysisToggle.disabled=true;
+  await mv.ensure(target);ensureVolumeTransformProxy();threeRenderMode='volume';mv.setActive(true);volumeAnalysisToggle.disabled=false;
   threeLabel.textContent=(sceneState.backend||'3D')+' · GPU volume';setGpuComputeBackend('WEBGPU VOLUME RAYCAST');updateRenderModeControl(target);request3DRender();
   footer.textContent=currentLanguage==='ja'?'GPUボリューム · 16-bit CTを3D textureから直接描画':'GPU Volume · direct 16-bit CT 3D-texture ray casting';
  }catch(e){console.error(e);mv.setActive(false);threeRenderMode='surface';setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);footer.textContent='GPU Volume error: '+String(e.message||e);updateRenderModeControl(target)}
@@ -391,7 +391,7 @@ volumeAnalysisToggle.onclick=async()=>{
  if(!volume)return;
  if(!volumeAnalysisMode){
   volumeAnalysisToggle.disabled=true;
-  try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'体積解析用データを取得中':'Preparing volume analysis')}catch(e){console.error(e);footer.textContent=(currentLanguage==='ja'?'体積解析の準備に失敗しました: ':'Volume analysis preparation failed: ')+String(e.message||e);return}finally{volumeAnalysisToggle.disabled=false}
+  if(threeRenderMode!=='volume')try{await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'体積解析用データを取得中':'Preparing volume analysis')}catch(e){console.error(e);footer.textContent=(currentLanguage==='ja'?'体積解析の準備に失敗しました: ':'Volume analysis preparation failed: ')+String(e.message||e);return}finally{volumeAnalysisToggle.disabled=false}
   volumeAnalysisMode=true;
  }else volumeAnalysisMode=false;
  volumeAnalysisToggle.textContent=volumeAnalysisMode?tr('volumeOff'):tr('volumeMode');
@@ -2878,12 +2878,21 @@ async function analyzeVolumeAtPointer(event,canvas,camera){
  const analysisVolume=current3DVolume||volume;
  volumeAnalysisBusy=true;volumeAnalysisResult.classList.remove('is-hidden');renderAnalysisResults(currentLanguage==='ja'?'解析中…':'Analyzing…');
  try{
-  const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/rect.width)*2-1,-((event.clientY-rect.top)/rect.height)*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
-  const hit=raycaster.intersectObjects(sceneState.obj.children,true).find(h=>segmentKeyFromIntersection(h));
-  if(!hit){renderAnalysisResults(tr('volumeHint'));return}
-  const key=segmentKeyFromIntersection(hit),seg=segmentState[key],scale=hit.object.userData.displayScale,local=hit.object.worldToLocal(hit.point.clone());
   const [vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices,px=w*vx,py=h*vy,pz=d*vz;
-  let x=Math.round((local.x/scale+px/2)/vx),y=Math.round((-local.y/scale+py/2)/vy),z=Math.round((local.z/scale+pz/2)/vz);
+  let key,x,y,z;
+  if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){
+   setGpuComputeBackend('WEBGPU VOLUME PICK');
+   const picked=await sceneState.medicalVolume.pick(event.clientX,event.clientY,camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER);
+   if(!picked){renderAnalysisResults(tr('volumeHint'));return}
+   key=picked.key;x=picked.x;y=picked.y;z=picked.z;
+  }else{
+   const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/rect.width)*2-1,-((event.clientY-rect.top)/rect.height)*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
+   const hit=raycaster.intersectObjects(sceneState.obj.children,true).find(h=>segmentKeyFromIntersection(h));
+   if(!hit){renderAnalysisResults(tr('volumeHint'));return}
+   key=segmentKeyFromIntersection(hit);const scale=hit.object.userData.displayScale,local=hit.object.worldToLocal(hit.point.clone());
+   x=Math.round((local.x/scale+px/2)/vx);y=Math.round((-local.y/scale+py/2)/vy);z=Math.round((local.z/scale+pz/2)/vz);
+  }
+  const seg=segmentState[key];
   if(analysisVolume.sourceBacked){
    const result=await connectedComponentVolumeSource(analysisVolume,key,seg,x,y,z),runsBySlice=sourceResultToAnalysisRuns(result,d);
    await addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice,voxels:result.voxels,mm3:result.mm3});
