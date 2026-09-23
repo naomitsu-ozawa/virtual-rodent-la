@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-106';const APP_BUILD='106';
+const APP_VERSION='2026.09.23-107';const APP_BUILD='107';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3536,27 +3536,37 @@ async function start3D(){
  if(threeEditOverlay&&threeEditOverlay.parentElement!==viewport)viewport.appendChild(threeEditOverlay);
  const resizeEditOverlay=()=>{if(!threeEditOverlay)return;threeEditOverlay.width=Math.max(1,Math.round(viewport.clientWidth));threeEditOverlay.height=Math.max(1,Math.round(viewport.clientHeight))};
  const editPoint=e=>{const rect=renderer.domElement.getBoundingClientRect();return{x:e.clientX-rect.left,y:e.clientY-rect.top}};
- const screenStrokeToCutVoxels=(screenStroke,anchor)=>{
-  if(!screenStroke?.length||!anchor?.hit||!sceneState?.obj||!volume)return[];
-  const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),rect=renderer.domElement.getBoundingClientRect();
-  sceneState.obj.updateMatrixWorld(true);
-  camera.updateMatrixWorld(true);
-  const planeNormal=camera.getWorldDirection(new THREE.Vector3()).normalize(),plane=new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal,anchor.hit.point),raycaster=new THREE.Raycaster();
-  const out=[];
-  for(const screen of screenStroke){
-   const mouse=new THREE.Vector2((screen.x/Math.max(rect.width,1))*2-1,-(screen.y/Math.max(rect.height,1))*2+1);
-   raycaster.setFromCamera(mouse,camera);
-   const world=raycaster.ray.intersectPlane(plane,new THREE.Vector3());
-   if(!world)continue;
-   const local=sceneState.obj.worldToLocal(world.clone());
-   out.push({
-    x:(local.x/scale+px/2)/vx,
-    y:(-local.y/scale+py/2)/vy,
-    z:(local.z/scale+pz/2)/vz,
-    ray:{...anchor.ray},right:{...anchor.right},up:{...anchor.up},key:anchor.key
-   });
+ const cutSamplesToSurfaceStroke=(samples,mode='pen')=>{
+  if(!samples?.length||!sceneState?.obj||!volume)return[];
+  const firstHit=samples.findIndex(q=>q?.surface),lastHit=(()=>{for(let i=samples.length-1;i>=0;i--)if(samples[i]?.surface)return i;return-1})();
+  if(firstHit<0||lastHit<=firstHit)return[];
+  const active=samples.slice(firstHit,lastHit+1),valid=[];
+  for(let i=0;i<active.length;i++)if(active[i]?.surface)valid.push(i);
+  if(valid.length<2)return active.filter(q=>q?.surface).map(q=>q.surface);
+  if(mode==='line'){
+   const a=active[valid[0]].surface,b=active[valid[valid.length-1]].surface;
+   return[a,b];
   }
-  return out;
+  const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),rect=renderer.domElement.getBoundingClientRect();
+  sceneState.obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
+  const toVoxel=(world,meta)=>{
+   const local=sceneState.obj.worldToLocal(world.clone());
+   return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:{...meta.ray},right:{...meta.right},up:{...meta.up},key:meta.key};
+  };
+  const out=new Array(active.length);
+  for(const i of valid)out[i]=active[i].surface;
+  for(let vi=0;vi<valid.length-1;vi++){
+   const ia=valid[vi],ib=valid[vi+1];if(ib<=ia+1)continue;
+   const sa=active[ia].surface,sb=active[ib].surface,wa=sa.hit.point.clone(),wb=sb.hit.point.clone(),pa=wa.clone().project(camera),pb=wb.clone().project(camera);
+   let total=0;const dist=new Float64Array(ib-ia+1);
+   for(let i=ia+1;i<=ib;i++){const p0=active[i-1].screen,p1=active[i].screen;total+=Math.hypot(p1.x-p0.x,p1.y-p0.y);dist[i-ia]=total}
+   for(let i=ia+1;i<ib;i++){
+    const screen=active[i].screen,t=total>1e-9?dist[i-ia]/total:(i-ia)/(ib-ia),ndcX=(screen.x/Math.max(rect.width,1))*2-1,ndcY=-(screen.y/Math.max(rect.height,1))*2+1,ndcZ=pa.z+(pb.z-pa.z)*t;
+    const world=new THREE.Vector3(ndcX,ndcY,ndcZ).unproject(camera);
+    out[i]=toVoxel(world,sa);
+   }
+  }
+  return out.filter(Boolean);
  };
  const sectionDragHit=e=>{
   if(!sectionViewOpen||!sectionViewPlane||analysisEditTool!=='select'||threeRenderMode!=='surface'||!sceneState.obj)return null;
@@ -3581,7 +3591,7 @@ async function start3D(){
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
  renderer.domElement.onpointerdown=e=>{const cutTool=analysisEditTool==='pen'||analysisEditTool==='line',cutReady=cutTool&&!analysisPendingCut&&!analysisCutApplying&&e.button===0&&!e.altKey&&threeRenderMode==='surface'&&!!sceneState.obj,sectionHit=!cutReady&&e.button===0&&!e.altKey?sectionDragHit(e):null,mode=cutReady?(analysisEditTool==='line'?'cut-line':'cut-pen'):sectionHit?'section-drag':isMousePanStart(e)?'pan':'rotate',point={x:e.clientX,y:e.clientY,mode,pointerType:e.pointerType};if(!cutReady&&!sectionHit)begin3DInteraction();pointers.set(e.pointerId,point);pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY,mode,sectionPlane:sectionHit?sectionViewPlane:null,sectionIndex:sectionHit?+planes[sectionViewPlane].slider.value:null,sectionScreenStep:sectionHit?sectionScreenStep():null,cutFrame:null});if(sectionHit){renderer.domElement.style.cursor='grabbing';footer.textContent=(currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面をドラッグ中':'Dragging '+sectionPlaneLabel(sectionViewPlane)+' section')}if(cutReady){analysisCutStroke=[];analysisCutScreen=[editPoint(e)];const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode,surface=cutPointerVoxel(e,renderer.domElement,camera,preferred);pointerStarts.get(e.pointerId).cutSamples=[{screen:analysisCutScreen[0],surface}];if(surface){if(analysisEditTargetMode==='auto'&&surface.key)analysisEditTargetKey=surface.key;else if(analysisEditTargetMode!=='auto')analysisEditTargetKey=preferred;analysisCutStroke.push(surface)}updateThreeEditUi(analysisEditTargetKey?(tr(analysisEditTargetKey)||analysisEditTargetKey)+' · '+(analysisEditTool==='pen'?tr('cutRegion'):tr('lineCutRegion')):(currentLanguage==='ja'?'空間から描画中 · 3D表面に触れると切断面を開始します':'Drawing from space · cut surface starts when the stroke reaches the 3D surface'));footer.textContent=analysisEditTargetKey?(currentLanguage==='ja'?(tr(analysisEditTargetKey)||analysisEditTargetKey)+'を編集中':'Editing '+(tr(analysisEditTargetKey)||analysisEditTargetKey)):(currentLanguage==='ja'?'3D表面への接触待ち':'Waiting for 3D surface contact');drawEditStroke(analysisEditTool)}renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
  renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId),start=pointerStarts.get(e.pointerId);if(!prev){if((analysisEditTool==='pen'||analysisEditTool==='line')&&!analysisPendingCut&&!analysisCutApplying&&sceneState.obj){const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateCutPreview(surfaceSegmentPointerVoxel(e,renderer.domElement,camera,preferred))}return}pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='section-drag'){dragSectionPlane(start,e);return}if(prev.mode==='cut-pen'||prev.mode==='cut-line'){const preferred=analysisEditTargetMode==='auto'?analysisEditTargetKey:analysisEditTargetMode,screen=editPoint(e),surface=cutPointerVoxel(e,renderer.domElement,camera,preferred),samples=start?.cutSamples||(start.cutSamples=[]);if(prev.mode==='cut-line')analysisCutScreen=[analysisCutScreen[0],screen];else if(Math.hypot(dx,dy)>=1)analysisCutScreen.push(screen);samples.push({screen,surface});if(surface){if(analysisEditTargetMode==='auto'&&!analysisEditTargetKey&&surface.key)analysisEditTargetKey=surface.key;if(prev.mode==='cut-line'){const hits=samples.filter(q=>q.surface).map(q=>q.surface);analysisCutStroke=hits.length>1?[hits[0],hits[hits.length-1]]:hits}else{const last=analysisCutStroke?.[analysisCutStroke.length-1];if(!last||Math.hypot(surface.x-last.x,surface.y-last.y,surface.z-last.z)>.2)analysisCutStroke.push(surface)}}updateCutPreview(surface);drawEditStroke(prev.mode==='cut-line'?'line':'pen');return}if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}lastPinch=d;lastCenter=center;request3DRender()};
- const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag',stroke=isCut?[...(analysisCutStroke||[])]:null,screenStroke=isCut?[...(analysisCutScreen||[])]:null,cutSamples=isCut?[...(start?.cutSamples||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&!isCut&&!isSectionDrag)end3DInteraction();if(isSectionDrag){renderer.domElement.style.cursor='';if(start?.sectionPlane===sectionViewPlane)schedulePlaneRender(sectionViewPlane,true);footer.textContent=currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面 '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1):sectionPlaneLabel(sectionViewPlane)+' section '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1);return}if(isCut){analysisCutStroke=null;const anchor=cutSamples?.find(q=>q.surface)?.surface||stroke?.[0]||null,projected=anchor&&screenStroke?.length>=2?screenStrokeToCutVoxels(screenStroke,anchor):[],finalStroke=(projected.length>=2?projected:stroke)||[];if(e.type==='pointerup'&&finalStroke.length>=2&&analysisEditTargetKey){analysisPendingCut={points:finalStroke,key:analysisEditTargetKey,mode:start?.mode==='cut-line'?'line':'pen'};analysisCutScreen=[];clearThreeEditOverlay();sceneState.editCutPreviewPoint=finalStroke[finalStroke.length-1];updateCutPreview(sceneState.editCutPreviewPoint);footer.textContent=currentLanguage==='ja'?'切断予定を作成しました。深さ・幅・角度を調整してください':'Cut plan created. Adjust depth, width and angles.';updateThreeEditUi(tr('cutPendingHint'))}else{analysisCutScreen=[];clearThreeEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'切断線が対象表面にありません':'The cut stroke did not hit the target surface')}return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
+ const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag',stroke=isCut?[...(analysisCutStroke||[])]:null,cutSamples=isCut?[...(start?.cutSamples||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&!isCut&&!isSectionDrag)end3DInteraction();if(isSectionDrag){renderer.domElement.style.cursor='';if(start?.sectionPlane===sectionViewPlane)schedulePlaneRender(sectionViewPlane,true);footer.textContent=currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面 '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1):sectionPlaneLabel(sectionViewPlane)+' section '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1);return}if(isCut){analysisCutStroke=null;const cutMode=start?.mode==='cut-line'?'line':'pen',surfaceStroke=cutSamplesToSurfaceStroke(cutSamples,cutMode),finalStroke=(surfaceStroke.length>=2?surfaceStroke:stroke)||[];if(e.type==='pointerup'&&finalStroke.length>=2&&analysisEditTargetKey){analysisPendingCut={points:finalStroke,key:analysisEditTargetKey,mode:cutMode};analysisCutScreen=[];clearThreeEditOverlay();sceneState.editCutPreviewPoint=finalStroke[finalStroke.length-1];updateCutPreview(sceneState.editCutPreviewPoint);footer.textContent=currentLanguage==='ja'?'切断予定を作成しました。深さ・幅・角度を調整してください':'Cut plan created. Adjust depth, width and angles.';updateThreeEditUi(tr('cutPendingHint'))}else{analysisCutScreen=[];clearThreeEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'切断線が対象表面にありません':'The cut stroke did not hit the target surface')}return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
  renderer.domElement.onlostpointercapture=e=>{const start=pointerStarts.get(e.pointerId);pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(!analysisPendingCut){analysisCutScreen=[];clearThreeEditOverlay()}renderer.domElement.style.cursor='';if(pointers.size<2){lastPinch=0;lastCenter=null}if(!pointers.size&&start?.mode!=='section-drag')end3DInteraction()};
  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
