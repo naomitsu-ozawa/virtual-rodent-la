@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-121';const APP_BUILD='121';
+const APP_VERSION='2026.09.23-122';const APP_BUILD='122';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4303,7 +4303,9 @@ function cutSurfaceFrameData(points,mode='pen',offsetMm=0,v=current3DVolume||vol
 function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode='pen',offsetMm=0){
  const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,minSpacing=Math.min(sx,sy,sz),rows=Array.from({length:d},()=>new Map()),frame=cutSurfaceFrameData(points,mode,offsetMm,v,yawDeg,pitchDeg),curve=frame.curve,dir=frame.dir,normals=frame.normals;
  const addVoxel=(x,y,z)=>{
-  const ix=Math.round(x),iy=Math.round(y),iz=Math.round(z);if(ix<0||iy<0||iz<0||ix>=w||iy>=h||iz>=d)return;
+  // x/y/z are continuous voxel-boundary coordinates. Map them to the containing voxel cell.
+  // Math.round() shifts the cut by up to one voxel relative to the boundary-based 3D mesh.
+  const eps=1e-7,ix=Math.floor(x+eps),iy=Math.floor(y+eps),iz=Math.floor(z+eps);if(ix<0||iy<0||iz<0||ix>=w||iy>=h||iz>=d)return;
   const map=rows[iz],arr=map.get(iy)||[];arr.push([ix,ix]);map.set(iy,arr);
  };
  if(curve.length<2){if(curve[0])addVoxel(curve[0].x,curve[0].y,curve[0].z);return rows.map(rowsToRunSlice)}
