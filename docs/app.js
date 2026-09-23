@@ -3254,6 +3254,7 @@ function renderAll(){
 }
 async function renderPlane(p,revision,idx){
  if(!volume||revision!==planeRenderRevision[p])return;
+ updateMprCanvasPhysicalAspect(p);
  if(volume.sourceBacked)return renderPlaneSourceBacked(p,revision,idx);
  if(memoryGpuPreviewActive&&sourceFilterStages().length)return renderPlaneMemoryFiltered(p,revision,idx);
  const c=planes[p];c.label.textContent=idx+1;
@@ -3293,6 +3294,7 @@ function activeMprSegments(){
  return out;
 }
 function paintSourcePlane(c,dims,values,p='axial',idx=0){
+ updateMprCanvasPhysicalAspect(p);
  const ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
  const img=reusableMprImage(p,ctx,dims),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments(),hasSegments=activeSegs.length>0;let q=0;
  for(let py=0;py<dims[1];py++)for(let px=0;px<dims[0];px++){
@@ -3328,6 +3330,15 @@ async function renderPlaneSourceBacked(p,revision,idx){
  }catch(e){if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);footer.textContent='MPR read error: '+String(e.message||e)}}
 }
 
+function updateMprCanvasPhysicalAspect(p){
+ if(!volume||!planes[p]?.canvas)return;
+ const w=volume.columns,h=volume.rows,d=volume.slices,[sx,sy,sz]=volume.spacing;
+ const physical=p==='axial'?[w*sx,h*sy]:p==='coronal'?[w*sx,d*sz]:[h*sy,d*sz];
+ const canvas=planes[p].canvas,ratio=physical[0]/Math.max(physical[1],1e-12);
+ canvas.style.aspectRatio=String(ratio);
+ canvas.style.width='100%';canvas.style.height='auto';canvas.style.maxWidth='100%';canvas.style.maxHeight='100%';
+ canvas.style.position='absolute';canvas.style.inset='0';canvas.style.margin='auto';canvas.style.objectFit='fill';
+}
 function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 
 function installMprTouch(p){const c=planes[p];let id=null,startX=0,startY=0,start=0,moved=false;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;startY=e.clientY;start=+c.slider.value;moved=false;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const dx=e.clientX-startX,dy=e.clientY-startY;if(Math.hypot(dx,dy)>5)moved=true;if(volumeAnalysisMode&&!moved)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+dx/sens);c.slider.value=Math.max(0,Math.min(max,next));schedulePlaneRender(p)};const end=e=>{if(id!==e.pointerId)return;const wasClick=!moved&&e.type==='pointerup';if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null;if(wasClick&&selectAnalysisRegionFromMpr(p,e))e.preventDefault()};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));schedulePlaneRender(p,true)},{passive:false})}
