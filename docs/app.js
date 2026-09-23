@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-120';const APP_BUILD='120';
+const APP_VERSION='2026.09.23-121';const APP_BUILD='121';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3559,20 +3559,26 @@ async function start3D(){
    return best;
   };
 
-  // Candidate vertices come from the actual triangles touched by the stroke.
-  // Choose the vertex whose projected position is closest to the ENTIRE drawn curve.
-  let anchorWorld=null,anchorMeta=null,anchorScreen=null,curveContact=null,bestD2=Infinity;
+  // Candidate vertices come only from triangles actually touched by the stroke.
+  // The contact anchor is the candidate vertex closest to the camera, not the 2D-nearest vertex.
+  let anchorWorld=null,anchorMeta=null,anchorScreen=null,bestCameraD2=Infinity;
   const seen=new Set();
   for(const i of hitSamples){
    const surface=samples[i].surface,hit=surface.hit,geom=hit.object?.geometry,pos=geom?.getAttribute?.('position'),face=hit.face;
    if(!pos||!face)continue;
    for(const vi of [face.a,face.b,face.c]){
     const key=(hit.object.uuid||'mesh')+':'+vi;if(seen.has(key))continue;seen.add(key);
-    const world=new THREE.Vector3().fromBufferAttribute(pos,vi).applyMatrix4(hit.object.matrixWorld),ndc=world.clone().project(camera),screen={x:(ndc.x+1)*.5*Math.max(rect.width,1),y:(1-ndc.y)*.5*Math.max(rect.height,1)},nearest=nearestPointOnStroke(screen);
-    if(nearest&&nearest.d2<bestD2){bestD2=nearest.d2;anchorWorld=world;anchorMeta=surface;anchorScreen=screen;curveContact=nearest}
+    const world=new THREE.Vector3().fromBufferAttribute(pos,vi).applyMatrix4(hit.object.matrixWorld),cameraD2=world.distanceToSquared(camera.position);
+    if(cameraD2<bestCameraD2){
+     bestCameraD2=cameraD2;anchorWorld=world;anchorMeta=surface;
+     const ndc=world.clone().project(camera);
+     anchorScreen={x:(ndc.x+1)*.5*Math.max(rect.width,1),y:(1-ndc.y)*.5*Math.max(rect.height,1)};
+    }
    }
   }
-  if(!anchorWorld||!anchorMeta||!anchorScreen||!curveContact)return[];
+  if(!anchorWorld||!anchorMeta||!anchorScreen)return[];
+  const curveContact=nearestPointOnStroke(anchorScreen);
+  if(!curveContact)return[];
 
   // Move the whole drawn curve rigidly so its nearest point touches the nearest mesh vertex.
   const shiftX=anchorScreen.x-curveContact.x,shiftY=anchorScreen.y-curveContact.y,anchorNdc=anchorWorld.clone().project(camera);
