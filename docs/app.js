@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-93';const APP_BUILD='93';
+const APP_VERSION='2026.09.23-94';const APP_BUILD='94';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3782,14 +3782,10 @@ function createCutPlacementFrame(event,canvas,camera,preferredKey=null){
  const obj=sceneState.obj,surface=surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey),viewDir=new THREE.Vector3();camera.getWorldDirection(viewDir).normalize();
  let anchorWorld=surface?.hit?.point?.clone?.()||null;
  if(!anchorWorld){
-  const hits=raycaster.intersectObject(obj,true).filter(h=>h.object?.isMesh&&!h.object?.userData?.cutResultPreview);
-  if(hits.length)anchorWorld=hits[0].point.clone();
-  else{
-   const box=new THREE.Box3().setFromObject(obj),center=box.getCenter(new THREE.Vector3());
-   const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir,center);
-   anchorWorld=new THREE.Vector3();
-   if(!raycaster.ray.intersectPlane(plane,anchorWorld))return null;
-  }
+  const box=new THREE.Box3().setFromObject(obj),center=box.getCenter(new THREE.Vector3());
+  const centerDepth=center.clone().sub(camera.position).dot(viewDir);
+  if(!(centerDepth>0))return null;
+  anchorWorld=camera.position.clone().addScaledVector(viewDir,centerDepth);
  }
  const inv=obj.matrixWorld.clone().invert(),toVoxelDir=vec=>{const q=vec.clone().transformDirection(inv).normalize();return{x:q.x,y:-q.y,z:q.z}};
  return{plane:new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir,anchorWorld),ray:toVoxelDir(raycaster.ray.direction),right:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0)),up:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1)),key:surface?.key||preferredKey||null,anchor:surface||null};
