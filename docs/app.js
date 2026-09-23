@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-127';const APP_BUILD='127';
+const APP_VERSION='2026.09.24-128';const APP_BUILD='128';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -925,15 +925,20 @@ const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 const mpr3DOrthoSliding={coronal:false,sagittal:false};
 function pushCachedMpr3DPlane(p,idx){
  if((p!=='coronal'&&p!=='sagittal')||mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
- const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return false;
- if(!paintMpr3DCacheSliceFast(p,idx,entry.previewCanvas))return false;
- entry.texture.needsUpdate=true;request3DRender();return true;
+ let entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return false;
+ const dims=mpr3DPreviewCache.dims[p],src=mpr3DPreviewCache.planes[p];if(!dims||!src)return false;
+ if(!entry.liveTexture||entry.liveTexture.image.width!==dims[0]||entry.liveTexture.image.height!==dims[1]){updateMpr3DPlanePositions();entry=sceneState?.mprPlaneEntries?.[p];if(!entry?.liveTexture)return false}
+ const n=dims[0]*dims[1],off=idx*n,pixels=entry.livePixels,lut=mpr3DWindowLut();if(idx<0||off+n>src.length||!pixels||pixels.length!==n)return false;
+ for(let i=0;i<n;i++)pixels[i]=lut[src[off+i]];
+ entry.liveTexture.needsUpdate=true;
+ if(entry.mesh.material.map!==entry.liveTexture){entry.mesh.material.map=entry.liveTexture;entry.mesh.material.needsUpdate=true}
+ request3DRender();return true;
 }
 function paintFastOrthogonalPreview(p,idx){
  if(p==='axial'||!volume?.sourceBacked||sourceFilterStages().length||volumeAnalysisMode)return false;
  if(mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
  const ok=paintMpr3DCacheSliceFast(p,idx,planes[p].canvas);
- if(ok){updateMprCanvasPhysicalAspect(p);pushCachedMpr3DPlane(p,idx)}
+ if(ok)updateMprCanvasPhysicalAspect(p);
  return ok;
 }
 function schedulePlaneRender(p,immediate=false){
@@ -2270,13 +2275,20 @@ async function ensureMpr3DPreviewCache(){
  }
 }
 const mpr3DCacheImage={coronal:null,sagittal:null};
+let mpr3DWindowLutKey='',mpr3DWindowLutTable=new Uint32Array(256);
+function mpr3DWindowLut(){
+ const min=mpr3DPreviewCache.min,max=mpr3DPreviewCache.max,low=+wc.value-(+ww.value)/2,width=Math.max(+ww.value,1),key=[min,max,low,width].join('|');
+ if(key===mpr3DWindowLutKey)return mpr3DWindowLutTable;
+ const range=Math.max(max-min,1),gscale=255/width;
+ for(let i=0;i<256;i++){const hu=min+(i/255)*range,g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));mpr3DWindowLutTable[i]=(255<<24)|(g<<16)|(g<<8)|g}
+ mpr3DWindowLutKey=key;return mpr3DWindowLutTable;
+}
 function paintMpr3DCacheSliceFast(p,idx,canvas){
  const data=mpr3DPreviewCache.planes[p],dims=mpr3DPreviewCache.dims[p];if(!data||!dims||!canvas)return false;
  const [pw,ph]=dims,count=p==='coronal'?volume.rows:volume.columns;if(idx<0||idx>=count)return false;
  if(canvas.width!==pw)canvas.width=pw;if(canvas.height!==ph)canvas.height=ph;
  const ctx=canvas.getContext('2d');let cache=mpr3DCacheImage[p];if(!cache||cache.width!==pw||cache.height!==ph){const image=ctx.createImageData(pw,ph);cache={width:pw,height:ph,image,pixels:new Uint32Array(image.data.buffer)};mpr3DCacheImage[p]=cache}
- const pixels=cache.pixels,off=idx*pw*ph,min=mpr3DPreviewCache.min,max=mpr3DPreviewCache.max,range=Math.max(max-min,1),low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1),lut=new Uint32Array(256);
- for(let i=0;i<256;i++){const hu=min+(i/255)*range,g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));lut[i]=(255<<24)|(g<<16)|(g<<8)|g}
+ const pixels=cache.pixels,off=idx*pw*ph,lut=mpr3DWindowLut();
  for(let i=0;i<pixels.length;i++)pixels[i]=lut[data[off+i]];
  ctx.putImageData(cache.image,0,0);return true;
 }
@@ -3397,7 +3409,9 @@ installMpr3DOverlayControls();
 function disposeMprPlaneGroup(){
  if(!sceneState?.mprPlaneGroup)return;
  sceneState.scene.remove(sceneState.mprPlaneGroup);
- sceneState.mprPlaneGroup.traverse(o=>{o.geometry?.dispose?.();const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){m?.map?.dispose?.();m?.dispose?.()}});
+ const textures=new Set();for(const entry of Object.values(sceneState.mprPlaneEntries||{})){if(entry.fullTexture)textures.add(entry.fullTexture);if(entry.liveTexture)textures.add(entry.liveTexture)}
+ sceneState.mprPlaneGroup.traverse(o=>{o.geometry?.dispose?.();const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){if(m?.map)textures.add(m.map);m?.dispose?.()}});
+ for(const texture of textures)texture?.dispose?.();
  sceneState.mprPlaneGroup=null;sceneState.mprPlaneEntries=null;sceneState.mprPlaneSignature='';
 }
 function makeMprPlaneLabel(text,color){
@@ -3406,22 +3420,27 @@ function makeMprPlaneLabel(text,color){
 }
 function ensureMpr3DPlanes(){
  if(!sceneState||!volume)return null;
- const [sx,sy,sz]=volume.spacing,w=volume.columns,h=volume.rows,d=volume.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),sig=[w,h,d,sx,sy,sz].join('|');
+ const [sx,sy,sz]=volume.spacing,w=volume.columns,h=volume.rows,d=volume.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),cacheReady=mpr3DPreviewCache.signature===mpr3DPreviewSignature(volume),corDims=cacheReady?mpr3DPreviewCache.dims.coronal:null,sagDims=cacheReady?mpr3DPreviewCache.dims.sagittal:null,sig=[w,h,d,sx,sy,sz,cacheReady?mpr3DPreviewCache.signature:'',corDims?.join('x')||'',sagDims?.join('x')||''].join('|');
  if(sceneState.mprPlaneGroup&&sceneState.mprPlaneSignature===sig)return sceneState.mprPlaneEntries;
  disposeMprPlaneGroup();
  const group=new THREE.Group();group.name='mpr_planes_3d';group.renderOrder=70;sceneState.scene.add(group);
  const defs={
-  axial:{canvas:planes.axial.canvas,color:0xff5a5a,css:'#ff5a5a',size:[px*scale,py*scale],rotation:[0,0,0],label:'AXIAL'},
-  coronal:{canvas:planes.coronal.canvas,color:0x62d96b,css:'#62d96b',size:[px*scale,pz*scale],rotation:[Math.PI/2,0,0],label:'CORONAL'},
-  sagittal:{canvas:planes.sagittal.canvas,color:0xf3cc30,css:'#f3cc30',size:[py*scale,pz*scale],basis:true,label:'SAGITTAL'}
+  axial:{canvas:planes.axial.canvas,color:0xff5a5a,css:'#ff5a5a',size:[px*scale,py*scale],rotation:[0,0,0],label:'AXIAL',cacheDims:null},
+  coronal:{canvas:planes.coronal.canvas,color:0x62d96b,css:'#62d96b',size:[px*scale,pz*scale],rotation:[Math.PI/2,0,0],label:'CORONAL',cacheDims:corDims},
+  sagittal:{canvas:planes.sagittal.canvas,color:0xf3cc30,css:'#f3cc30',size:[py*scale,pz*scale],basis:true,label:'SAGITTAL',cacheDims:sagDims}
  };
  const entries={};
  for(const [key,def] of Object.entries(defs)){
   const root=new THREE.Group();root.name='mpr_plane_'+key;
   if(def.basis)root.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0,-1,0),new THREE.Vector3(0,0,1),new THREE.Vector3(-1,0,0)));else root.rotation.set(...def.rotation);
   const previewCanvas=document.createElement('canvas');previewCanvas.width=Math.max(1,def.canvas.width||1);previewCanvas.height=Math.max(1,def.canvas.height||1);const previewCtx=previewCanvas.getContext('2d');if(def.canvas.width&&def.canvas.height)previewCtx.drawImage(def.canvas,0,0,previewCanvas.width,previewCanvas.height);
-  const texture=new THREE.CanvasTexture(previewCanvas);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;
-  const geometry=new THREE.PlaneGeometry(def.size[0],def.size[1]),material=new THREE.MeshBasicMaterial({map:texture,transparent:true,opacity:.64,side:THREE.DoubleSide,depthWrite:false});
+  const fullTexture=new THREE.CanvasTexture(previewCanvas);fullTexture.minFilter=THREE.LinearFilter;fullTexture.magFilter=THREE.LinearFilter;fullTexture.generateMipmaps=false;
+  let liveTexture=null,liveData=null,livePixels=null;
+  if(def.cacheDims){
+   const [tw,th]=def.cacheDims;liveData=new Uint8Array(tw*th*4);livePixels=new Uint32Array(liveData.buffer);
+   liveTexture=new THREE.DataTexture(liveData,tw,th,THREE.RGBAFormat,THREE.UnsignedByteType);liveTexture.minFilter=THREE.LinearFilter;liveTexture.magFilter=THREE.LinearFilter;liveTexture.generateMipmaps=false;liveTexture.flipY=true;liveTexture.needsUpdate=true;
+  }
+  const geometry=new THREE.PlaneGeometry(def.size[0],def.size[1]),material=new THREE.MeshBasicMaterial({map:fullTexture,transparent:true,opacity:.64,side:THREE.DoubleSide,depthWrite:false});
   const mesh=new THREE.Mesh(geometry,material);mesh.name='mpr_texture_'+key;mesh.renderOrder=70;root.add(mesh);
   const highlightMaterial=new THREE.MeshBasicMaterial({color:def.color,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false,depthTest:true});
   const highlight=new THREE.Mesh(geometry.clone(),highlightMaterial);highlight.name='mpr_section_highlight_'+key;highlight.position.z=-.003;highlight.renderOrder=69;highlight.visible=false;root.add(highlight);
@@ -3429,7 +3448,7 @@ function ensureMpr3DPlanes(){
   const border=new THREE.LineSegments(edgeGeometry,edgeMaterial);border.renderOrder=81;root.add(border);
   const label=makeMprPlaneLabel(def.label,def.css);label.position.set(0,def.size[1]*.5+.12,0);root.add(label);
   root.visible=!!mpr3DVisibility[key];mesh.visible=!!mpr3DVisibility[key];border.visible=!!mpr3DVisibility[key];label.visible=!!mpr3DVisibility[key];
-  group.add(root);entries[key]={root,texture,mesh,highlight,border,label,previewCanvas};
+  group.add(root);entries[key]={root,texture:fullTexture,fullTexture,liveTexture,liveData,livePixels,mesh,highlight,border,label,previewCanvas};
  }
  sceneState.mprPlaneGroup=group;sceneState.mprPlaneEntries=entries;sceneState.mprPlaneSignature=sig;
  if(sectionViewOpen&&sectionViewPlane)showSectionPlaneOverlay(sectionViewPlane);
@@ -3456,7 +3475,9 @@ function refreshMpr3DPlaneTexture(p){
   if(dst.height!==src.height)dst.height=src.height;
   const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0);
  }
- entry.texture.needsUpdate=true;request3DRender();
+ entry.fullTexture.needsUpdate=true;
+ if(entry.mesh.material.map!==entry.fullTexture){entry.mesh.material.map=entry.fullTexture;entry.mesh.material.needsUpdate=true}
+ request3DRender();
 }
 function request3DRender(){
  if(sceneState)sceneState.needsRender=true;
