@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-111';const APP_BUILD='111';
+const APP_VERSION='2026.09.23-112';const APP_BUILD='112';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4312,8 +4312,8 @@ function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode
    const p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
    const straight={x:first.x+(last.x-first.x)*along,y:first.y+(last.y-first.y)*along,z:first.z+(last.z-first.z)*along};
    const sheetNormal=norm({x:n0.x+(n1.x-n0.x)*u,y:n0.y+(n1.y-n0.y)*u,z:n0.z+(n1.z-n0.z)*u});
-   for(let di=0;di<=depthSteps;di++){
-    const dep=depth*di/depthSteps,t=dep/depth;
+   for(let di=-depthSteps;di<=depthSteps;di++){
+    const dep=depth*di/depthSteps,t=Math.abs(dep)/depth;
     const q={x:p.x+(straight.x-p.x)*t,y:p.y+(straight.y-p.y)*t,z:p.z+(straight.z-p.z)*t};
     const base={x:q.x+dir.x*dep/sx,y:q.y+dir.y*dep/sy,z:q.z+dir.z*dep/sz};
     for(let ki=0;ki<=kerfSteps;ki++){
@@ -4453,8 +4453,8 @@ function updateCutPreview(point=null){
  const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
  const front=curve.map(localPoint),arc=new Float64Array(curve.length);let totalArc=0;
  for(let i=1;i<front.length;i++){totalArc+=front[i].distanceTo(front[i-1]);arc[i]=totalArc}
- const first=front[0],last=front[front.length-1],halfDepth=depth*scale*.5;
- const center=front.map((p,i)=>p.clone()),sideA=front.map((p,i)=>first.clone().lerp(last,totalArc>1e-9?arc[i]/totalArc:i/Math.max(1,front.length-1)).addScaledVector(dir,-halfDepth)),sideB=front.map((p,i)=>first.clone().lerp(last,totalArc>1e-9?arc[i]/totalArc:i/Math.max(1,front.length-1)).addScaledVector(dir,halfDepth)),faces=[],edges=[];
+ const first=front[0],last=front[front.length-1],fullDepth=depth*scale;
+ const center=front.map((p,i)=>p.clone()),sideA=front.map((p,i)=>first.clone().lerp(last,totalArc>1e-9?arc[i]/totalArc:i/Math.max(1,front.length-1)).addScaledVector(dir,-fullDepth)),sideB=front.map((p,i)=>first.clone().lerp(last,totalArc>1e-9?arc[i]/totalArc:i/Math.max(1,front.length-1)).addScaledVector(dir,fullDepth)),faces=[],edges=[];
  const quad=(a,b,c,d)=>faces.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
  for(let i=0;i<center.length-1;i++){quad(sideA[i],sideA[i+1],center[i+1],center[i]);quad(center[i],center[i+1],sideB[i+1],sideB[i])}
  // Drawn curve is the center reference; the rectangular guide extends to both sides.
