@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-52';const APP_BUILD='52';
+const APP_VERSION='2026.09.23-53';const APP_BUILD='53';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -788,7 +788,7 @@ async function rebuildActiveFilters(finalize3D=true){
  const revision=++filterRebuildRevision;
  clearTimeout(liveFilterState.timer);liveFilterState.base=null;liveFilterState.key=null;
  if(sourceVolume.sourceBacked){
-  invalidateSourceFilters();volume=sourceVolume;setProcessingBusy(true,'Full-resolution filters',false);
+  invalidateSourceFilters();volume=sourceVolume;void ensureMpr3DPreviewCache();setProcessingBusy(true,'Full-resolution filters',false);
   try{
    const mainKey=currentMainViewKey(),previewPlane=planes[mainKey]?mainKey:'axial';
    await renderPlane(previewPlane);
@@ -2129,21 +2129,21 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
 }
 
 const sourceSliceCache={map:new Map(),bytes:0},sourceOrthogonalPlaneCache=new Map();let sourceOrthogonalPlaneCacheBytes=0;
-const mpr3DPreviewCache={token:0,signature:'',building:false,min:0,max:1,planes:{axial:null,coronal:null,sagittal:null},dims:{axial:null,coronal:null,sagittal:null}};
+const mpr3DPreviewCache={token:0,signature:'',buildingSignature:'',building:false,min:0,max:1,planes:{axial:null,coronal:null,sagittal:null},dims:{axial:null,coronal:null,sagittal:null}};
 function sourceSliceCacheLimit(){return navigator.maxTouchPoints>0?48*1024*1024:128*1024*1024}
 function sourceOrthogonalCacheLimit(){return navigator.maxTouchPoints>0?32*1024*1024:64*1024*1024}
 function clearMpr3DPreviewCache(){
- mpr3DPreviewCache.token++;mpr3DPreviewCache.signature='';mpr3DPreviewCache.building=false;mpr3DPreviewCache.planes={axial:null,coronal:null,sagittal:null};mpr3DPreviewCache.dims={axial:null,coronal:null,sagittal:null};
+ mpr3DPreviewCache.token++;mpr3DPreviewCache.signature='';mpr3DPreviewCache.buildingSignature='';mpr3DPreviewCache.building=false;mpr3DPreviewCache.planes={axial:null,coronal:null,sagittal:null};mpr3DPreviewCache.dims={axial:null,coronal:null,sagittal:null};
 }
 function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear();sourceOrthogonalPlaneCacheBytes=0;clearMpr3DPreviewCache()}
 function mpr3DPreviewMaxSide(){return navigator.maxTouchPoints>0?160:224}
 function mpr3DPreviewMap(i,n,outN){return outN<=1?0:Math.max(0,Math.min(n-1,Math.round(i*(n-1)/(outN-1))))}
-function mpr3DPreviewSignature(v){return [v?.series?.seriesUid||'',v?.columns||0,v?.rows||0,v?.slices||0,v?.min||0,v?.max||0].join('|')}
+function mpr3DPreviewSignature(v,stages=sourceFilterStages()){return [v?.series?.seriesUid||'',v?.columns||0,v?.rows||0,v?.slices||0,v?.min||0,v?.max||0,sourceFilterSignature(stages)].join('|')}
 async function ensureMpr3DPreviewCache(){
- const v=volume;if(!v?.sourceBacked||!v.series||sourceFilterStages().length)return false;
- const signature=mpr3DPreviewSignature(v);
+ const v=volume;if(!v?.sourceBacked||!v.series)return false;
+ const stages=sourceFilterStages(),signature=mpr3DPreviewSignature(v,stages);
  if(mpr3DPreviewCache.signature===signature&&mpr3DPreviewCache.planes.axial)return true;
- if(mpr3DPreviewCache.building&&mpr3DPreviewCache.signature===signature)return false;
+ if(mpr3DPreviewCache.building&&mpr3DPreviewCache.buildingSignature===signature)return false;
  const token=++mpr3DPreviewCache.token,maxSide=mpr3DPreviewMaxSide(),w=v.columns,h=v.rows,d=v.slices,series=v.series,min=Number.isFinite(v.min)?v.min:-1024,max=Number.isFinite(v.max)&&v.max>min?v.max:min+1,scale=255/(max-min);
  const dims={axial:[Math.min(w,maxSide),Math.min(h,maxSide)],coronal:[Math.min(w,maxSide),Math.min(d,maxSide)],sagittal:[Math.min(h,maxSide),Math.min(d,maxSide)]};
  const axial=new Uint8Array(d*dims.axial[0]*dims.axial[1]),coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
@@ -2152,29 +2152,38 @@ async function ensureMpr3DPreviewCache(){
  const corRows=new Map(),sagRows=new Map();
  for(let py=0;py<dims.coronal[1];py++){const z=d-1-mpr3DPreviewMap(py,d,dims.coronal[1]);if(!corRows.has(z))corRows.set(z,[]);corRows.get(z).push(py)}
  for(let py=0;py<dims.sagittal[1];py++){const z=d-1-mpr3DPreviewMap(py,d,dims.sagittal[1]);if(!sagRows.has(z))sagRows.set(z,[]);sagRows.get(z).push(py)}
- const q=value=>Math.max(0,Math.min(255,Math.round((value-min)*scale)));
- mpr3DPreviewCache.signature=signature;mpr3DPreviewCache.building=true;
+ const q=value=>Math.max(0,Math.min(255,Math.round((value-min)*scale))),blockDepth=stages.length?(navigator.maxTouchPoints>0?2:4):1;
+ mpr3DPreviewCache.building=true;mpr3DPreviewCache.buildingSignature=signature;
  try{
-  for(let z=0;z<d;z++){
+  for(let z0=0;z0<d;z0+=blockDepth){
    if(token!==mpr3DPreviewCache.token||volume!==v)throw new Error('__SUPERSEDED__');
-   const src=await getCachedSourceSlice(series.slices[z]),aw=dims.axial[0],ah=dims.axial[1],aoff=z*aw*ah;
-   for(let py=0;py<ah;py++){const sy=axY[py]*w,row=aoff+py*aw;for(let px=0;px<aw;px++)axial[row+px]=q(src[sy+axX[px]])}
-   const cr=corRows.get(z);if(cr){const cw=dims.coronal[0],ch=dims.coronal[1];for(const py of cr)for(let y=0;y<h;y++){const row=y*cw*ch+py*cw,sy=y*w;for(let px=0;px<cw;px++)coronal[row+px]=q(src[sy+corX[px]])}}
-   const sr=sagRows.get(z);if(sr){const sw=dims.sagittal[0],sh=dims.sagittal[1];for(const py of sr)for(let x=0;x<w;x++){const row=x*sw*sh+py*sw;for(let px=0;px<sw;px++)sagittal[row+px]=q(src[sagY[px]*w+x])}}
-   if((z&3)===0)await frameYield();
+   let block=null,depth=Math.min(blockDepth,d-z0);
+   if(stages.length){
+    const filtered=await getFilteredSourceAxialBlock(z0,depth,series,'mpr3d-preview');
+    if(token!==mpr3DPreviewCache.token||volume!==v)throw new Error('__SUPERSEDED__');
+    block=filtered?.data;depth=filtered?.coreDepth||depth;
+   }
+   for(let local=0;local<depth;local++){
+    const z=z0+local,src=block?block.subarray(local*w*h,(local+1)*w*h):await getCachedSourceSlice(series.slices[z]),aw=dims.axial[0],ah=dims.axial[1],aoff=z*aw*ah;
+    for(let py=0;py<ah;py++){const sy=axY[py]*w,row=aoff+py*aw;for(let px=0;px<aw;px++)axial[row+px]=q(src[sy+axX[px]])}
+    const cr=corRows.get(z);if(cr){const cw=dims.coronal[0],ch=dims.coronal[1];for(const py of cr)for(let y=0;y<h;y++){const row=y*cw*ch+py*cw,sy=y*w;for(let px=0;px<cw;px++)coronal[row+px]=q(src[sy+corX[px]])}}
+    const sr=sagRows.get(z);if(sr){const sw=dims.sagittal[0],sh=dims.sagittal[1];for(const py of sr)for(let x=0;x<w;x++){const row=x*sw*sh+py*sw;for(let px=0;px<sw;px++)sagittal[row+px]=q(src[sagY[px]*w+x])}}
+   }
+   await frameYield();
   }
   if(token!==mpr3DPreviewCache.token||volume!==v)throw new Error('__SUPERSEDED__');
-  mpr3DPreviewCache.min=min;mpr3DPreviewCache.max=max;mpr3DPreviewCache.dims=dims;mpr3DPreviewCache.planes={axial,coronal,sagittal};
+  mpr3DPreviewCache.signature=signature;mpr3DPreviewCache.min=min;mpr3DPreviewCache.max=max;mpr3DPreviewCache.dims=dims;mpr3DPreviewCache.planes={axial,coronal,sagittal};
   for(const p of ['axial','coronal','sagittal'])refreshMpr3DPlaneTexture(p);
   return true;
  }catch(e){
   if(String(e.message||e)!=='__SUPERSEDED__')console.warn('3D MPR preview cache build failed.',e);
-  if(token===mpr3DPreviewCache.token){mpr3DPreviewCache.signature='';mpr3DPreviewCache.planes={axial:null,coronal:null,sagittal:null}}
   return false;
- }finally{if(token===mpr3DPreviewCache.token)mpr3DPreviewCache.building=false}
+ }finally{
+  if(token===mpr3DPreviewCache.token){mpr3DPreviewCache.building=false;mpr3DPreviewCache.buildingSignature=''}
+ }
 }
 function paintMpr3DPreview(p,idx,canvas){
- const data=mpr3DPreviewCache.planes[p],dims=mpr3DPreviewCache.dims[p];if(!data||!dims||!canvas||sourceFilterStages().length||volumeAnalysisMode)return false;
+ const data=mpr3DPreviewCache.planes[p],dims=mpr3DPreviewCache.dims[p];if(!data||!dims||!canvas||volumeAnalysisMode)return false;
  const [pw,ph]=dims,count=p==='axial'?volume.slices:p==='coronal'?volume.rows:volume.columns;if(idx<0||idx>=count)return false;
  if(canvas.width!==pw)canvas.width=pw;if(canvas.height!==ph)canvas.height=ph;
  const ctx=canvas.getContext('2d'),img=ctx.createImageData(pw,ph),sliceSize=pw*ph,off=idx*sliceSize,min=mpr3DPreviewCache.min,max=mpr3DPreviewCache.max,range=Math.max(max-min,1),low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments();let qout=0;
@@ -3133,7 +3142,7 @@ function cancelSourceMprWarmup(){
  if(sourceMprWarmupPlane){planeRenderRevision[sourceMprWarmupPlane]++;sourceMprWarmupPlane=null}
 }
 function scheduleSourceMprWarmup(){
- if(!volume?.sourceBacked||sourceFilterStages().length)return;
+ if(!volume?.sourceBacked)return;
  void ensureMpr3DPreviewCache();
  const token=++sourceMprWarmupToken;
  const run=async()=>{
