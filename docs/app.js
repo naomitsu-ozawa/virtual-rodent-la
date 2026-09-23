@@ -979,8 +979,8 @@ async function loadDemo(){
  footer.textContent=fromCache?tr('demoCache'):tr('demoDone');
  return out;
 }
-function withTimeout(promise,ms,fallback){
- return Promise.race([promise,new Promise(resolve=>setTimeout(()=>resolve(fallback),ms))]);
+function withTimeout(promise,ms,timeoutValue){
+ return Promise.race([promise,new Promise(resolve=>setTimeout(()=>resolve(timeoutValue),ms))]);
 }
 async function updateDemoCacheBadge(){
  if(!('caches' in window))return;
@@ -3662,7 +3662,7 @@ async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
 async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
  const w=v.columns,h=v.rows,d=v.slices,analysisRevision=sourceFilterRuntime.revision,uf=new RunUnionFind(),sliceRuns=new Array(d);
  const seed={x:Math.max(0,Math.min(w-1,x0)),y:Math.max(0,Math.min(h-1,y0)),z:Math.max(0,Math.min(d-1,z0)),label:null,bestDist2:Infinity};
- let prevRows=null,done=0,gpuUsed=false,hadFallback=false;const blockDepth=navigator.maxTouchPoints>0?4:16;
+ let prevRows=null,done=0,gpuUsed=false,hadCpuPath=false;const blockDepth=navigator.maxTouchPoints>0?4:16;
  for(let z0b=0;z0b<d;z0b+=blockDepth){
   if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   let gpuBlock=null;
@@ -3670,17 +3670,17 @@ async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
   if(gpuBlock){
    gpuUsed=true;prevRows=consumeGpuAnalysisRuns(gpuBlock.items,z0b,gpuBlock.coreDepth,w,h,seed,uf,prevRows,sliceRuns);done=z0b+gpuBlock.coreDepth;
   }else{
-   hadFallback=true;setGpuComputeBackend('CPU ANALYSIS · GPU ERROR',gpuFilterRuntime.lastError||'GPU analysis unavailable');
+   hadCpuPath=true;setGpuComputeBackend('CPU ANALYSIS · GPU ERROR',gpuFilterRuntime.lastError||'GPU analysis unavailable');
    const masks=await sourceSegmentMaskBlock(v,key,seg,z0b,blockDepth,analysisRevision);
    for(let local=0;local<masks.length;local++){const z=z0b+local,result=sourceRunSlice(masks[local],w,h,z,seed,uf,prevRows);sliceRuns[z]=result.records;prevRows=result.rows;done=z+1}
    setGpuComputeBackend('CPU ANALYSIS · GPU ERROR',gpuFilterRuntime.lastError||'GPU analysis unavailable');
   }
-  analysisSummary.textContent=((gpuUsed&&!hadFallback)?(currentLanguage==='ja'?'GPU連結成分解析中… ':'GPU connected-component analysis… '):(currentLanguage==='ja'?'連結成分を解析中… ':'Analyzing connected component… '))+done+' / '+d;await frameYield();
+  analysisSummary.textContent=((gpuUsed&&!hadCpuPath)?(currentLanguage==='ja'?'GPU連結成分解析中… ':'GPU connected-component analysis… '):(currentLanguage==='ja'?'連結成分を解析中… ':'Analyzing connected component… '))+done+' / '+d;await frameYield();
  }
  if(seed.label==null)throw new Error(currentLanguage==='ja'?'選択位置から連結成分を特定できませんでした':'Could not identify a connected component at the selected point');
  const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];
- if(gpuUsed&&!hadFallback)setGpuComputeBackend(sourceFilterStages().length?'WEBGPU ANALYSIS FILTER+RLE · CPU CONNECTIVITY':'WEBGPU ANALYSIS RLE · CPU CONNECTIVITY');
- else if(gpuUsed&&hadFallback)setGpuComputeBackend('GPU+CPU ANALYSIS',gpuFilterRuntime.lastError||'Some analysis blocks used the exact CPU path');
+ if(gpuUsed&&!hadCpuPath)setGpuComputeBackend(sourceFilterStages().length?'WEBGPU ANALYSIS FILTER+RLE · CPU CONNECTIVITY':'WEBGPU ANALYSIS RLE · CPU CONNECTIVITY');
+ else if(gpuUsed&&hadCpuPath)setGpuComputeBackend('GPU+CPU ANALYSIS',gpuFilterRuntime.lastError||'Some analysis blocks used the exact CPU path');
  return{voxels,mm3,root,uf,sliceRuns};
 }
 function sourceComponentSliceState(records,w,h,root,uf){
