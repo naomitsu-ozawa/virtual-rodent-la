@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-66';const APP_BUILD='66';
+const APP_VERSION='2026.09.23-67';const APP_BUILD='67';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4071,17 +4071,17 @@ function setBaseSegmentSurfaceVisibility(key,visible){
  });
 }
 async function buildEditableRunsGroup(v,runs,key,shouldContinue=null){
- const seg=segmentState[key],coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),group=new THREE.Group(),builder=new Float32FaceBuilder(),limit=(navigator.maxTouchPoints>0?4:8)*1024*1024,strong=strongSurfaceSmoothingActive();
- const params={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()};
- const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions,false,null,!strong),mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(params));mesh.name='edited_segment_'+key+'_'+z;mesh.userData.segmentKey=key;mesh.userData.editSurface=true;mesh.userData.displayScale=coords.scale;group.add(mesh)};
- try{
-  for(let z=0;z<v.slices;z++){
-   if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');
-   appendAnalysisRunBoundaryFaces(builder,runs[z],z?runs[z-1]:null,z+1<v.slices?runs[z+1]:null,coords,z);if(builder.length>=limit)flush(z);
-   if((z&15)===0){await frameYield();if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__')}
-  }
-  flush(v.slices-1);if(strong)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);return group.children.length?group:null;
- }catch(e){dispose(group);throw e}
+ const seg=segmentState[key];
+ if(surfaceSmoothingActive()){
+  if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');
+  const mask=maskFromAnalysisRuns(v,runs),mesh=await buildSmoothIsoMesh(v,mask,seg,key,true);
+  if(shouldContinue&&!shouldContinue()){if(mesh)dispose(mesh);throw new Error('__SUPERSEDED__')}
+  if(!mesh)return null;const group=new THREE.Group();group.add(mesh);return group;
+ }
+ const coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),group=new THREE.Group(),builder=new Float32FaceBuilder(),limit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
+ const params={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:true};
+ const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions,false,null,false),mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(params));mesh.name='edited_segment_'+key+'_'+z;mesh.userData.segmentKey=key;mesh.userData.editSurface=true;mesh.userData.displayScale=coords.scale;group.add(mesh)};
+ try{for(let z=0;z<v.slices;z++){if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');appendAnalysisRunBoundaryFaces(builder,runs[z],z?runs[z-1]:null,z+1<v.slices?runs[z+1]:null,coords,z);if(builder.length>=limit)flush(z);if((z&15)===0)await frameYield()}flush(v.slices-1);return group.children.length?group:null}catch(e){dispose(group);throw e}
 }
 function segmentUsesRunSurface(key,v=current3DVolume||volume){
  return segmentEditActive(key)||!!(v?.sourceBacked&&segmentState[key]?.active&&segmentState[key]?.enabled&&segmentNeedsGlobalMask(segmentState[key]));
@@ -4521,6 +4521,100 @@ function indexedGeometryFromTrianglePositions(positions){
  geometry.setIndex(new THREE.BufferAttribute(indices,1));
  return geometry;
 }
+
+async function smoothMaskScalarField(mask,w,h,d,strength){
+ const fw=w+2,fh=h+2,fd=d+2,plane=fw*fh,n=plane*fd;
+ let a=new Float32Array(n),b=new Float32Array(n);
+ for(let z=0;z<d;z++)for(let y=0;y<h;y++){
+  const src=z*w*h+y*w,dst=(z+1)*plane+(y+1)*fw+1;
+  for(let x=0;x<w;x++)a[dst+x]=mask[src+x]?1:0;
+ }
+ const rounds=Math.max(1,Math.min(8,Math.round(.5+Math.max(0,strength)*1.15))),alpha=.48;
+ for(let round=0;round<rounds;round++){
+  b.fill(0);
+  for(let z=1;z<fd-1;z++)for(let y=1;y<fh-1;y++){
+   const row=z*plane+y*fw;
+   for(let x=1;x<fw-1;x++){
+    const i=row+x,avg=(a[i-1]+a[i+1]+a[i-fw]+a[i+fw]+a[i-plane]+a[i+plane])/6;
+    b[i]=a[i]*(1-alpha)+avg*alpha;
+   }
+  }
+  const t=a;a=b;b=t;if((round&1)===1)await frameYield();
+ }
+ return{data:a,fw,fh,fd};
+}
+async function smoothIsosurfaceGeometry(v,mask,strength){
+ const w=v.columns,h=v.rows,d=v.slices;if(!mask||mask.length!==w*h*d)return null;
+ const {data,fw,fh,fd}=await smoothMaskScalarField(mask,w,h,d,strength),plane=fw*fh,[sx,sy,sz]=v.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),iso=.5;
+ const positions=[],indices=[],edgeVertices=new Map();
+ const cubeCorners=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
+ const tets=[[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];
+ const tetEdges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]];
+ const gridId=(x,y,z)=>z*plane+y*fw+x,field=(x,y,z)=>data[gridId(x,y,z)];
+ const world=(x,y,z)=>[((x-.5)*sx-px/2)*scale,-((y-.5)*sy-py/2)*scale,((z-.5)*sz-pz/2)*scale];
+ const edgeVertex=(ax,ay,az,bx,by,bz,va,vb)=>{
+  const ia=gridId(ax,ay,az),ib=gridId(bx,by,bz),lo=Math.min(ia,ib),hi=Math.max(ia,ib),key=lo+':'+hi,found=edgeVertices.get(key);if(found!==undefined)return found;
+  const den=vb-va,t=Math.abs(den)<1e-8?.5:Math.max(0,Math.min(1,(iso-va)/den)),pa=world(ax,ay,az),pb=world(bx,by,bz),id=positions.length/3;
+  positions.push(pa[0]+(pb[0]-pa[0])*t,pa[1]+(pb[1]-pa[1])*t,pa[2]+(pb[2]-pa[2])*t);edgeVertices.set(key,id);return id;
+ };
+ const pcoord=id=>[positions[id*3],positions[id*3+1],positions[id*3+2]];
+ const emit=(tri,out)=>{
+  const a=pcoord(tri[0]),b=pcoord(tri[1]),cc=pcoord(tri[2]),abx=b[0]-a[0],aby=b[1]-a[1],abz=b[2]-a[2],acx=cc[0]-a[0],acy=cc[1]-a[1],acz=cc[2]-a[2],nx=aby*acz-abz*acy,ny=abz*acx-abx*acz,nz=abx*acy-aby*acx;
+  if(nx*out[0]+ny*out[1]+nz*out[2]<0){const t=tri[1];tri[1]=tri[2];tri[2]=t}indices.push(tri[0],tri[1],tri[2]);
+ };
+ for(let z=0;z<fd-1;z++){
+  for(let y=0;y<fh-1;y++)for(let x=0;x<fw-1;x++){
+   const cv=new Array(8),cg=new Array(8);let min=Infinity,max=-Infinity;
+   for(let k=0;k<8;k++){const q=cubeCorners[k],gx=x+q[0],gy=y+q[1],gz=z+q[2],vv=field(gx,gy,gz);cv[k]=vv;cg[k]=[gx,gy,gz];if(vv<min)min=vv;if(vv>max)max=vv}
+   if(min>=iso||max<iso)continue;
+   for(const tet of tets){
+    let inCount=0,outCount=0,ix=0,iy=0,iz=0,ox=0,oy=0,oz=0;
+    for(const k of tet){const g=cg[k],p=world(g[0],g[1],g[2]);if(cv[k]>=iso){inCount++;ix+=p[0];iy+=p[1];iz+=p[2]}else{outCount++;ox+=p[0];oy+=p[1];oz+=p[2]}}
+    if(inCount===0||inCount===4)continue;
+    const crossings=[];
+    for(const e of tetEdges){const ka=tet[e[0]],kb=tet[e[1]],va=cv[ka],vb=cv[kb];if((va>=iso)===(vb>=iso))continue;const a=cg[ka],b=cg[kb];crossings.push(edgeVertex(a[0],a[1],a[2],b[0],b[1],b[2],va,vb))}
+    const out=[ox/Math.max(1,outCount)-ix/Math.max(1,inCount),oy/Math.max(1,outCount)-iy/Math.max(1,inCount),oz/Math.max(1,outCount)-iz/Math.max(1,inCount)];
+    if(crossings.length===3)emit([crossings[0],crossings[1],crossings[2]],out);
+    else if(crossings.length===4){
+     const p0=pcoord(crossings[0]),p1=pcoord(crossings[1]),p2=pcoord(crossings[2]),p3=pcoord(crossings[3]);
+     const d02=(p0[0]-p2[0])**2+(p0[1]-p2[1])**2+(p0[2]-p2[2])**2,d13=(p1[0]-p3[0])**2+(p1[1]-p3[1])**2+(p1[2]-p3[2])**2;
+     if(d02<=d13){emit([crossings[0],crossings[1],crossings[2]],out);emit([crossings[0],crossings[2],crossings[3]],out)}
+     else{emit([crossings[0],crossings[1],crossings[3]],out);emit([crossings[1],crossings[2],crossings[3]],out)}
+    }
+   }
+  }
+  if((z&3)===3)await frameYield();
+ }
+ if(!indices.length)return null;
+ const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);
+ taubinSmoothGeometry(geometry,Math.min(1.5,.25+Math.max(0,strength)*.18));geometry.computeVertexNormals();geometry.computeBoundingSphere();return geometry;
+}
+function maskFromAnalysisRuns(v,runs){
+ const out=new Uint8Array(v.columns*v.rows*v.slices),w=v.columns,h=v.rows;
+ for(let z=0;z<v.slices;z++){const a=runs?.[z];if(!a)continue;for(let i=0;i<a.length;i+=3){const y=a[i],x0=a[i+1],x1=a[i+2],base=z*w*h+y*w;out.fill(1,base+x0,base+x1+1)}}
+ return out;
+}
+async function buildSmoothIsoMesh(v,mask,seg,key,editSurface=false){
+ const geometry=await smoothIsosurfaceGeometry(v,mask,+surfaceSmoothStrength.value);if(!geometry)return null;
+ const material=new THREE.MeshStandardMaterial({color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:false}),mesh=new THREE.Mesh(geometry,material);
+ mesh.name='segment_'+key+'_isosurface';mesh.userData.segmentKey=key;mesh.userData.editSurface=!!editSurface;mesh.userData.displayScale=(v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v)).scale;return mesh;
+}
+async function render3DSmoothIsosurface(v){
+ if(!sceneState||!surfaceSmoothingActive())return false;
+ const base=v.sourceBacked?sourceMprMemoryView(v):v;if(!base||v.sourceBacked&&sourceFilterStages().length)return false;
+ const revision=++sourceRenderRevision,previous=sceneState.obj,group=new THREE.Group();if(previous){group.position.copy(previous.position);group.quaternion.copy(previous.quaternion);group.scale.copy(previous.scale)}
+ const active=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active&&segmentState[key].enabled).map(key=>({key,seg:segmentState[key]}));
+ set3DBusy(true,'3D等値面を構築中…');threeLabel.textContent=(sceneState.backend||'3D')+' · smooth isosurface';
+ try{
+  for(const {key,seg} of active){
+   if(revision!==sourceRenderRevision){dispose(group);return null}
+   const mask=getProcessedSegmentMask(base,seg),mesh=await buildSmoothIsoMesh(v,mask,seg,key,false);if(mesh)group.add(mesh);await frameYield();
+  }
+  if(revision!==sourceRenderRevision){dispose(group);return null}
+  if(previous){previous.parent?.remove(previous);dispose(previous)}sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
+  setGpuComputeBackend('CPU ISOSURFACE · WEBGPU RENDER');threeLabel.textContent=(sceneState.backend||'3D')+' · smooth isosurface';footer.textContent='3D smooth isosurface · full-resolution mask';set3DBusy(false);request3DRender();mark3DCurrent();return true;
+ }catch(e){dispose(group);set3DBusy(false);console.error(e);footer.textContent='3D isosurface error: '+String(e.message||e);return false}
+}
 function geometryFromSourcePositions(positions,alreadyGpuSmoothed=false,normals=null,applySmoothing=true){
  if(!positions||!positions.length)return null;
  let geometry;
@@ -4811,8 +4905,11 @@ async function render3D(v,force=false){
  if(!sceneState)return false;
  if(deferAutomatic3D&&!force){mark3DStale();return false}
  let ok;
- if(v.sourceBacked)ok=await render3DSourceBacked(v);
- else{ok=await render3DMemoryGpu(v);if(ok!==true){if(ok===null||threeDCancelRequested)return false;ok=render3DMemoryCpu(v)}}
+ if(surfaceSmoothingActive()){ok=await render3DSmoothIsosurface(v);if(ok===null)return false}
+ if(ok!==true){
+  if(v.sourceBacked)ok=await render3DSourceBacked(v);
+  else{ok=await render3DMemoryGpu(v);if(ok!==true){if(ok===null||threeDCancelRequested)return false;ok=render3DMemoryCpu(v)}}
+ }
  if(ok===true)await restoreEditedSegmentSurfaces(v);
  return ok===true;
 }
