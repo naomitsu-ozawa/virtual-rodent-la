@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-115';const APP_BUILD='115';
+const APP_VERSION='2026.09.23-116';const APP_BUILD='116';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4305,7 +4305,7 @@ function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode
   for(let si=0;si<=alongSteps;si++){
    const u=si/alongSteps,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
    const sheetNormal=norm({x:n0.x+(n1.x-n0.x)*u,y:n0.y+(n1.y-n0.y)*u,z:n0.z+(n1.z-n0.z)*u});
-   for(let di=-depthSteps;di<=depthSteps;di++){
+   for(let di=0;di<=depthSteps;di++){
     const dep=depth*di/depthSteps;
     const base={x:p.x+dir.x*dep/sx,y:p.y+dir.y*dep/sy,z:p.z+dir.z*dep/sz};
     for(let ki=0;ki<=kerfSteps;ki++){
@@ -4436,22 +4436,73 @@ function updateCutPreview(point=null){
  if(!pending){state.editCutPreviewPoint=point||null;if(!analysisCutApplying)clearCutResultPreview();request3DRender();return}
  const v=current3DVolume||volume,frame=cutSurfaceFrameData(pending.points,pending.mode,+analysisCutOffset.value||0,v,+analysisCutYaw.value||0,+analysisCutPitch.value||0),curve=frame.curve,normals=frame.normals;
  scheduleCutResultPreview();if(!v||curve.length<2){request3DRender();return}
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),fullDepth=depth*scale,halfKerf=Math.max(0,cutWidthMm())*scale*.5,dir=new THREE.Vector3(frame.dir.x,-frame.dir.y,frame.dir.z).normalize();
+ const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depthMm=Math.max(.1,+analysisCutDepth.value||5),depthWorld=depthMm*scale,halfKerfMm=Math.max(0,cutWidthMm())*.5,halfKerfWorld=halfKerfMm*scale,dir=new THREE.Vector3(frame.dir.x,-frame.dir.y,frame.dir.z).normalize();
  const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
- const localNormal=(n,i)=>{if(n){const q=new THREE.Vector3(n.x,-n.y,n.z);if(q.lengthSq()>1e-12)return q.normalize()}const a=curve[Math.max(0,i-1)],b=curve[Math.min(curve.length-1,i+1)],t=new THREE.Vector3((b.x-a.x)*sx,-(b.y-a.y)*sy,(b.z-a.z)*sz).normalize(),q=new THREE.Vector3().crossVectors(t,dir);return q.lengthSq()>1e-12?q.normalize():new THREE.Vector3(0,1,0)};
- const center=curve.map(localPoint),normalVecs=center.map((_,i)=>localNormal(normals?.[i],i)),rowAtDepth=amount=>center.map(p=>p.clone().addScaledVector(dir,amount)),sideA=rowAtDepth(-fullDepth),sideB=rowAtDepth(fullDepth),offsetRow=(row,sign)=>row.map((p,i)=>p.clone().addScaledVector(normalVecs[i],halfKerf*sign)),negA=offsetRow(sideA,-1),negB=offsetRow(sideB,-1),posA=offsetRow(sideA,1),posB=offsetRow(sideB,1);
- const quad=(arr,a,b,c,d)=>arr.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z),curtainFaces=(aRow,bRow)=>{const out=[];for(let i=0;i<aRow.length-1;i++)quad(out,aRow[i],aRow[i+1],bRow[i+1],bRow[i]);return out};
- const makeSurface=(faces,color,opacity,name,order)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));g.computeVertexNormals();const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));m.name=name;m.renderOrder=order;return m};
+ const localNormal=(n,i)=>{
+  if(n){const q=new THREE.Vector3(n.x,-n.y,n.z);if(q.lengthSq()>1e-12)return q.normalize()}
+  const a=curve[Math.max(0,i-1)],b=curve[Math.min(curve.length-1,i+1)],t=new THREE.Vector3((b.x-a.x)*sx,-(b.y-a.y)*sy,(b.z-a.z)*sz).normalize(),q=new THREE.Vector3().crossVectors(t,dir);
+  return q.lengthSq()>1e-12?q.normalize():new THREE.Vector3(0,1,0);
+ };
+ // Upper edge = the actual 3D contact curve. Lower edge = the exact same curve translated by cut depth.
+ const upper=curve.map(localPoint),lower=upper.map(p=>p.clone().addScaledVector(dir,depthWorld)),normalVecs=upper.map((_,i)=>localNormal(normals?.[i],i));
+ const offsetRow=(row,sign)=>row.map((p,i)=>p.clone().addScaledVector(normalVecs[i],halfKerfWorld*sign));
+ const upperNeg=offsetRow(upper,-1),lowerNeg=offsetRow(lower,-1),upperPos=offsetRow(upper,1),lowerPos=offsetRow(lower,1);
+ const quad=(arr,a,b,c,d)=>arr.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
+ const curtainFaces=(aRow,bRow)=>{const out=[];for(let i=0;i<aRow.length-1;i++)quad(out,aRow[i],aRow[i+1],bRow[i+1],bRow[i]);return out};
+ const ribbonFaces=(negRow,posRow)=>{const out=[];for(let i=0;i<negRow.length-1;i++)quad(out,negRow[i],posRow[i],posRow[i+1],negRow[i+1]);return out};
+ const makeSurface=(faces,color,opacity,name,order)=>{
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));g.computeVertexNormals();
+  const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
+  m.name=name;m.renderOrder=order;return m;
+ };
  const group=new THREE.Group();group.name='cut_preview';
- group.add(makeSurface(curtainFaces(sideA,sideB),0x00d8ff,.14,'cut_preview_active_surface',124));
- if(halfKerf>1e-7){group.add(makeSurface(curtainFaces(negA,negB),0x00bcd4,.055,'cut_preview_kerf_negative',122));group.add(makeSurface(curtainFaces(posA,posB),0x00bcd4,.055,'cut_preview_kerf_positive',122))}
- const lineMat=(color,opacity=1,depthTest=false)=>new THREE.LineBasicMaterial({color,transparent:opacity<1,opacity,depthTest,depthWrite:false}),addLineSegments=(points,material,name,order)=>{if(!points.length)return;const g=new THREE.BufferGeometry().setFromPoints(points),line=new THREE.LineSegments(g,material);line.name=name;line.renderOrder=order;group.add(line)},addCurveEdges=(dst,row)=>{for(let i=0;i<row.length-1;i++)dst.push(row[i],row[i+1])};
- const outline=[];addCurveEdges(outline,sideA);addCurveEdges(outline,sideB);outline.push(sideA[0],sideB[0],sideA[sideA.length-1],sideB[sideB.length-1]);addLineSegments(outline,lineMat(0x00e5ff,.98,false),'cut_preview_active_outline',130);
- const stroke=[];for(let i=0;i<center.length-1;i++)stroke.push(center[i],center[i+1]);addLineSegments(stroke,lineMat(0xe5fcff,1,false),'cut_preview_drawn_curve',132);
- if(halfKerf>1e-7){const kerfEdges=[];addCurveEdges(kerfEdges,negA);addCurveEdges(kerfEdges,negB);addCurveEdges(kerfEdges,posA);addCurveEdges(kerfEdges,posB);kerfEdges.push(negA[0],negB[0],posA[0],posB[0],negA[negA.length-1],negB[negB.length-1],posA[posA.length-1],posB[posB.length-1]);addLineSegments(kerfEdges,lineMat(0x5cecff,.68,false),'cut_preview_kerf_outline',128)}
- const sampleCurve=t=>{const u=THREE.MathUtils.clamp(t,0,1)*(center.length-1),i=Math.min(center.length-2,Math.floor(u)),f=u-i;return center[i].clone().lerp(center[i+1],f)},hatchPoints=[],hatchCount=Math.max(7,Math.min(15,Math.round(center.length/3))),steps=8,slope=.055;
- for(let hIdx=0;hIdx<hatchCount;hIdx++){const base=(hIdx+.5)/hatchCount;let prev=null;for(let k=0;k<=steps;k++){const dv=-1+2*k/steps,t=base+slope*dv;if(t<0||t>1){prev=null;continue}const p=sampleCurve(t).addScaledVector(dir,dv*fullDepth);if(prev)hatchPoints.push(prev,p.clone());prev=p}}
+
+ // One active CAD curtain, exactly from contact edge to depth edge.
+ group.add(makeSurface(curtainFaces(upper,lower),0x00d8ff,.16,'cut_preview_active_surface',124));
+
+ // Width boundaries use the exact same +/- width/2 definition as cutRunsFromVoxelStroke().
+ if(halfKerfWorld>1e-7){
+  group.add(makeSurface(curtainFaces(upperNeg,lowerNeg),0x00bcd4,.06,'cut_preview_width_negative',122));
+  group.add(makeSurface(curtainFaces(upperPos,lowerPos),0x00bcd4,.06,'cut_preview_width_positive',122));
+  // Thin ribbons at the contact and depth edges make the configured thickness readable without box side walls.
+  group.add(makeSurface(ribbonFaces(upperNeg,upperPos),0x39dff4,.11,'cut_preview_width_contact',125));
+  group.add(makeSurface(ribbonFaces(lowerNeg,lowerPos),0x39dff4,.11,'cut_preview_width_depth',125));
+ }
+
+ const lineMat=(color,opacity=1,depthTest=false)=>new THREE.LineBasicMaterial({color,transparent:opacity<1,opacity,depthTest,depthWrite:false});
+ const addLineSegments=(points,material,name,order)=>{if(!points.length)return;const g=new THREE.BufferGeometry().setFromPoints(points),line=new THREE.LineSegments(g,material);line.name=name;line.renderOrder=order;group.add(line)};
+ const addCurveEdges=(dst,row)=>{for(let i=0;i<row.length-1;i++)dst.push(row[i],row[i+1])};
+
+ // Active outline: upper and lower are identical curves separated only by depth.
+ const outline=[];addCurveEdges(outline,upper);addCurveEdges(outline,lower);outline.push(upper[0],lower[0],upper[upper.length-1],lower[lower.length-1]);
+ addLineSegments(outline,lineMat(0x00e5ff,.98,false),'cut_preview_active_outline',130);
+
+ // Make the actual 3D contact edge unmistakable.
+ const contact=[];addCurveEdges(contact,upper);
+ addLineSegments(contact,lineMat(0xffffff,1,false),'cut_preview_contact_edge',133);
+
+ // Show the configured width with the four exact boundary curves.
+ if(halfKerfWorld>1e-7){
+  const widthEdges=[];addCurveEdges(widthEdges,upperNeg);addCurveEdges(widthEdges,upperPos);addCurveEdges(widthEdges,lowerNeg);addCurveEdges(widthEdges,lowerPos);
+  widthEdges.push(upperNeg[0],upperPos[0],upperNeg[upperNeg.length-1],upperPos[upperPos.length-1],lowerNeg[0],lowerPos[0],lowerNeg[lowerNeg.length-1],lowerPos[lowerPos.length-1]);
+  addLineSegments(widthEdges,lineMat(0x64efff,.85,false),'cut_preview_width_outline',129);
+ }
+
+ // CAD hatch is drawn only on the active curtain.
+ const sampleCurve=t=>{const u=THREE.MathUtils.clamp(t,0,1)*(upper.length-1),i=Math.min(upper.length-2,Math.floor(u)),f=u-i;return upper[i].clone().lerp(upper[i+1],f)};
+ const hatchPoints=[],hatchCount=Math.max(7,Math.min(15,Math.round(upper.length/3))),steps=8,slope=.055;
+ for(let hIdx=0;hIdx<hatchCount;hIdx++){
+  const base=(hIdx+.5)/hatchCount;let prev=null;
+  for(let k=0;k<=steps;k++){
+   const dv=k/steps,t=base+slope*(dv-.5);
+   if(t<0||t>1){prev=null;continue}
+   const p=sampleCurve(t).addScaledVector(dir,dv*depthWorld);
+   if(prev)hatchPoints.push(prev,p.clone());
+   prev=p;
+  }
+ }
  addLineSegments(hatchPoints,lineMat(0x91f4ff,.72,false),'cut_preview_hatch',131);
+
  obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
 function updateThreeEditUi(message=null){
