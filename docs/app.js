@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-124';const APP_BUILD='124';
+const APP_VERSION='2026.09.23-125';const APP_BUILD='125';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -923,16 +923,18 @@ installFilterReorder();
 
 const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 const mpr3DLiveTextureMode={axial:false,coronal:false,sagittal:false};
+const mpr3DLiveRaf={axial:0,coronal:0,sagittal:0},mpr3DLivePending={axial:0,coronal:0,sagittal:0},mpr3DLiveImageCache={axial:null,coronal:null,sagittal:null};
 function paintFastOrthogonalPreview(p,idx){
  if(p==='axial'||!volume?.sourceBacked||sourceFilterStages().length||volumeAnalysisMode)return false;
  if(mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
  const ok=paintMpr3DPreview(p,idx,planes[p].canvas);
- if(ok){updateMprCanvasPhysicalAspect(p);refreshMpr3DPlaneTexture(p)}
+ if(ok)updateMprCanvasPhysicalAspect(p);
  return ok;
 }
 function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();mpr3DLiveTextureMode[p]=!immediate;updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
+ if(!immediate)scheduleMpr3DLiveTexture(p,idx);
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
  if(volume?.sourceBacked&&volume.mprData&&!sourceFilterStages().length){
@@ -953,7 +955,7 @@ function renderSectionPlaneLive(p){
  if(paintFastOrthogonalPreview(p,idx))return;
  void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('Live section render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
 }
-for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>{mpr3DLiveTextureMode[p]=false;schedulePlaneRender(p,true)};installMprTouch(p)}
+for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>{mpr3DLiveTextureMode[p]=false;if(mpr3DLiveRaf[p]){cancelAnimationFrame(mpr3DLiveRaf[p]);mpr3DLiveRaf[p]=0}schedulePlaneRender(p,true)};installMprTouch(p)}
 
 async function loadDemo(){
  let response=null,fromCache=false,cache=null;
@@ -3434,21 +3436,52 @@ function updateMpr3DPlanePositions(){
  sceneState.mprPlaneGroup.visible=!!sceneState.obj;
  request3DRender();
 }
+function mpr3DLiveDims(p){
+ if(!volume)return[1,1];
+ const sw=p==='axial'?volume.columns:p==='coronal'?volume.columns:volume.rows,sh=p==='axial'?volume.rows:volume.slices;
+ const maxSide=navigator.maxTouchPoints>0?448:640,pixelBudget=navigator.maxTouchPoints>0?180000:320000,k=Math.min(1,maxSide/Math.max(sw,sh,1),Math.sqrt(pixelBudget/Math.max(sw*sh,1)));
+ return[Math.max(1,Math.round(sw*k)),Math.max(1,Math.round(sh*k))];
+}
+function paintMpr3DMemoryPreview(p,idx,dst){
+ const v=volume,data=v?.mprData;if(!data||!dst)return false;
+ const w=v.columns,h=v.rows,d=v.slices,[pw,ph]=mpr3DLiveDims(p),ctx=dst.getContext('2d');
+ if(dst.width!==pw)dst.width=pw;if(dst.height!==ph)dst.height=ph;
+ let cache=mpr3DLiveImageCache[p];if(!cache||cache.width!==pw||cache.height!==ph){cache={width:pw,height:ph,image:ctx.createImageData(pw,ph)};mpr3DLiveImageCache[p]=cache}
+ const img=cache.image,low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments();let q=0;
+ for(let py=0;py<ph;py++){
+  const sy=mpr3DPreviewMap(py,p==='axial'?h:d,ph),z=p==='axial'?idx:d-1-sy;
+  for(let px=0;px<pw;px++){
+   const sx=mpr3DPreviewMap(px,p==='sagittal'?h:w,pw),x=p==='sagittal'?idx:sx,y=p==='coronal'?idx:(p==='sagittal'?sx:sy),voxel=z*h*w+y*w+x,hu=data[voxel],g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));let rr=g,gg=g,bb=g;
+   for(const item of activeSegs){
+    const {key,seg,edit,processedMask,processedRuns,rgb,alpha}=item,inside=processedRuns?analysisRunsContain(processedRuns,x,y,z):(segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,x,y,z):(processedMask?processedMask[voxel]===1:(hu>=seg.min&&hu<=seg.max)));
+    if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha);
+   }
+   img.data[q++]=rr;img.data[q++]=gg;img.data[q++]=bb;img.data[q++]=255;
+  }
+ }
+ ctx.putImageData(img,0,0);return true;
+}
+function paintMpr3DLiveTextureNow(p,idx){
+ const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return false;
+ const dst=entry.previewCanvas;let painted=false;
+ if(volume?.mprData)painted=paintMpr3DMemoryPreview(p,idx,dst);
+ if(!painted&&mpr3DPreviewCache.signature===mpr3DPreviewSignature(volume)&&mpr3DPreviewCache.planes[p])painted=paintMpr3DPreview(p,idx,dst);
+ if(!painted)return false;
+ entry.texture.needsUpdate=true;request3DRender();return true;
+}
+function scheduleMpr3DLiveTexture(p,idx){
+ mpr3DLivePending[p]=idx;if(mpr3DLiveRaf[p])return;
+ mpr3DLiveRaf[p]=requestAnimationFrame(()=>{mpr3DLiveRaf[p]=0;if(mpr3DLiveTextureMode[p])paintMpr3DLiveTextureNow(p,mpr3DLivePending[p])});
+}
 function refreshMpr3DPlaneTexture(p){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return;
- const src=planes[p]?.canvas,dst=entry.previewCanvas;if(!src?.width||!src?.height||!dst)return;
  const live=!!sceneState?.mprInteractionActive||!!mpr3DLiveTextureMode[p];
- let targetW=src.width,targetH=src.height;
  if(live){
-  // Live 3D MPR always comes from the already-rendered 2D canvas.
-  // Keep one consistent GPU upload budget for axial/coronal/sagittal.
-  const maxSide=navigator.maxTouchPoints>0?448:576,pixelBudget=(navigator.maxTouchPoints>0?180000:280000),largest=Math.max(targetW,targetH);
-  let k=Math.min(1,maxSide/Math.max(largest,1),Math.sqrt(pixelBudget/Math.max(targetW*targetH,1)));
-  targetW=Math.max(1,Math.round(targetW*k));targetH=Math.max(1,Math.round(targetH*k));
+  if(paintMpr3DLiveTextureNow(p,+planes[p].slider.value))return;
  }
- if(dst.width!==targetW)dst.width=targetW;
- if(dst.height!==targetH)dst.height=targetH;
- const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=live;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0,src.width,src.height,0,0,dst.width,dst.height);
+ const src=planes[p]?.canvas,dst=entry.previewCanvas;if(!src?.width||!src?.height||!dst)return;
+ if(dst.width!==src.width)dst.width=src.width;if(dst.height!==src.height)dst.height=src.height;
+ const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0);
  entry.texture.needsUpdate=true;request3DRender();
 }
 function request3DRender(){
