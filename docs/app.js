@@ -261,6 +261,14 @@ function updateSectionClipPlaneWorld(){
   const g=sceneState.sectionClipGroup;g.clippingPlanes=[sceneState.sectionClipPlane];g.enabled=true;
  }
 }
+function rebindWebGpuSectionClipGroup(){
+ if(!sceneState?.obj||sceneState.backend!=='WEBGPU'||!THREE.ClippingGroup||!sectionViewOpen||!sectionViewPlane)return;
+ const obj=sceneState.obj,old=sceneState.sectionClipGroup,next=new THREE.ClippingGroup();
+ next.name='section_clip_group';next.enabled=true;next.clippingPlanes=[sceneState.sectionClipPlane];
+ if(old&&obj.parent===old)old.remove(obj);else obj.parent?.remove?.(obj);
+ if(old?.parent)old.parent.remove(old);
+ sceneState.scene.add(next);next.add(obj);sceneState.sectionClipGroup=next;obj.updateMatrixWorld(true);
+}
 function applySectionClippingMaterials(root=sceneState?.obj){
  if(!root||!sceneState)return;
  const active=sectionViewOpen&&!!sectionViewPlane&&sceneState.backend!=='WEBGPU';
@@ -623,8 +631,8 @@ analysisExportSelected.onclick=()=>void exportFocusedAnalysisRegionStl();
 renderModeToggle.onclick=()=>{if(threeRenderMode==='volume')deactivateMedicalVolume();else void activateMedicalVolume()};
 sectionViewToggle.onclick=()=>{if(!volume)return;sectionViewOpen=!sectionViewOpen;if(!sectionViewOpen)clearSectionView();else updateSectionViewUi()};
 document.querySelectorAll('[data-section-view]').forEach(button=>button.addEventListener('click',()=>setSectionView(button.dataset.sectionView)));
-sectionReverse.onclick=()=>{if(!sectionViewPlane)return;sectionViewReverse=!sectionViewReverse;updateSectionClipPlaneWorld();syncSectionClipParent();applySectionClippingMaterials(sceneState?.obj);updateSectionViewUi();request3DRender()};
-sectionPosition.oninput=()=>{if(!sectionViewPlane)return;const p=sectionViewPlane,idx=Math.max(0,Math.min(+planes[p].slider.max,+sectionPosition.value));planes[p].slider.value=idx;planes[p].label.textContent=idx+1;updateMpr3DPlanePositions();updateSectionClipPlaneWorld();updateSectionViewUi();request3DRender();renderSectionPlaneLive(p)};
+sectionReverse.onclick=()=>{if(!sectionViewPlane)return;sectionViewReverse=!sectionViewReverse;updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();syncSectionClipParent();applySectionClippingMaterials(sceneState?.obj);updateSectionViewUi();request3DRender()};
+sectionPosition.oninput=()=>{if(!sectionViewPlane)return;const p=sectionViewPlane,idx=Math.max(0,Math.min(+planes[p].slider.max,+sectionPosition.value));planes[p].slider.value=idx;planes[p].label.textContent=idx+1;updateMpr3DPlanePositions();updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender();renderSectionPlaneLive(p)};
 sectionPosition.onchange=()=>{if(sectionViewPlane)renderSectionPlaneLive(sectionViewPlane)};
 volumeAnalysisToggle.onclick=async()=>{
  if(!volume)return;
