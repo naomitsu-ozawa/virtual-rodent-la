@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-57';const APP_BUILD='57';
+const APP_VERSION='2026.09.23-58';const APP_BUILD='58';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -2216,27 +2216,25 @@ function sourceOrthogonalCacheSet(p,idx,v){
   const first=sourceOrthogonalPlaneCache.keys().next().value,item=sourceOrthogonalPlaneCache.get(first);sourceOrthogonalPlaneCache.delete(first);sourceOrthogonalPlaneCacheBytes-=item.byteLength;
  }
 }
-async function buildSourceOrthogonalNeighborhood(p,idx,series,revision){
+async function buildSourceOrthogonalPlane(p,idx,series,revision){
  const cached=sourceOrthogonalCacheGet(p,idx);if(cached)return cached;
- const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],planeBytes=dims[0]*dims[1]*4;
- const maxPlanes=Math.max(3,Math.min(33,Math.floor(sourceOrthogonalCacheLimit()/Math.max(planeBytes,1)))),radius=Math.max(1,Math.floor((maxPlanes-1)/2));
- const max=p==='coronal'?series.rows-1:series.columns-1,a=Math.max(0,idx-radius),b=Math.min(max,idx+radius),indices=[];for(let i=a;i<=b;i++)if(!sourceOrthogonalCacheGet(p,i))indices.push(i);
- const built=new Map(indices.map(i=>[i,new Float32Array(dims[0]*dims[1])]));
- if(!indices.length)return sourceOrthogonalCacheGet(p,idx);
+ const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],out=new Float32Array(dims[0]*dims[1]);
  for(let z=0;z<series.slices.length;z++){
   if(revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
   const meta=series.slices[z],base=(series.slices.length-1-z)*dims[0];
   if(p==='coronal'){
-   const lo=indices[0],hi=indices[indices.length-1],block=await readSourceRows(meta,lo,hi-lo+1);
-   for(const i of indices)built.get(i).set(block.subarray((i-lo)*series.columns,(i-lo+1)*series.columns),base);
+   const row=await readSourceRows(meta,idx,1);out.set(row.subarray(0,series.columns),base);
   }else{
    const full=await getCachedSourceSlice(meta);
-   for(const i of indices){const dst=built.get(i);for(let y=0;y<series.rows;y++)dst[base+y]=full[y*series.columns+i]}
+   for(let y=0;y<series.rows;y++)out[base+y]=full[y*series.columns+idx];
   }
-  if((z&15)===0)await frameYield();
+  if((z&31)===0)await frameYield();
  }
- for(const [i,v] of built)sourceOrthogonalCacheSet(p,i,v);
- return sourceOrthogonalCacheGet(p,idx);
+ if(revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
+ sourceOrthogonalCacheSet(p,idx,out);return out;
+}
+async function buildSourceOrthogonalNeighborhood(p,idx,series,revision){
+ return buildSourceOrthogonalPlane(p,idx,series,revision);
 }
 async function getCachedSourceSlice(meta){
  const hit=sourceSliceCache.map.get(meta);
@@ -3160,13 +3158,20 @@ function scheduleSourceMprWarmup(){
   if(token!==sourceMprWarmupToken||!volume?.sourceBacked||sourceFilterStages().length)return;
   for(const p of ['coronal','sagittal']){
    if(token!==sourceMprWarmupToken)return;
-   const idx=+planes[p].slider.value;
-   if(sourceOrthogonalCacheGet(p,idx))continue;
+   const idx=+planes[p].slider.value,max=p==='coronal'?volume.rows-1:volume.columns-1;
    sourceMprWarmupPlane=p;
-   const revision=++planeRenderRevision[p];
-   try{await renderPlane(p,revision,idx)}catch(e){if(String(e.message||e)!=='__SUPERSEDED__')console.warn('MPR warmup failed.',e)}
+   if(!sourceOrthogonalCacheGet(p,idx)){
+    const revision=++planeRenderRevision[p];
+    try{await renderPlane(p,revision,idx)}catch(e){if(String(e.message||e)!=='__SUPERSEDED__')console.warn('MPR warmup failed.',e)}
+   }
    if(sourceMprWarmupPlane===p)sourceMprWarmupPlane=null;
-   await frameYield();
+   const idleRevision=planeRenderRevision[p];
+   for(const offset of [-1,1,-2,2]){
+    if(token!==sourceMprWarmupToken||idleRevision!==planeRenderRevision[p])return;
+    const near=idx+offset;if(near<0||near>max||sourceOrthogonalCacheGet(p,near))continue;
+    try{await buildSourceOrthogonalPlane(p,near,volume.series,idleRevision)}catch(e){if(String(e.message||e)==='__SUPERSEDED__')return;console.warn('MPR neighbor warmup failed.',e);break}
+    await frameYield();
+   }
   }
  };
  if('requestIdleCallback' in window)requestIdleCallback(()=>void run(),{timeout:900});
