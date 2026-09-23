@@ -3709,23 +3709,28 @@ function surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey=null){
  const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=sceneState.obj.worldToLocal(hit.point.clone()),inv=sceneState.obj.matrixWorld.clone().invert(),toVoxelDir=vec=>{const q=vec.clone().transformDirection(inv).normalize();return{x:q.x,y:-q.y,z:q.z}},localRay=toVoxelDir(raycaster.ray.direction),cameraRight=toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0)),cameraUp=toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1));
  return{x:Math.max(0,Math.min(w-1,Math.round((local.x/scale+px/2)/vx))),y:Math.max(0,Math.min(h-1,Math.round((-local.y/scale+py/2)/vy))),z:Math.max(0,Math.min(d-1,Math.round((local.z/scale+pz/2)/vz))),ray:localRay,right:cameraRight,up:cameraUp,hit,key};
 }
-function cutPointerVoxel(event,canvas,camera,preferredKey=null){
- const surface=surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey);if(surface)return surface;
+function createCutPlacementFrame(event,canvas,camera,preferredKey=null){
  if(!sceneState?.obj||!volume)return null;
  const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/Math.max(rect.width,1))*2-1,-((event.clientY-rect.top)/Math.max(rect.height,1))*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
- const obj=sceneState.obj,box=new THREE.Box3().setFromObject(obj),corners=[
-  new THREE.Vector3(box.min.x,box.min.y,box.min.z),new THREE.Vector3(box.min.x,box.min.y,box.max.z),new THREE.Vector3(box.min.x,box.max.y,box.min.z),new THREE.Vector3(box.min.x,box.max.y,box.max.z),
-  new THREE.Vector3(box.max.x,box.min.y,box.min.z),new THREE.Vector3(box.max.x,box.min.y,box.max.z),new THREE.Vector3(box.max.x,box.max.y,box.min.z),new THREE.Vector3(box.max.x,box.max.y,box.max.z)
- ];
- const viewDir=new THREE.Vector3();camera.getWorldDirection(viewDir).normalize();
- let front=null,frontDepth=Infinity;
- for(const p of corners){const depth=p.clone().sub(camera.position).dot(viewDir);if(depth>0&&depth<frontDepth){frontDepth=depth;front=p}}
- if(!front)return null;
- const planePoint=camera.position.clone().addScaledVector(viewDir,frontDepth);
- const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir,planePoint),world=new THREE.Vector3();if(!raycaster.ray.intersectPlane(plane,world))return null;
- const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=obj.worldToLocal(world.clone()),inv=obj.matrixWorld.clone().invert();
- const toVoxelDir=vec=>{const q=vec.clone().transformDirection(inv).normalize();return{x:q.x,y:-q.y,z:q.z}};
- return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:toVoxelDir(raycaster.ray.direction),right:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0)),up:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1)),hit:null,key:preferredKey||null,virtual:true};
+ const obj=sceneState.obj,surface=surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey),viewDir=new THREE.Vector3();camera.getWorldDirection(viewDir).normalize();
+ let anchorWorld=surface?.hit?.point?.clone?.()||null;
+ if(!anchorWorld){
+  const box=new THREE.Box3().setFromObject(obj),corners=[new THREE.Vector3(box.min.x,box.min.y,box.min.z),new THREE.Vector3(box.min.x,box.min.y,box.max.z),new THREE.Vector3(box.min.x,box.max.y,box.min.z),new THREE.Vector3(box.min.x,box.max.y,box.max.z),new THREE.Vector3(box.max.x,box.min.y,box.min.z),new THREE.Vector3(box.max.x,box.min.y,box.max.z),new THREE.Vector3(box.max.x,box.max.y,box.min.z),new THREE.Vector3(box.max.x,box.max.y,box.max.z)];
+  let frontDepth=Infinity;for(const p of corners){const depth=p.clone().sub(camera.position).dot(viewDir);if(depth>0&&depth<frontDepth)frontDepth=depth}
+  if(!Number.isFinite(frontDepth))return null;
+  const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir,camera.position.clone().addScaledVector(viewDir,frontDepth));anchorWorld=new THREE.Vector3();if(!raycaster.ray.intersectPlane(plane,anchorWorld))return null;
+ }
+ const inv=obj.matrixWorld.clone().invert(),toVoxelDir=vec=>{const q=vec.clone().transformDirection(inv).normalize();return{x:q.x,y:-q.y,z:q.z}};
+ return{plane:new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir,anchorWorld),ray:toVoxelDir(raycaster.ray.direction),right:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0)),up:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1)),key:surface?.key||preferredKey||null};
+}
+function cutPointerVoxel(event,canvas,camera,preferredKey=null,frame=null){
+ if(!sceneState?.obj||!volume)return null;
+ const placement=frame||createCutPlacementFrame(event,canvas,camera,preferredKey);if(!placement)return null;
+ const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/Math.max(rect.width,1))*2-1,-((event.clientY-rect.top)/Math.max(rect.height,1))*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
+ const world=new THREE.Vector3();if(!raycaster.ray.intersectPlane(placement.plane,world))return null;
+ const obj=sceneState.obj,v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=obj.worldToLocal(world.clone());
+ const surface=surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey),key=surface?.key||preferredKey||placement.key||null;
+ return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:placement.ray,right:placement.right,up:placement.up,hit:surface?.hit||null,key,virtual:!surface};
 }
 async function segmentKeyAtVoxel(v,x,y,z){
  const w=v.columns,h=v.rows,d=v.slices;if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return null;
