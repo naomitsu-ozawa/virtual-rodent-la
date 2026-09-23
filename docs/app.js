@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-83';const APP_BUILD='83';
+const APP_VERSION='2026.09.23-84';const APP_BUILD='84';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4739,6 +4739,16 @@ async function buildSmoothIsoMesh(v,mask,seg,key,editSurface=false){
  const material=new THREE.MeshStandardMaterial({color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:false}),mesh=new THREE.Mesh(geometry,material);
  mesh.name='segment_'+key+'_isosurface';mesh.userData.segmentKey=key;mesh.userData.editSurface=!!editSurface;mesh.userData.displayScale=(v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v)).scale;return mesh;
 }
+function fullVolumeSmoothIsosurfaceFeasible(v){
+ if(!v)return false;
+ const w=Number(v.columns)||0,h=Number(v.rows)||0,d=Number(v.slices)||0;
+ if(w<=0||h<=0||d<=0)return false;
+ const voxels=w*h*d,padded=(w+2)*(h+2)*(d+2);
+ // Minimum working set before mesh arrays: binary mask + two Float32 scalar fields.
+ const estimatedBytes=voxels+padded*8;
+ const limit=(navigator.maxTouchPoints||0)>0?48*1024*1024:96*1024*1024;
+ return estimatedBytes<=limit;
+}
 async function render3DSmoothIsosurface(v){
  if(!sceneState||!surfaceSmoothingActive())return false;
  const revision=++sourceRenderRevision,previous=sceneState.obj,group=new THREE.Group();if(previous){group.position.copy(previous.position);group.quaternion.copy(previous.quaternion);group.scale.copy(previous.scale)}
@@ -4940,6 +4950,10 @@ async function render3DSourceBacked(v){
  threeLabel.textContent=(sceneState.backend||'3D')+' · building…';set3DBusy(true,'3D構築中…');
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return}
+  if(strongSmooth){
+   for(const {key} of streamActive)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);
+   setGpuComputeBackend('WEBGPU MESH · CPU GLOBAL SMOOTH');
+  }
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);
   syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
@@ -5005,6 +5019,10 @@ async function render3DMemoryGpu(v){
  threeLabel.textContent=(sceneState.backend||'3D')+' · GPU building…';set3DBusy(true,'3D構築中…');
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return null}
+  if(strongSmooth){
+   for(const {key} of active)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);
+   setGpuComputeBackend('WEBGPU MESH · CPU GLOBAL SMOOTH');
+  }
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
@@ -5038,7 +5056,7 @@ async function render3D(v,force=false){
  if(!sceneState)return false;
  if(deferAutomatic3D&&!force){mark3DStale();return false}
  let ok;
- if(surfaceSmoothingActive())ok=await render3DSmoothIsosurface(v);
+ if(surfaceSmoothingActive()&&fullVolumeSmoothIsosurfaceFeasible(v))ok=await render3DSmoothIsosurface(v);
  else if(v.sourceBacked)ok=await render3DSourceBacked(v);
  else ok=await render3DMemoryGpu(v);
  if(ok!==true){
