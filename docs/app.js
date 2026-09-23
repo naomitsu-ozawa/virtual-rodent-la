@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-67';const APP_BUILD='67';
+const APP_VERSION='2026.09.23-68';const APP_BUILD='68';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4560,6 +4560,7 @@ async function smoothIsosurfaceGeometry(v,mask,strength){
  const pcoord=id=>[positions[id*3],positions[id*3+1],positions[id*3+2]];
  const emit=(tri,out)=>{
   const a=pcoord(tri[0]),b=pcoord(tri[1]),cc=pcoord(tri[2]),abx=b[0]-a[0],aby=b[1]-a[1],abz=b[2]-a[2],acx=cc[0]-a[0],acy=cc[1]-a[1],acz=cc[2]-a[2],nx=aby*acz-abz*acy,ny=abz*acx-abx*acz,nz=abx*acy-aby*acx;
+  if(nx*nx+ny*ny+nz*nz<1e-14)return;
   if(nx*out[0]+ny*out[1]+nz*out[2]<0){const t=tri[1];tri[1]=tri[2];tri[2]=t}indices.push(tri[0],tri[1],tri[2]);
  };
  for(let z=0;z<fd-1;z++){
@@ -4571,15 +4572,18 @@ async function smoothIsosurfaceGeometry(v,mask,strength){
     let inCount=0,outCount=0,ix=0,iy=0,iz=0,ox=0,oy=0,oz=0;
     for(const k of tet){const g=cg[k],p=world(g[0],g[1],g[2]);if(cv[k]>=iso){inCount++;ix+=p[0];iy+=p[1];iz+=p[2]}else{outCount++;ox+=p[0];oy+=p[1];oz+=p[2]}}
     if(inCount===0||inCount===4)continue;
-    const crossings=[];
+    let crossings=[];
     for(const e of tetEdges){const ka=tet[e[0]],kb=tet[e[1]],va=cv[ka],vb=cv[kb];if((va>=iso)===(vb>=iso))continue;const a=cg[ka],b=cg[kb];crossings.push(edgeVertex(a[0],a[1],a[2],b[0],b[1],b[2],va,vb))}
+    crossings=[...new Set(crossings)];
     const out=[ox/Math.max(1,outCount)-ix/Math.max(1,inCount),oy/Math.max(1,outCount)-iy/Math.max(1,inCount),oz/Math.max(1,outCount)-iz/Math.max(1,inCount)];
     if(crossings.length===3)emit([crossings[0],crossings[1],crossings[2]],out);
     else if(crossings.length===4){
-     const p0=pcoord(crossings[0]),p1=pcoord(crossings[1]),p2=pcoord(crossings[2]),p3=pcoord(crossings[3]);
-     const d02=(p0[0]-p2[0])**2+(p0[1]-p2[1])**2+(p0[2]-p2[2])**2,d13=(p1[0]-p3[0])**2+(p1[1]-p3[1])**2+(p1[2]-p3[2])**2;
-     if(d02<=d13){emit([crossings[0],crossings[1],crossings[2]],out);emit([crossings[0],crossings[2],crossings[3]],out)}
-     else{emit([crossings[0],crossings[1],crossings[3]],out);emit([crossings[1],crossings[2],crossings[3]],out)}
+     let cx=0,cy=0,cz=0;const pts=crossings.map(id=>{const p=pcoord(id);cx+=p[0];cy+=p[1];cz+=p[2];return{id,p}});cx/=4;cy/=4;cz/=4;
+     let nl=Math.hypot(out[0],out[1],out[2])||1,nx=out[0]/nl,ny=out[1]/nl,nz=out[2]/nl;
+     let ux=pts[0].p[0]-cx,uy=pts[0].p[1]-cy,uz=pts[0].p[2]-cz,ul=Math.hypot(ux,uy,uz)||1;ux/=ul;uy/=ul;uz/=ul;
+     let vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;
+     pts.sort((aa,bb)=>{const ap=aa.p,bp=bb.p,ax=ap[0]-cx,ay=ap[1]-cy,az=ap[2]-cz,bx=bp[0]-cx,by=bp[1]-cy,bz=bp[2]-cz;return Math.atan2(ax*vx+ay*vy+az*vz,ax*ux+ay*uy+az*uz)-Math.atan2(bx*vx+by*vy+bz*vz,bx*ux+by*uy+bz*uz)});
+     emit([pts[0].id,pts[1].id,pts[2].id],out);emit([pts[0].id,pts[2].id,pts[3].id],out);
     }
    }
   }
@@ -4601,18 +4605,23 @@ async function buildSmoothIsoMesh(v,mask,seg,key,editSurface=false){
 }
 async function render3DSmoothIsosurface(v){
  if(!sceneState||!surfaceSmoothingActive())return false;
- const base=v.sourceBacked?sourceMprMemoryView(v):v;if(!base||v.sourceBacked&&sourceFilterStages().length)return false;
  const revision=++sourceRenderRevision,previous=sceneState.obj,group=new THREE.Group();if(previous){group.position.copy(previous.position);group.quaternion.copy(previous.quaternion);group.scale.copy(previous.scale)}
  const active=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active&&segmentState[key].enabled).map(key=>({key,seg:segmentState[key]}));
  set3DBusy(true,'3D等値面を構築中…');threeLabel.textContent=(sceneState.backend||'3D')+' · smooth isosurface';
  try{
-  for(const {key,seg} of active){
-   if(revision!==sourceRenderRevision){dispose(group);return null}
-   const mask=getProcessedSegmentMask(base,seg),mesh=await buildSmoothIsoMesh(v,mask,seg,key,false);if(mesh)group.add(mesh);await frameYield();
+  for(let ai=0;ai<active.length;ai++){
+   const {key,seg}=active[ai];if(revision!==sourceRenderRevision){dispose(group);return null}
+   footer.textContent=(currentLanguage==='ja'?'滑らかな3D表面を構築中… ':'Building smooth 3D surface… ')+(ai+1)+' / '+active.length;
+   let mask;
+   if(v.sourceBacked){
+    const runs=await ensureSegmentBaseRuns(key,v);if(revision!==sourceRenderRevision){dispose(group);return null}
+    mask=maskFromAnalysisRuns(v,runs);
+   }else mask=getProcessedSegmentMask(v,seg);
+   const mesh=await buildSmoothIsoMesh(v,mask,seg,key,false);if(mesh)group.add(mesh);await frameYield();
   }
   if(revision!==sourceRenderRevision){dispose(group);return null}
   if(previous){previous.parent?.remove(previous);dispose(previous)}sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
-  setGpuComputeBackend('CPU ISOSURFACE · WEBGPU RENDER');threeLabel.textContent=(sceneState.backend||'3D')+' · smooth isosurface';footer.textContent='3D smooth isosurface · full-resolution mask';set3DBusy(false);request3DRender();mark3DCurrent();return true;
+  setGpuComputeBackend('CPU ISOSURFACE · WEBGPU RENDER');threeLabel.textContent=(sceneState.backend||'3D')+' · smooth isosurface';footer.textContent=currentLanguage==='ja'?'3D滑面表示 · フル解像度':'3D smooth surface · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){dispose(group);set3DBusy(false);console.error(e);footer.textContent='3D isosurface error: '+String(e.message||e);return false}
 }
 function geometryFromSourcePositions(positions,alreadyGpuSmoothed=false,normals=null,applySmoothing=true){
