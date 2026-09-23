@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-77';const APP_BUILD='77';
+const APP_VERSION='2026.09.23-78';const APP_BUILD='78';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4319,18 +4319,30 @@ async function rebuildCutResultPreview(revision,pending){
   const current=await getFinalSegmentRuns(key,v);
   if(revision!==cutResultPreviewRevision||pending!==analysisPendingCut)return;
   const cut=cutRunsFromVoxelStroke(v,pending.points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,pending.mode,+analysisCutOffset.value||0);
-  const previewRuns=subtractRunArrays(current,cut,v.slices),isCurrent=()=>revision===cutResultPreviewRevision&&pending===analysisPendingCut&&!analysisCutApplying;
-  let group=await buildEditableRunsGroup(v,previewRuns,key,isCurrent);
+  const removedRuns=intersectRunArrays(current,cut,v.slices),isCurrent=()=>revision===cutResultPreviewRevision&&pending===analysisPendingCut&&!analysisCutApplying;
+  let group=await buildEditableRunsGroup(v,removedRuns,key,isCurrent);
   if(!isCurrent()){if(group)dispose(group);return}
   if(!group)group=new THREE.Group();
-  group.name='cut_result_preview';group.traverse?.(o=>{if(o.isMesh)o.userData.cutResultPreview=true});
-  const oldKey=state.cutResultPreviewKey,old=state.cutResultPreviewGroup;
+  group.name='cut_remove_preview';
+  group.traverse?.(o=>{
+   if(!o.isMesh)return;
+   o.userData.cutResultPreview=true;
+   const mats=Array.isArray(o.material)?o.material:[o.material];
+   for(const m of mats){
+    if(!m)continue;
+    if(m.color?.set)m.color.set(0xff5a36);
+    if(m.emissive?.set)m.emissive.set(0x7a1408);
+    m.emissiveIntensity=.45;m.transparent=true;m.opacity=.68;m.depthWrite=false;
+   }
+   o.renderOrder=96;
+  });
+  const old=state.cutResultPreviewGroup;
   if(old){if(old.parent)old.parent.remove(old);dispose(old)}
-  if(oldKey&&oldKey!==key)setCutResultSourceHidden(oldKey,false);
-  setCutResultSourceHidden(key,true);
+  if(state.cutResultPreviewKey)setCutResultSourceHidden(state.cutResultPreviewKey,false);
+  setCutResultSourceHidden(key,false);
   state.cutResultPreviewKey=key;state.cutResultPreviewGroup=group;state.obj.add(group);request3DRender();
  }catch(e){
-  if(String(e.message||e)!=='__SUPERSEDED__')console.warn('Cut result preview failed.',e);
+  if(String(e.message||e)!=='__SUPERSEDED__')console.warn('Cut removal preview failed.',e);
  }
 }
 function cutPreviewDirection(point){return cutDirectionFromPoint(point,+analysisCutYaw.value||0,+analysisCutPitch.value||0)}
@@ -4365,7 +4377,8 @@ function updateCutPreview(point=null){
  }
  const group=new THREE.Group();group.name='cut_preview';
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
- const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:width>0?.16:.24,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
+ const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:width>0?.07:.10,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
+ const edges=new THREE.LineSegments(new THREE.EdgesGeometry(geom,22),new THREE.LineBasicMaterial({color:0x00e5ff,transparent:true,opacity:.72,depthWrite:false}));edges.name='cut_preview_outline';edges.renderOrder=97;group.add(edges);
  obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
 function updateThreeEditUi(message=null){
@@ -5010,22 +5023,22 @@ async function render3D(v,force=false){
   ok=await render3DSmoothIsosurface(v);
   if(ok===null)return false;
   if(ok!==true){
-   threeLabel.textContent=(sceneState.backend||'3D')+' · smooth surface error';
-   mark3DStale();return false;
+   footer.textContent=currentLanguage==='ja'?'滑面構築を別のフル解像度経路で再試行しています…':'Retrying smooth 3D with the alternate full-resolution path…';
+   ok=v.sourceBacked?await render3DSourceBacked(v):await render3DMemoryGpu(v);
   }
  }else if(v.sourceBacked){
   ok=await render3DSourceBacked(v);
  }else{
   ok=await render3DMemoryGpu(v);
-  if(ok!==true){
-   if(ok===null||threeDCancelRequested)return false;
-   threeLabel.textContent=(sceneState.backend||'3D')+' · GPU mesh error';
-   footer.textContent=currentLanguage==='ja'?'3D生成に失敗しました。既存の3D表示を保持しています。':'3D build failed. The previous 3D view was preserved.';
-   mark3DStale();return false;
-  }
  }
- if(ok===true)await restoreEditedSegmentSurfaces(v);
- return ok===true;
+ if(ok!==true){
+  if(ok===null||threeDCancelRequested)return false;
+  threeLabel.textContent=(sceneState.backend||'3D')+' · 3D build error';
+  footer.textContent=currentLanguage==='ja'?'3D生成に失敗しました。既存の3D表示を保持しています。':'3D build failed. The previous 3D view was preserved.';
+  mark3DStale();return false;
+ }
+ await restoreEditedSegmentSurfaces(v);
+ return true;
 }
 function meshSegmentRanges(mesh,key){
  const pos=mesh?.geometry?.getAttribute?.('position');if(!pos)return[];
