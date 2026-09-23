@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-122';const APP_BUILD='122';
+const APP_VERSION='2026.09.23-123';const APP_BUILD='123';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -922,6 +922,7 @@ threeBusyCancel.onclick=()=>cancel3DRebuild();
 installFilterReorder();
 
 const planeRenderTimers={axial:null,coronal:null,sagittal:null};
+const mpr3DLiveTextureMode={axial:false,coronal:false,sagittal:false};
 function paintFastOrthogonalPreview(p,idx){
  if(p==='axial'||!volume?.sourceBacked||sourceFilterStages().length||volumeAnalysisMode)return false;
  if(mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
@@ -930,11 +931,11 @@ function paintFastOrthogonalPreview(p,idx){
  return ok;
 }
 function schedulePlaneRender(p,immediate=false){
- cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
+ cancelSourceMprWarmup();mpr3DLiveTextureMode[p]=!immediate;updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
- refreshMpr3DPlaneTexture(p);
+ if(!immediate)refreshMpr3DPlaneTexture(p);
  if(volume?.sourceBacked&&volume.mprData&&!sourceFilterStages().length){
   const values=cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
   paintSourcePlane(planes[p],dims,values,p,idx);return;
@@ -953,7 +954,7 @@ function renderSectionPlaneLive(p){
  if(paintFastOrthogonalPreview(p,idx))return;
  void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('Live section render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
 }
-for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>schedulePlaneRender(p,true);installMprTouch(p)}
+for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>{mpr3DLiveTextureMode[p]=false;schedulePlaneRender(p,true)};installMprTouch(p)}
 
 async function loadDemo(){
  let response=null,fromCache=false,cache=null;
@@ -3437,13 +3438,18 @@ function updateMpr3DPlanePositions(){
 function refreshMpr3DPlaneTexture(p){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return;
  const src=planes[p]?.canvas,dst=entry.previewCanvas;
- const useFastPreview=!!sceneState?.mprInteractionActive&&!(sectionViewOpen&&sectionViewPlane===p);
+ const live=!!sceneState?.mprInteractionActive||!!mpr3DLiveTextureMode[p];
  let painted=false;
- if(useFastPreview)painted=paintMpr3DPreview(p,+planes[p].slider.value,dst);
+ if(live)painted=paintMpr3DPreview(p,+planes[p].slider.value,dst);
  if(!painted&&src?.width&&src?.height&&dst){
-  if(dst.width!==src.width)dst.width=src.width;
-  if(dst.height!==src.height)dst.height=src.height;
-  const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0);
+  let targetW=src.width,targetH=src.height;
+  if(live){
+   const maxSide=navigator.maxTouchPoints>0?384:512,largest=Math.max(targetW,targetH);
+   if(largest>maxSide){const k=maxSide/largest;targetW=Math.max(1,Math.round(targetW*k));targetH=Math.max(1,Math.round(targetH*k))}
+  }
+  if(dst.width!==targetW)dst.width=targetW;
+  if(dst.height!==targetH)dst.height=targetH;
+  const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=live;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0,src.width,src.height,0,0,dst.width,dst.height);
  }
  entry.texture.needsUpdate=true;request3DRender();
 }
