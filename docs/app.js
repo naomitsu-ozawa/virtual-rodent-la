@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-84';const APP_BUILD='84';
+const APP_VERSION='2026.09.23-85';const APP_BUILD='85';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -5065,8 +5065,7 @@ async function render3D(v,force=false){
  if(!sceneState)return false;
  if(deferAutomatic3D&&!force){mark3DStale();return false}
  let ok;
- if(surfaceSmoothingActive()&&fullVolumeSmoothIsosurfaceFeasible(v))ok=await render3DSmoothIsosurface(v);
- else if(v.sourceBacked)ok=await render3DSourceBacked(v);
+ if(v.sourceBacked)ok=await render3DSourceBacked(v);
  else ok=await render3DMemoryGpu(v);
  if(ok!==true){
   if(ok===null||threeDCancelRequested)return false;
