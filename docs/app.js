@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-123';const APP_BUILD='123';
+const APP_VERSION='2026.09.23-124';const APP_BUILD='124';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -935,7 +935,6 @@ function schedulePlaneRender(p,immediate=false){
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
- if(!immediate)refreshMpr3DPlaneTexture(p);
  if(volume?.sourceBacked&&volume.mprData&&!sourceFilterStages().length){
   const values=cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
   paintSourcePlane(planes[p],dims,values,p,idx);return;
@@ -3437,20 +3436,19 @@ function updateMpr3DPlanePositions(){
 }
 function refreshMpr3DPlaneTexture(p){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return;
- const src=planes[p]?.canvas,dst=entry.previewCanvas;
+ const src=planes[p]?.canvas,dst=entry.previewCanvas;if(!src?.width||!src?.height||!dst)return;
  const live=!!sceneState?.mprInteractionActive||!!mpr3DLiveTextureMode[p];
- let painted=false;
- if(live)painted=paintMpr3DPreview(p,+planes[p].slider.value,dst);
- if(!painted&&src?.width&&src?.height&&dst){
-  let targetW=src.width,targetH=src.height;
-  if(live){
-   const maxSide=navigator.maxTouchPoints>0?384:512,largest=Math.max(targetW,targetH);
-   if(largest>maxSide){const k=maxSide/largest;targetW=Math.max(1,Math.round(targetW*k));targetH=Math.max(1,Math.round(targetH*k))}
-  }
-  if(dst.width!==targetW)dst.width=targetW;
-  if(dst.height!==targetH)dst.height=targetH;
-  const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=live;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0,src.width,src.height,0,0,dst.width,dst.height);
+ let targetW=src.width,targetH=src.height;
+ if(live){
+  // Live 3D MPR always comes from the already-rendered 2D canvas.
+  // Keep one consistent GPU upload budget for axial/coronal/sagittal.
+  const maxSide=navigator.maxTouchPoints>0?448:576,pixelBudget=(navigator.maxTouchPoints>0?180000:280000),largest=Math.max(targetW,targetH);
+  let k=Math.min(1,maxSide/Math.max(largest,1),Math.sqrt(pixelBudget/Math.max(targetW*targetH,1)));
+  targetW=Math.max(1,Math.round(targetW*k));targetH=Math.max(1,Math.round(targetH*k));
  }
+ if(dst.width!==targetW)dst.width=targetW;
+ if(dst.height!==targetH)dst.height=targetH;
+ const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=live;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0,src.width,src.height,0,0,dst.width,dst.height);
  entry.texture.needsUpdate=true;request3DRender();
 }
 function request3DRender(){
