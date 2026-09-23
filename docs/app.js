@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-126';const APP_BUILD='126';
+const APP_VERSION='2026.09.24-127';const APP_BUILD='127';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -922,21 +922,27 @@ threeBusyCancel.onclick=()=>cancel3DRebuild();
 installFilterReorder();
 
 const planeRenderTimers={axial:null,coronal:null,sagittal:null};
-const mpr3DLiveTextureMode={axial:false,coronal:false,sagittal:false};
-const mpr3DLiveRaf={axial:0,coronal:0,sagittal:0},mpr3DLivePending={axial:0,coronal:0,sagittal:0},mpr3DLiveImageCache={axial:null,coronal:null,sagittal:null};
+const mpr3DOrthoSliding={coronal:false,sagittal:false};
+function pushCachedMpr3DPlane(p,idx){
+ if((p!=='coronal'&&p!=='sagittal')||mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
+ const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return false;
+ if(!paintMpr3DCacheSliceFast(p,idx,entry.previewCanvas))return false;
+ entry.texture.needsUpdate=true;request3DRender();return true;
+}
 function paintFastOrthogonalPreview(p,idx){
  if(p==='axial'||!volume?.sourceBacked||sourceFilterStages().length||volumeAnalysisMode)return false;
  if(mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
- const ok=paintMpr3DPreview(p,idx,planes[p].canvas);
- if(ok)updateMprCanvasPhysicalAspect(p);
+ const ok=paintMpr3DCacheSliceFast(p,idx,planes[p].canvas);
+ if(ok){updateMprCanvasPhysicalAspect(p);pushCachedMpr3DPlane(p,idx)}
  return ok;
 }
 function schedulePlaneRender(p,immediate=false){
- cancelSourceMprWarmup();mpr3DLiveTextureMode[p]=!immediate;updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
+ cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
- if(!immediate)scheduleMpr3DLiveTexture(p,idx);
+ if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate)pushCachedMpr3DPlane(p,idx)}
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
+ if(p==='axial')refreshMpr3DPlaneTexture(p);
  if(volume?.sourceBacked&&volume.mprData&&!sourceFilterStages().length){
   const values=cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
   paintSourcePlane(planes[p],dims,values,p,idx);return;
@@ -952,10 +958,11 @@ function renderSectionPlaneLive(p){
  if(!volume||!planes[p])return;
  cancelSourceMprWarmup();clearTimeout(planeRenderTimers[p]);planeRenderTimers[p]=null;
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
+ if(p==='coronal'||p==='sagittal')pushCachedMpr3DPlane(p,idx);
  if(paintFastOrthogonalPreview(p,idx))return;
  void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('Live section render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
 }
-for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>{mpr3DLiveTextureMode[p]=false;if(mpr3DLiveRaf[p]){cancelAnimationFrame(mpr3DLiveRaf[p]);mpr3DLiveRaf[p]=0}schedulePlaneRender(p,true)};installMprTouch(p)}
+for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>{if(p==='coronal'||p==='sagittal')mpr3DOrthoSliding[p]=false;schedulePlaneRender(p,true)};installMprTouch(p)}
 
 async function loadDemo(){
  let response=null,fromCache=false,cache=null;
@@ -1116,7 +1123,7 @@ async function selectSeries(s){
   invalidateSourceFilters();
   sourceVolume=s.sourceBacked?openSourceBackedVolume(s):await decode(s,(x,y)=>progress(x,y));
   if(s.sourceBacked)await prepareSourceMprCache(sourceVolume,(x,y)=>{progress(x,y);const badge=selected.querySelector('.ready-badge');if(badge)badge.textContent='MPR cache '+x+' / '+y});
-  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);scheduleGpuPrewarm();phase='render';renderAll();mark3DStale();
+  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);scheduleGpuPrewarm();const badge=selected.querySelector('.ready-badge');if(badge)badge.textContent='3D C/S cache…';await ensureMpr3DPreviewCache();phase='render';renderAll();mark3DStale();
   selected.querySelector('.ready-badge').textContent=s.sourceBacked?(volume.mprData?'CT source ready · MPR cached':'CT source ready · streaming MPR'):'CT volume ready · 2D ready';
   footer.textContent=s.sourceBacked?(volume.mprData?'Full-resolution source DICOM · MPR memory cache '+fmt(volume.mprData.byteLength):'Full-resolution source-backed DICOM · streaming MPR'):'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
  }catch(e){
@@ -2206,32 +2213,34 @@ function clearMpr3DPreviewCache(){
 }
 function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear();sourceOrthogonalPlaneCacheBytes=0;clearMpr3DPreviewCache()}
 function mpr3DPreviewPlan(v){
- const touch=navigator.maxTouchPoints>0,target=touch?384:512,budget=(touch?96:192)*1024*1024,w=v.columns,h=v.rows,d=v.slices;
+ const touch=navigator.maxTouchPoints>0,target=touch?448:640,budget=(touch?128:256)*1024*1024,w=v.columns,h=v.rows,d=v.slices;
  const bytesFor=side=>{
-  const aw=Math.min(w,side),ah=Math.min(h,side),cw=Math.min(w,side),ch=Math.min(d,side),sw=Math.min(h,side),sh=Math.min(d,side);
-  return d*aw*ah+h*cw*ch+w*sw*sh;
+  const cw=Math.min(w,side),ch=Math.min(d,side),sw=Math.min(h,side),sh=Math.min(d,side);
+  return h*cw*ch+w*sw*sh;
  };
  let side=Math.min(target,Math.max(w,h,d));
- while(side>224&&bytesFor(side)>budget)side-=32;
- if(bytesFor(side)>budget)side=224;
+ while(side>256&&bytesFor(side)>budget)side-=32;
+ if(bytesFor(side)>budget)side=256;
  return{side,bytes:bytesFor(side)};
 }
 function mpr3DPreviewMap(i,n,outN){return outN<=1?0:Math.max(0,Math.min(n-1,Math.round(i*(n-1)/(outN-1))))}
 function mpr3DPreviewSignature(v,stages=sourceFilterStages()){return [v?.series?.seriesUid||'',v?.columns||0,v?.rows||0,v?.slices||0,v?.min||0,v?.max||0,sourceFilterSignature(stages)].join('|')}
 async function ensureMpr3DPreviewCache(){
- const v=volume;if(!v?.sourceBacked||!v.series)return false;
- const stages=sourceFilterStages(),signature=mpr3DPreviewSignature(v,stages);
- if(mpr3DPreviewCache.signature===signature&&mpr3DPreviewCache.planes.axial)return true;
+ const v=volume;if(!v)return false;
+ const stages=sourceFilterStages(),series=v.series,canSource=!!(v.sourceBacked&&series);
+ if(stages.length&&!canSource)return false;
+ if(!v.mprData&&!canSource)return false;
+ const signature=mpr3DPreviewSignature(v,stages);
+ if(mpr3DPreviewCache.signature===signature&&mpr3DPreviewCache.planes.coronal&&mpr3DPreviewCache.planes.sagittal)return true;
  if(mpr3DPreviewCache.building&&mpr3DPreviewCache.buildingSignature===signature)return false;
- const token=++mpr3DPreviewCache.token,plan=mpr3DPreviewPlan(v),maxSide=plan.side,w=v.columns,h=v.rows,d=v.slices,series=v.series,min=Number.isFinite(v.min)?v.min:-1024,max=Number.isFinite(v.max)&&v.max>min?v.max:min+1,scale=255/(max-min);
- const dims={axial:[Math.min(w,maxSide),Math.min(h,maxSide)],coronal:[Math.min(w,maxSide),Math.min(d,maxSide)],sagittal:[Math.min(h,maxSide),Math.min(d,maxSide)]};
- const axial=new Uint8Array(d*dims.axial[0]*dims.axial[1]),coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
- const axX=Array.from({length:dims.axial[0]},(_,i)=>mpr3DPreviewMap(i,w,dims.axial[0])),axY=Array.from({length:dims.axial[1]},(_,i)=>mpr3DPreviewMap(i,h,dims.axial[1]));
+ const token=++mpr3DPreviewCache.token,plan=mpr3DPreviewPlan(v),maxSide=plan.side,w=v.columns,h=v.rows,d=v.slices,min=Number.isFinite(v.min)?v.min:-1024,max=Number.isFinite(v.max)&&v.max>min?v.max:min+1,scale=255/(max-min);
+ const dims={axial:null,coronal:[Math.min(w,maxSide),Math.min(d,maxSide)],sagittal:[Math.min(h,maxSide),Math.min(d,maxSide)]};
+ const coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
  const corX=Array.from({length:dims.coronal[0]},(_,i)=>mpr3DPreviewMap(i,w,dims.coronal[0])),sagY=Array.from({length:dims.sagittal[0]},(_,i)=>mpr3DPreviewMap(i,h,dims.sagittal[0]));
  const corRows=new Map(),sagRows=new Map();
  for(let py=0;py<dims.coronal[1];py++){const z=d-1-mpr3DPreviewMap(py,d,dims.coronal[1]);if(!corRows.has(z))corRows.set(z,[]);corRows.get(z).push(py)}
  for(let py=0;py<dims.sagittal[1];py++){const z=d-1-mpr3DPreviewMap(py,d,dims.sagittal[1]);if(!sagRows.has(z))sagRows.set(z,[]);sagRows.get(z).push(py)}
- const q=value=>Math.max(0,Math.min(255,Math.round((value-min)*scale))),blockDepth=stages.length?(navigator.maxTouchPoints>0?2:4):1;
+ const q=value=>Math.max(0,Math.min(255,Math.round((value-min)*scale))),blockDepth=stages.length?(navigator.maxTouchPoints>0?2:4):1,plane=w*h;
  mpr3DPreviewCache.building=true;mpr3DPreviewCache.buildingSignature=signature;
  try{
   for(let z0=0;z0<d;z0+=blockDepth){
@@ -2243,36 +2252,37 @@ async function ensureMpr3DPreviewCache(){
     block=filtered?.data;depth=filtered?.coreDepth||depth;
    }
    for(let local=0;local<depth;local++){
-    const z=z0+local,src=block?block.subarray(local*w*h,(local+1)*w*h):await getCachedSourceSlice(series.slices[z]),aw=dims.axial[0],ah=dims.axial[1],aoff=z*aw*ah;
-    for(let py=0;py<ah;py++){const sy=axY[py]*w,row=aoff+py*aw;for(let px=0;px<aw;px++)axial[row+px]=q(src[sy+axX[px]])}
+    const z=z0+local,src=block?block.subarray(local*plane,(local+1)*plane):(v.mprData?v.mprData.subarray(z*plane,(z+1)*plane):await getCachedSourceSlice(series.slices[z]));
     const cr=corRows.get(z);if(cr){const cw=dims.coronal[0],ch=dims.coronal[1];for(const py of cr)for(let y=0;y<h;y++){const row=y*cw*ch+py*cw,sy=y*w;for(let px=0;px<cw;px++)coronal[row+px]=q(src[sy+corX[px]])}}
     const sr=sagRows.get(z);if(sr){const sw=dims.sagittal[0],sh=dims.sagittal[1];for(const py of sr)for(let x=0;x<w;x++){const row=x*sw*sh+py*sw;for(let px=0;px<sw;px++)sagittal[row+px]=q(src[sagY[px]*w+x])}}
    }
-   await frameYield();
+   if((z0&7)===0)await frameYield();
   }
   if(token!==mpr3DPreviewCache.token||volume!==v)throw new Error('__SUPERSEDED__');
-  mpr3DPreviewCache.signature=signature;mpr3DPreviewCache.min=min;mpr3DPreviewCache.max=max;mpr3DPreviewCache.dims=dims;mpr3DPreviewCache.planes={axial,coronal,sagittal};
-  for(const p of ['axial','coronal','sagittal'])refreshMpr3DPlaneTexture(p);
+  mpr3DPreviewCache.signature=signature;mpr3DPreviewCache.min=min;mpr3DPreviewCache.max=max;mpr3DPreviewCache.dims=dims;mpr3DPreviewCache.planes={axial:null,coronal,sagittal};
+  for(const p of ['coronal','sagittal'])refreshMpr3DPlaneTexture(p);
   return true;
  }catch(e){
-  if(String(e.message||e)!=='__SUPERSEDED__')console.warn('3D MPR preview cache build failed.',e);
+  if(String(e.message||e)!=='__SUPERSEDED__')console.warn('3D MPR C/S cache build failed.',e);
   return false;
  }finally{
   if(token===mpr3DPreviewCache.token){mpr3DPreviewCache.building=false;mpr3DPreviewCache.buildingSignature=''}
  }
 }
-function paintMpr3DPreview(p,idx,canvas){
- const data=mpr3DPreviewCache.planes[p],dims=mpr3DPreviewCache.dims[p];if(!data||!dims||!canvas||volumeAnalysisMode)return false;
- const [pw,ph]=dims,count=p==='axial'?volume.slices:p==='coronal'?volume.rows:volume.columns;if(idx<0||idx>=count)return false;
+const mpr3DCacheImage={coronal:null,sagittal:null};
+function paintMpr3DCacheSliceFast(p,idx,canvas){
+ const data=mpr3DPreviewCache.planes[p],dims=mpr3DPreviewCache.dims[p];if(!data||!dims||!canvas)return false;
+ const [pw,ph]=dims,count=p==='coronal'?volume.rows:volume.columns;if(idx<0||idx>=count)return false;
  if(canvas.width!==pw)canvas.width=pw;if(canvas.height!==ph)canvas.height=ph;
- const ctx=canvas.getContext('2d'),img=ctx.createImageData(pw,ph),sliceSize=pw*ph,off=idx*sliceSize,min=mpr3DPreviewCache.min,max=mpr3DPreviewCache.max,range=Math.max(max-min,1),low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments();let qout=0;
- for(let py=0;py<ph;py++)for(let px=0;px<pw;px++){
-  const hu=min+(data[off+py*pw+px]/255)*range,g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));let rr=g,gg=g,bb=g;
-  const ix=p==='sagittal'?idx:mpr3DPreviewMap(px,volume.columns,pw),iy=p==='coronal'?idx:(p==='sagittal'?mpr3DPreviewMap(px,volume.rows,pw):mpr3DPreviewMap(py,volume.rows,ph)),iz=p==='axial'?idx:volume.slices-1-mpr3DPreviewMap(py,volume.slices,ph);
-  for(const item of activeSegs){const {key,seg,edit,processedMask,processedRuns,rgb,alpha}=item,inside=processedRuns?analysisRunsContain(processedRuns,ix,iy,iz):(segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(processedMask?processedMask[iz*volume.rows*volume.columns+iy*volume.columns+ix]===1:(hu>=seg.min&&hu<=seg.max)));if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha)}
-  img.data[qout++]=rr;img.data[qout++]=gg;img.data[qout++]=bb;img.data[qout++]=255;
- }
- ctx.putImageData(img,0,0);return true;
+ const ctx=canvas.getContext('2d');let cache=mpr3DCacheImage[p];if(!cache||cache.width!==pw||cache.height!==ph){const image=ctx.createImageData(pw,ph);cache={width:pw,height:ph,image,pixels:new Uint32Array(image.data.buffer)};mpr3DCacheImage[p]=cache}
+ const pixels=cache.pixels,off=idx*pw*ph,min=mpr3DPreviewCache.min,max=mpr3DPreviewCache.max,range=Math.max(max-min,1),low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1),lut=new Uint32Array(256);
+ for(let i=0;i<256;i++){const hu=min+(i/255)*range,g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));lut[i]=(255<<24)|(g<<16)|(g<<8)|g}
+ for(let i=0;i<pixels.length;i++)pixels[i]=lut[data[off+i]];
+ ctx.putImageData(cache.image,0,0);return true;
+}
+function paintMpr3DPreview(p,idx,canvas){
+ if((p==='coronal'||p==='sagittal')&&paintMpr3DCacheSliceFast(p,idx,canvas))return true;
+ return false;
 }
 function sourceOrthogonalCacheGet(p,idx){
  const key=p+':'+idx,v=sourceOrthogonalPlaneCache.get(key);if(!v)return null;sourceOrthogonalPlaneCache.delete(key);sourceOrthogonalPlaneCache.set(key,v);return v;
@@ -3436,64 +3446,16 @@ function updateMpr3DPlanePositions(){
  sceneState.mprPlaneGroup.visible=!!sceneState.obj;
  request3DRender();
 }
-function mpr3DLiveDims(p){
- if(!volume)return[1,1];
- const sw=p==='axial'?volume.columns:p==='coronal'?volume.columns:volume.rows,sh=p==='axial'?volume.rows:volume.slices;
- const maxSide=navigator.maxTouchPoints>0?512:640,pixelBudget=navigator.maxTouchPoints>0?100000:160000,k=Math.min(1,maxSide/Math.max(sw,sh,1),Math.sqrt(pixelBudget/Math.max(sw*sh,1)));
- return[Math.max(1,Math.round(sw*k)),Math.max(1,Math.round(sh*k))];
-}
-function paintMpr3DPreviewCacheFast(p,idx,dst){
- const src=mpr3DPreviewCache.planes[p],srcDims=mpr3DPreviewCache.dims[p];if(!src||!srcDims||!dst||!volume)return false;
- const [sw,sh]=srcDims,[pw,ph]=mpr3DLiveDims(p),count=p==='axial'?volume.slices:p==='coronal'?volume.rows:volume.columns;
- if(idx<0||idx>=count)return false;
- const ctx=dst.getContext('2d');if(dst.width!==pw)dst.width=pw;if(dst.height!==ph)dst.height=ph;
- let cache=mpr3DLiveImageCache[p];if(!cache||cache.width!==pw||cache.height!==ph){cache={width:pw,height:ph,image:ctx.createImageData(pw,ph)};mpr3DLiveImageCache[p]=cache}
- const img=cache.image,off=idx*sw*sh,min=mpr3DPreviewCache.min,max=mpr3DPreviewCache.max,range=Math.max(max-min,1),low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1);let q=0;
- for(let py=0;py<ph;py++){
-  const sy=mpr3DPreviewMap(py,sh,ph),row=off+sy*sw;
-  for(let px=0;px<pw;px++){
-   const sx=mpr3DPreviewMap(px,sw,pw),hu=min+(src[row+sx]/255)*range,g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));
-   img.data[q++]=g;img.data[q++]=g;img.data[q++]=g;img.data[q++]=255;
-  }
- }
- ctx.putImageData(img,0,0);return true;
-}
-function paintMpr3DMemoryPreview(p,idx,dst){
- const v=volume,data=v?.mprData;if(!data||!dst)return false;
- const w=v.columns,h=v.rows,d=v.slices,[pw,ph]=mpr3DLiveDims(p),ctx=dst.getContext('2d');
- if(dst.width!==pw)dst.width=pw;if(dst.height!==ph)dst.height=ph;
- let cache=mpr3DLiveImageCache[p];if(!cache||cache.width!==pw||cache.height!==ph){cache={width:pw,height:ph,image:ctx.createImageData(pw,ph)};mpr3DLiveImageCache[p]=cache}
- const img=cache.image,low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1);let q=0;
- for(let py=0;py<ph;py++){
-  const sy=mpr3DPreviewMap(py,p==='axial'?h:d,ph),z=p==='axial'?idx:d-1-sy;
-  for(let px=0;px<pw;px++){
-   const sx=mpr3DPreviewMap(px,p==='sagittal'?h:w,pw),x=p==='sagittal'?idx:sx,y=p==='coronal'?idx:(p==='sagittal'?sx:sy),hu=data[z*h*w+y*w+x],g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));
-   img.data[q++]=g;img.data[q++]=g;img.data[q++]=g;img.data[q++]=255;
-  }
- }
- ctx.putImageData(img,0,0);return true;
-}
-function paintMpr3DLiveTextureNow(p,idx){
- const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return false;
- const dst=entry.previewCanvas;let painted=false;
- if(mpr3DPreviewCache.signature===mpr3DPreviewSignature(volume)&&mpr3DPreviewCache.planes[p])painted=paintMpr3DPreviewCacheFast(p,idx,dst);
- if(!painted&&volume?.mprData)painted=paintMpr3DMemoryPreview(p,idx,dst);
- if(!painted)return false;
- entry.texture.needsUpdate=true;request3DRender();return true;
-}
-function scheduleMpr3DLiveTexture(p,idx){
- mpr3DLivePending[p]=idx;if(mpr3DLiveRaf[p])return;
- mpr3DLiveRaf[p]=requestAnimationFrame(()=>{mpr3DLiveRaf[p]=0;if(mpr3DLiveTextureMode[p])paintMpr3DLiveTextureNow(p,mpr3DLivePending[p])});
-}
+
 function refreshMpr3DPlaneTexture(p){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return;
- const live=!!sceneState?.mprInteractionActive||!!mpr3DLiveTextureMode[p];
- if(live){
-  if(paintMpr3DLiveTextureNow(p,+planes[p].slider.value))return;
+ if((p==='coronal'||p==='sagittal')&&mpr3DOrthoSliding[p]&&pushCachedMpr3DPlane(p,+planes[p].slider.value))return;
+ const src=planes[p]?.canvas,dst=entry.previewCanvas;
+ if(src?.width&&src?.height&&dst){
+  if(dst.width!==src.width)dst.width=src.width;
+  if(dst.height!==src.height)dst.height=src.height;
+  const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0);
  }
- const src=planes[p]?.canvas,dst=entry.previewCanvas;if(!src?.width||!src?.height||!dst)return;
- if(dst.width!==src.width)dst.width=src.width;if(dst.height!==src.height)dst.height=src.height;
- const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0);
  entry.texture.needsUpdate=true;request3DRender();
 }
 function request3DRender(){
