@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-70';const APP_BUILD='70';
+const APP_VERSION='2026.09.23-71';const APP_BUILD='71';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4272,11 +4272,6 @@ function updateCutPreview(point=null){
  const group=new THREE.Group();group.name='cut_preview';
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
  const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.18,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
- const borderPoints=[];
- for(let i=0;i<front.length-1;i++)borderPoints.push(front[i],front[i+1]);
- for(let i=0;i<back.length-1;i++)borderPoints.push(back[i],back[i+1]);
- borderPoints.push(front[0],back[0],front[front.length-1],back[back.length-1]);
- const edgeGeom=new THREE.BufferGeometry().setFromPoints(borderPoints),edge=new THREE.LineSegments(edgeGeom,new THREE.LineBasicMaterial({color:0x8eefff,transparent:true,opacity:.92,depthTest:false,depthWrite:false}));edge.name='cut_preview_border';edge.renderOrder=96;group.add(edge);
  obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
 function updateThreeEditUi(message=null){
