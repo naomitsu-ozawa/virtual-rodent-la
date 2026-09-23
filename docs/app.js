@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-103';const APP_BUILD='103';
+const APP_VERSION='2026.09.23-104';const APP_BUILD='104';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4398,7 +4398,10 @@ function updateCutPreview(point=null){
  const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
  const front=curve.map(localPoint),back=front.map(p=>p.clone().addScaledVector(dir,depth*scale)),faces=[],edges=[];
  const quad=(a,b,c,d)=>faces.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
- for(let i=0;i<front.length-1;i++){quad(front[i],front[i+1],back[i+1],back[i]);edges.push(front[i],front[i+1],back[i],back[i+1])}
+ for(let i=0;i<front.length-1;i++)quad(front[i],front[i+1],back[i+1],back[i]);
+ // Keep one four-sided sheet while preserving the exact drawn curve on both long sides.
+ for(let i=0;i<front.length-1;i++)edges.push(front[i],front[i+1]);
+ for(let i=0;i<back.length-1;i++)edges.push(back[i],back[i+1]);
  edges.push(front[0],back[0],front[front.length-1],back[back.length-1]);
  const group=new THREE.Group();group.name='cut_preview';
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
