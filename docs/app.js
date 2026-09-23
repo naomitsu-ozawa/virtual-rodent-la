@@ -3342,10 +3342,12 @@ function updateMprCanvasPhysicalAspect(p){
  if(!volume||!planes[p]?.canvas)return;
  const w=volume.columns,h=volume.rows,d=volume.slices,[sx,sy,sz]=volume.spacing;
  const physical=p==='axial'?[w*sx,h*sy]:p==='coronal'?[w*sx,d*sz]:[h*sy,d*sz];
- const canvas=planes[p].canvas,ratio=physical[0]/Math.max(physical[1],1e-12);
- canvas.style.aspectRatio=String(ratio);
- canvas.style.width='100%';canvas.style.height='auto';canvas.style.maxWidth='100%';canvas.style.maxHeight='100%';
- canvas.style.position='absolute';canvas.style.inset='0';canvas.style.margin='auto';canvas.style.objectFit='fill';
+ const canvas=planes[p].canvas,parent=canvas.parentElement,ratio=physical[0]/Math.max(physical[1],1e-12),rect=parent?.getBoundingClientRect?.();
+ let displayW=rect?.width||0,displayH=displayW/Math.max(ratio,1e-12);
+ if(rect?.height>0&&displayH>rect.height){displayH=rect.height;displayW=displayH*ratio}
+ canvas.style.aspectRatio=String(ratio);canvas.style.position='absolute';canvas.style.inset='0';canvas.style.margin='auto';canvas.style.objectFit='fill';
+ if(displayW>0&&displayH>0){canvas.style.width=displayW+'px';canvas.style.height=displayH+'px'}else{canvas.style.width='100%';canvas.style.height='100%'}
+ canvas.style.maxWidth='100%';canvas.style.maxHeight='100%';
 }
 function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 
