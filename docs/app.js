@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-59';const APP_BUILD='59';
+const APP_VERSION='2026.09.23-60';const APP_BUILD='60';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -4040,22 +4040,34 @@ function setBaseSegmentSurfaceVisibility(key,visible){
   if(Array.isArray(o.userData?.segmentRanges)&&Array.isArray(o.material))for(const r of o.userData.segmentRanges)if(r.key===key&&o.material[r.materialIndex])o.material[r.materialIndex].visible=visible;
  });
 }
-async function buildEditableRunsGroup(v,runs,key){
+async function buildEditableRunsGroup(v,runs,key,shouldContinue=null){
  const seg=segmentState[key],coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),group=new THREE.Group(),builder=new Float32FaceBuilder(),limit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
  const params={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()};
  const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions),mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(params));mesh.name='edited_segment_'+key+'_'+z;mesh.userData.segmentKey=key;mesh.userData.editSurface=true;mesh.userData.displayScale=coords.scale;group.add(mesh)};
- for(let z=0;z<v.slices;z++){appendAnalysisRunBoundaryFaces(builder,runs[z],z?runs[z-1]:null,z+1<v.slices?runs[z+1]:null,coords,z);if(builder.length>=limit)flush(z);if((z&31)===0)await frameYield()}
- flush(v.slices-1);return group.children.length?group:null;
+ try{
+  for(let z=0;z<v.slices;z++){
+   if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');
+   appendAnalysisRunBoundaryFaces(builder,runs[z],z?runs[z-1]:null,z+1<v.slices?runs[z+1]:null,coords,z);if(builder.length>=limit)flush(z);
+   if((z&15)===0){await frameYield();if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__')}
+  }
+  flush(v.slices-1);return group.children.length?group:null;
+ }catch(e){dispose(group);throw e}
 }
 function segmentUsesRunSurface(key,v=current3DVolume||volume){
  return segmentEditActive(key)||!!(v?.sourceBacked&&segmentState[key]?.active&&segmentState[key]?.enabled&&segmentNeedsGlobalMask(segmentState[key]));
 }
-async function refreshEditedSegmentSurface(key,v=current3DVolume||volume){
- if(!sceneState?.obj||!v)return;const st=segmentEditState[key];
- if(st.surfaceGroup){const old=st.surfaceGroup;if(old.parent)old.parent.remove(old);dispose(old);st.surfaceGroup=null}
- if(!segmentUsesRunSurface(key,v)){setBaseSegmentSurfaceVisibility(key,true);request3DRender();renderAll();return}
- const runs=await getFinalSegmentRuns(key,v);setBaseSegmentSurfaceVisibility(key,false);const group=await buildEditableRunsGroup(v,runs,key);st.surfaceGroup=group;
- if(group)sceneState.obj.add(group);request3DRender();renderAll();
+async function refreshEditedSegmentSurface(key,v=current3DVolume||volume,expectedRevision=null){
+ if(!sceneState?.obj||!v)return false;const st=segmentEditState[key],isCurrent=()=>expectedRevision==null||st.revision===expectedRevision;
+ if(!segmentUsesRunSurface(key,v)){
+  if(!isCurrent())return false;
+  if(st.surfaceGroup){const old=st.surfaceGroup;if(old.parent)old.parent.remove(old);dispose(old);st.surfaceGroup=null}
+  setBaseSegmentSurfaceVisibility(key,true);request3DRender();renderAll();return true;
+ }
+ const runs=await getFinalSegmentRuns(key,v);if(!isCurrent())return false;
+ const group=await buildEditableRunsGroup(v,runs,key,isCurrent);if(!isCurrent()){if(group)dispose(group);return false}
+ const old=st.surfaceGroup;setBaseSegmentSurfaceVisibility(key,false);st.surfaceGroup=group;
+ if(group)sceneState.obj.add(group);if(old){if(old.parent)old.parent.remove(old);dispose(old)}
+ request3DRender();renderAll();return true;
 }
 async function restoreEditedSegmentSurfaces(v=current3DVolume||volume){
  for(const key of SEGMENT_PRESET_ORDER)if(segmentUsesRunSurface(key,v))await refreshEditedSegmentSurface(key,v);
@@ -4140,20 +4152,38 @@ async function applyCutStroke(points,key=analysisEditTargetKey){
  if(!key||!SEGMENT_PRESET_ORDER.includes(key)||points.length<1)return;
  const v=current3DVolume||volume;if(!v)return;
  const label=tr(key)||key;
- set3DBusy(true,currentLanguage==='ja'?label+'に切断を反映中…':'Applying cut to '+label+'…');
- updateThreeEditUi(currentLanguage==='ja'?'切断を反映中…':'Applying cut…');
+ set3DBusy(true,currentLanguage==='ja'?label+'に切断を適用中…':'Applying cut to '+label+'…');
+ updateThreeEditUi(currentLanguage==='ja'?'切断を適用中…':'Applying cut…');
  try{
   const st=segmentEditState[key],refs=snapshotAnalysisRegionsForSegment(key),cut=cutRunsFromVoxelStroke(v,points,+analysisCutWidth.value||.8,+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0);
   pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,cut,v.slices);st.finalRuns=null;st.revision++;analysisEditTargetKey=key;
-  await refreshEditedSegmentSurface(key,v);
-  if(refs.length)await rebuildEditedAnalysisForSegment(key,refs);
+  const revision=st.revision;
   updateAnalysisEditorControls();
-  footer.textContent=currentLanguage==='ja'?label+'を切断しました':'Cut '+label;
-  updateThreeEditUi(currentLanguage==='ja'?'切断を反映しました':'Cut applied');
+  footer.textContent=currentLanguage==='ja'?label+'を切断しました · 3D更新中…':'Cut '+label+' · updating 3D…';
+  updateThreeEditUi(currentLanguage==='ja'?'切断済み · 3D更新中…':'Cut applied · updating 3D…');
+  set3DBusy(false);request3DRender();
+  void (async()=>{
+   try{
+    const current=await refreshEditedSegmentSurface(key,v,revision);if(!current||st.revision!==revision)return;
+    if(refs.length){
+     updateThreeEditUi(currentLanguage==='ja'?'3D更新済み · 解析更新中…':'3D updated · refreshing analysis…');
+     await rebuildEditedAnalysisForSegment(key,refs);
+     if(st.revision!==revision)return;
+    }
+    footer.textContent=currentLanguage==='ja'?label+'の切断を反映しました':'Cut applied to '+label;
+    updateThreeEditUi(currentLanguage==='ja'?'切断を反映しました':'Cut applied');
+   }catch(e){
+    if(String(e.message||e)==='__SUPERSEDED__')return;
+    console.error(e);footer.textContent=(currentLanguage==='ja'?'切断後の3D更新に失敗しました: ':'3D refresh after cut failed: ')+String(e.message||e);
+    updateThreeEditUi(currentLanguage==='ja'?'3D更新に失敗しました':'3D refresh failed');
+   }finally{
+    if(st.revision===revision){clearEditOverlay();request3DRender()}
+   }
+  })();
  }catch(e){
   console.error(e);footer.textContent=(currentLanguage==='ja'?'切断処理に失敗しました: ':'Cut failed: ')+String(e.message||e);
-  updateThreeEditUi(currentLanguage==='ja'?'切断処理に失敗しました':'Cut failed');
- }finally{clearEditOverlay();set3DBusy(false);request3DRender()}
+  updateThreeEditUi(currentLanguage==='ja'?'切断処理に失敗しました':'Cut failed');clearEditOverlay();
+ }finally{set3DBusy(false);request3DRender()}
 }
 function setEditTargetHighlight(key=null){
  if(!sceneState?.obj)return;
