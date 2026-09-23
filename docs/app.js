@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-79';const APP_BUILD='79';
+const APP_VERSION='2026.09.23-recovery-80';const APP_BUILD='80';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -30,7 +30,7 @@ const I18N={
   display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',ctRange:'CT値操作範囲',autoRange:'Auto',fullRange:'Full',rebuild3D:'3D再構築',cancel3D:'再構築をキャンセル',cancelling3D:'キャンセル中…',threeCancelled:'3D再構築をキャンセルしました。以前の3Dを保持しています。',threeCurrent:'3Dは最新',threeStale:'3Dは再構築待ち',threeUpdating:'3D再構築中',mainView:'メインへ',
   segmentation:'セグメンテーション',segments:'組織セグメント',
   bone:'骨',soft:'軟部組織',fat:'脂肪',lung:'肺',min:'最小',max:'最大',opacity:'不透明度',segmentPreset:'セグメントプリセット',addSegment:'セグメントを追加',removeSegment:'削除',opening:'Opening',closing:'Closing',minComponent:'最小連結成分',holeFill:'Hole Filling',
-  surfaceSmooth:'表面平滑化',strength:'強度',sigmoidCenter:'中心',filterThreshold:'検出閾値',iterations:'反復回数',passes:'Pass数',searchRadius:'探索半径',patchRadius:'パッチ半径',spatialSigma:'空間Sigma',intensitySigma:'強度Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'STL書き出し',volumeRender:'GPUボリューム',surfaceRender:'サーフェス表示へ',volumeMode:'体積解析',volumeOff:'体積解析を終了',sliceAnalysis:'断面解析',sliceAnalysisOff:'断面解析を終了',sliceAnalysisHint:'3Dを切断する断面を選択してください',sectionReverse:'反転',sectionOff:'解除',sectionPosition:'断面位置',volumeHint:'3D上の部品をクリックしてください',analysisRegions:'解析領域',mergeSelected:'選択を統合',clearRegions:'すべて解除',showRegion:'表示',hideRegion:'非表示',deleteRegion:'削除',mergedRegion:'統合領域',analysisRegion:'領域',mergeNeedsTwo:'2件以上の領域を選択してください',mergingRegions:'領域を統合中…',edit3D:'3D編集',editNavigate:'操作',cutRegion:'ペン切断',lineCutRegion:'直線切断',editTarget:'対象',editAuto:'自動',editReady:'操作を選択してください',editPenHint:'空間または3D上に曲線を描き、見えている手前側の位置から切断面を指定します',editLineHint:'空間または3D上で直線を描き、見えている手前側の位置から平面切断を指定します',editAutoHint:'自動: 最初に触れたセグメントを編集対象にします',removeSelectedRegion:'選択領域を削除',keepSelectedRegion:'選択領域のみ残す',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'編集リセット',cutWidth:'切断厚さ',cutDepth:'切断深さ',cutYaw:'左右角度',cutPitch:'上下角度',cutOffset:'切断面位置',applyCut:'切断を適用',cancelCut:'キャンセル',cutPendingHint:'切断予定範囲を確認し、幅・深さ・角度を調整してから「切断を適用」を押してください',exportSelectedStl:'選択領域STL',selectRegion2D:'2D/3Dで領域を選択',resetFilters:'画像フィルターをリセット',
+  surfaceSmooth:'表面平滑化',strength:'強度',sigmoidCenter:'中心',filterThreshold:'検出閾値',iterations:'反復回数',passes:'Pass数',searchRadius:'探索半径',patchRadius:'パッチ半径',spatialSigma:'空間Sigma',intensitySigma:'強度Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'STL書き出し',volumeRender:'GPUボリューム',surfaceRender:'サーフェス表示へ',volumeMode:'体積解析',volumeOff:'体積解析を終了',sliceAnalysis:'断面解析',sliceAnalysisOff:'断面解析を終了',sliceAnalysisHint:'3Dを切断する断面を選択してください',sectionReverse:'反転',sectionOff:'解除',sectionPosition:'断面位置',volumeHint:'3D上の部品をクリックしてください',analysisRegions:'解析領域',mergeSelected:'選択を統合',clearRegions:'すべて解除',showRegion:'表示',hideRegion:'非表示',deleteRegion:'削除',mergedRegion:'統合領域',analysisRegion:'領域',mergeNeedsTwo:'2件以上の領域を選択してください',mergingRegions:'領域を統合中…',edit3D:'3D編集',editNavigate:'操作',cutRegion:'ペン切断',lineCutRegion:'直線切断',editTarget:'対象',editAuto:'自動',editReady:'操作を選択してください',editPenHint:'3D表面上から曲線を描いて切断面を指定します',editLineHint:'3D表面上から直線を描いて切断面を指定します',editAutoHint:'自動: 最初に触れたセグメントを編集対象にします',removeSelectedRegion:'選択領域を削除',keepSelectedRegion:'選択領域のみ残す',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'編集リセット',cutWidth:'切断厚さ',cutDepth:'切断深さ',cutYaw:'左右角度',cutPitch:'上下角度',cutOffset:'切断面位置',applyCut:'切断を適用',cancelCut:'キャンセル',cutPendingHint:'切断予定範囲を確認し、幅・深さ・角度を調整してから「切断を適用」を押してください',exportSelectedStl:'選択領域STL',selectRegion2D:'2D/3Dで領域を選択',resetFilters:'画像フィルターをリセット',
   controls:'3D: 左ドラッグで回転 / Shift+左ドラッグ・右ドラッグ・中ドラッグで平行移動 / ホイールでズーム。断面画像: 左右スワイプ / マウスホイールでスライス移動',
   seriesUnselected:'シリーズ未選択',selectSeries:'左の一覧からCTシリーズを選択してください。',
   footer:'元のキャリブレーション済みCT値は保持されます。',
@@ -51,7 +51,7 @@ const I18N={
   display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',ctRange:'CT value range',autoRange:'Auto',fullRange:'Full',rebuild3D:'Rebuild 3D',cancel3D:'Cancel rebuild',cancelling3D:'Cancelling…',threeCancelled:'3D rebuild cancelled. Previous 3D retained.',threeCurrent:'3D is current',threeStale:'3D rebuild pending',threeUpdating:'Rebuilding 3D',mainView:'Main',
   segmentation:'SEGMENTATION',segments:'Tissue segments',
   bone:'Bone',soft:'Soft tissue',fat:'Fat',lung:'Lung',min:'Min',max:'Max',opacity:'Opacity',segmentPreset:'Segment preset',addSegment:'Add segment',removeSegment:'Remove',opening:'Opening',closing:'Closing',minComponent:'Min Component',holeFill:'Hole Filling',
-  surfaceSmooth:'Surface Smooth',strength:'Strength',sigmoidCenter:'Center',filterThreshold:'Threshold',iterations:'Iterations',passes:'Passes',searchRadius:'Search Radius',patchRadius:'Patch Radius',spatialSigma:'Spatial Sigma',intensitySigma:'Intensity Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'Export STL',volumeRender:'GPU Volume',surfaceRender:'Back to surface',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',sliceAnalysis:'Section view',sliceAnalysisOff:'Exit section view',sliceAnalysisHint:'Choose a plane to cut the 3D model',sectionReverse:'Reverse',sectionOff:'Off',sectionPosition:'Section position',volumeHint:'Click a 3D component',analysisRegions:'Analysis regions',mergeSelected:'Merge selected',clearRegions:'Clear all',showRegion:'Show',hideRegion:'Hide',deleteRegion:'Delete',mergedRegion:'Merged region',analysisRegion:'Region',mergeNeedsTwo:'Select at least two regions',mergingRegions:'Merging regions…',edit3D:'3D edit',editNavigate:'Navigate',cutRegion:'Pen cut',lineCutRegion:'Line cut',editTarget:'Target',editAuto:'Auto',editReady:'Choose an edit tool',editPenHint:'Draw a curve in space or on the 3D view to define the cutting surface',editLineHint:'Draw a line in space or on the 3D view to define a planar cut',editAutoHint:'Auto: the first touched segment becomes the edit target',removeSelectedRegion:'Delete selected region',keepSelectedRegion:'Keep selected region only',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'Reset edits',cutWidth:'Cut thickness',cutDepth:'Cut depth',cutYaw:'Horizontal angle',cutPitch:'Vertical angle',cutOffset:'Cut plane position',applyCut:'Apply cut',cancelCut:'Cancel',cutPendingHint:'Review the planned cut, adjust width, depth and angles, then press Apply cut',exportSelectedStl:'Selected region STL',selectRegion2D:'Select a region in 2D or 3D',resetFilters:'Reset image filters',
+  surfaceSmooth:'Surface Smooth',strength:'Strength',sigmoidCenter:'Center',filterThreshold:'Threshold',iterations:'Iterations',passes:'Passes',searchRadius:'Search Radius',patchRadius:'Patch Radius',spatialSigma:'Spatial Sigma',intensitySigma:'Intensity Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'Export STL',volumeRender:'GPU Volume',surfaceRender:'Back to surface',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',sliceAnalysis:'Section view',sliceAnalysisOff:'Exit section view',sliceAnalysisHint:'Choose a plane to cut the 3D model',sectionReverse:'Reverse',sectionOff:'Off',sectionPosition:'Section position',volumeHint:'Click a 3D component',analysisRegions:'Analysis regions',mergeSelected:'Merge selected',clearRegions:'Clear all',showRegion:'Show',hideRegion:'Hide',deleteRegion:'Delete',mergedRegion:'Merged region',analysisRegion:'Region',mergeNeedsTwo:'Select at least two regions',mergingRegions:'Merging regions…',edit3D:'3D edit',editNavigate:'Navigate',cutRegion:'Pen cut',lineCutRegion:'Line cut',editTarget:'Target',editAuto:'Auto',editReady:'Choose an edit tool',editPenHint:'Start on the 3D surface and draw a curve to define the cutting surface',editLineHint:'Start on the 3D surface and draw a line to define the cutting surface',editAutoHint:'Auto: the first touched segment becomes the edit target',removeSelectedRegion:'Delete selected region',keepSelectedRegion:'Keep selected region only',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'Reset edits',cutWidth:'Cut thickness',cutDepth:'Cut depth',cutYaw:'Horizontal angle',cutPitch:'Vertical angle',cutOffset:'Cut plane position',applyCut:'Apply cut',cancelCut:'Cancel',cutPendingHint:'Review the planned cut, adjust width, depth and angles, then press Apply cut',exportSelectedStl:'Selected region STL',selectRegion2D:'Select a region in 2D or 3D',resetFilters:'Reset image filters',
   controls:'3D: left-drag to rotate / Shift+left-drag, right-drag, or middle-drag to pan / wheel to zoom. MPR: swipe left/right or use the mouse wheel',
   seriesUnselected:'No Series selected',selectSeries:'Select a CT Series from the list on the left.',
   footer:'Original calibrated CT values are preserved.',
@@ -242,20 +242,23 @@ function sectionLocalStep(p=sectionViewPlane){
  if(!volume||!p)return null;const[sx,sy,sz]=volume.spacing,w=volume.columns,h=volume.rows,d=volume.slices,scale=3.3/Math.max(w*sx,h*sy,d*sz,1);
  return p==='axial'?new THREE.Vector3(0,0,sz*scale):p==='coronal'?new THREE.Vector3(0,-sy*scale,0):new THREE.Vector3(sx*scale,0,0);
 }
+function sectionLocalNormal(p=sectionViewPlane){
+ if(!p)return null;
+ const normal=p==='axial'?new THREE.Vector3(0,0,1):p==='coronal'?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
+ if(sectionViewReverse)normal.negate();return normal;
+}
 function sectionLocalPlane(){
  if(!volume||!sectionViewPlane)return null;
- const point=sectionLocalPoint(),normal=sectionViewPlane==='axial'?new THREE.Vector3(0,0,1):sectionViewPlane==='coronal'?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
- if(sectionViewReverse)normal.negate();
- return new THREE.Plane(normal,-normal.dot(point));
+ const point=sectionLocalPoint(),normal=sectionLocalNormal();return new THREE.Plane(normal,-normal.dot(point));
 }
 function updateSectionClipPlaneWorld(){
  if(!sceneState?.obj||!sectionViewOpen||!sectionViewPlane)return;
- const local=sectionLocalPlane();if(!local)return;
- sceneState.obj.updateMatrixWorld(true);
- sceneState.sectionClipPlane.copy(local).applyMatrix4(sceneState.obj.matrixWorld);
+ const localPoint=sectionLocalPoint(),localNormal=sectionLocalNormal();if(!localPoint||!localNormal)return;
+ const obj=sceneState.obj;obj.updateMatrixWorld(true);
+ const worldPoint=localPoint.clone().applyMatrix4(obj.matrixWorld),normalMatrix=new THREE.Matrix3().getNormalMatrix(obj.matrixWorld),worldNormal=localNormal.clone().applyMatrix3(normalMatrix).normalize();
+ sceneState.sectionClipPlane.setFromNormalAndCoplanarPoint(worldNormal,worldPoint);
  if(sceneState.backend==='WEBGPU'&&sceneState.sectionClipGroup){
-  sceneState.sectionClipGroup.clippingPlanes=[sceneState.sectionClipPlane];
-  sceneState.sectionClipGroup.enabled=true;
+  const g=sceneState.sectionClipGroup;g.clippingPlanes=[sceneState.sectionClipPlane];g.enabled=true;
  }
 }
 function applySectionClippingMaterials(root=sceneState?.obj){
@@ -621,8 +624,8 @@ renderModeToggle.onclick=()=>{if(threeRenderMode==='volume')deactivateMedicalVol
 sectionViewToggle.onclick=()=>{if(!volume)return;sectionViewOpen=!sectionViewOpen;if(!sectionViewOpen)clearSectionView();else updateSectionViewUi()};
 document.querySelectorAll('[data-section-view]').forEach(button=>button.addEventListener('click',()=>setSectionView(button.dataset.sectionView)));
 sectionReverse.onclick=()=>{if(!sectionViewPlane)return;sectionViewReverse=!sectionViewReverse;updateSectionClipPlaneWorld();syncSectionClipParent();applySectionClippingMaterials(sceneState?.obj);updateSectionViewUi();request3DRender()};
-sectionPosition.oninput=()=>{if(!sectionViewPlane)return;const p=sectionViewPlane,idx=Math.max(0,Math.min(+planes[p].slider.max,+sectionPosition.value));planes[p].slider.value=idx;planes[p].label.textContent=idx+1;updateMpr3DPlanePositions();updateSectionClipPlaneWorld();updateSectionViewUi();request3DRender();schedulePlaneRender(p)};
-sectionPosition.onchange=()=>{if(sectionViewPlane)schedulePlaneRender(sectionViewPlane,true)};
+sectionPosition.oninput=()=>{if(!sectionViewPlane)return;const p=sectionViewPlane,idx=Math.max(0,Math.min(+planes[p].slider.max,+sectionPosition.value));planes[p].slider.value=idx;planes[p].label.textContent=idx+1;updateMpr3DPlanePositions();updateSectionClipPlaneWorld();updateSectionViewUi();request3DRender();renderSectionPlaneLive(p)};
+sectionPosition.onchange=()=>{if(sectionViewPlane)renderSectionPlaneLive(sectionViewPlane)};
 volumeAnalysisToggle.onclick=async()=>{
  if(!volume)return;
  if(!volumeAnalysisMode){
@@ -919,6 +922,12 @@ function schedulePlaneRender(p,immediate=false){
  }
  const wait=immediate?0:sourceFilterStages().length?16:0;
  planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;if(revision===planeRenderRevision[p])safeRenderPlane(p,revision,idx)},wait);
+}
+function renderSectionPlaneLive(p){
+ if(!volume||!planes[p])return;
+ cancelSourceMprWarmup();clearTimeout(planeRenderTimers[p]);planeRenderTimers[p]=null;
+ const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
+ void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('Live section render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
 }
 for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>schedulePlaneRender(p,true);installMprTouch(p)}
 
@@ -3390,9 +3399,11 @@ function updateMpr3DPlanePositions(){
 }
 function refreshMpr3DPlaneTexture(p){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return;
- const idx=+planes[p].slider.value;
- if(!paintMpr3DPreview(p,idx,entry.previewCanvas)){
-  const src=planes[p].canvas,dst=entry.previewCanvas;if(src?.width&&src?.height&&dst){if(dst.width!==src.width)dst.width=src.width;if(dst.height!==src.height)dst.height=src.height;dst.getContext('2d').drawImage(src,0,0,dst.width,dst.height)}
+ const src=planes[p]?.canvas,dst=entry.previewCanvas;
+ if(src?.width&&src?.height&&dst){
+  if(dst.width!==src.width)dst.width=src.width;
+  if(dst.height!==src.height)dst.height=src.height;
+  const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0);
  }
  entry.texture.needsUpdate=true;request3DRender();
 }
@@ -3507,13 +3518,13 @@ async function start3D(){
   const step=start.sectionScreenStep,dx=e.clientX-start.x,dy=e.clientY-start.y,delta=step?Math.round((dx*step.x+dy*step.y)/step.len2):Math.round(-dy/8),max=+planes[p].slider.max,idx=Math.max(0,Math.min(max,start.sectionIndex+delta));
   if(idx===+planes[p].slider.value)return;
   planes[p].slider.value=idx;planes[p].label.textContent=idx+1;if(sectionPosition)sectionPosition.value=idx;
-  updateMpr3DPlanePositions();updateSectionClipPlaneWorld();updateSectionViewUi();request3DRender();schedulePlaneRender(p);
+  updateMpr3DPlanePositions();updateSectionClipPlaneWorld();updateSectionViewUi();request3DRender();renderSectionPlaneLive(p);
  };
  const drawEditStroke=mode=>{const ctx=threeEditOverlay?.getContext('2d');if(!ctx)return;ctx.clearRect(0,0,threeEditOverlay.width,threeEditOverlay.height);if(!analysisCutScreen.length)return;ctx.save();ctx.strokeStyle='#00e5ff';ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round';ctx.setLineDash(mode==='line'?[8,5]:[]);ctx.beginPath();ctx.moveTo(analysisCutScreen[0].x,analysisCutScreen[0].y);for(let i=1;i<analysisCutScreen.length;i++)ctx.lineTo(analysisCutScreen[i].x,analysisCutScreen[i].y);ctx.stroke();ctx.restore()};
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
- renderer.domElement.onpointerdown=e=>{const cutTool=analysisEditTool==='pen'||analysisEditTool==='line',cutReady=cutTool&&!analysisPendingCut&&!analysisCutApplying&&e.button===0&&!e.altKey&&threeRenderMode==='surface'&&!!sceneState.obj,sectionHit=!cutReady&&e.button===0&&!e.altKey?sectionDragHit(e):null,mode=cutReady?(analysisEditTool==='line'?'cut-line':'cut-pen'):sectionHit?'section-drag':isMousePanStart(e)?'pan':'rotate',point={x:e.clientX,y:e.clientY,mode,pointerType:e.pointerType};if(!cutReady&&!sectionHit)begin3DInteraction();pointers.set(e.pointerId,point);pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY,mode,sectionPlane:sectionHit?sectionViewPlane:null,sectionIndex:sectionHit?+planes[sectionViewPlane].slider.value:null,sectionScreenStep:sectionHit?sectionScreenStep():null,cutFrame:null});if(sectionHit){renderer.domElement.style.cursor='grabbing';footer.textContent=(currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面をドラッグ中':'Dragging '+sectionPlaneLabel(sectionViewPlane)+' section')}if(cutReady){analysisCutStroke=[];analysisCutScreen=[editPoint(e)];const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode,frame=createCutPlacementFrame(e,renderer.domElement,camera,preferred);pointerStarts.get(e.pointerId).cutFrame=frame;const v=cutPointerVoxel(e,renderer.domElement,camera,preferred,frame);if(v){if(analysisEditTargetMode==='auto'&&v.key)analysisEditTargetKey=v.key;else if(analysisEditTargetMode!=='auto')analysisEditTargetKey=preferred;analysisCutStroke.push(v);updateThreeEditUi(analysisEditTargetKey?(tr(analysisEditTargetKey)||analysisEditTargetKey)+' · '+(analysisEditTool==='pen'?tr('cutRegion'):tr('lineCutRegion')):(currentLanguage==='ja'?'空間上に切断面を配置中 · 対象を選択してください':'Placing cut surface in space · choose a target'));footer.textContent=analysisEditTargetKey?(currentLanguage==='ja'?(tr(analysisEditTargetKey)||analysisEditTargetKey)+'を編集中':'Editing '+(tr(analysisEditTargetKey)||analysisEditTargetKey)):(currentLanguage==='ja'?'空間上に切断面を配置中':'Placing cut surface in space')}else updateThreeEditUi(currentLanguage==='ja'?'切断面を配置できませんでした':'Could not place cut surface');drawEditStroke(analysisEditTool)}renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
+ renderer.domElement.onpointerdown=e=>{const cutTool=analysisEditTool==='pen'||analysisEditTool==='line',cutReady=cutTool&&!analysisPendingCut&&!analysisCutApplying&&e.button===0&&!e.altKey&&threeRenderMode==='surface'&&!!sceneState.obj,sectionHit=!cutReady&&e.button===0&&!e.altKey?sectionDragHit(e):null,mode=cutReady?(analysisEditTool==='line'?'cut-line':'cut-pen'):sectionHit?'section-drag':isMousePanStart(e)?'pan':'rotate',point={x:e.clientX,y:e.clientY,mode,pointerType:e.pointerType};if(!cutReady&&!sectionHit)begin3DInteraction();pointers.set(e.pointerId,point);pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY,mode,sectionPlane:sectionHit?sectionViewPlane:null,sectionIndex:sectionHit?+planes[sectionViewPlane].slider.value:null,sectionScreenStep:sectionHit?sectionScreenStep():null,cutFrame:null});if(sectionHit){renderer.domElement.style.cursor='grabbing';footer.textContent=(currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面をドラッグ中':'Dragging '+sectionPlaneLabel(sectionViewPlane)+' section')}if(cutReady){analysisCutStroke=[];analysisCutScreen=[editPoint(e)];const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode,frame=createCutPlacementFrame(e,renderer.domElement,camera,preferred);if(!frame){pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);analysisCutStroke=null;analysisCutScreen=[];clearThreeEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'対象の3D表面上から切断線を開始してください':'Start the cut stroke on the target 3D surface');return}pointerStarts.get(e.pointerId).cutFrame=frame;const v=cutPointerVoxel(e,renderer.domElement,camera,preferred,frame);if(v){if(analysisEditTargetMode==='auto'&&v.key)analysisEditTargetKey=v.key;else if(analysisEditTargetMode!=='auto')analysisEditTargetKey=preferred;analysisCutStroke.push(v);updateThreeEditUi(analysisEditTargetKey?(tr(analysisEditTargetKey)||analysisEditTargetKey)+' · '+(analysisEditTool==='pen'?tr('cutRegion'):tr('lineCutRegion')):(currentLanguage==='ja'?'空間上に切断面を配置中 · 対象を選択してください':'Placing cut surface in space · choose a target'));footer.textContent=analysisEditTargetKey?(currentLanguage==='ja'?(tr(analysisEditTargetKey)||analysisEditTargetKey)+'を編集中':'Editing '+(tr(analysisEditTargetKey)||analysisEditTargetKey)):(currentLanguage==='ja'?'空間上に切断面を配置中':'Placing cut surface in space')}else updateThreeEditUi(currentLanguage==='ja'?'切断面を配置できませんでした':'Could not place cut surface');drawEditStroke(analysisEditTool)}renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
  renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId),start=pointerStarts.get(e.pointerId);if(!prev){if((analysisEditTool==='pen'||analysisEditTool==='line')&&!analysisPendingCut&&!analysisCutApplying&&sceneState.obj){const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateCutPreview(cutPointerVoxel(e,renderer.domElement,camera,preferred))}return}pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='section-drag'){dragSectionPlane(start,e);return}if(prev.mode==='cut-pen'||prev.mode==='cut-line'){const preferred=analysisEditTargetMode==='auto'?analysisEditTargetKey:analysisEditTargetMode,v=cutPointerVoxel(e,renderer.domElement,camera,preferred,start?.cutFrame||null),screen=editPoint(e);if(analysisEditTargetMode==='auto'&&!analysisEditTargetKey&&v?.key)analysisEditTargetKey=v.key;updateCutPreview(v);if(prev.mode==='cut-line'){analysisCutScreen=[analysisCutScreen[0],screen];if(v){const first=analysisCutStroke?.[0];analysisCutStroke=first?[first,v]:[v]}}else if(Math.hypot(dx,dy)>=1){analysisCutScreen.push(screen);if(v){const last=analysisCutStroke?.[analysisCutStroke.length-1];if(!last||Math.hypot(v.x-last.x,v.y-last.y,v.z-last.z)>.2)analysisCutStroke.push(v)}}drawEditStroke(prev.mode==='cut-line'?'line':'pen');return}if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}lastPinch=d;lastCenter=center;request3DRender()};
- const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag',stroke=isCut?[...(analysisCutStroke||[])]:null,screenStroke=isCut?[...(analysisCutScreen||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&!isCut&&!isSectionDrag)end3DInteraction();if(isSectionDrag){renderer.domElement.style.cursor='';if(start?.sectionPlane===sectionViewPlane)schedulePlaneRender(sectionViewPlane,true);footer.textContent=currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面 '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1):sectionPlaneLabel(sectionViewPlane)+' section '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1);return}if(isCut){analysisCutStroke=null;if(e.type==='pointerup'&&stroke?.length){analysisPendingCut={points:stroke,key:analysisEditTargetKey,mode:start?.mode==='cut-line'?'line':'pen'};analysisCutScreen=[];clearThreeEditOverlay();sceneState.editCutPreviewPoint=stroke[stroke.length-1];updateCutPreview(sceneState.editCutPreviewPoint);footer.textContent=currentLanguage==='ja'?'切断予定を作成しました。深さ・幅・角度を調整してください':'Cut plan created. Adjust depth, width and angles.';updateThreeEditUi(tr('cutPendingHint'))}else{analysisCutScreen=[];clearThreeEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'切断線が対象表面にありません':'The cut stroke did not hit the target surface')}return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
+ const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag',stroke=isCut?[...(analysisCutStroke||[])]:null,screenStroke=isCut?[...(analysisCutScreen||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&!isCut&&!isSectionDrag)end3DInteraction();if(isSectionDrag){renderer.domElement.style.cursor='';if(start?.sectionPlane===sectionViewPlane)schedulePlaneRender(sectionViewPlane,true);footer.textContent=currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面 '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1):sectionPlaneLabel(sectionViewPlane)+' section '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1);return}if(isCut){analysisCutStroke=null;if(e.type==='pointerup'&&stroke?.length>=2&&analysisEditTargetKey){analysisPendingCut={points:stroke,key:analysisEditTargetKey,mode:start?.mode==='cut-line'?'line':'pen'};analysisCutScreen=[];clearThreeEditOverlay();sceneState.editCutPreviewPoint=stroke[stroke.length-1];updateCutPreview(sceneState.editCutPreviewPoint);footer.textContent=currentLanguage==='ja'?'切断予定を作成しました。深さ・幅・角度を調整してください':'Cut plan created. Adjust depth, width and angles.';updateThreeEditUi(tr('cutPendingHint'))}else{analysisCutScreen=[];clearThreeEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'切断線が対象表面にありません':'The cut stroke did not hit the target surface')}return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
  renderer.domElement.onlostpointercapture=e=>{const start=pointerStarts.get(e.pointerId);pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(!analysisPendingCut){analysisCutScreen=[];clearThreeEditOverlay()}renderer.domElement.style.cursor='';if(pointers.size<2){lastPinch=0;lastCenter=null}if(!pointers.size&&start?.mode!=='section-drag')end3DInteraction()};
  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
@@ -3732,17 +3743,12 @@ function surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey=null){
 }
 function createCutPlacementFrame(event,canvas,camera,preferredKey=null){
  if(!sceneState?.obj||!volume)return null;
+ const surface=surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey);
+ if(!surface?.hit?.point)return null;
  const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/Math.max(rect.width,1))*2-1,-((event.clientY-rect.top)/Math.max(rect.height,1))*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
- const obj=sceneState.obj,surface=surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey),viewDir=new THREE.Vector3();camera.getWorldDirection(viewDir).normalize();
- let anchorWorld=surface?.hit?.point?.clone?.()||null;
- if(!anchorWorld){
-  const box=new THREE.Box3().setFromObject(obj),corners=[new THREE.Vector3(box.min.x,box.min.y,box.min.z),new THREE.Vector3(box.min.x,box.min.y,box.max.z),new THREE.Vector3(box.min.x,box.max.y,box.min.z),new THREE.Vector3(box.min.x,box.max.y,box.max.z),new THREE.Vector3(box.max.x,box.min.y,box.min.z),new THREE.Vector3(box.max.x,box.min.y,box.max.z),new THREE.Vector3(box.max.x,box.max.y,box.min.z),new THREE.Vector3(box.max.x,box.max.y,box.max.z)];
-  let frontDepth=Infinity;for(const p of corners){const depth=p.clone().sub(camera.position).dot(viewDir);if(depth>0&&depth<frontDepth)frontDepth=depth}
-  if(!Number.isFinite(frontDepth))return null;
-  const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir,camera.position.clone().addScaledVector(viewDir,frontDepth));anchorWorld=new THREE.Vector3();if(!raycaster.ray.intersectPlane(plane,anchorWorld))return null;
- }
+ const obj=sceneState.obj,anchorWorld=surface.hit.point.clone(),viewDir=new THREE.Vector3();camera.getWorldDirection(viewDir).normalize();
  const inv=obj.matrixWorld.clone().invert(),toVoxelDir=vec=>{const q=vec.clone().transformDirection(inv).normalize();return{x:q.x,y:-q.y,z:q.z}};
- return{plane:new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir,anchorWorld),ray:toVoxelDir(raycaster.ray.direction),right:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0)),up:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1)),key:surface?.key||preferredKey||null};
+ return{plane:new THREE.Plane().setFromNormalAndCoplanarPoint(viewDir,anchorWorld),ray:toVoxelDir(raycaster.ray.direction),right:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0)),up:toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1)),key:surface.key,anchor:surface};
 }
 function cutPointerVoxel(event,canvas,camera,preferredKey=null,frame=null){
  if(!sceneState?.obj||!volume)return null;
@@ -4351,34 +4357,22 @@ function updateCutPreview(point=null){
  if(state.editCutPreview){if(state.editCutPreview.parent)state.editCutPreview.parent.remove(state.editCutPreview);dispose(state.editCutPreview);state.editCutPreview=null}
  const pending=analysisPendingCut;
  if(!pending){
-  state.editCutPreviewPoint=point||null;
+  state.editCutPreviewPoint=point?.hit?point:null;
   if(!analysisCutApplying)clearCutResultPreview();
   request3DRender();return;
  }
  const v=current3DVolume||volume,frame=cutSurfaceFrameData(pending.points,pending.mode,+analysisCutOffset.value||0,v,+analysisCutYaw.value||0,+analysisCutPitch.value||0),curve=frame.curve;
  scheduleCutResultPreview();
  if(!v||curve.length<2){request3DRender();return}
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),width=cutWidthMm(),half=width*scale*.5,dir=new THREE.Vector3(frame.dir.x,-frame.dir.y,frame.dir.z).normalize();
- const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale),front=curve.map(localPoint),back=front.map(p=>p.clone().addScaledVector(dir,depth*scale)),faces=[];
+ const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),dir=new THREE.Vector3(frame.dir.x,-frame.dir.y,frame.dir.z).normalize();
+ const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale),front=curve.map(localPoint),back=front.map(p=>p.clone().addScaledVector(dir,depth*scale)),faces=[],outline=[];
  const quad=(a,b,c,d)=>faces.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
- if(half<=1e-9){
-  for(let i=0;i<front.length-1;i++)quad(front[i],front[i+1],back[i+1],back[i]);
- }else{
-  const normalLocal=frame.normals.map(n=>new THREE.Vector3(n.x,-n.y,n.z).normalize().multiplyScalar(half)),frontPlus=front.map((p,i)=>p.clone().add(normalLocal[i])),frontMinus=front.map((p,i)=>p.clone().sub(normalLocal[i])),backPlus=back.map((p,i)=>p.clone().add(normalLocal[i])),backMinus=back.map((p,i)=>p.clone().sub(normalLocal[i]));
-  for(let i=0;i<front.length-1;i++){
-   quad(frontPlus[i],frontPlus[i+1],backPlus[i+1],backPlus[i]);
-   quad(frontMinus[i],backMinus[i],backMinus[i+1],frontMinus[i+1]);
-   quad(frontMinus[i],frontMinus[i+1],frontPlus[i+1],frontPlus[i]);
-   quad(backMinus[i],backPlus[i],backPlus[i+1],backMinus[i+1]);
-  }
-  const last=front.length-1;
-  quad(frontMinus[0],frontPlus[0],backPlus[0],backMinus[0]);
-  quad(frontMinus[last],backMinus[last],backPlus[last],frontPlus[last]);
- }
+ for(let i=0;i<front.length-1;i++){quad(front[i],front[i+1],back[i+1],back[i]);outline.push(front[i],front[i+1])}
+ outline.push(front[front.length-1],back[back.length-1],back[back.length-1],back[0],back[0],front[0]);
  const group=new THREE.Group();group.name='cut_preview';
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
- const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:width>0?.07:.10,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
- const edges=new THREE.LineSegments(new THREE.EdgesGeometry(geom,22),new THREE.LineBasicMaterial({color:0x00e5ff,transparent:true,opacity:.72,depthWrite:false}));edges.name='cut_preview_outline';edges.renderOrder=97;group.add(edges);
+ const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.10,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
+ const edgeGeom=new THREE.BufferGeometry().setFromPoints(outline),edges=new THREE.LineSegments(edgeGeom,new THREE.LineBasicMaterial({color:0x00e5ff,transparent:true,opacity:.82,depthWrite:false,depthTest:false}));edges.name='cut_preview_outline';edges.renderOrder=97;group.add(edges);
  obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
 function updateThreeEditUi(message=null){
@@ -4738,6 +4732,7 @@ async function render3DSmoothIsosurface(v){
    const mesh=await buildSmoothIsoMesh(v,mask,seg,key,false);if(mesh)group.add(mesh);await frameYield();
   }
   if(revision!==sourceRenderRevision){dispose(group);return null}
+  if(active.length&&!group.children.some(o=>o?.isMesh))throw new Error('Smooth isosurface produced no mesh');
   if(previous){previous.parent?.remove(previous);dispose(previous)}sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
   setGpuComputeBackend('CPU ISOSURFACE · WEBGPU RENDER');threeLabel.textContent=(sceneState.backend||'3D')+' · smooth isosurface';footer.textContent=currentLanguage==='ja'?'3D滑面表示 · フル解像度':'3D smooth surface · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){dispose(group);set3DBusy(false);console.error(e);threeLabel.textContent=(sceneState.backend||'3D')+' · smooth surface error';footer.textContent='3D isosurface error: '+String(e.message||e);mark3DStale();request3DRender();return false}
@@ -5019,22 +5014,13 @@ async function render3D(v,force=false){
  if(!sceneState)return false;
  if(deferAutomatic3D&&!force){mark3DStale();return false}
  let ok;
- if(surfaceSmoothingActive()){
-  ok=await render3DSmoothIsosurface(v);
-  if(ok===null)return false;
-  if(ok!==true){
-   footer.textContent=currentLanguage==='ja'?'滑面構築を別のフル解像度経路で再試行しています…':'Retrying smooth 3D with the alternate full-resolution path…';
-   ok=v.sourceBacked?await render3DSourceBacked(v):await render3DMemoryGpu(v);
-  }
- }else if(v.sourceBacked){
-  ok=await render3DSourceBacked(v);
- }else{
-  ok=await render3DMemoryGpu(v);
- }
+ if(surfaceSmoothingActive())ok=await render3DSmoothIsosurface(v);
+ else if(v.sourceBacked)ok=await render3DSourceBacked(v);
+ else ok=await render3DMemoryGpu(v);
  if(ok!==true){
   if(ok===null||threeDCancelRequested)return false;
-  threeLabel.textContent=(sceneState.backend||'3D')+' · 3D build error';
-  footer.textContent=currentLanguage==='ja'?'3D生成に失敗しました。既存の3D表示を保持しています。':'3D build failed. The previous 3D view was preserved.';
+  threeLabel.textContent=(sceneState.backend||'3D')+(surfaceSmoothingActive()?' · smooth surface error':' · 3D build error');
+  footer.textContent=currentLanguage==='ja'?(surfaceSmoothingActive()?'表面平滑化3Dの構築に失敗しました。以前の3D表示を保持しています。':'3D生成に失敗しました。以前の3D表示を保持しています。'):(surfaceSmoothingActive()?'Smooth 3D build failed. The previous 3D view was preserved.':'3D build failed. The previous 3D view was preserved.');
   mark3DStale();return false;
  }
  await restoreEditedSegmentSurfaces(v);
