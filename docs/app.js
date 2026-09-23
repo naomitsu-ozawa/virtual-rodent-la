@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-75';const APP_BUILD='75';
+const APP_VERSION='2026.09.23-76';const APP_BUILD='76';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4727,7 +4727,7 @@ async function render3DSmoothIsosurface(v){
   if(revision!==sourceRenderRevision){dispose(group);return null}
   if(previous){previous.parent?.remove(previous);dispose(previous)}sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
   setGpuComputeBackend('CPU ISOSURFACE · WEBGPU RENDER');threeLabel.textContent=(sceneState.backend||'3D')+' · smooth isosurface';footer.textContent=currentLanguage==='ja'?'3D滑面表示 · フル解像度':'3D smooth surface · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
- }catch(e){dispose(group);set3DBusy(false);console.error(e);footer.textContent='3D isosurface error: '+String(e.message||e);return false}
+ }catch(e){dispose(group);set3DBusy(false);console.error(e);threeLabel.textContent=(sceneState.backend||'3D')+' · smooth surface error';footer.textContent='3D isosurface error: '+String(e.message||e);mark3DStale();request3DRender();return false}
 }
 function geometryFromSourcePositions(positions,alreadyGpuSmoothed=false,normals=null,applySmoothing=true){
  if(!positions||!positions.length)return null;
@@ -4908,7 +4908,6 @@ async function render3DSourceBacked(v){
  threeLabel.textContent=(sceneState.backend||'3D')+' · building…';set3DBusy(true,'3D構築中…');
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return}
-  if(strongSmooth){for(const {key} of streamActive)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);setGpuComputeBackend('WEBGPU MESH · CPU GLOBAL SMOOTH')}
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);
   syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
@@ -4966,7 +4965,6 @@ async function render3DSourceBacked(v){
  }
 }
 
-function surfaceSamplingStep(){return 1}
 async function render3DMemoryGpu(v){
  const device=await ensureGpuFilterDevice();if(!device)return false;
  const revision=++sourceRenderRevision,previous=sceneState.obj,group=new THREE.Group();
@@ -4975,7 +4973,6 @@ async function render3DMemoryGpu(v){
  threeLabel.textContent=(sceneState.backend||'3D')+' · GPU building…';set3DBusy(true,'3D構築中…');
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return null}
-  if(strongSmooth){for(const {key} of active)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);setGpuComputeBackend('WEBGPU MESH · CPU GLOBAL SMOOTH')}
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
@@ -5005,75 +5002,31 @@ async function render3DMemoryGpu(v){
   return false;
  }
 }
-function render3DMemoryCpu(v){
- sourceRenderRevision++;
- sceneState.analysisMesh=null;
- let savedTransform=null;
- if(sceneState.obj){savedTransform={position:sceneState.obj.position.clone(),quaternion:sceneState.obj.quaternion.clone(),scale:sceneState.obj.scale.clone()};sceneState.obj.parent?.remove(sceneState.obj);dispose(sceneState.obj)}
- const group=new THREE.Group();if(savedTransform){group.position.copy(savedTransform.position);group.quaternion.copy(savedTransform.quaternion);group.scale.copy(savedTransform.scale)}
- const step=surfaceSamplingStep(v);
- for(const key of ['lung','fat','soft','bone']){const seg=segmentState[key];if(!seg.active||!seg.enabled)continue;const mesh=buildSegmentSurface(v,seg,step,key);if(mesh)group.add(mesh)}
- sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}threeLabel.textContent=(sceneState.backend||'3D')+' · CPU fallback · step '+step;request3DRender();mark3DCurrent();return true;
-}
 async function render3D(v,force=false){
  if(!sceneState)return false;
  if(deferAutomatic3D&&!force){mark3DStale();return false}
  let ok;
- if(surfaceSmoothingActive()){ok=await render3DSmoothIsosurface(v);if(ok===null)return false}
- if(ok!==true){
-  if(v.sourceBacked)ok=await render3DSourceBacked(v);
-  else{ok=await render3DMemoryGpu(v);if(ok!==true){if(ok===null||threeDCancelRequested)return false;ok=render3DMemoryCpu(v)}}
+ if(surfaceSmoothingActive()){
+  ok=await render3DSmoothIsosurface(v);
+  if(ok===null)return false;
+  if(ok!==true){
+   threeLabel.textContent=(sceneState.backend||'3D')+' · smooth surface error';
+   mark3DStale();return false;
+  }
+ }else if(v.sourceBacked){
+  ok=await render3DSourceBacked(v);
+ }else{
+  ok=await render3DMemoryGpu(v);
+  if(ok!==true){
+   if(ok===null||threeDCancelRequested)return false;
+   threeLabel.textContent=(sceneState.backend||'3D')+' · GPU mesh error';
+   footer.textContent=currentLanguage==='ja'?'3D生成に失敗しました。既存の3D表示を保持しています。':'3D build failed. The previous 3D view was preserved.';
+   mark3DStale();return false;
+  }
  }
  if(ok===true)await restoreEditedSegmentSurfaces(v);
  return ok===true;
 }
-function buildSegmentSurface(v,seg,step,key){
- const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing,mask=getProcessedSegmentMask(v,seg);
- const positions=[],indices=[],vertexMap=new Map();
- const px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
- const inside=(x,y,z)=>{
-  if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return false;
-  return mask[z*h*w+y*w+x]===1;
- };
- const vertex=(gx,gy,gz)=>{
-  const k=gx+','+gy+','+gz;
-  let id=vertexMap.get(k);if(id!==undefined)return id;
-  id=positions.length/3;vertexMap.set(k,id);
-  positions.push((gx*sx-px/2)*scale,-(gy*sy-py/2)*scale,(gz*sz-pz/2)*scale);
-  return id;
- };
- const face=(a,b,c,dv)=>{
-  const ia=vertex(...a),ib=vertex(...b),ic=vertex(...c),id=vertex(...dv);
-  indices.push(ia,ib,ic,ia,ic,id);
- };
- const maxFaces=key==='bone'?600000:300000;let faces=0;
- outer:for(let z=0;z<d;z+=step)for(let y=0;y<h;y+=step)for(let x=0;x<w;x+=step){
-  if(!inside(x,y,z))continue;
-  const x1=Math.min(w,x+step),y1=Math.min(h,y+step),z1=Math.min(d,z+step);
-  const nx=x-step,ny=y-step,nz=z-step,pxn=x+step,pyn=y+step,pzn=z+step;
-  if(!inside(nx,y,z)){face([x,y,z],[x,y,z1],[x,y1,z1],[x,y1,z]);if(++faces>=maxFaces)break outer}
-  if(!inside(pxn,y,z)){face([x1,y,z],[x1,y1,z],[x1,y1,z1],[x1,y,z1]);if(++faces>=maxFaces)break outer}
-  if(!inside(x,ny,z)){face([x,y,z],[x1,y,z],[x1,y,z1],[x,y,z1]);if(++faces>=maxFaces)break outer}
-  if(!inside(x,pyn,z)){face([x,y1,z],[x,y1,z1],[x1,y1,z1],[x1,y1,z]);if(++faces>=maxFaces)break outer}
-  if(!inside(x,y,nz)){face([x,y,z],[x,y1,z],[x1,y1,z],[x1,y,z]);if(++faces>=maxFaces)break outer}
-  if(!inside(x,y,pzn)){face([x,y,z1],[x1,y,z1],[x1,y1,z1],[x,y1,z1]);if(++faces>=maxFaces)break outer}
- }
- if(!indices.length)return null;
- const geometry=new THREE.BufferGeometry();
- geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
- geometry.setIndex(indices);geometry.computeVertexNormals();geometry.computeBoundingSphere();
- const material=new THREE.MeshStandardMaterial({
-  color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,
-  roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,
-  depthWrite:seg.opacity>.55
- });
- if(surfaceSmoothingActive()){
-  taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value);
- }
- const mesh=new THREE.Mesh(geometry,material);mesh.name='segment_'+key;mesh.userData.segmentKey=key;mesh.userData.displayScale=scale;return mesh;
-}
-
-
 function meshSegmentRanges(mesh,key){
  const pos=mesh?.geometry?.getAttribute?.('position');if(!pos)return[];
  if(mesh.userData?.segmentKey===key)return[{start:0,count:mesh.geometry.index?mesh.geometry.index.count:pos.count}];
