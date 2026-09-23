@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-104';const APP_BUILD='104';
+const APP_VERSION='2026.09.23-105';const APP_BUILD='105';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4252,15 +4252,30 @@ function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode
  if(curve.length<2){if(curve[0])addVoxel(curve[0].x,curve[0].y,curve[0].z);return rows.map(rowsToRunSlice)}
  const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
  const sampleStep=Math.max(.05,minSpacing*.65),halfKerf=Math.max(0,Number.isFinite(+kerfMm)?+kerfMm*.5:0),depth=Math.max(.1,+depthMm||.1);
+ // The contact edge is the exact drawn stroke. Toward the requested depth the sheet
+ // continuously relaxes to the straight edge joining the stroke endpoints, giving a
+ // readable four-sided cut surface without moving or straightening the contact line.
+ const segmentLengths=new Float64Array(curve.length-1),cumulative=new Float64Array(curve.length);
+ let totalLength=0;
+ for(let i=0;i<curve.length-1;i++){
+  const a=curve[i],b=curve[i+1],dx=(b.x-a.x)*sx,dy=(b.y-a.y)*sy,dz=(b.z-a.z)*sz;
+  const len=Math.hypot(dx,dy,dz);segmentLengths[i]=len;totalLength+=len;cumulative[i+1]=totalLength;
+ }
+ const first=curve[0],last=curve[curve.length-1];
  for(let seg=0;seg<curve.length-1;seg++){
-  const a=curve[seg],b=curve[seg+1],tx=(b.x-a.x)*sx,ty=(b.y-a.y)*sy,tz=(b.z-a.z)*sz,segmentMm=Math.hypot(tx,ty,tz);
+  const a=curve[seg],b=curve[seg+1],segmentMm=segmentLengths[seg];
   if(segmentMm<1e-6)continue;
   const alongSteps=Math.max(1,Math.ceil(segmentMm/sampleStep)),n0=normals[seg]||{x:1,y:0,z:0},n1=normals[seg+1]||n0;
   const depthSteps=Math.max(1,Math.ceil(depth/sampleStep)),kerfSteps=halfKerf>0?Math.max(1,Math.ceil((halfKerf*2)/Math.max(minSpacing*.7,.05))):0;
   for(let si=0;si<=alongSteps;si++){
-   const u=si/alongSteps,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u},sheetNormal=norm({x:n0.x+(n1.x-n0.x)*u,y:n0.y+(n1.y-n0.y)*u,z:n0.z+(n1.z-n0.z)*u});
+   const u=si/alongSteps,along=totalLength>1e-9?(cumulative[seg]+segmentMm*u)/totalLength:(seg+u)/Math.max(1,curve.length-1);
+   const p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
+   const straight={x:first.x+(last.x-first.x)*along,y:first.y+(last.y-first.y)*along,z:first.z+(last.z-first.z)*along};
+   const sheetNormal=norm({x:n0.x+(n1.x-n0.x)*u,y:n0.y+(n1.y-n0.y)*u,z:n0.z+(n1.z-n0.z)*u});
    for(let di=0;di<=depthSteps;di++){
-    const dep=depth*di/depthSteps,base={x:p.x+dir.x*dep/sx,y:p.y+dir.y*dep/sy,z:p.z+dir.z*dep/sz};
+    const dep=depth*di/depthSteps,t=dep/depth;
+    const q={x:p.x+(straight.x-p.x)*t,y:p.y+(straight.y-p.y)*t,z:p.z+(straight.z-p.z)*t};
+    const base={x:q.x+dir.x*dep/sx,y:q.y+dir.y*dep/sy,z:q.z+dir.z*dep/sz};
     for(let ki=0;ki<=kerfSteps;ki++){
      const off=kerfSteps?(-halfKerf+(halfKerf*2)*ki/kerfSteps):0;
      addVoxel(base.x+sheetNormal.x*off/sx,base.y+sheetNormal.y*off/sy,base.z+sheetNormal.z*off/sz);
@@ -4396,13 +4411,15 @@ function updateCutPreview(point=null){
  if(!v||curve.length<2){request3DRender();return}
  const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),dir=new THREE.Vector3(frame.dir.x,-frame.dir.y,frame.dir.z).normalize();
  const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
- const front=curve.map(localPoint),back=front.map(p=>p.clone().addScaledVector(dir,depth*scale)),faces=[],edges=[];
+ const front=curve.map(localPoint),arc=new Float64Array(curve.length);let totalArc=0;
+ for(let i=1;i<front.length;i++){totalArc+=front[i].distanceTo(front[i-1]);arc[i]=totalArc}
+ const first=front[0],last=front[front.length-1];
+ const back=front.map((p,i)=>first.clone().lerp(last,totalArc>1e-9?arc[i]/totalArc:i/Math.max(1,front.length-1)).addScaledVector(dir,depth*scale)),faces=[],edges=[];
  const quad=(a,b,c,d)=>faces.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
  for(let i=0;i<front.length-1;i++)quad(front[i],front[i+1],back[i+1],back[i]);
- // Keep one four-sided sheet while preserving the exact drawn curve on both long sides.
+ // Four-sided guide: exact drawn contact curve, straight far edge, straight end edges.
  for(let i=0;i<front.length-1;i++)edges.push(front[i],front[i+1]);
- for(let i=0;i<back.length-1;i++)edges.push(back[i],back[i+1]);
- edges.push(front[0],back[0],front[front.length-1],back[back.length-1]);
+ edges.push(back[0],back[back.length-1],front[0],back[0],front[front.length-1],back[back.length-1]);
  const group=new THREE.Group();group.name='cut_preview';
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
  const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.22,depthTest:true,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
