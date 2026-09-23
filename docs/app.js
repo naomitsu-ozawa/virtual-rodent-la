@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-125';const APP_BUILD='125';
+const APP_VERSION='2026.09.23-126';const APP_BUILD='126';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3439,24 +3439,36 @@ function updateMpr3DPlanePositions(){
 function mpr3DLiveDims(p){
  if(!volume)return[1,1];
  const sw=p==='axial'?volume.columns:p==='coronal'?volume.columns:volume.rows,sh=p==='axial'?volume.rows:volume.slices;
- const maxSide=navigator.maxTouchPoints>0?448:640,pixelBudget=navigator.maxTouchPoints>0?180000:320000,k=Math.min(1,maxSide/Math.max(sw,sh,1),Math.sqrt(pixelBudget/Math.max(sw*sh,1)));
+ const maxSide=navigator.maxTouchPoints>0?512:640,pixelBudget=navigator.maxTouchPoints>0?100000:160000,k=Math.min(1,maxSide/Math.max(sw,sh,1),Math.sqrt(pixelBudget/Math.max(sw*sh,1)));
  return[Math.max(1,Math.round(sw*k)),Math.max(1,Math.round(sh*k))];
+}
+function paintMpr3DPreviewCacheFast(p,idx,dst){
+ const src=mpr3DPreviewCache.planes[p],srcDims=mpr3DPreviewCache.dims[p];if(!src||!srcDims||!dst||!volume)return false;
+ const [sw,sh]=srcDims,[pw,ph]=mpr3DLiveDims(p),count=p==='axial'?volume.slices:p==='coronal'?volume.rows:volume.columns;
+ if(idx<0||idx>=count)return false;
+ const ctx=dst.getContext('2d');if(dst.width!==pw)dst.width=pw;if(dst.height!==ph)dst.height=ph;
+ let cache=mpr3DLiveImageCache[p];if(!cache||cache.width!==pw||cache.height!==ph){cache={width:pw,height:ph,image:ctx.createImageData(pw,ph)};mpr3DLiveImageCache[p]=cache}
+ const img=cache.image,off=idx*sw*sh,min=mpr3DPreviewCache.min,max=mpr3DPreviewCache.max,range=Math.max(max-min,1),low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1);let q=0;
+ for(let py=0;py<ph;py++){
+  const sy=mpr3DPreviewMap(py,sh,ph),row=off+sy*sw;
+  for(let px=0;px<pw;px++){
+   const sx=mpr3DPreviewMap(px,sw,pw),hu=min+(src[row+sx]/255)*range,g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));
+   img.data[q++]=g;img.data[q++]=g;img.data[q++]=g;img.data[q++]=255;
+  }
+ }
+ ctx.putImageData(img,0,0);return true;
 }
 function paintMpr3DMemoryPreview(p,idx,dst){
  const v=volume,data=v?.mprData;if(!data||!dst)return false;
  const w=v.columns,h=v.rows,d=v.slices,[pw,ph]=mpr3DLiveDims(p),ctx=dst.getContext('2d');
  if(dst.width!==pw)dst.width=pw;if(dst.height!==ph)dst.height=ph;
  let cache=mpr3DLiveImageCache[p];if(!cache||cache.width!==pw||cache.height!==ph){cache={width:pw,height:ph,image:ctx.createImageData(pw,ph)};mpr3DLiveImageCache[p]=cache}
- const img=cache.image,low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments();let q=0;
+ const img=cache.image,low=+wc.value-(+ww.value)/2,gscale=255/Math.max(+ww.value,1);let q=0;
  for(let py=0;py<ph;py++){
   const sy=mpr3DPreviewMap(py,p==='axial'?h:d,ph),z=p==='axial'?idx:d-1-sy;
   for(let px=0;px<pw;px++){
-   const sx=mpr3DPreviewMap(px,p==='sagittal'?h:w,pw),x=p==='sagittal'?idx:sx,y=p==='coronal'?idx:(p==='sagittal'?sx:sy),voxel=z*h*w+y*w+x,hu=data[voxel],g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));let rr=g,gg=g,bb=g;
-   for(const item of activeSegs){
-    const {key,seg,edit,processedMask,processedRuns,rgb,alpha}=item,inside=processedRuns?analysisRunsContain(processedRuns,x,y,z):(segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,x,y,z):(processedMask?processedMask[voxel]===1:(hu>=seg.min&&hu<=seg.max)));
-    if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha);
-   }
-   img.data[q++]=rr;img.data[q++]=gg;img.data[q++]=bb;img.data[q++]=255;
+   const sx=mpr3DPreviewMap(px,p==='sagittal'?h:w,pw),x=p==='sagittal'?idx:sx,y=p==='coronal'?idx:(p==='sagittal'?sx:sy),hu=data[z*h*w+y*w+x],g=Math.max(0,Math.min(255,Math.round((hu-low)*gscale)));
+   img.data[q++]=g;img.data[q++]=g;img.data[q++]=g;img.data[q++]=255;
   }
  }
  ctx.putImageData(img,0,0);return true;
@@ -3464,8 +3476,8 @@ function paintMpr3DMemoryPreview(p,idx,dst){
 function paintMpr3DLiveTextureNow(p,idx){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return false;
  const dst=entry.previewCanvas;let painted=false;
- if(volume?.mprData)painted=paintMpr3DMemoryPreview(p,idx,dst);
- if(!painted&&mpr3DPreviewCache.signature===mpr3DPreviewSignature(volume)&&mpr3DPreviewCache.planes[p])painted=paintMpr3DPreview(p,idx,dst);
+ if(mpr3DPreviewCache.signature===mpr3DPreviewSignature(volume)&&mpr3DPreviewCache.planes[p])painted=paintMpr3DPreviewCacheFast(p,idx,dst);
+ if(!painted&&volume?.mprData)painted=paintMpr3DMemoryPreview(p,idx,dst);
  if(!painted)return false;
  entry.texture.needsUpdate=true;request3DRender();return true;
 }
