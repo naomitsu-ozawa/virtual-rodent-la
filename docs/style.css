@@ -350,7 +350,10 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .volume-analysis-panel button,
 .volume-analysis-panel input,
 .volume-analysis-panel select,
-.volume-analysis-panel label{
+.volume-analysis-panel label,
+.volume-analysis-panel summary,
+.three-edit-panel,
+.three-edit-panel-head{
   pointer-events:auto;
   touch-action:manipulation;
 }
