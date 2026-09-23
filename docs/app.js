@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-129';const APP_BUILD='129';
+const APP_VERSION='2026.09.24-130';const APP_BUILD='130';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -922,18 +922,6 @@ threeBusyCancel.onclick=()=>cancel3DRebuild();
 installFilterReorder();
 
 const planeRenderTimers={axial:null,coronal:null,sagittal:null};
-const mpr3DOrthoSliding={coronal:false,sagittal:false};
-function scheduleSagittalHighResPrefetch(idx){
- const v=volume;if(!v?.mprData||v.mprSagittalAll)return;
- const state=v.mprSagittalPrefetch||(v.mprSagittalPrefetch={idx:-1,data:null,token:0,timer:null}),token=++state.token;
- if(state.timer){clearTimeout(state.timer);state.timer=null}
- state.timer=setTimeout(()=>{
-  state.timer=null;if(token!==state.token||volume!==v)return;
-  const data=v.mprData,Ctor=v.mprCtor||data.constructor,w=v.columns,h=v.rows,d=v.slices,plane=w*h,out=new Ctor(h*d);
-  for(let z=0;z<d;z++){const base=z*plane,dst=(d-1-z)*h;for(let y=0;y<h;y++)out[dst+y]=data[base+y*w+idx]}
-  if(token!==state.token||volume!==v)return;state.idx=idx;state.data=out;
- },24);
-}
 function pushCachedMpr3DPlane(p,idx){
  if((p!=='coronal'&&p!=='sagittal')||mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
  let entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return false;
@@ -955,8 +943,7 @@ function paintFastOrthogonalPreview(p,idx){
 function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
- if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate)pushCachedMpr3DPlane(p,idx)}
- if(p==='sagittal'&&!immediate)scheduleSagittalHighResPrefetch(idx);
+ if((p==='coronal'||p==='sagittal')&&!immediate)pushCachedMpr3DPlane(p,idx);
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
  if(p==='axial')refreshMpr3DPlaneTexture(p);
@@ -979,7 +966,7 @@ function renderSectionPlaneLive(p){
  if(paintFastOrthogonalPreview(p,idx))return;
  void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('Live section render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
 }
-for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>{if(p==='coronal'||p==='sagittal')mpr3DOrthoSliding[p]=false;schedulePlaneRender(p,true)};installMprTouch(p)}
+for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>schedulePlaneRender(p,true);installMprTouch(p)}
 
 async function loadDemo(){
  let response=null,fromCache=false,cache=null;
@@ -1167,8 +1154,7 @@ async function prepareSourceMprCache(v,onProgress){
  let data,coronalAll=null,sagittalAll=null;
  try{
   data=new Ctor(count);
-  if(volumeBytes*2<=limit)sagittalAll=new Ctor(count);
-  if(volumeBytes*3<=limit)coronalAll=new Ctor(count);
+  if(volumeBytes*3<=limit){coronalAll=new Ctor(count);sagittalAll=new Ctor(count)}
  }catch{return false}
  let next=0,completed=0,min=Infinity,max=-Infinity;
  const decodeOne=async z=>{
@@ -1197,7 +1183,6 @@ async function prepareSourceMprCache(v,onProgress){
  await Promise.all(Array.from({length:concurrency},()=>runner()));
  v.mprData=data;v.mprCtor=Ctor;v.mprCoronalAll=coronalAll;v.mprSagittalAll=sagittalAll;
  v.mprPlaneBuffers={coronal:coronalAll?null:new Ctor(w*d),sagittal:sagittalAll?null:new Ctor(h*d)};
- v.mprSagittalPrefetch={idx:-1,data:null,token:0,timer:null};
  if(Number.isFinite(min))v.min=min;if(Number.isFinite(max))v.max=max;
  return true;
 }
@@ -1212,7 +1197,6 @@ function cachedSourceMprPlane(v,p,idx){
   return out;
  }
  if(v.mprSagittalAll)return v.mprSagittalAll.subarray(idx*d*h,(idx+1)*d*h);
- if(v.mprSagittalPrefetch?.idx===idx&&v.mprSagittalPrefetch.data)return v.mprSagittalPrefetch.data;
  const out=v.mprPlaneBuffers?.sagittal||new Ctor(h*d);
  for(let z=0;z<d;z++){const base=z*plane,dst=(d-1-z)*h;for(let y=0;y<h;y++)out[dst+y]=data[base+y*w+idx]}
  return out;
@@ -2233,14 +2217,14 @@ function clearMpr3DPreviewCache(){
 }
 function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear();sourceOrthogonalPlaneCacheBytes=0;clearMpr3DPreviewCache()}
 function mpr3DPreviewPlan(v){
- const touch=navigator.maxTouchPoints>0,target=touch?448:640,budget=(touch?128:256)*1024*1024,w=v.columns,h=v.rows,d=v.slices;
+ const touch=navigator.maxTouchPoints>0,target=touch?768:1024,budget=(touch?192:512)*1024*1024,w=v.columns,h=v.rows,d=v.slices;
  const bytesFor=side=>{
   const cw=Math.min(w,side),ch=Math.min(d,side),sw=Math.min(h,side),sh=Math.min(d,side);
   return h*cw*ch+w*sw*sh;
  };
  let side=Math.min(target,Math.max(w,h,d));
- while(side>256&&bytesFor(side)>budget)side-=32;
- if(bytesFor(side)>budget)side=256;
+ while(side>320&&bytesFor(side)>budget)side-=32;
+ if(bytesFor(side)>budget)side=320;
  return{side,bytes:bytesFor(side)};
 }
 function mpr3DPreviewMap(i,n,outN){return outN<=1?0:Math.max(0,Math.min(n-1,Math.round(i*(n-1)/(outN-1))))}
@@ -3483,7 +3467,7 @@ function updateMpr3DPlanePositions(){
 
 function refreshMpr3DPlaneTexture(p){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return;
- if((p==='coronal'||p==='sagittal')&&mpr3DOrthoSliding[p]&&pushCachedMpr3DPlane(p,+planes[p].slider.value))return;
+ if((p==='coronal'||p==='sagittal')&&pushCachedMpr3DPlane(p,+planes[p].slider.value))return;
  const src=planes[p]?.canvas,dst=entry.previewCanvas;
  if(src?.width&&src?.height&&dst){
   if(dst.width!==src.width)dst.width=src.width;
