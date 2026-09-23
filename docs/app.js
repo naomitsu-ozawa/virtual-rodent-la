@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-100';const APP_BUILD='100';
+const APP_VERSION='2026.09.23-101';const APP_BUILD='101';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4366,10 +4366,11 @@ async function rebuildCutResultPreview(revision,pending){
    for(const m of mats){
     if(!m)continue;
     if(m.color?.set)m.color.set(0xff5a36);
-    if(m.emissive?.set)m.emissive.set(0x7a1408);
-    m.emissiveIntensity=.45;m.transparent=true;m.opacity=.68;m.depthWrite=false;
+    if(m.emissive?.set)m.emissive.set(0xff3b12);
+    m.emissiveIntensity=1.15;m.transparent=true;m.opacity=.88;m.depthTest=false;m.depthWrite=false;
+    if('polygonOffset' in m){m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2}
    }
-   o.renderOrder=96;
+   o.renderOrder=120;
   });
   const old=state.cutResultPreviewGroup;
   if(old){if(old.parent)old.parent.remove(old);dispose(old)}
