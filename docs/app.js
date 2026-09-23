@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-80';const APP_BUILD='80';
+const APP_VERSION='2026.09.23-81';const APP_BUILD='81';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -705,7 +705,7 @@ function refreshSmoothingSurfaces(){
  clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=null;scheduleSegment3D();refreshAnalysisSurfacesForSmoothing();rebuildSmoothing3DWhenReady();
 }
 surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;refreshSmoothingSurfaces()};
-surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=setTimeout(refreshSmoothingSurfaces,320)};
+surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=null};
 surfaceSmoothStrength.onchange=()=>refreshSmoothingSurfaces();
 const liveFilterState={timer:null,base:null,key:null};
 function beginLiveFilter(key){
