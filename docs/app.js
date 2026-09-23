@@ -924,7 +924,7 @@ const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();refreshMpr3DPlaneTexture(p);clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
- if(sectionViewPlane===p){updateSectionClipPlaneWorld();updateSectionViewUi();request3DRender()}
+ if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(volume?.sourceBacked&&volume.mprData&&!sourceFilterStages().length){
   const values=cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
   paintSourcePlane(planes[p],dims,values,p,idx);return;
