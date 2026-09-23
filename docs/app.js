@@ -11,7 +11,7 @@ async function ensureLatestDeployedBuild(){
   if(!res.ok)return;
   const latest=await res.json(),build=String(latest?.build||'');
   if(!build||build===String(APP_BUILD))return;
-  const url=new URL(location.href);url.searchParams.set('build',build);location.replace(url.toString());
+  console.warn('Build marker differs from loaded app.',{loaded:String(APP_BUILD),published:build});
  }catch(e){console.warn('Version check failed.',e)}
 }
 
