@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-118';const APP_BUILD='118';
+const APP_VERSION='2026.09.23-119';const APP_BUILD='119';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3543,36 +3543,48 @@ async function start3D(){
  const editPoint=e=>{const rect=renderer.domElement.getBoundingClientRect();return{x:e.clientX-rect.left,y:e.clientY-rect.top}};
  const cutSamplesToSurfaceStroke=(samples,mode='pen')=>{
   if(!samples?.length||!sceneState?.obj||!volume)return[];
-  const valid=[];
-  for(let i=0;i<samples.length;i++)if(samples[i]?.surface)valid.push(i);
-  if(!valid.length)return[];
+  const hitSamples=[];
+  for(let i=0;i<samples.length;i++)if(samples[i]?.surface?.hit?.object?.geometry?.getAttribute?.('position'))hitSamples.push(i);
+  if(!hitSamples.length)return[];
   const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),rect=renderer.domElement.getBoundingClientRect();
   sceneState.obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
-  const toVoxel=(world,meta)=>{
-   const local=sceneState.obj.worldToLocal(world.clone());
-   return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:{...meta.ray},right:{...meta.right},up:{...meta.up},key:meta.key};
-  };
-  const projectAtDepth=(sample,meta,ndcZ)=>{
-   const screen=sample.screen,ndcX=(screen.x/Math.max(rect.width,1))*2-1,ndcY=-(screen.y/Math.max(rect.height,1))*2+1;
-   return toVoxel(new THREE.Vector3(ndcX,ndcY,ndcZ).unproject(camera),meta);
-  };
-  const depthAt=i=>samples[i].surface.hit.point.clone().project(camera).z;
-  const out=new Array(samples.length);
-  for(const i of valid)out[i]=samples[i].surface;
-  const first=valid[0],last=valid[valid.length-1],firstMeta=samples[first].surface,lastMeta=samples[last].surface,firstDepth=depthAt(first),lastDepth=depthAt(last);
-  for(let i=0;i<first;i++)out[i]=projectAtDepth(samples[i],firstMeta,firstDepth);
-  for(let i=last+1;i<samples.length;i++)out[i]=projectAtDepth(samples[i],lastMeta,lastDepth);
-  for(let vi=0;vi<valid.length-1;vi++){
-   const ia=valid[vi],ib=valid[vi+1];if(ib<=ia+1)continue;
-   const sa=samples[ia].surface,sb=samples[ib].surface,za=depthAt(ia),zb=depthAt(ib);
-   let total=0;const dist=new Float64Array(ib-ia+1);
-   for(let i=ia+1;i<=ib;i++){const p0=samples[i-1].screen,p1=samples[i].screen;total+=Math.hypot(p1.x-p0.x,p1.y-p0.y);dist[i-ia]=total}
-   for(let i=ia+1;i<ib;i++){
-    const t=total>1e-9?dist[i-ia]/total:(i-ia)/(ib-ia),meta=t<.5?sa:sb;
-    out[i]=projectAtDepth(samples[i],meta,za+(zb-za)*t);
+
+  // Find ONE mesh vertex nearest to the drawn stroke. This is the upper-edge contact point.
+  let anchorIndex=hitSamples[0],anchorWorld=null,anchorMeta=samples[anchorIndex].surface,bestD2=Infinity;
+  for(const i of hitSamples){
+   const surface=samples[i].surface,hit=surface.hit,geom=hit.object?.geometry,pos=geom?.getAttribute?.('position');
+   if(!pos)continue;
+   const face=hit.face,indices=face?[face.a,face.b,face.c]:[];
+   for(const vi of indices){
+    const world=new THREE.Vector3().fromBufferAttribute(pos,vi).applyMatrix4(hit.object.matrixWorld),d2=world.distanceToSquared(hit.point);
+    if(d2<bestD2){bestD2=d2;anchorIndex=i;anchorWorld=world;anchorMeta=surface}
    }
   }
-  const full=out.filter(Boolean);
+  if(!anchorWorld)anchorWorld=samples[anchorIndex].surface.hit.point.clone();
+
+  // Preserve the drawn line/curve exactly. Move the whole stroke so the anchor sample touches
+  // the nearest mesh vertex, then lift every screen point onto the single plane through that vertex.
+  const anchorNdc=anchorWorld.clone().project(camera),anchorScreen={
+   x:(anchorNdc.x+1)*.5*Math.max(rect.width,1),
+   y:(1-anchorNdc.y)*.5*Math.max(rect.height,1)
+  },sourceAnchor=samples[anchorIndex].screen,shiftX=anchorScreen.x-sourceAnchor.x,shiftY=anchorScreen.y-sourceAnchor.y;
+
+  const toVoxel=world=>{
+   const local=sceneState.obj.worldToLocal(world.clone());
+   return{
+    x:(local.x/scale+px/2)/vx,
+    y:(-local.y/scale+py/2)/vy,
+    z:(local.z/scale+pz/2)/vz,
+    ray:{...anchorMeta.ray},
+    right:{...anchorMeta.right},
+    up:{...anchorMeta.up},
+    key:anchorMeta.key
+   };
+  };
+  const full=samples.map(sample=>{
+   const screen=sample.screen,shiftedX=screen.x+shiftX,shiftedY=screen.y+shiftY,ndcX=(shiftedX/Math.max(rect.width,1))*2-1,ndcY=-(shiftedY/Math.max(rect.height,1))*2+1;
+   return toVoxel(new THREE.Vector3(ndcX,ndcY,anchorNdc.z).unproject(camera));
+  });
   if(mode==='line'&&full.length>1)return[full[0],full[full.length-1]];
   return full;
  };
