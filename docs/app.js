@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-73';const APP_BUILD='73';
+const APP_VERSION='2026.09.23-74';const APP_BUILD='74';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -205,7 +205,7 @@ app.innerHTML=`
   </div>
   <button id="filter-reset" class="tool-chip filter-reset" data-i18n="resetFilters" disabled>画像フィルターをリセット</button>
 </div><p class="hint" data-i18n="controls">3D: 左ドラッグで回転 / Shift+左ドラッグ・右ドラッグ・中ドラッグで平行移動 / ホイールでズーム。タッチ: 1本指で回転 / 2本指でズーム・移動。断面画像: 左右スワイプ / マウスホイールでスライス移動</p></section></div></aside>
-<section class="viewer-grid" id="viewer-grid"><section id="main-view-slot" class="view-slot view-slot-main"><article class="viewport-card view-card view-card-3d" data-view-key="3d"><div class="viewport-label view-toolbar"><strong>3D</strong><span id="three-label">WebGPU</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="3d" data-i18n="mainView">メインへ</button></div><div class="volume-analysis-panel"><button id="render-mode-toggle" class="tool-chip" data-i18n="volumeRender" disabled>GPUボリューム</button><button id="volume-analysis-toggle" class="tool-chip" data-i18n="volumeMode" disabled>体積解析</button><button id="section-view-toggle" class="tool-chip" data-i18n="sliceAnalysis" disabled>断面解析</button><div id="section-view-result" class="volume-analysis-result is-hidden"><strong data-i18n="sliceAnalysis">断面解析</strong><div class="section-view-actions"><button type="button" data-section-view="axial">Axial</button><button type="button" data-section-view="coronal">Coronal</button><button type="button" data-section-view="sagittal">Sagittal</button><button id="section-reverse" type="button" data-i18n="sectionReverse">反転</button><button type="button" data-section-view="off" data-i18n="sectionOff">解除</button></div><label class="section-position-control"><span data-i18n="sectionPosition">断面位置</span><output id="section-position-value">—</output><input id="section-position" type="range" min="0" max="0" value="0" disabled></label><span id="section-view-readout" data-i18n="sliceAnalysisHint">3Dを切断する断面を選択してください</span></div><div class="three-overlay-controls" aria-label="3D overlays"><button type="button" class="tool-chip is-active" data-3d-overlay="axes">XYZ</button><button type="button" class="tool-chip" data-3d-overlay="axial">Axial</button><button type="button" class="tool-chip" data-3d-overlay="coronal">Coronal</button><button type="button" class="tool-chip" data-3d-overlay="sagittal">Sagittal</button></div><details class="three-edit-panel"><summary class="three-edit-panel-head"><strong data-i18n="edit3D">3D編集</strong><span id="three-edit-status" class="three-edit-status" data-i18n="editReady">操作を選択してください</span></summary><div class="analysis-editor-actions"><button id="analysis-navigate" type="button" class="is-active" data-i18n="editNavigate">操作</button><button id="analysis-cut" type="button" disabled data-i18n="cutRegion">ペン切断</button><button id="analysis-line-cut" type="button" disabled data-i18n="lineCutRegion">直線切断</button><label class="three-edit-target"><span data-i18n="editTarget">対象</span><select id="analysis-edit-target"><option value="auto" data-i18n="editAuto">自動</option><option value="bone">Bone</option><option value="soft">Soft</option><option value="fat">Fat</option><option value="lung">Lung</option></select></label><button id="analysis-undo" type="button" disabled data-i18n="undoEdit">Undo</button><button id="analysis-redo" type="button" disabled data-i18n="redoEdit">Redo</button><button id="analysis-reset-edit" type="button" disabled data-i18n="resetEdit">編集リセット</button><label class="analysis-cut-width"><span data-i18n="cutWidth">切断幅</span><output id="analysis-cut-width-value">0.80 mm</output><input id="analysis-cut-width" type="range" min="0.05" max="5" step="0.05" value="0.8"></label><label class="analysis-cut-width"><span data-i18n="cutDepth">切断深さ</span><output id="analysis-cut-depth-value">5.0 mm</output><input id="analysis-cut-depth" type="range" min="0.1" max="100" step="0.1" value="5"></label><label class="analysis-cut-width"><span data-i18n="cutYaw">左右角度</span><output id="analysis-cut-yaw-value">0.0°</output><input id="analysis-cut-yaw" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutPitch">上下角度</span><output id="analysis-cut-pitch-value">0.0°</output><input id="analysis-cut-pitch" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutOffset">切断面位置</span><output id="analysis-cut-offset-value">0.0 mm</output><input id="analysis-cut-offset" type="range" min="-100" max="100" step="0.1" value="0"></label><div class="analysis-cut-confirm"><button id="analysis-cut-apply" type="button" disabled data-i18n="applyCut">切断を適用</button><button id="analysis-cut-cancel" type="button" disabled data-i18n="cancelCut">キャンセル</button></div></div><div id="three-edit-help" class="three-edit-help" data-i18n="editAutoHint">自動: 最初に触れたセグメントを編集対象にします</div></details><div id="volume-analysis-result" class="volume-analysis-result is-hidden"><div id="analysis-summary" class="analysis-summary"></div><div class="analysis-actions"><button id="analysis-merge" type="button" disabled data-i18n="mergeSelected">選択を統合</button><button id="analysis-clear" type="button" disabled data-i18n="clearRegions">すべて解除</button><button id="analysis-remove-selected" type="button" disabled data-i18n="removeSelectedRegion">選択領域を削除</button><button id="analysis-keep-selected" type="button" disabled data-i18n="keepSelectedRegion">選択領域のみ残す</button><button id="analysis-export-selected" type="button" disabled data-i18n="exportSelectedStl">選択領域STL</button></div><div id="analysis-region-list" class="analysis-region-list"></div></div></div><div id="viewport-3d" class="viewport viewport-3d"></div><canvas id="three-edit-overlay" class="three-edit-overlay" aria-hidden="true"></canvas><div id="three-busy" class="three-busy is-hidden" role="status" aria-live="polite"><div class="three-busy-spinner" aria-hidden="true"></div><strong id="three-busy-label">3D構築中…</strong><button id="three-busy-cancel" class="three-busy-cancel" type="button" data-i18n="cancel3D">再構築をキャンセル</button></div><div id="selected" class="selected-series-overlay"><strong data-i18n="seriesUnselected">シリーズ未選択</strong><span data-i18n="selectSeries">左の一覧からCTシリーズを選択してください。</span></div></article></section><section id="sub-view-slots" class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<section class="view-slot view-slot-sub"><article class="viewport-card view-card view-card-mpr" data-view-key="${p}"><div class="viewport-label view-toolbar"><strong>${p[0].toUpperCase()+p.slice(1)}</strong><span id="${p}-label">—</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="${p}" data-i18n="mainView">メインへ</button></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article></section>`).join('')}</section></section></section>
+<section class="viewer-grid" id="viewer-grid"><section id="main-view-slot" class="view-slot view-slot-main"><article class="viewport-card view-card view-card-3d" data-view-key="3d"><div class="viewport-label view-toolbar"><strong>3D</strong><span id="three-label">WebGPU</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="3d" data-i18n="mainView">メインへ</button></div><div class="volume-analysis-panel"><button id="render-mode-toggle" class="tool-chip" data-i18n="volumeRender" disabled>GPUボリューム</button><button id="volume-analysis-toggle" class="tool-chip" data-i18n="volumeMode" disabled>体積解析</button><button id="section-view-toggle" class="tool-chip" data-i18n="sliceAnalysis" disabled>断面解析</button><div id="section-view-result" class="volume-analysis-result is-hidden"><strong data-i18n="sliceAnalysis">断面解析</strong><div class="section-view-actions"><button type="button" data-section-view="axial">Axial</button><button type="button" data-section-view="coronal">Coronal</button><button type="button" data-section-view="sagittal">Sagittal</button><button id="section-reverse" type="button" data-i18n="sectionReverse">反転</button><button type="button" data-section-view="off" data-i18n="sectionOff">解除</button></div><label class="section-position-control"><span data-i18n="sectionPosition">断面位置</span><output id="section-position-value">—</output><input id="section-position" type="range" min="0" max="0" value="0" disabled></label><span id="section-view-readout" data-i18n="sliceAnalysisHint">3Dを切断する断面を選択してください</span></div><div class="three-overlay-controls" aria-label="3D overlays"><button type="button" class="tool-chip is-active" data-3d-overlay="axes">XYZ</button><button type="button" class="tool-chip" data-3d-overlay="axial">Axial</button><button type="button" class="tool-chip" data-3d-overlay="coronal">Coronal</button><button type="button" class="tool-chip" data-3d-overlay="sagittal">Sagittal</button></div><details class="three-edit-panel"><summary class="three-edit-panel-head"><strong data-i18n="edit3D">3D編集</strong><span id="three-edit-status" class="three-edit-status" data-i18n="editReady">操作を選択してください</span></summary><div class="analysis-editor-actions"><button id="analysis-navigate" type="button" class="is-active" data-i18n="editNavigate">操作</button><button id="analysis-cut" type="button" disabled data-i18n="cutRegion">ペン切断</button><button id="analysis-line-cut" type="button" disabled data-i18n="lineCutRegion">直線切断</button><label class="three-edit-target"><span data-i18n="editTarget">対象</span><select id="analysis-edit-target"><option value="auto" data-i18n="editAuto">自動</option><option value="bone">Bone</option><option value="soft">Soft</option><option value="fat">Fat</option><option value="lung">Lung</option></select></label><button id="analysis-undo" type="button" disabled data-i18n="undoEdit">Undo</button><button id="analysis-redo" type="button" disabled data-i18n="redoEdit">Redo</button><button id="analysis-reset-edit" type="button" disabled data-i18n="resetEdit">編集リセット</button><label class="analysis-cut-width"><span data-i18n="cutWidth">切断幅</span><output id="analysis-cut-width-value">0.80 mm</output><input id="analysis-cut-width" type="range" min="0" max="5" step="0.05" value="0.8"></label><label class="analysis-cut-width"><span data-i18n="cutDepth">切断深さ</span><output id="analysis-cut-depth-value">5.0 mm</output><input id="analysis-cut-depth" type="range" min="0.1" max="100" step="0.1" value="5"></label><label class="analysis-cut-width"><span data-i18n="cutYaw">左右角度</span><output id="analysis-cut-yaw-value">0.0°</output><input id="analysis-cut-yaw" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutPitch">上下角度</span><output id="analysis-cut-pitch-value">0.0°</output><input id="analysis-cut-pitch" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutOffset">切断面位置</span><output id="analysis-cut-offset-value">0.0 mm</output><input id="analysis-cut-offset" type="range" min="-100" max="100" step="0.1" value="0"></label><div class="analysis-cut-confirm"><button id="analysis-cut-apply" type="button" disabled data-i18n="applyCut">切断を適用</button><button id="analysis-cut-cancel" type="button" disabled data-i18n="cancelCut">キャンセル</button></div></div><div id="three-edit-help" class="three-edit-help" data-i18n="editAutoHint">自動: 最初に触れたセグメントを編集対象にします</div></details><div id="volume-analysis-result" class="volume-analysis-result is-hidden"><div id="analysis-summary" class="analysis-summary"></div><div class="analysis-actions"><button id="analysis-merge" type="button" disabled data-i18n="mergeSelected">選択を統合</button><button id="analysis-clear" type="button" disabled data-i18n="clearRegions">すべて解除</button><button id="analysis-remove-selected" type="button" disabled data-i18n="removeSelectedRegion">選択領域を削除</button><button id="analysis-keep-selected" type="button" disabled data-i18n="keepSelectedRegion">選択領域のみ残す</button><button id="analysis-export-selected" type="button" disabled data-i18n="exportSelectedStl">選択領域STL</button></div><div id="analysis-region-list" class="analysis-region-list"></div></div></div><div id="viewport-3d" class="viewport viewport-3d"></div><canvas id="three-edit-overlay" class="three-edit-overlay" aria-hidden="true"></canvas><div id="three-busy" class="three-busy is-hidden" role="status" aria-live="polite"><div class="three-busy-spinner" aria-hidden="true"></div><strong id="three-busy-label">3D構築中…</strong><button id="three-busy-cancel" class="three-busy-cancel" type="button" data-i18n="cancel3D">再構築をキャンセル</button></div><div id="selected" class="selected-series-overlay"><strong data-i18n="seriesUnselected">シリーズ未選択</strong><span data-i18n="selectSeries">左の一覧からCTシリーズを選択してください。</span></div></article></section><section id="sub-view-slots" class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<section class="view-slot view-slot-sub"><article class="viewport-card view-card view-card-mpr" data-view-key="${p}"><div class="viewport-label view-toolbar"><strong>${p[0].toUpperCase()+p.slice(1)}</strong><span id="${p}-label">—</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="${p}" data-i18n="mainView">メインへ</button></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article></section>`).join('')}</section></section></section>
 <div id="app-version-badge" class="app-version-badge" aria-label="Application version"></div><footer><span id="footer" data-i18n="footer">元のキャリブレーション済みCT値は保持されます。</span><a href="https://github.com/naomitsu-ozawa/virtual-rodent-la" target="_blank" rel="noopener">Source / License</a></footer></main>`;
 
 const $=s=>document.querySelector(s);
@@ -596,14 +596,17 @@ function configureCutControlRanges(v=current3DVolume||volume){
  if(!v||!analysisCutWidth)return;
  const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,dims=[w*sx,h*sy,d*sz],diag=Math.hypot(...dims),minSpacing=Math.min(sx,sy,sz),minDim=Math.min(...dims);
  const clamp=(el,min,max,step)=>{el.min=String(min);el.max=String(max);el.step=String(step);el.value=String(Math.max(min,Math.min(max,+el.value)))};
- const widthMin=Math.max(.05,Math.min(.2,minSpacing*.25)),widthMax=Math.max(2,Math.min(8,minDim*.22));
- clamp(analysisCutWidth,widthMin,widthMax,.05);
+ const widthMax=Math.max(2,Math.min(8,minDim*.22));
+ clamp(analysisCutWidth,0,widthMax,.05);
  clamp(analysisCutDepth,Math.max(.1,minSpacing*.5),Math.max(5,diag),.1);
  clamp(analysisCutYaw,-90,90,.25);clamp(analysisCutPitch,-90,90,.25);
  const offsetMax=Math.max(5,diag*.6);clamp(analysisCutOffset,-offsetMax,offsetMax,.1);
 }
+function cutWidthMm(){
+ const value=Number(analysisCutWidth?.value);return Number.isFinite(value)?Math.max(0,value):.8;
+}
 function refreshCutControlReadouts(){
- analysisCutWidthValue.value=(+analysisCutWidth.value).toFixed(2)+' mm';
+ analysisCutWidthValue.value=cutWidthMm().toFixed(2)+' mm';
  analysisCutDepthValue.value=(+analysisCutDepth.value).toFixed(1)+' mm';
  analysisCutYawValue.value=(+analysisCutYaw.value).toFixed(1)+'°';
  analysisCutPitchValue.value=(+analysisCutPitch.value).toFixed(1)+'°';
@@ -611,8 +614,8 @@ function refreshCutControlReadouts(){
 }
 const onCutControlInput=()=>{refreshCutControlReadouts();updateThreeEditUi();updateCutPreview(sceneState?.editCutPreviewPoint)};
 analysisCutWidth.oninput=onCutControlInput;analysisCutDepth.oninput=onCutControlInput;analysisCutYaw.oninput=onCutControlInput;analysisCutPitch.oninput=onCutControlInput;analysisCutOffset.oninput=onCutControlInput;
-analysisCutApply.onclick=async()=>{if(!analysisPendingCut||analysisCutApplying)return;const pending=analysisPendingCut;analysisPendingCut=null;analysisCutApplying=true;analysisCutStroke=null;analysisCutScreen=[];clearThreeEditOverlay();if(sceneState)sceneState.editCutPreviewPoint=null;updateCutPreview(null);updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'切断を反映中…':'Applying cut…');let ok=false;try{ok=await applyCutStroke(pending.points,pending.key,pending.mode)}finally{analysisCutApplying=false;analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;if(sceneState)sceneState.editCutPreviewPoint=null;updateAnalysisEditorControls();const ready=ok?(analysisEditTool==='pen'?(currentLanguage==='ja'?'切断を反映しました · 次のペン切断を描けます':'Cut applied · ready for next pen cut'):analysisEditTool==='line'?(currentLanguage==='ja'?'切断を反映しました · 次の直線切断を描けます':'Cut applied · ready for next line cut'):(currentLanguage==='ja'?'切断を反映しました':'Cut applied')):(currentLanguage==='ja'?'切断結果を確認してください':'Check cut result');updateThreeEditUi(ready);request3DRender()}};
-analysisCutCancel.onclick=()=>{if(analysisCutApplying)return;analysisPendingCut=null;analysisCutStroke=null;analysisCutScreen=[];clearThreeEditOverlay();if(sceneState)sceneState.editCutPreviewPoint=null;updateCutPreview(null);analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'切断をキャンセルしました':'Cut cancelled');request3DRender()};
+analysisCutApply.onclick=async()=>{if(!analysisPendingCut||analysisCutApplying)return;const pending=analysisPendingCut;analysisPendingCut=null;analysisCutApplying=true;analysisCutStroke=null;analysisCutScreen=[];clearThreeEditOverlay();if(sceneState)sceneState.editCutPreviewPoint=null;updateCutPreview(null);updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'切断を反映中…':'Applying cut…');let ok=false;try{ok=await applyCutStroke(pending.points,pending.key,pending.mode)}finally{clearCutResultPreview();analysisCutApplying=false;analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;if(sceneState)sceneState.editCutPreviewPoint=null;updateAnalysisEditorControls();const ready=ok?(analysisEditTool==='pen'?(currentLanguage==='ja'?'切断を反映しました · 次のペン切断を描けます':'Cut applied · ready for next pen cut'):analysisEditTool==='line'?(currentLanguage==='ja'?'切断を反映しました · 次の直線切断を描けます':'Cut applied · ready for next line cut'):(currentLanguage==='ja'?'切断を反映しました':'Cut applied')):(currentLanguage==='ja'?'切断結果を確認してください':'Check cut result');updateThreeEditUi(ready);request3DRender()}};
+analysisCutCancel.onclick=()=>{if(analysisCutApplying)return;analysisPendingCut=null;analysisCutStroke=null;analysisCutScreen=[];clearThreeEditOverlay();clearCutResultPreview();if(sceneState)sceneState.editCutPreviewPoint=null;updateCutPreview(null);analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'切断をキャンセルしました':'Cut cancelled');request3DRender()};
 analysisExportSelected.onclick=()=>void exportFocusedAnalysisRegionStl();
 renderModeToggle.onclick=()=>{if(threeRenderMode==='volume')deactivateMedicalVolume();else void activateMedicalVolume()};
 sectionViewToggle.onclick=()=>{if(!volume)return;sectionViewOpen=!sectionViewOpen;if(!sectionViewOpen)clearSectionView();else updateSectionViewUi()};
@@ -3464,7 +3467,7 @@ async function start3D(){
  viewport.appendChild(renderer.domElement);
  const sectionClipPlane=new THREE.Plane(new THREE.Vector3(1,0,0),0),sectionClipGroup=backend==='WEBGPU'&&THREE.ClippingGroup?new THREE.ClippingGroup():null;
  if(sectionClipGroup){sectionClipGroup.name='section_clip_group';sectionClipGroup.enabled=false;scene.add(sectionClipGroup)}
- sceneState={scene,camera,renderer,obj:null,analysisMesh:null,backend,needsRender:true,medicalVolume:null,mprPlaneGroup:null,mprPlaneEntries:null,mprPlaneSignature:'',mprInteractionActive:false,editCutPreview:null,editCutPreviewPoint:null,axisWidget,sectionClipPlane,sectionClipGroup};
+ sceneState={scene,camera,renderer,obj:null,analysisMesh:null,backend,needsRender:true,medicalVolume:null,mprPlaneGroup:null,mprPlaneEntries:null,mprPlaneSignature:'',mprInteractionActive:false,editCutPreview:null,editCutPreviewPoint:null,cutResultPreviewGroup:null,cutResultPreviewKey:null,axisWidget,sectionClipPlane,sectionClipGroup};
  if(backend==='WEBGPU')try{sceneState.medicalVolume=new MedicalVolumeRenderer({device:renderer.backend.device,host:viewport,rendererCanvas:renderer.domElement,onProgress:(a,b)=>set3DBusy(true,(currentLanguage==='ja'?'GPUボリューム準備中… ':'Preparing GPU volume… ')+a+' / '+b),onStatus:label=>setGpuComputeBackend(label)})}catch(e){console.warn('Medical volume renderer unavailable.',e)}
  updateGpuStatus();updateRenderModeControl();void ensureGpuFilterDevice().then(()=>updateGpuStatus());
  const pointers=new Map();const pointerStarts=new Map();const MIN_3D_DISTANCE=.05,MAX_3D_DISTANCE=12;let distance=5.2,lastPinch=0,lastCenter=null;
@@ -3983,7 +3986,7 @@ function clearSegmentEditCache(key,clearEdits=false){
 }
 function clearAllSegmentEdits(){
  for(const key of SEGMENT_PRESET_ORDER){const st=segmentEditState[key];if(st.surfaceGroup?.parent)st.surfaceGroup.parent.remove(st.surfaceGroup);st.surfaceGroup=null;clearSegmentEditCache(key,true)}
- analysisEditTool='select';analysisEditTargetKey=null;analysisEditTargetMode='auto';if(analysisEditTargetSelect)analysisEditTargetSelect.value='auto';analysisCutStroke=null;analysisCutScreen=[];analysisPendingCut=null;updateThreeEditUi();
+ analysisEditTool='select';analysisEditTargetKey=null;analysisEditTargetMode='auto';if(analysisEditTargetSelect)analysisEditTargetSelect.value='auto';analysisCutStroke=null;analysisCutScreen=[];analysisPendingCut=null;clearCutResultPreview();updateThreeEditUi();
 }
 function thresholdRunsFromMemory(v,seg){
  const w=v.columns,h=v.rows,d=v.slices,out=new Array(d),plane=w*h;
@@ -4193,7 +4196,7 @@ function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode
  if(curve.length<2){if(curve[0])addVoxel(curve[0].x,curve[0].y,curve[0].z);return rows.map(rowsToRunSlice)}
  const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
  const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
- const sampleStep=Math.max(.05,minSpacing*.65),halfKerf=Math.max(minSpacing*.45,(+kerfMm||0)*.5),depth=Math.max(.1,+depthMm||.1);
+ const sampleStep=Math.max(.05,minSpacing*.65),halfKerf=Math.max(0,Number.isFinite(+kerfMm)?+kerfMm*.5:0),depth=Math.max(.1,+depthMm||.1);
  for(let seg=0;seg<curve.length-1;seg++){
   const a=curve[seg],b=curve[seg+1],tx=(b.x-a.x)*sx,ty=(b.y-a.y)*sy,tz=(b.z-a.z)*sz,segmentMm=Math.hypot(tx,ty,tz);
   if(segmentMm<1e-6)continue;
@@ -4202,13 +4205,13 @@ function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode
   if(nn<1e-6){sheetNormal=cross(tangent,curve[0].up||{x:0,y:1,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
   if(nn<1e-6){sheetNormal=cross(tangent,{x:1,y:0,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
   sheetNormal=norm(sheetNormal);
-  const depthSteps=Math.max(1,Math.ceil(depth/sampleStep)),kerfSteps=Math.max(1,Math.ceil((halfKerf*2)/Math.max(minSpacing*.7,.05)));
+  const depthSteps=Math.max(1,Math.ceil(depth/sampleStep)),kerfSteps=halfKerf>0?Math.max(1,Math.ceil((halfKerf*2)/Math.max(minSpacing*.7,.05))):0;
   for(let si=0;si<=alongSteps;si++){
    const u=si/alongSteps,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
    for(let di=0;di<=depthSteps;di++){
     const dep=depth*di/depthSteps,base={x:p.x+dir.x*dep/sx,y:p.y+dir.y*dep/sy,z:p.z+dir.z*dep/sz};
     for(let ki=0;ki<=kerfSteps;ki++){
-     const off=-halfKerf+(halfKerf*2)*ki/kerfSteps;
+     const off=kerfSteps?(-halfKerf+(halfKerf*2)*ki/kerfSteps):0;
      addVoxel(base.x+sheetNormal.x*off/sx,base.y+sheetNormal.y*off/sy,base.z+sheetNormal.z*off/sz);
     }
    }
@@ -4221,7 +4224,7 @@ async function applyCutStroke(points,key=analysisEditTargetKey,mode='pen'){
  const v=current3DVolume||volume;if(!v)return false;
  const label=tr(key)||key,st=segmentEditState[key],refs=snapshotAnalysisRegionsForSegment(key);
  try{
-  const cut=cutRunsFromVoxelStroke(v,points,+analysisCutWidth.value||.8,+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,mode,+analysisCutOffset.value||0);
+  const cut=cutRunsFromVoxelStroke(v,points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,mode,+analysisCutOffset.value||0);
   pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,cut,v.slices);st.finalRuns=null;st.revision++;analysisEditTargetKey=key;
   const revision=st.revision;
   footer.textContent=currentLanguage==='ja'?label+'を切断しました · 3D更新中…':'Cut '+label+' · updating 3D…';
@@ -4260,23 +4263,88 @@ function setEditTargetHighlight(key=null){
  });
  request3DRender();
 }
+let cutResultPreviewRevision=0,cutResultPreviewTimer=null;
+function setCutResultSourceHidden(key,hidden){
+ const root=sceneState?.obj;if(!root||!key)return;
+ root.traverse(o=>{
+  if(!o.isMesh||o.userData?.cutResultPreview)return;
+  const direct=o.userData?.segmentKey||null;
+  if(direct===key){
+   if(hidden){if(o.userData._cutPreviewVisible===undefined)o.userData._cutPreviewVisible=o.visible;o.visible=false}
+   else if(o.userData._cutPreviewVisible!==undefined){o.visible=!!o.userData._cutPreviewVisible;delete o.userData._cutPreviewVisible}
+  }
+  const ranges=Array.isArray(o.userData?.segmentRanges)?o.userData.segmentRanges:null;
+  if(ranges&&Array.isArray(o.material))for(const r of ranges)if(r.key===key){
+   const m=o.material[r.materialIndex];if(!m)continue;
+   if(hidden){if(m.userData._cutPreviewVisible===undefined)m.userData._cutPreviewVisible=m.visible;m.visible=false}
+   else if(m.userData._cutPreviewVisible!==undefined){m.visible=!!m.userData._cutPreviewVisible;delete m.userData._cutPreviewVisible}
+  }
+ });
+}
+function clearCutResultPreview(){
+ cutResultPreviewRevision++;clearTimeout(cutResultPreviewTimer);cutResultPreviewTimer=null;
+ const state=sceneState;if(!state)return;
+ const key=state.cutResultPreviewKey,group=state.cutResultPreviewGroup;
+ if(group){if(group.parent)group.parent.remove(group);dispose(group)}
+ state.cutResultPreviewGroup=null;state.cutResultPreviewKey=null;
+ if(key)setCutResultSourceHidden(key,false);
+ request3DRender();
+}
+function scheduleCutResultPreview(delay=70){
+ clearTimeout(cutResultPreviewTimer);const pending=analysisPendingCut;
+ if(!pending?.key||analysisCutApplying||!sceneState?.obj)return;
+ const revision=++cutResultPreviewRevision;
+ cutResultPreviewTimer=setTimeout(()=>{cutResultPreviewTimer=null;void rebuildCutResultPreview(revision,pending)},delay);
+}
+async function rebuildCutResultPreview(revision,pending){
+ const state=sceneState,v=current3DVolume||volume,key=pending?.key;
+ if(!state?.obj||!v||!key||analysisCutApplying||pending!==analysisPendingCut)return;
+ try{
+  const current=await getFinalSegmentRuns(key,v);
+  if(revision!==cutResultPreviewRevision||pending!==analysisPendingCut)return;
+  const cut=cutRunsFromVoxelStroke(v,pending.points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,pending.mode,+analysisCutOffset.value||0);
+  const previewRuns=subtractRunArrays(current,cut,v.slices),isCurrent=()=>revision===cutResultPreviewRevision&&pending===analysisPendingCut&&!analysisCutApplying;
+  let group=await buildEditableRunsGroup(v,previewRuns,key,isCurrent);
+  if(!isCurrent()){if(group)dispose(group);return}
+  if(!group)group=new THREE.Group();
+  group.name='cut_result_preview';group.traverse?.(o=>{if(o.isMesh)o.userData.cutResultPreview=true});
+  const oldKey=state.cutResultPreviewKey,old=state.cutResultPreviewGroup;
+  if(old){if(old.parent)old.parent.remove(old);dispose(old)}
+  if(oldKey&&oldKey!==key)setCutResultSourceHidden(oldKey,false);
+  setCutResultSourceHidden(key,true);
+  state.cutResultPreviewKey=key;state.cutResultPreviewGroup=group;state.obj.add(group);request3DRender();
+ }catch(e){
+  if(String(e.message||e)!=='__SUPERSEDED__')console.warn('Cut result preview failed.',e);
+ }
+}
 function cutPreviewDirection(point){return cutDirectionFromPoint(point,+analysisCutYaw.value||0,+analysisCutPitch.value||0)}
 function updateCutPreview(point=null){
  const state=sceneState,obj=state?.obj;if(!state||!obj)return;
  if(state.editCutPreview){if(state.editCutPreview.parent)state.editCutPreview.parent.remove(state.editCutPreview);dispose(state.editCutPreview);state.editCutPreview=null}
  const pending=analysisPendingCut;
- if(!pending){state.editCutPreviewPoint=point||null;request3DRender();return}
- const v=current3DVolume||volume,curve=cutSurfaceStroke(pending.points,pending.mode,+analysisCutOffset.value||0,v);if(!v||curve.length<2){request3DRender();return}
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),q=cutPlanDirection(pending.points,+analysisCutYaw.value||0,+analysisCutPitch.value||0),dir=new THREE.Vector3(q.x,-q.y,q.z).normalize();
- const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
- const front=curve.map(localPoint),back=front.map(p=>p.clone().addScaledVector(dir,depth*scale)),faces=[];
+ if(!pending){
+  state.editCutPreviewPoint=point||null;
+  if(!analysisCutApplying)clearCutResultPreview();
+  request3DRender();return;
+ }
+ const v=current3DVolume||volume,curve=cutSurfaceStroke(pending.points,pending.mode,+analysisCutOffset.value||0,v);
+ scheduleCutResultPreview();
+ if(!v||curve.length<2){request3DRender();return}
+ const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),width=cutWidthMm(),half=width*scale*.5,q=cutPlanDirection(pending.points,+analysisCutYaw.value||0,+analysisCutPitch.value||0),dir=new THREE.Vector3(q.x,-q.y,q.z).normalize();
+ const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale),front=curve.map(localPoint),back=front.map(p=>p.clone().addScaledVector(dir,depth*scale)),faces=[];
+ const quad=(a,b,c,d)=>faces.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
  for(let i=0;i<front.length-1;i++){
   const a0=front[i],b0=front[i+1],a1=back[i],b1=back[i+1];
-  faces.push(a0.x,a0.y,a0.z,b0.x,b0.y,b0.z,b1.x,b1.y,b1.z,a0.x,a0.y,a0.z,b1.x,b1.y,b1.z,a1.x,a1.y,a1.z);
+  if(half<=1e-9){quad(a0,b0,b1,a1);continue}
+  const tangent=b0.clone().sub(a0).normalize(),normal=new THREE.Vector3().crossVectors(tangent,dir);
+  if(normal.lengthSq()<1e-12)normal.copy(new THREE.Vector3(0,1,0).cross(dir));
+  if(normal.lengthSq()<1e-12)normal.set(1,0,0);normal.normalize().multiplyScalar(half);
+  const a0p=a0.clone().add(normal),b0p=b0.clone().add(normal),a1p=a1.clone().add(normal),b1p=b1.clone().add(normal),a0m=a0.clone().sub(normal),b0m=b0.clone().sub(normal),a1m=a1.clone().sub(normal),b1m=b1.clone().sub(normal);
+  quad(a0p,b0p,b1p,a1p);quad(a0m,a1m,b1m,b0m);quad(a0m,b0m,b0p,a0p);quad(a1m,a1p,b1p,b1m);quad(a0m,a0p,a1p,a1m);quad(b0m,b1m,b1p,b0p);
  }
  const group=new THREE.Group();group.name='cut_preview';
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
- const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.18,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
+ const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:width>0?.16:.24,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
  obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
 function updateThreeEditUi(message=null){
