@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-68';const APP_BUILD='68';
+const APP_VERSION='2026.09.23-69';const APP_BUILD='69';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3492,7 +3492,7 @@ async function start3D(){
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
  renderer.domElement.onpointerdown=e=>{const cutTool=analysisEditTool==='pen'||analysisEditTool==='line',cutReady=cutTool&&!analysisPendingCut&&e.button===0&&!e.altKey&&threeRenderMode==='surface'&&!!sceneState.obj,sectionHit=!cutReady&&e.button===0&&!e.altKey?sectionDragHit(e):null,mode=cutReady?(analysisEditTool==='line'?'cut-line':'cut-pen'):sectionHit?'section-drag':isMousePanStart(e)?'pan':'rotate',point={x:e.clientX,y:e.clientY,mode,pointerType:e.pointerType};if(!cutReady&&!sectionHit)begin3DInteraction();pointers.set(e.pointerId,point);pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY,mode,sectionPlane:sectionHit?sectionViewPlane:null,sectionIndex:sectionHit?+planes[sectionViewPlane].slider.value:null,sectionScreenStep:sectionHit?sectionScreenStep():null});if(sectionHit){renderer.domElement.style.cursor='grabbing';footer.textContent=(currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面をドラッグ中':'Dragging '+sectionPlaneLabel(sectionViewPlane)+' section')}if(cutReady){analysisCutStroke=[];analysisCutScreen=[editPoint(e)];const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode,v=cutPointerVoxel(e,renderer.domElement,camera,preferred);if(v){if(analysisEditTargetMode==='auto'&&v.key)analysisEditTargetKey=v.key;else if(analysisEditTargetMode!=='auto')analysisEditTargetKey=preferred;analysisCutStroke.push(v);updateThreeEditUi(analysisEditTargetKey?(tr(analysisEditTargetKey)||analysisEditTargetKey)+' · '+(analysisEditTool==='pen'?tr('cutRegion'):tr('lineCutRegion')):(currentLanguage==='ja'?'空間上に切断面を配置中 · 対象を選択してください':'Placing cut surface in space · choose a target'));footer.textContent=analysisEditTargetKey?(currentLanguage==='ja'?(tr(analysisEditTargetKey)||analysisEditTargetKey)+'を編集中':'Editing '+(tr(analysisEditTargetKey)||analysisEditTargetKey)):(currentLanguage==='ja'?'空間上に切断面を配置中':'Placing cut surface in space')}else updateThreeEditUi(currentLanguage==='ja'?'切断面を配置できませんでした':'Could not place cut surface');drawEditStroke(analysisEditTool)}renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
  renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId),start=pointerStarts.get(e.pointerId);if(!prev){if((analysisEditTool==='pen'||analysisEditTool==='line')&&!analysisPendingCut&&sceneState.obj){const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateCutPreview(cutPointerVoxel(e,renderer.domElement,camera,preferred))}return}pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='section-drag'){dragSectionPlane(start,e);return}if(prev.mode==='cut-pen'||prev.mode==='cut-line'){const preferred=analysisEditTargetMode==='auto'?analysisEditTargetKey:analysisEditTargetMode,v=cutPointerVoxel(e,renderer.domElement,camera,preferred),screen=editPoint(e);if(analysisEditTargetMode==='auto'&&!analysisEditTargetKey&&v?.key)analysisEditTargetKey=v.key;updateCutPreview(v);if(prev.mode==='cut-line'){analysisCutScreen=[analysisCutScreen[0],screen];if(v){const first=analysisCutStroke?.[0];analysisCutStroke=first?[first,v]:[v]}}else if(Math.hypot(dx,dy)>=1){analysisCutScreen.push(screen);if(v){const last=analysisCutStroke?.[analysisCutStroke.length-1];if(!last||Math.hypot(v.x-last.x,v.y-last.y,v.z-last.z)>.2)analysisCutStroke.push(v)}}drawEditStroke(prev.mode==='cut-line'?'line':'pen');return}if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}lastPinch=d;lastCenter=center;request3DRender()};
- const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag',stroke=isCut?[...(analysisCutStroke||[])]:null,screenStroke=isCut?[...(analysisCutScreen||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&!isCut&&!isSectionDrag)end3DInteraction();if(isSectionDrag){renderer.domElement.style.cursor='';if(start?.sectionPlane===sectionViewPlane)schedulePlaneRender(sectionViewPlane,true);footer.textContent=currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面 '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1):sectionPlaneLabel(sectionViewPlane)+' section '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1);return}if(isCut){analysisCutStroke=null;if(e.type==='pointerup'&&stroke?.length){analysisPendingCut={points:stroke,key:analysisEditTargetKey,mode:start?.mode==='cut-line'?'line':'pen'};analysisCutScreen=screenStroke||[];drawEditStroke(analysisPendingCut.mode);sceneState.editCutPreviewPoint=stroke[stroke.length-1];updateCutPreview(sceneState.editCutPreviewPoint);footer.textContent=currentLanguage==='ja'?'切断予定を作成しました。深さ・幅・角度を調整してください':'Cut plan created. Adjust depth, width and angles.';updateThreeEditUi(tr('cutPendingHint'))}else{analysisCutScreen=[];clearEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'切断線が対象表面にありません':'The cut stroke did not hit the target surface')}return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
+ const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag',stroke=isCut?[...(analysisCutStroke||[])]:null,screenStroke=isCut?[...(analysisCutScreen||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&!isCut&&!isSectionDrag)end3DInteraction();if(isSectionDrag){renderer.domElement.style.cursor='';if(start?.sectionPlane===sectionViewPlane)schedulePlaneRender(sectionViewPlane,true);footer.textContent=currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面 '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1):sectionPlaneLabel(sectionViewPlane)+' section '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1);return}if(isCut){analysisCutStroke=null;if(e.type==='pointerup'&&stroke?.length){analysisPendingCut={points:stroke,key:analysisEditTargetKey,mode:start?.mode==='cut-line'?'line':'pen'};analysisCutScreen=[];clearEditOverlay();sceneState.editCutPreviewPoint=stroke[stroke.length-1];updateCutPreview(sceneState.editCutPreviewPoint);footer.textContent=currentLanguage==='ja'?'切断予定を作成しました。深さ・幅・角度を調整してください':'Cut plan created. Adjust depth, width and angles.';updateThreeEditUi(tr('cutPendingHint'))}else{analysisCutScreen=[];clearEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'切断線が対象表面にありません':'The cut stroke did not hit the target surface')}return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
  renderer.domElement.onlostpointercapture=e=>{const start=pointerStarts.get(e.pointerId);pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(!analysisPendingCut){analysisCutScreen=[];clearEditOverlay()}renderer.domElement.style.cursor='';if(pointers.size<2){lastPinch=0;lastCenter=null}if(!pointers.size&&start?.mode!=='section-drag')end3DInteraction()};
  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
@@ -4155,11 +4155,14 @@ function cutSurfaceStroke(points,mode='pen',offsetMm=0,v=current3DVolume||volume
  if(!points?.length)return[];
  const src=mode==='line'&&points.length>1?[points[0],points[points.length-1]]:points;
  if(!v||!offsetMm)return src;
- const [sx,sy,sz]=v.spacing;
- return src.map(p=>{const r=p.ray||{x:0,y:0,z:1};return{...p,x:p.x+r.x*offsetMm/sx,y:p.y+r.y*offsetMm/sy,z:p.z+r.z*offsetMm/sz}});
+ const [sx,sy,sz]=v.spacing,anchor=src[0],r=anchor?.ray||{x:0,y:0,z:1};
+ return src.map(p=>({...p,x:p.x+r.x*offsetMm/sx,y:p.y+r.y*offsetMm/sy,z:p.z+r.z*offsetMm/sz}));
+}
+function cutPlanDirection(points,yawDeg=0,pitchDeg=0){
+ return cutDirectionFromPoint(points?.[0]||null,yawDeg,pitchDeg);
 }
 function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode='pen',offsetMm=0){
- const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,minSpacing=Math.min(sx,sy,sz),rows=Array.from({length:d},()=>new Map()),curve=cutSurfaceStroke(points,mode,offsetMm,v);
+ const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,minSpacing=Math.min(sx,sy,sz),rows=Array.from({length:d},()=>new Map()),curve=cutSurfaceStroke(points,mode,offsetMm,v),dir=cutPlanDirection(points,yawDeg,pitchDeg);
  const addVoxel=(x,y,z)=>{
   const ix=Math.round(x),iy=Math.round(y),iz=Math.round(z);if(ix<0||iy<0||iz<0||ix>=w||iy>=h||iz>=d)return;
   const map=rows[iz],arr=map.get(iy)||[];arr.push([ix,ix]);map.set(iy,arr);
@@ -4167,19 +4170,18 @@ function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode
  if(curve.length<2){if(curve[0])addVoxel(curve[0].x,curve[0].y,curve[0].z);return rows.map(rowsToRunSlice)}
  const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
  const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
- const lerpDir=(a,b,t)=>norm({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t});
  const sampleStep=Math.max(.05,minSpacing*.65),halfKerf=Math.max(minSpacing*.45,(+kerfMm||0)*.5),depth=Math.max(.1,+depthMm||.1);
  for(let seg=0;seg<curve.length-1;seg++){
   const a=curve[seg],b=curve[seg+1],tx=(b.x-a.x)*sx,ty=(b.y-a.y)*sy,tz=(b.z-a.z)*sz,segmentMm=Math.hypot(tx,ty,tz);
   if(segmentMm<1e-6)continue;
-  const tangent=norm({x:tx,y:ty,z:tz}),da=cutDirectionFromPoint(a,yawDeg,pitchDeg),db=cutDirectionFromPoint(b,yawDeg,pitchDeg),alongSteps=Math.max(1,Math.ceil(segmentMm/sampleStep));
+  const tangent=norm({x:tx,y:ty,z:tz}),alongSteps=Math.max(1,Math.ceil(segmentMm/sampleStep));
+  let sheetNormal=cross(tangent,dir),nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z);
+  if(nn<1e-6){sheetNormal=cross(tangent,curve[0].up||{x:0,y:1,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
+  if(nn<1e-6){sheetNormal=cross(tangent,{x:1,y:0,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
+  sheetNormal=norm(sheetNormal);
+  const depthSteps=Math.max(1,Math.ceil(depth/sampleStep)),kerfSteps=Math.max(1,Math.ceil((halfKerf*2)/Math.max(minSpacing*.7,.05)));
   for(let si=0;si<=alongSteps;si++){
-   const u=si/alongSteps,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u},dir=lerpDir(da,db,u);
-   let sheetNormal=cross(tangent,dir),nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z);
-   if(nn<1e-6){sheetNormal=cross(tangent,a.up||{x:0,y:1,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
-   if(nn<1e-6){sheetNormal=cross(tangent,{x:1,y:0,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
-   sheetNormal=norm(sheetNormal);
-   const depthSteps=Math.max(1,Math.ceil(depth/sampleStep)),kerfSteps=Math.max(1,Math.ceil((halfKerf*2)/Math.max(minSpacing*.7,.05)));
+   const u=si/alongSteps,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
    for(let di=0;di<=depthSteps;di++){
     const dep=depth*di/depthSteps,base={x:p.x+dir.x*dep/sx,y:p.y+dir.y*dep/sy,z:p.z+dir.z*dep/sz};
     for(let ki=0;ki<=kerfSteps;ki++){
@@ -4253,21 +4255,23 @@ function updateCutPreview(point=null){
  const state=sceneState,obj=state?.obj;if(!state||!obj)return;
  if(state.editCutPreview){if(state.editCutPreview.parent)state.editCutPreview.parent.remove(state.editCutPreview);dispose(state.editCutPreview);state.editCutPreview=null}
  const pending=analysisPendingCut;
- if(!pending){state.editCutPreviewPoint=point?.hit?point:null;request3DRender();return}
+ if(!pending){state.editCutPreviewPoint=point||null;request3DRender();return}
  const v=current3DVolume||volume,curve=cutSurfaceStroke(pending.points,pending.mode,+analysisCutOffset.value||0,v);if(!v||curve.length<2){request3DRender();return}
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5);
+ const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),q=cutPlanDirection(pending.points,+analysisCutYaw.value||0,+analysisCutPitch.value||0),dir=new THREE.Vector3(q.x,-q.y,q.z).normalize();
  const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
- const localDir=p=>{const q=cutPreviewDirection(p);return new THREE.Vector3(q.x,-q.y,q.z).normalize()};
- const faces=[],edges=[];
- for(let i=0;i<curve.length-1;i++){
-  const a=curve[i],b=curve[i+1],a0=localPoint(a),b0=localPoint(b),a1=a0.clone().addScaledVector(localDir(a),depth*scale),b1=b0.clone().addScaledVector(localDir(b),depth*scale);
+ const front=curve.map(localPoint),back=front.map(p=>p.clone().addScaledVector(dir,depth*scale)),faces=[];
+ for(let i=0;i<front.length-1;i++){
+  const a0=front[i],b0=front[i+1],a1=back[i],b1=back[i+1];
   faces.push(a0.x,a0.y,a0.z,b0.x,b0.y,b0.z,b1.x,b1.y,b1.z,a0.x,a0.y,a0.z,b1.x,b1.y,b1.z,a1.x,a1.y,a1.z);
-  edges.push(a0,b0,b0,b1,b1,a1,a1,a0);
  }
  const group=new THREE.Group();group.name='cut_preview';
- const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));
- const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.30,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
- const edgeGeom=new THREE.BufferGeometry().setFromPoints(edges),edge=new THREE.LineSegments(edgeGeom,new THREE.LineBasicMaterial({color:0x9af3ff,transparent:true,opacity:.95,depthTest:false,depthWrite:false}));edge.name='cut_preview_edges';edge.renderOrder=96;group.add(edge);
+ const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
+ const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.18,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
+ const borderPoints=[];
+ for(let i=0;i<front.length-1;i++)borderPoints.push(front[i],front[i+1]);
+ for(let i=0;i<back.length-1;i++)borderPoints.push(back[i],back[i+1]);
+ borderPoints.push(front[0],back[0],front[front.length-1],back[back.length-1]);
+ const edgeGeom=new THREE.BufferGeometry().setFromPoints(borderPoints),edge=new THREE.LineSegments(edgeGeom,new THREE.LineBasicMaterial({color:0x8eefff,transparent:true,opacity:.92,depthTest:false,depthWrite:false}));edge.name='cut_preview_border';edge.renderOrder=96;group.add(edge);
  obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
 function updateThreeEditUi(message=null){
