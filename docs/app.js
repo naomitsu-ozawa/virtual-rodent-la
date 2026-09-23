@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-54';const APP_BUILD='54';
+const APP_VERSION='2026.09.23-55';const APP_BUILD='55';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -788,7 +788,7 @@ async function rebuildActiveFilters(finalize3D=true){
  const revision=++filterRebuildRevision;
  clearTimeout(liveFilterState.timer);liveFilterState.base=null;liveFilterState.key=null;
  if(sourceVolume.sourceBacked){
-  invalidateSourceFilters();volume=sourceVolume;void ensureMpr3DPreviewCache();setProcessingBusy(true,'Full-resolution filters',false);
+  invalidateSourceFilters();volume=sourceVolume;scheduleSourceMprWarmup();setProcessingBusy(true,'Full-resolution filters',false);
   try{
    const mainKey=currentMainViewKey(),previewPlane=planes[mainKey]?mainKey:'axial';
    await renderPlane(previewPlane);
@@ -3143,10 +3143,11 @@ function cancelSourceMprWarmup(){
 }
 function scheduleSourceMprWarmup(){
  if(!volume?.sourceBacked)return;
- void ensureMpr3DPreviewCache();
  const token=++sourceMprWarmupToken;
  const run=async()=>{
   if(token!==sourceMprWarmupToken||!volume?.sourceBacked)return;
+  await ensureMpr3DPreviewCache();
+  if(token!==sourceMprWarmupToken||!volume?.sourceBacked||sourceFilterStages().length)return;
   for(const p of ['coronal','sagittal']){
    if(token!==sourceMprWarmupToken)return;
    const idx=+planes[p].slider.value;
@@ -3158,8 +3159,8 @@ function scheduleSourceMprWarmup(){
    await frameYield();
   }
  };
- if('requestIdleCallback' in window)requestIdleCallback(()=>void run(),{timeout:700});
- else setTimeout(()=>void run(),120);
+ if('requestIdleCallback' in window)requestIdleCallback(()=>void run(),{timeout:900});
+ else setTimeout(()=>void run(),180);
 }
 function safeRenderPlane(p,revision=null,idx=null){
  if(revision==null)revision=++planeRenderRevision[p];
