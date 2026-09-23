@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-119';const APP_BUILD='119';
+const APP_VERSION='2026.09.23-120';const APP_BUILD='120';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3549,40 +3549,39 @@ async function start3D(){
   const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),rect=renderer.domElement.getBoundingClientRect();
   sceneState.obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
 
-  // Find ONE mesh vertex nearest to the drawn stroke. This is the upper-edge contact point.
-  let anchorIndex=hitSamples[0],anchorWorld=null,anchorMeta=samples[anchorIndex].surface,bestD2=Infinity;
+  const nearestPointOnStroke=(p)=>{
+   let best=null,bestD2=Infinity;
+   if(samples.length===1)return{x:samples[0].screen.x,y:samples[0].screen.y,d2:(p.x-samples[0].screen.x)**2+(p.y-samples[0].screen.y)**2};
+   for(let i=0;i<samples.length-1;i++){
+    const a=samples[i].screen,b=samples[i+1].screen,dx=b.x-a.x,dy=b.y-a.y,len2=dx*dx+dy*dy,t=len2>1e-9?Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/len2)):0,qx=a.x+dx*t,qy=a.y+dy*t,d2=(p.x-qx)*(p.x-qx)+(p.y-qy)*(p.y-qy);
+    if(d2<bestD2){bestD2=d2;best={x:qx,y:qy,d2}}
+   }
+   return best;
+  };
+
+  // Candidate vertices come from the actual triangles touched by the stroke.
+  // Choose the vertex whose projected position is closest to the ENTIRE drawn curve.
+  let anchorWorld=null,anchorMeta=null,anchorScreen=null,curveContact=null,bestD2=Infinity;
+  const seen=new Set();
   for(const i of hitSamples){
-   const surface=samples[i].surface,hit=surface.hit,geom=hit.object?.geometry,pos=geom?.getAttribute?.('position');
-   if(!pos)continue;
-   const face=hit.face,indices=face?[face.a,face.b,face.c]:[];
-   for(const vi of indices){
-    const world=new THREE.Vector3().fromBufferAttribute(pos,vi).applyMatrix4(hit.object.matrixWorld),d2=world.distanceToSquared(hit.point);
-    if(d2<bestD2){bestD2=d2;anchorIndex=i;anchorWorld=world;anchorMeta=surface}
+   const surface=samples[i].surface,hit=surface.hit,geom=hit.object?.geometry,pos=geom?.getAttribute?.('position'),face=hit.face;
+   if(!pos||!face)continue;
+   for(const vi of [face.a,face.b,face.c]){
+    const key=(hit.object.uuid||'mesh')+':'+vi;if(seen.has(key))continue;seen.add(key);
+    const world=new THREE.Vector3().fromBufferAttribute(pos,vi).applyMatrix4(hit.object.matrixWorld),ndc=world.clone().project(camera),screen={x:(ndc.x+1)*.5*Math.max(rect.width,1),y:(1-ndc.y)*.5*Math.max(rect.height,1)},nearest=nearestPointOnStroke(screen);
+    if(nearest&&nearest.d2<bestD2){bestD2=nearest.d2;anchorWorld=world;anchorMeta=surface;anchorScreen=screen;curveContact=nearest}
    }
   }
-  if(!anchorWorld)anchorWorld=samples[anchorIndex].surface.hit.point.clone();
+  if(!anchorWorld||!anchorMeta||!anchorScreen||!curveContact)return[];
 
-  // Preserve the drawn line/curve exactly. Move the whole stroke so the anchor sample touches
-  // the nearest mesh vertex, then lift every screen point onto the single plane through that vertex.
-  const anchorNdc=anchorWorld.clone().project(camera),anchorScreen={
-   x:(anchorNdc.x+1)*.5*Math.max(rect.width,1),
-   y:(1-anchorNdc.y)*.5*Math.max(rect.height,1)
-  },sourceAnchor=samples[anchorIndex].screen,shiftX=anchorScreen.x-sourceAnchor.x,shiftY=anchorScreen.y-sourceAnchor.y;
-
+  // Move the whole drawn curve rigidly so its nearest point touches the nearest mesh vertex.
+  const shiftX=anchorScreen.x-curveContact.x,shiftY=anchorScreen.y-curveContact.y,anchorNdc=anchorWorld.clone().project(camera);
   const toVoxel=world=>{
    const local=sceneState.obj.worldToLocal(world.clone());
-   return{
-    x:(local.x/scale+px/2)/vx,
-    y:(-local.y/scale+py/2)/vy,
-    z:(local.z/scale+pz/2)/vz,
-    ray:{...anchorMeta.ray},
-    right:{...anchorMeta.right},
-    up:{...anchorMeta.up},
-    key:anchorMeta.key
-   };
+   return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:{...anchorMeta.ray},right:{...anchorMeta.right},up:{...anchorMeta.up},key:anchorMeta.key};
   };
   const full=samples.map(sample=>{
-   const screen=sample.screen,shiftedX=screen.x+shiftX,shiftedY=screen.y+shiftY,ndcX=(shiftedX/Math.max(rect.width,1))*2-1,ndcY=-(shiftedY/Math.max(rect.height,1))*2+1;
+   const screen=sample.screen,x=screen.x+shiftX,y=screen.y+shiftY,ndcX=(x/Math.max(rect.width,1))*2-1,ndcY=-(y/Math.max(rect.height,1))*2+1;
    return toVoxel(new THREE.Vector3(ndcX,ndcY,anchorNdc.z).unproject(camera));
   });
   if(mode==='line'&&full.length>1)return[full[0],full[full.length-1]];
