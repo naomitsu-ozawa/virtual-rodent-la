@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-117';const APP_BUILD='117';
+const APP_VERSION='2026.09.23-118';const APP_BUILD='118';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3543,35 +3543,38 @@ async function start3D(){
  const editPoint=e=>{const rect=renderer.domElement.getBoundingClientRect();return{x:e.clientX-rect.left,y:e.clientY-rect.top}};
  const cutSamplesToSurfaceStroke=(samples,mode='pen')=>{
   if(!samples?.length||!sceneState?.obj||!volume)return[];
-  const firstHit=samples.findIndex(q=>q?.surface),lastHit=(()=>{for(let i=samples.length-1;i>=0;i--)if(samples[i]?.surface)return i;return-1})();
-  if(firstHit<0||lastHit<=firstHit)return[];
-  const active=samples.slice(firstHit,lastHit+1),valid=[];
-  for(let i=0;i<active.length;i++)if(active[i]?.surface)valid.push(i);
-  if(valid.length<2)return active.filter(q=>q?.surface).map(q=>q.surface);
-  if(mode==='line'){
-   const a=active[valid[0]].surface,b=active[valid[valid.length-1]].surface;
-   return[a,b];
-  }
+  const valid=[];
+  for(let i=0;i<samples.length;i++)if(samples[i]?.surface)valid.push(i);
+  if(!valid.length)return[];
   const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),rect=renderer.domElement.getBoundingClientRect();
   sceneState.obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
   const toVoxel=(world,meta)=>{
    const local=sceneState.obj.worldToLocal(world.clone());
    return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:{...meta.ray},right:{...meta.right},up:{...meta.up},key:meta.key};
   };
-  const out=new Array(active.length);
-  for(const i of valid)out[i]=active[i].surface;
+  const projectAtDepth=(sample,meta,ndcZ)=>{
+   const screen=sample.screen,ndcX=(screen.x/Math.max(rect.width,1))*2-1,ndcY=-(screen.y/Math.max(rect.height,1))*2+1;
+   return toVoxel(new THREE.Vector3(ndcX,ndcY,ndcZ).unproject(camera),meta);
+  };
+  const depthAt=i=>samples[i].surface.hit.point.clone().project(camera).z;
+  const out=new Array(samples.length);
+  for(const i of valid)out[i]=samples[i].surface;
+  const first=valid[0],last=valid[valid.length-1],firstMeta=samples[first].surface,lastMeta=samples[last].surface,firstDepth=depthAt(first),lastDepth=depthAt(last);
+  for(let i=0;i<first;i++)out[i]=projectAtDepth(samples[i],firstMeta,firstDepth);
+  for(let i=last+1;i<samples.length;i++)out[i]=projectAtDepth(samples[i],lastMeta,lastDepth);
   for(let vi=0;vi<valid.length-1;vi++){
    const ia=valid[vi],ib=valid[vi+1];if(ib<=ia+1)continue;
-   const sa=active[ia].surface,sb=active[ib].surface,wa=sa.hit.point.clone(),wb=sb.hit.point.clone(),pa=wa.clone().project(camera),pb=wb.clone().project(camera);
+   const sa=samples[ia].surface,sb=samples[ib].surface,za=depthAt(ia),zb=depthAt(ib);
    let total=0;const dist=new Float64Array(ib-ia+1);
-   for(let i=ia+1;i<=ib;i++){const p0=active[i-1].screen,p1=active[i].screen;total+=Math.hypot(p1.x-p0.x,p1.y-p0.y);dist[i-ia]=total}
+   for(let i=ia+1;i<=ib;i++){const p0=samples[i-1].screen,p1=samples[i].screen;total+=Math.hypot(p1.x-p0.x,p1.y-p0.y);dist[i-ia]=total}
    for(let i=ia+1;i<ib;i++){
-    const screen=active[i].screen,t=total>1e-9?dist[i-ia]/total:(i-ia)/(ib-ia),ndcX=(screen.x/Math.max(rect.width,1))*2-1,ndcY=-(screen.y/Math.max(rect.height,1))*2+1,ndcZ=pa.z+(pb.z-pa.z)*t;
-    const world=new THREE.Vector3(ndcX,ndcY,ndcZ).unproject(camera);
-    out[i]=toVoxel(world,sa);
+    const t=total>1e-9?dist[i-ia]/total:(i-ia)/(ib-ia),meta=t<.5?sa:sb;
+    out[i]=projectAtDepth(samples[i],meta,za+(zb-za)*t);
    }
   }
-  return out.filter(Boolean);
+  const full=out.filter(Boolean);
+  if(mode==='line'&&full.length>1)return[full[0],full[full.length-1]];
+  return full;
  };
  const sectionDragHit=e=>{
   if(!sectionViewOpen||!sectionViewPlane||analysisEditTool!=='select'||threeRenderMode!=='surface'||!sceneState.obj)return null;
@@ -4411,7 +4414,7 @@ async function rebuildCutResultPreview(revision,pending){
     if(!m)continue;
     if(m.color?.set)m.color.set(0xff5a36);
     if(m.emissive?.set)m.emissive.set(0xff3b12);
-    m.emissiveIntensity=1.15;m.transparent=true;m.opacity=.88;m.depthTest=true;m.depthWrite=false;
+    m.emissiveIntensity=1.15;m.transparent=true;m.opacity=.88;m.depthTest=false;m.depthWrite=false;
     if('polygonOffset' in m){m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2}
    }
    o.renderOrder=120;
@@ -4440,52 +4443,57 @@ function updateCutPreview(point=null){
   const a=curve[Math.max(0,i-1)],b=curve[Math.min(curve.length-1,i+1)],t=new THREE.Vector3((b.x-a.x)*sx,-(b.y-a.y)*sy,(b.z-a.z)*sz).normalize(),q=new THREE.Vector3().crossVectors(t,dir);
   return q.lengthSq()>1e-12?q.normalize():new THREE.Vector3(0,1,0);
  };
- // Upper edge = the actual 3D contact curve. Lower edge = the exact same curve translated by cut depth.
+ // Exact requested geometry:
+ // upper = drawn/contact curve; lower = same curve translated by configured depth.
  const upper=curve.map(localPoint),lower=upper.map(p=>p.clone().addScaledVector(dir,depthWorld)),normalVecs=upper.map((_,i)=>localNormal(normals?.[i],i));
  const offsetRow=(row,sign)=>row.map((p,i)=>p.clone().addScaledVector(normalVecs[i],halfKerfWorld*sign));
- const upperNeg=offsetRow(upper,-1),lowerNeg=offsetRow(lower,-1),upperPos=offsetRow(upper,1),lowerPos=offsetRow(lower,1);
+ const upperNeg=offsetRow(upper,-1),upperPos=offsetRow(upper,1),lowerNeg=offsetRow(lower,-1),lowerPos=offsetRow(lower,1);
  const quad=(arr,a,b,c,d)=>arr.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
  const curtainFaces=(aRow,bRow)=>{const out=[];for(let i=0;i<aRow.length-1;i++)quad(out,aRow[i],aRow[i+1],bRow[i+1],bRow[i]);return out};
- const ribbonFaces=(negRow,posRow)=>{const out=[];for(let i=0;i<negRow.length-1;i++)quad(out,negRow[i],posRow[i],posRow[i+1],negRow[i+1]);return out};
- const makeSurface=(faces,color,opacity,name,order)=>{
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));g.computeVertexNormals();
-  const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:false,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
-  m.name=name;m.renderOrder=order;return m;
- };
+ const ribbonFaces=(aRow,bRow)=>{const out=[];for(let i=0;i<aRow.length-1;i++)quad(out,aRow[i],bRow[i],bRow[i+1],aRow[i+1]);return out};
  const group=new THREE.Group();group.name='cut_preview';
 
- // One active CAD curtain, exactly from contact edge to depth edge.
- group.add(makeSurface(curtainFaces(upper,lower),0x00d8ff,.16,'cut_preview_active_surface',124));
+ // Active CAD curtain: always visible, including the part inside the 3D model.
+ const activeGeom=new THREE.BufferGeometry();activeGeom.setAttribute('position',new THREE.Float32BufferAttribute(curtainFaces(upper,lower),3));activeGeom.computeVertexNormals();
+ const active=new THREE.Mesh(activeGeom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.16,depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
+ active.name='cut_preview_active_surface';active.renderOrder=124;group.add(active);
 
- // Width boundaries use the exact same +/- width/2 definition as cutRunsFromVoxelStroke().
+ // Exact cut-width prism, built from the same +/- width/2 geometry used by cutRunsFromVoxelStroke().
  if(halfKerfWorld>1e-7){
-  group.add(makeSurface(curtainFaces(upperNeg,lowerNeg),0x00bcd4,.06,'cut_preview_width_negative',122));
-  group.add(makeSurface(curtainFaces(upperPos,lowerPos),0x00bcd4,.06,'cut_preview_width_positive',122));
-  // Thin ribbons at the contact and depth edges make the configured thickness readable without box side walls.
-  group.add(makeSurface(ribbonFaces(upperNeg,upperPos),0x39dff4,.11,'cut_preview_width_contact',125));
-  group.add(makeSurface(ribbonFaces(lowerNeg,lowerPos),0x39dff4,.11,'cut_preview_width_depth',125));
+  const volumeFaces=[];
+  const pushFaces=faces=>volumeFaces.push(...faces);
+  pushFaces(curtainFaces(upperNeg,lowerNeg));
+  pushFaces(curtainFaces(lowerPos,upperPos));
+  pushFaces(ribbonFaces(upperNeg,upperPos));
+  pushFaces(ribbonFaces(lowerPos,lowerNeg));
+  const first=0,last=upper.length-1;
+  quad(volumeFaces,upperNeg[first],lowerNeg[first],lowerPos[first],upperPos[first]);
+  quad(volumeFaces,upperNeg[last],upperPos[last],lowerPos[last],lowerNeg[last]);
+  const vg=new THREE.BufferGeometry();vg.setAttribute('position',new THREE.Float32BufferAttribute(volumeFaces,3));vg.computeVertexNormals();
+  const vm=new THREE.Mesh(vg,new THREE.MeshBasicMaterial({color:0x16c8e8,transparent:true,opacity:.075,depthTest:false,depthWrite:false,side:THREE.FrontSide}));
+  vm.name='cut_preview_width_volume';vm.renderOrder=122;group.add(vm);
  }
 
- const lineMat=(color,opacity=1,depthTest=false)=>new THREE.LineBasicMaterial({color,transparent:opacity<1,opacity,depthTest,depthWrite:false});
+ const lineMat=(color,opacity=1)=>new THREE.LineBasicMaterial({color,transparent:opacity<1,opacity,depthTest:false,depthWrite:false});
  const addLineSegments=(points,material,name,order)=>{if(!points.length)return;const g=new THREE.BufferGeometry().setFromPoints(points),line=new THREE.LineSegments(g,material);line.name=name;line.renderOrder=order;group.add(line)};
- const addCurveEdges=(dst,row)=>{for(let i=0;i<row.length-1;i++)dst.push(row[i],row[i+1])};
+ const addCurve=(dst,row)=>{for(let i=0;i<row.length-1;i++)dst.push(row[i],row[i+1])};
 
- // Active outline: upper and lower are identical curves separated only by depth.
- const outline=[];addCurveEdges(outline,upper);addCurveEdges(outline,lower);outline.push(upper[0],lower[0],upper[upper.length-1],lower[lower.length-1]);
- addLineSegments(outline,lineMat(0x00e5ff,.98,false),'cut_preview_active_outline',130);
+ // Upper/lower outlines are exact copies of the same curve.
+ const outline=[];addCurve(outline,upper);addCurve(outline,lower);outline.push(upper[0],lower[0],upper[upper.length-1],lower[lower.length-1]);
+ addLineSegments(outline,lineMat(0x00e5ff,.98),'cut_preview_active_outline',130);
 
- // Make the actual 3D contact edge unmistakable.
- const contact=[];addCurveEdges(contact,upper);
- addLineSegments(contact,lineMat(0xffffff,1,false),'cut_preview_contact_edge',133);
+ // Contact edge is explicit.
+ const contact=[];addCurve(contact,upper);
+ addLineSegments(contact,lineMat(0xffffff,1),'cut_preview_contact_edge',133);
 
- // Show the configured width with the four exact boundary curves.
+ // Exact width boundary curves.
  if(halfKerfWorld>1e-7){
-  const widthEdges=[];addCurveEdges(widthEdges,upperNeg);addCurveEdges(widthEdges,upperPos);addCurveEdges(widthEdges,lowerNeg);addCurveEdges(widthEdges,lowerPos);
-  widthEdges.push(upperNeg[0],upperPos[0],upperNeg[upperNeg.length-1],upperPos[upperPos.length-1],lowerNeg[0],lowerPos[0],lowerNeg[lowerNeg.length-1],lowerPos[lowerPos.length-1]);
-  addLineSegments(widthEdges,lineMat(0x64efff,.85,false),'cut_preview_width_outline',129);
+  const widthEdges=[];addCurve(widthEdges,upperNeg);addCurve(widthEdges,upperPos);addCurve(widthEdges,lowerNeg);addCurve(widthEdges,lowerPos);
+  widthEdges.push(upperNeg[0],upperPos[0],lowerNeg[0],lowerPos[0],upperNeg[upperNeg.length-1],upperPos[upperPos.length-1],lowerNeg[lowerNeg.length-1],lowerPos[lowerPos.length-1]);
+  addLineSegments(widthEdges,lineMat(0x65efff,.90),'cut_preview_width_outline',129);
  }
 
- // CAD hatch is drawn only on the active curtain.
+ // CAD hatch only on the active curtain.
  const sampleCurve=t=>{const u=THREE.MathUtils.clamp(t,0,1)*(upper.length-1),i=Math.min(upper.length-2,Math.floor(u)),f=u-i;return upper[i].clone().lerp(upper[i+1],f)};
  const hatchPoints=[],hatchCount=Math.max(7,Math.min(15,Math.round(upper.length/3))),steps=8,slope=.055;
  for(let hIdx=0;hIdx<hatchCount;hIdx++){
@@ -4498,7 +4506,7 @@ function updateCutPreview(point=null){
    prev=p;
   }
  }
- addLineSegments(hatchPoints,lineMat(0x91f4ff,.72,false),'cut_preview_hatch',131);
+ addLineSegments(hatchPoints,lineMat(0x91f4ff,.72),'cut_preview_hatch',131);
 
  obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
