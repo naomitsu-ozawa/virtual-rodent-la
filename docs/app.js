@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-74';const APP_BUILD='74';
+const APP_VERSION='2026.09.23-75';const APP_BUILD='75';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4187,27 +4187,43 @@ function cutSurfaceStroke(points,mode='pen',offsetMm=0,v=current3DVolume||volume
 function cutPlanDirection(points,yawDeg=0,pitchDeg=0){
  return cutDirectionFromPoint(points?.[0]||null,yawDeg,pitchDeg);
 }
+function cutSurfaceFrameData(points,mode='pen',offsetMm=0,v=current3DVolume||volume,yawDeg=0,pitchDeg=0){
+ const curve=cutSurfaceStroke(points,mode,offsetMm,v),dir=cutPlanDirection(points,yawDeg,pitchDeg);
+ if(!v||!curve.length)return{curve,dir,normals:[]};
+ const [sx,sy,sz]=v.spacing,norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}},cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x}),dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z,neg=q=>({x:-q.x,y:-q.y,z:-q.z}),delta=(a,b)=>({x:(b.x-a.x)*sx,y:(b.y-a.y)*sy,z:(b.z-a.z)*sz});
+ const normals=[];let previous=null;
+ for(let i=0;i<curve.length;i++){
+  let tangent;
+  if(curve.length===1)tangent=norm(curve[0]?.right||{x:1,y:0,z:0});
+  else if(i===0)tangent=norm(delta(curve[0],curve[1]));
+  else if(i===curve.length-1)tangent=norm(delta(curve[i-1],curve[i]));
+  else tangent=norm(delta(curve[i-1],curve[i+1]));
+  let normal=cross(tangent,dir),len=Math.hypot(normal.x,normal.y,normal.z);
+  if(len<1e-6&&previous)normal={...previous},len=1;
+  if(len<1e-6){normal=cross(tangent,curve[i]?.up||curve[0]?.up||{x:0,y:1,z:0});len=Math.hypot(normal.x,normal.y,normal.z)}
+  if(len<1e-6){normal=cross(tangent,curve[i]?.right||curve[0]?.right||{x:1,y:0,z:0});len=Math.hypot(normal.x,normal.y,normal.z)}
+  if(len<1e-6)normal={x:1,y:0,z:0};else normal=norm(normal);
+  if(previous&&dot(normal,previous)<0)normal=neg(normal);
+  normals.push(normal);previous=normal;
+ }
+ return{curve,dir,normals};
+}
 function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode='pen',offsetMm=0){
- const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,minSpacing=Math.min(sx,sy,sz),rows=Array.from({length:d},()=>new Map()),curve=cutSurfaceStroke(points,mode,offsetMm,v),dir=cutPlanDirection(points,yawDeg,pitchDeg);
+ const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,minSpacing=Math.min(sx,sy,sz),rows=Array.from({length:d},()=>new Map()),frame=cutSurfaceFrameData(points,mode,offsetMm,v,yawDeg,pitchDeg),curve=frame.curve,dir=frame.dir,normals=frame.normals;
  const addVoxel=(x,y,z)=>{
   const ix=Math.round(x),iy=Math.round(y),iz=Math.round(z);if(ix<0||iy<0||iz<0||ix>=w||iy>=h||iz>=d)return;
   const map=rows[iz],arr=map.get(iy)||[];arr.push([ix,ix]);map.set(iy,arr);
  };
  if(curve.length<2){if(curve[0])addVoxel(curve[0].x,curve[0].y,curve[0].z);return rows.map(rowsToRunSlice)}
  const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
- const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
  const sampleStep=Math.max(.05,minSpacing*.65),halfKerf=Math.max(0,Number.isFinite(+kerfMm)?+kerfMm*.5:0),depth=Math.max(.1,+depthMm||.1);
  for(let seg=0;seg<curve.length-1;seg++){
   const a=curve[seg],b=curve[seg+1],tx=(b.x-a.x)*sx,ty=(b.y-a.y)*sy,tz=(b.z-a.z)*sz,segmentMm=Math.hypot(tx,ty,tz);
   if(segmentMm<1e-6)continue;
-  const tangent=norm({x:tx,y:ty,z:tz}),alongSteps=Math.max(1,Math.ceil(segmentMm/sampleStep));
-  let sheetNormal=cross(tangent,dir),nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z);
-  if(nn<1e-6){sheetNormal=cross(tangent,curve[0].up||{x:0,y:1,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
-  if(nn<1e-6){sheetNormal=cross(tangent,{x:1,y:0,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
-  sheetNormal=norm(sheetNormal);
+  const alongSteps=Math.max(1,Math.ceil(segmentMm/sampleStep)),n0=normals[seg]||{x:1,y:0,z:0},n1=normals[seg+1]||n0;
   const depthSteps=Math.max(1,Math.ceil(depth/sampleStep)),kerfSteps=halfKerf>0?Math.max(1,Math.ceil((halfKerf*2)/Math.max(minSpacing*.7,.05))):0;
   for(let si=0;si<=alongSteps;si++){
-   const u=si/alongSteps,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u};
+   const u=si/alongSteps,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u},sheetNormal=norm({x:n0.x+(n1.x-n0.x)*u,y:n0.y+(n1.y-n0.y)*u,z:n0.z+(n1.z-n0.z)*u});
    for(let di=0;di<=depthSteps;di++){
     const dep=depth*di/depthSteps,base={x:p.x+dir.x*dep/sx,y:p.y+dir.y*dep/sy,z:p.z+dir.z*dep/sz};
     for(let ki=0;ki<=kerfSteps;ki++){
@@ -4327,20 +4343,25 @@ function updateCutPreview(point=null){
   if(!analysisCutApplying)clearCutResultPreview();
   request3DRender();return;
  }
- const v=current3DVolume||volume,curve=cutSurfaceStroke(pending.points,pending.mode,+analysisCutOffset.value||0,v);
+ const v=current3DVolume||volume,frame=cutSurfaceFrameData(pending.points,pending.mode,+analysisCutOffset.value||0,v,+analysisCutYaw.value||0,+analysisCutPitch.value||0),curve=frame.curve;
  scheduleCutResultPreview();
  if(!v||curve.length<2){request3DRender();return}
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),width=cutWidthMm(),half=width*scale*.5,q=cutPlanDirection(pending.points,+analysisCutYaw.value||0,+analysisCutPitch.value||0),dir=new THREE.Vector3(q.x,-q.y,q.z).normalize();
+ const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),width=cutWidthMm(),half=width*scale*.5,dir=new THREE.Vector3(frame.dir.x,-frame.dir.y,frame.dir.z).normalize();
  const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale),front=curve.map(localPoint),back=front.map(p=>p.clone().addScaledVector(dir,depth*scale)),faces=[];
  const quad=(a,b,c,d)=>faces.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
- for(let i=0;i<front.length-1;i++){
-  const a0=front[i],b0=front[i+1],a1=back[i],b1=back[i+1];
-  if(half<=1e-9){quad(a0,b0,b1,a1);continue}
-  const tangent=b0.clone().sub(a0).normalize(),normal=new THREE.Vector3().crossVectors(tangent,dir);
-  if(normal.lengthSq()<1e-12)normal.copy(new THREE.Vector3(0,1,0).cross(dir));
-  if(normal.lengthSq()<1e-12)normal.set(1,0,0);normal.normalize().multiplyScalar(half);
-  const a0p=a0.clone().add(normal),b0p=b0.clone().add(normal),a1p=a1.clone().add(normal),b1p=b1.clone().add(normal),a0m=a0.clone().sub(normal),b0m=b0.clone().sub(normal),a1m=a1.clone().sub(normal),b1m=b1.clone().sub(normal);
-  quad(a0p,b0p,b1p,a1p);quad(a0m,a1m,b1m,b0m);quad(a0m,b0m,b0p,a0p);quad(a1m,a1p,b1p,b1m);quad(a0m,a0p,a1p,a1m);quad(b0m,b1m,b1p,b0p);
+ if(half<=1e-9){
+  for(let i=0;i<front.length-1;i++)quad(front[i],front[i+1],back[i+1],back[i]);
+ }else{
+  const normalLocal=frame.normals.map(n=>new THREE.Vector3(n.x,-n.y,n.z).normalize().multiplyScalar(half)),frontPlus=front.map((p,i)=>p.clone().add(normalLocal[i])),frontMinus=front.map((p,i)=>p.clone().sub(normalLocal[i])),backPlus=back.map((p,i)=>p.clone().add(normalLocal[i])),backMinus=back.map((p,i)=>p.clone().sub(normalLocal[i]));
+  for(let i=0;i<front.length-1;i++){
+   quad(frontPlus[i],frontPlus[i+1],backPlus[i+1],backPlus[i]);
+   quad(frontMinus[i],backMinus[i],backMinus[i+1],frontMinus[i+1]);
+   quad(frontMinus[i],frontMinus[i+1],frontPlus[i+1],frontPlus[i]);
+   quad(backMinus[i],backPlus[i],backPlus[i+1],backMinus[i+1]);
+  }
+  const last=front.length-1;
+  quad(frontMinus[0],frontPlus[0],backPlus[0],backMinus[0]);
+  quad(frontMinus[last],backMinus[last],backPlus[last],frontPlus[last]);
  }
  const group=new THREE.Group();group.name='cut_preview';
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
