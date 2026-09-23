@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-76';const APP_BUILD='76';
+const APP_VERSION='2026.09.23-77';const APP_BUILD='77';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -471,7 +471,7 @@ async function activateMedicalVolume(){
   await mv.ensure(target);ensureVolumeTransformProxy();threeRenderMode='volume';mv.setActive(true);setThreeVolumeOverlay(true);volumeAnalysisToggle.disabled=false;
   threeLabel.textContent=(sceneState.backend||'3D')+' · GPU volume';setGpuComputeBackend('WEBGPU VOLUME RAYCAST');updateRenderModeControl(target);request3DRender();
   footer.textContent=currentLanguage==='ja'?'GPUボリューム · 16-bit CTを3D textureから直接描画':'GPU Volume · direct 16-bit CT 3D-texture ray casting';
- }catch(e){console.error(e);mv.setActive(false);threeRenderMode='surface';setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);footer.textContent='GPU Volume error: '+String(e.message||e);updateRenderModeControl(target)}
+ }catch(e){console.error(e);mv.setActive(false);threeRenderMode='surface';setGpuComputeBackend('GPU VOLUME ERROR',e?.message||e);footer.textContent='GPU Volume error: '+String(e.message||e);updateRenderModeControl(target)}
  finally{set3DBusy(false)}
 }
 function deactivateMedicalVolume(){
@@ -1330,7 +1330,7 @@ function updateGpuStatus(){
  const render=sceneState?.backend||'INIT';
  const compute=gpuFilterRuntime.lastBackend||(gpuFilterRuntime.device?'WEBGPU READY':'CPU');
  const adapter=gpuFilterRuntime.adapterLabel?(' · '+gpuFilterRuntime.adapterLabel):'';
- const failure=/FAIL|FALLBACK|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError.slice(0,96)):'';
+ const failure=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError.slice(0,96)):'';
  status.removeAttribute('data-i18n');
  status.textContent='Render '+render+' · Compute '+compute+failure+adapter;
  const computeGpu=compute.startsWith('WEBGPU'),gpuActive=render==='WEBGPU'||computeGpu;
@@ -1446,8 +1446,8 @@ async function ensureGpuFilterDevice(){
    return device;
   }catch(e){
    gpuFilterRuntime.device=null;gpuFilterRuntime.adapter=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.retryAfter=performance.now()+5000;
-   setGpuComputeBackend('CPU FALLBACK',e?.message||e);
-   console.warn('WebGPU compute unavailable for this attempt; CPU fallback active. GPU will be retried.',e);
+   setGpuComputeBackend('CPU COMPUTE · GPU ERROR',e?.message||e);
+   console.warn('WebGPU compute unavailable for this attempt; exact CPU compute path active. GPU will be retried.',e);
    return null;
   }finally{gpuFilterRuntime.initPromise=null}
  })();
@@ -2108,7 +2108,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
    setGpuComputeBackend(gpuSmooth?'WEBGPU FILTER+MESH+SMOOTH':'WEBGPU FILTER+MESH');return{mesh:true,vertices,normals,counts,gpuSmoothed:gpuSmooth};
   }
   counters.destroy();
-  encoder=device.createCommandEncoder({label:'VRL compact face fallback'});
+  encoder=device.createCommandEncoder({label:'VRL compact face extraction'});
   // Oversized vertex output falls through to compact-face extraction using the already filtered GPU buffer.
  }
  const targetCount=target.width*target.height*target.depth,compactFaces=!!(segments?.length&&faceContext),targetBytes=targetCount*(compactFaces?8:4);
@@ -2447,7 +2447,7 @@ async function processSourceRegionMasks(series,target,stages,key,revision,segmen
    const bits=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments);
    if(bits instanceof Uint32Array){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return bits}
   }catch(e){
-   gpuFilterRuntime.lastError='mask: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU mask execution failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
+   gpuFilterRuntime.lastError='mask: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU mask execution failed; using exact CPU mask path.',e);gpuFilterRuntime.warned=true}
   }
  }
  setGpuComputeBackend(gpuFilterRuntime.lastError?'CPU WORKER · GPU FAIL':'CPU WORKER',gpuFilterRuntime.lastError);
@@ -2492,7 +2492,7 @@ async function processSourceRegionFaces(series,target,stages,key,revision,segmen
    if(compact?.mesh||compact?.compact){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return compact}
   }catch(e){
    if(gpuCapacityError(e))throw e;
-   gpuFilterRuntime.lastError='mesh: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU face extraction failed; using CPU fallback.',e);gpuFilterRuntime.warned=true}
+   gpuFilterRuntime.lastError='mesh: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU face extraction failed; using exact CPU face extraction path.',e);gpuFilterRuntime.warned=true}
   }
  }
  setGpuComputeBackend(gpuFilterRuntime.lastError?'CPU WORKER · GPU FAIL':'CPU WORKER',gpuFilterRuntime.lastError);
@@ -3655,7 +3655,7 @@ async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
    prevRows=consumeGpuAnalysisRuns(result.items,z0b,coreDepth,w,h,seed,uf,prevRows,sliceRuns);done=z0b+coreDepth;
    analysisSummary.textContent=(currentLanguage==='ja'?'GPU連結成分解析中… ':'GPU connected-component analysis… ')+done+' / '+d;await frameYield();
   }
- }catch(e){setGpuComputeBackend('CPU ANALYSIS FALLBACK',e?.message||e);console.warn('GPU connected-component run extraction failed; CPU analysis will be used.',e);return null}
+ }catch(e){setGpuComputeBackend('CPU ANALYSIS · GPU ERROR',e?.message||e);console.warn('GPU connected-component run extraction failed; CPU analysis will be used.',e);return null}
  if(seed.label==null)throw new Error(currentLanguage==='ja'?'選択位置から連結成分を特定できませんでした':'Could not identify a connected component at the selected point');
  const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];setGpuComputeBackend('WEBGPU ANALYSIS RLE · CPU CONNECTIVITY');return{voxels,mm3,root,uf,sliceRuns};
 }
@@ -3670,17 +3670,17 @@ async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
   if(gpuBlock){
    gpuUsed=true;prevRows=consumeGpuAnalysisRuns(gpuBlock.items,z0b,gpuBlock.coreDepth,w,h,seed,uf,prevRows,sliceRuns);done=z0b+gpuBlock.coreDepth;
   }else{
-   hadFallback=true;setGpuComputeBackend('CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'GPU analysis unavailable');
+   hadFallback=true;setGpuComputeBackend('CPU ANALYSIS · GPU ERROR',gpuFilterRuntime.lastError||'GPU analysis unavailable');
    const masks=await sourceSegmentMaskBlock(v,key,seg,z0b,blockDepth,analysisRevision);
    for(let local=0;local<masks.length;local++){const z=z0b+local,result=sourceRunSlice(masks[local],w,h,z,seed,uf,prevRows);sliceRuns[z]=result.records;prevRows=result.rows;done=z+1}
-   setGpuComputeBackend('CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'GPU analysis unavailable');
+   setGpuComputeBackend('CPU ANALYSIS · GPU ERROR',gpuFilterRuntime.lastError||'GPU analysis unavailable');
   }
   analysisSummary.textContent=((gpuUsed&&!hadFallback)?(currentLanguage==='ja'?'GPU連結成分解析中… ':'GPU connected-component analysis… '):(currentLanguage==='ja'?'連結成分を解析中… ':'Analyzing connected component… '))+done+' / '+d;await frameYield();
  }
  if(seed.label==null)throw new Error(currentLanguage==='ja'?'選択位置から連結成分を特定できませんでした':'Could not identify a connected component at the selected point');
  const root=uf.find(seed.label),voxels=uf.size[root],mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];
  if(gpuUsed&&!hadFallback)setGpuComputeBackend(sourceFilterStages().length?'WEBGPU ANALYSIS FILTER+RLE · CPU CONNECTIVITY':'WEBGPU ANALYSIS RLE · CPU CONNECTIVITY');
- else if(gpuUsed&&hadFallback)setGpuComputeBackend('GPU PARTIAL · CPU ANALYSIS FALLBACK',gpuFilterRuntime.lastError||'Some analysis blocks used CPU fallback');
+ else if(gpuUsed&&hadFallback)setGpuComputeBackend('GPU+CPU ANALYSIS',gpuFilterRuntime.lastError||'Some analysis blocks used the exact CPU path');
  return{voxels,mm3,root,uf,sliceRuns};
 }
 function sourceComponentSliceState(records,w,h,root,uf){
@@ -4056,7 +4056,7 @@ async function sourceRunsForSegment(v,key,seg){
  }
  const d=v.slices,w=v.columns,h=v.rows,out=Array.from({length:d},()=>new Uint32Array(0)),revision=sourceFilterRuntime.revision,blockDepth=navigator.maxTouchPoints>0?4:16;
  for(let z0=0;z0<d;z0+=blockDepth){
-  let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision)}catch(e){console.warn('Edit base GPU RLE fallback.',e)}
+  let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision)}catch(e){console.warn('Edit base GPU RLE failed; using exact CPU RLE path.',e)}
   if(gpu){
    const per=Array.from({length:gpu.coreDepth},()=>[]);
    for(let i=0;i<gpu.items.length;i+=4){const lz=gpu.items[i];if(lz<per.length)per[lz].push(gpu.items[i+1],gpu.items[i+2],gpu.items[i+3])}
@@ -4915,7 +4915,7 @@ async function render3DSourceBacked(v){
  }
  const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeSource3DCoordinates(series),positionsByKey=new Map(streamActive.map(({key})=>[key,new Float32FaceBuilder()])),normalsByKey=new Map(streamActive.map(({key})=>[key,new Float32FaceBuilder()])),strongSmooth=strongSurfaceSmoothingActive();
  const materialParamsByKey=new Map(streamActive.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}]));
- let residentTileCount=0,fallbackTileCount=0;
+ let residentTileCount=0,cpuTileCount=0;
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
   const alreadyGpuSmoothed=builder.hasGpuMesh&&!builder.hasCpuMesh&&builder.allGpuSmoothed,normalsBuilder=normalsByKey.get(key),normals=alreadyGpuSmoothed?normalsBuilder?.take():null,positions=builder.take(),geometry=geometryFromSourcePositions(positions,alreadyGpuSmoothed,normals,!strongSmooth);if(!alreadyGpuSmoothed)normalsBuilder?.take();
@@ -4937,7 +4937,7 @@ async function render3DSourceBacked(v){
    for(let z0=0;z0<series.slices.length;z0+=filterBlockDepth){
     if(revision!==sourceRenderRevision){dispose(group);return}
     const block=await getFilteredSourceAxialFaceBlock(z0,filterBlockDepth,series,streamActive,'3d:'+revision);
-    for(let ti=0;ti<block.tiles.length;ti++){const tile=block.tiles[ti];if(tile.gpuResident){if(addGpuResidentTileMesh(group,tile,streamActive,materialParamsByKey,coords.scale,'segment_gpu_resident_'+z0+'_'+ti))residentTileCount++}else{fallbackTileCount++;if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,streamActive);else appendSourceFacesFromCompactTile(positionsByKey,series,tile,streamActive,coords)}}
+    for(let ti=0;ti<block.tiles.length;ti++){const tile=block.tiles[ti];if(tile.gpuResident){if(addGpuResidentTileMesh(group,tile,streamActive,materialParamsByKey,coords.scale,'segment_gpu_resident_'+z0+'_'+ti))residentTileCount++}else{cpuTileCount++;if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,streamActive);else appendSourceFacesFromCompactTile(positionsByKey,series,tile,streamActive,coords)}}
     const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===series.slices.length-1||[...positionsByKey.values()].some(b=>b.length>=meshFloatLimit);
     if(flush){for(const {key} of streamActive)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+series.slices.length;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+series.slices.length);await frameYield()}
    }
@@ -4956,8 +4956,8 @@ async function render3DSourceBacked(v){
   if(revision!==sourceRenderRevision){dispose(group);return}
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
-  const resident=residentTileCount>0&&fallbackTileCount===0,mixed=residentTileCount>0&&fallbackTileCount>0;threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':mixed?' · GPU/CPU fallback':' · full resolution');
-  if(resident){setGpuComputeBackend(surfaceSmoothingActive()?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');footer.textContent='3D full resolution · GPU resident · source DICOM · no vertex readback'}else if(mixed){setGpuComputeBackend('GPU PARTIAL · CPU FALLBACK');footer.textContent='3D full resolution · GPU/CPU fallback · GPU-resident evaluation unavailable'}else footer.textContent='3D full resolution · source DICOM · no resampling';set3DBusy(false);request3DRender();mark3DCurrent();return true;
+  const resident=residentTileCount>0&&cpuTileCount===0,mixed=residentTileCount>0&&cpuTileCount>0;threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':mixed?' · GPU/CPU full resolution':' · full resolution');
+  if(resident){setGpuComputeBackend(surfaceSmoothingActive()?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');footer.textContent='3D full resolution · GPU resident · source DICOM · no vertex readback'}else if(mixed){setGpuComputeBackend('GPU+CPU FULL RESOLUTION');footer.textContent='3D full resolution · GPU+CPU exact geometry · GPU-resident evaluation unavailable'}else footer.textContent='3D full resolution · source DICOM · no resampling';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){
   dispose(group);
   if(revision===sourceRenderRevision){threeLabel.textContent=(sceneState.backend||'3D')+' · build error';footer.textContent='3D build error: '+String(e.message||e);set3DBusy(false);mark3DStale()}
@@ -4977,7 +4977,7 @@ async function render3DMemoryGpu(v){
   sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
  const chunkDepth=navigator.maxTouchPoints>0?32:64,meshFloatLimit=(navigator.maxTouchPoints>0?6:12)*1024*1024,coords=makeVolume3DCoordinates(v),positionsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),normalsByKey=new Map(active.map(({key})=>[key,new Float32FaceBuilder()])),materialParamsByKey=new Map(active.map(({key,seg})=>[key,{color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!surfaceSmoothingActive()}])),strongSmooth=strongSurfaceSmoothingActive();
- let residentTileCount=0,fallbackTileCount=0;
+ let residentTileCount=0,cpuTileCount=0;
  const flushSegment=(key,z)=>{
   const builder=positionsByKey.get(key);if(!builder?.length)return;
   const alreadyGpuSmoothed=builder.hasGpuMesh&&!builder.hasCpuMesh&&builder.allGpuSmoothed,normalsBuilder=normalsByKey.get(key),normals=alreadyGpuSmoothed?normalsBuilder?.take():null,geometry=geometryFromSourcePositions(builder.take(),alreadyGpuSmoothed,normals,!strongSmooth);if(!alreadyGpuSmoothed)normalsBuilder?.take();if(!geometry)return;
@@ -4988,17 +4988,17 @@ async function render3DMemoryGpu(v){
   for(let z0=0;z0<v.slices;z0+=blockDepth){
    if(revision!==sourceRenderRevision){dispose(group);return null}
    const block=await getMemoryGpuMeshBlock(v,z0,blockDepth,active);
-   for(let ti=0;ti<block.tiles.length;ti++){const tile=block.tiles[ti];if(tile.gpuResident){if(addGpuResidentTileMesh(group,tile,active,materialParamsByKey,coords.scale,'segment_gpu_resident_'+z0+'_'+ti))residentTileCount++}else{fallbackTileCount++;if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,{columns:v.columns,rows:v.rows},tile,active,coords)}}
+   for(let ti=0;ti<block.tiles.length;ti++){const tile=block.tiles[ti];if(tile.gpuResident){if(addGpuResidentTileMesh(group,tile,active,materialParamsByKey,coords.scale,'segment_gpu_resident_'+z0+'_'+ti))residentTileCount++}else{cpuTileCount++;if(tile.mesh)appendGpuMeshTile(positionsByKey,normalsByKey,tile,active);else appendSourceFacesFromCompactTile(positionsByKey,{columns:v.columns,rows:v.rows},tile,active,coords)}}
    const lastZ=z0+block.coreDepth-1,flush=((lastZ+1)%chunkDepth===0)||lastZ===v.slices-1||[...positionsByKey.values()].some(b=>b.length>=meshFloatLimit);
    if(flush){for(const {key} of active)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+v.slices;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+v.slices);await frameYield()}
   }
   if(revision!==sourceRenderRevision){dispose(group);return null}
   if(previous){previous.parent?.remove(previous);dispose(previous)}
-  sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}const resident=residentTileCount>0&&fallbackTileCount===0,mixed=residentTileCount>0&&fallbackTileCount>0;threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':mixed?' · GPU/CPU fallback':' · full resolution · GPU');if(resident){setGpuComputeBackend(surfaceSmoothingActive()?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');footer.textContent='3D full resolution · GPU resident · no vertex readback'}else if(mixed){setGpuComputeBackend('GPU PARTIAL · CPU FALLBACK');footer.textContent='3D full resolution · GPU/CPU fallback · GPU-resident evaluation unavailable'}else footer.textContent='3D full resolution · '+gpuFilterRuntime.lastBackend;set3DBusy(false);request3DRender();mark3DCurrent();return true;
+  sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}const resident=residentTileCount>0&&cpuTileCount===0,mixed=residentTileCount>0&&cpuTileCount>0;threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':mixed?' · GPU/CPU full resolution':' · full resolution · GPU');if(resident){setGpuComputeBackend(surfaceSmoothingActive()?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');footer.textContent='3D full resolution · GPU resident · no vertex readback'}else if(mixed){setGpuComputeBackend('GPU+CPU FULL RESOLUTION');footer.textContent='3D full resolution · GPU+CPU exact geometry · GPU-resident evaluation unavailable'}else footer.textContent='3D full resolution · '+gpuFilterRuntime.lastBackend;set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){
   dispose(group);set3DBusy(false);
   if(revision!==sourceRenderRevision||threeDCancelRequested)return null;
-  if(String(e.message||e)!=='__GPU_UNAVAILABLE__')console.warn('GPU decoded-volume mesh failed; CPU fallback.',e);
+  if(String(e.message||e)!=='__GPU_UNAVAILABLE__')console.warn('GPU decoded-volume mesh failed.',e);
   return false;
  }
 }
