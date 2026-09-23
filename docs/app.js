@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-99';const APP_BUILD='99';
+const APP_VERSION='2026.09.23-100';const APP_BUILD='100';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4393,12 +4393,15 @@ function updateCutPreview(point=null){
  const v=current3DVolume||volume,curve=cutSurfaceStroke(pending.points,pending.mode,+analysisCutOffset.value||0,v);
  scheduleCutResultPreview();
  if(!v||curve.length<2){request3DRender();return}
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),q=cutPlanDirection(pending.points,+analysisCutYaw.value||0,+analysisCutPitch.value||0),dir=new THREE.Vector3(q.x,-q.y,q.z).normalize();
+ const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5);
  const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
- const p0=localPoint(curve[0]),p1=localPoint(curve[curve.length-1]),half=depth*scale*.5;
- const a=p0.clone().addScaledVector(dir,-half),b=p1.clone().addScaledVector(dir,-half),c=p1.clone().addScaledVector(dir,half),d0=p0.clone().addScaledVector(dir,half);
- const faces=[a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d0.x,d0.y,d0.z];
- const edges=[a,b,b,c,c,d0,d0,a,p0,p1];
+ const localDir=p=>{const q=cutPreviewDirection(p);return new THREE.Vector3(q.x,-q.y,q.z).normalize()};
+ const faces=[],edges=[];
+ for(let i=0;i<curve.length-1;i++){
+  const a=curve[i],b=curve[i+1],a0=localPoint(a),b0=localPoint(b),a1=a0.clone().addScaledVector(localDir(a),depth*scale),b1=b0.clone().addScaledVector(localDir(b),depth*scale);
+  faces.push(a0.x,a0.y,a0.z,b0.x,b0.y,b0.z,b1.x,b1.y,b1.z,a0.x,a0.y,a0.z,b1.x,b1.y,b1.z,a1.x,a1.y,a1.z);
+  edges.push(a0,b0,b0,b1,b1,a1,a1,a0);
+ }
  const group=new THREE.Group();group.name='cut_preview';
  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
  const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.14,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
