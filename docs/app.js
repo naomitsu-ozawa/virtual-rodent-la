@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-130';const APP_BUILD='130';
+const APP_VERSION='2026.09.24-131';const APP_BUILD='131';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -922,6 +922,7 @@ threeBusyCancel.onclick=()=>cancel3DRebuild();
 installFilterReorder();
 
 const planeRenderTimers={axial:null,coronal:null,sagittal:null};
+const mpr3DOrthoSliding={coronal:false,sagittal:false};
 function pushCachedMpr3DPlane(p,idx){
  if((p!=='coronal'&&p!=='sagittal')||mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
  let entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return false;
@@ -943,7 +944,7 @@ function paintFastOrthogonalPreview(p,idx){
 function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
- if((p==='coronal'||p==='sagittal')&&!immediate)pushCachedMpr3DPlane(p,idx);
+ if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate)pushCachedMpr3DPlane(p,idx)}
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
  if(p==='axial')refreshMpr3DPlaneTexture(p);
@@ -966,7 +967,7 @@ function renderSectionPlaneLive(p){
  if(paintFastOrthogonalPreview(p,idx))return;
  void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('Live section render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
 }
-for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>schedulePlaneRender(p,true);installMprTouch(p)}
+for(const p of Object.keys(planes)){planes[p].slider.oninput=()=>schedulePlaneRender(p);planes[p].slider.onchange=()=>{if(p==='coronal'||p==='sagittal')mpr3DOrthoSliding[p]=false;schedulePlaneRender(p,true)};installMprTouch(p)}
 
 async function loadDemo(){
  let response=null,fromCache=false,cache=null;
@@ -2217,14 +2218,14 @@ function clearMpr3DPreviewCache(){
 }
 function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear();sourceOrthogonalPlaneCacheBytes=0;clearMpr3DPreviewCache()}
 function mpr3DPreviewPlan(v){
- const touch=navigator.maxTouchPoints>0,target=touch?768:1024,budget=(touch?192:512)*1024*1024,w=v.columns,h=v.rows,d=v.slices;
+ const touch=navigator.maxTouchPoints>0,target=touch?448:640,budget=(touch?128:256)*1024*1024,w=v.columns,h=v.rows,d=v.slices;
  const bytesFor=side=>{
   const cw=Math.min(w,side),ch=Math.min(d,side),sw=Math.min(h,side),sh=Math.min(d,side);
   return h*cw*ch+w*sw*sh;
  };
  let side=Math.min(target,Math.max(w,h,d));
- while(side>320&&bytesFor(side)>budget)side-=32;
- if(bytesFor(side)>budget)side=320;
+ while(side>256&&bytesFor(side)>budget)side-=32;
+ if(bytesFor(side)>budget)side=256;
  return{side,bytes:bytesFor(side)};
 }
 function mpr3DPreviewMap(i,n,outN){return outN<=1?0:Math.max(0,Math.min(n-1,Math.round(i*(n-1)/(outN-1))))}
@@ -2306,20 +2307,28 @@ function sourceOrthogonalCacheSet(p,idx,v){
   const first=sourceOrthogonalPlaneCache.keys().next().value,item=sourceOrthogonalPlaneCache.get(first);sourceOrthogonalPlaneCache.delete(first);sourceOrthogonalPlaneCacheBytes-=item.byteLength;
  }
 }
+async function readSourceOrthogonalStrip(p,meta,idx){
+ if(p==='coronal'){
+  const row=await readSourceRows(meta,idx,1);return row.subarray(0,meta.columns);
+ }
+ return readSourceColumn(meta,idx);
+}
 async function buildSourceOrthogonalPlane(p,idx,series,revision){
  const cached=sourceOrthogonalCacheGet(p,idx);if(cached)return cached;
- const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],out=new Float32Array(dims[0]*dims[1]);
- for(let z=0;z<series.slices.length;z++){
-  if(revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
-  const meta=series.slices[z],base=(series.slices.length-1-z)*dims[0];
-  if(p==='coronal'){
-   const row=await readSourceRows(meta,idx,1);out.set(row.subarray(0,series.columns),base);
-  }else{
-   const full=await getCachedSourceSlice(meta);
-   for(let y=0;y<series.rows;y++)out[base+y]=full[y*series.columns+idx];
+ const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],out=new Float32Array(dims[0]*dims[1]),d=series.slices.length;
+ let next=0,completed=0;
+ const workers=Math.min(d,navigator.maxTouchPoints>0?Math.max(2,Math.min(4,(navigator.hardwareConcurrency||4)-1)):Math.max(4,Math.min(8,(navigator.hardwareConcurrency||8)-1)));
+ const run=async()=>{
+  while(true){
+   const z=next++;if(z>=d)return;
+   if(revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
+   const strip=await readSourceOrthogonalStrip(p,series.slices[z],idx);
+   if(revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
+   out.set(strip,(d-1-z)*dims[0]);
+   completed++;if((completed&15)===0)await frameYield();
   }
-  if((z&31)===0)await frameYield();
- }
+ };
+ await Promise.all(Array.from({length:workers},()=>run()));
  if(revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
  sourceOrthogonalCacheSet(p,idx,out);return out;
 }
@@ -3467,7 +3476,7 @@ function updateMpr3DPlanePositions(){
 
 function refreshMpr3DPlaneTexture(p){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return;
- if((p==='coronal'||p==='sagittal')&&pushCachedMpr3DPlane(p,+planes[p].slider.value))return;
+ if((p==='coronal'||p==='sagittal')&&mpr3DOrthoSliding[p]&&pushCachedMpr3DPlane(p,+planes[p].slider.value))return;
  const src=planes[p]?.canvas,dst=entry.previewCanvas;
  if(src?.width&&src?.height&&dst){
   if(dst.width!==src.width)dst.width=src.width;
