@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-65';const APP_BUILD='65';
+const APP_VERSION='2026.09.23-66';const APP_BUILD='66';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -1687,13 +1687,13 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let cw=meta[6]+1u;let ch=meta[7]+1u;let cd=meta[8]+1u;let cornerCount=cw*ch*cd;let total=cornerCount*meta[10];
  let q=gid.x;if(q>=total){return;}let s=q/cornerCount;let ci=q-s*cornerCount;let cx=ci%cw;let cy=(ci/cw)%ch;let cz=ci/(cw*ch);let base=q*4u;
  let active=srcCorners[base+3u];var px=srcCorners[base];var py=srcCorners[base+1u];var pz=srcCorners[base+2u];
- if(active<0.5){dstCorners[base]=px;dstCorners[base+1u]=py;dstCorners[base+2u]=pz;dstCorners[base+3u]=active;return;}
+ var edge=false;if(active<0.5){edge=true;}if(cx==0u){edge=true;}if(cy==0u){edge=true;}if(cz==0u){edge=true;}if(cx+1u>=cw){edge=true;}if(cy+1u>=ch){edge=true;}if(cz+1u>=cd){edge=true;}if(edge){
+  dstCorners[base]=px;dstCorners[base+1u]=py;dstCorners[base+2u]=pz;dstCorners[base+3u]=active;return;
+ }
  var ax=0.0;var ay=0.0;var az=0.0;var count=0.0;
  for(var dz:i32=-1;dz<=1;dz=dz+1){for(var dy:i32=-1;dy<=1;dy=dy+1){for(var dx:i32=-1;dx<=1;dx=dx+1){
   if(dx==0){if(dy==0){if(dz==0){continue;}}}if(abs(dx)+abs(dy)+abs(dz)>2){continue;}
-  let nx=i32(cx)+dx;let ny=i32(cy)+dy;let nz=i32(cz)+dz;
-  if(nx<0||ny<0||nz<0||nx>=i32(cw)||ny>=i32(ch)||nz>=i32(cd)){continue;}
-  let nb=baseIndex(s,u32(nx),u32(ny),u32(nz));
+  let nb=baseIndex(s,u32(i32(cx)+dx),u32(i32(cy)+dy),u32(i32(cz)+dz));
   if(srcCorners[nb+3u]>0.5){ax+=srcCorners[nb];ay+=srcCorners[nb+1u];az+=srcCorners[nb+2u];count+=1.0;}
  }}}
  if(count>0.0){let factor=params[0];px+=factor*(ax/count-px);py+=factor*(ay/count-py);pz+=factor*(az/count-pz);}
@@ -2034,7 +2034,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
   }
   if(vertexBytes<=maxOut){
    let offset=0;for(let i=0;i<4;i++){meta[17+i]=offset;offset+=counts[i]}device.queue.writeBuffer(mb,0,meta);device.queue.writeBuffer(counters,0,new Uint32Array(4));
-   const vertexCount=totalFaces*6,gpuSmooth=surfaceSmoothingActive(),smoothStrength=gpuSmooth?Number(surfaceSmoothStrength.value):0;
+   const vertexCount=totalFaces*6,gpuSmooth=surfaceSmoothingActive()&&!strongSurfaceSmoothingActive(),smoothStrength=gpuSmooth?Number(surfaceSmoothStrength.value):0;
    const allowGpuResident=faceContext?.gpuResident!==false;
    let residentPosition=allowGpuResident?createGpuResidentFloat3Attribute(device,vertexCount,'VRL GPU resident position'):null,residentNormal=allowGpuResident&&gpuSmooth?createGpuResidentFloat3Attribute(device,vertexCount,'VRL GPU resident normal'):null;
    let gpuResident=allowGpuResident&&!!residentPosition&&(!gpuSmooth||!!residentNormal);
@@ -2056,7 +2056,7 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
      {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:cornerA}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:5,resource:{buffer:gb}}
     ]});
     await gpuValidationScope(device,'mesh corner init',async()=>{const initEncoder=device.createCommandEncoder({label:'VRL GPU corner init'}),pass=initEncoder.beginComputePass();pass.setPipeline(initPipeline);pass.setBindGroup(0,initGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/gpuFilterRuntime.workgroupSize));pass.end();device.queue.submit([initEncoder.finish()])});
-    const baseStrength=Math.min(smoothStrength,1),extra=Math.max(0,smoothStrength-3),lambda=(.34+.08*Math.min(extra,3))*baseStrength,mu=(-.36+.03*Math.min(extra,3))*baseStrength,iterations=Math.max(1,Math.round(smoothStrength<=1?2+smoothStrength*4:smoothStrength<=3?6+(smoothStrength-1)*18:42+(smoothStrength-3)*40));
+    const baseStrength=Math.min(smoothStrength,1),lambda=.34*baseStrength,mu=-.36*baseStrength,iterations=Math.max(1,Math.round(smoothStrength<=1?2+smoothStrength*4:smoothStrength<=3?6+(smoothStrength-1)*18:42+(smoothStrength-3)*24));
     const smoothPipeline=await gpuFilterPipeline('meshCornerSmooth'),pbLambda=gpuSmallBuffer(device,new Float32Array([lambda,0,0,0])),pbMu=gpuSmallBuffer(device,new Float32Array([mu,0,0,0]));small.push(pbLambda,pbMu);let srcCorner=cornerA,dstCorner=cornerB;
     for(let k=0;k<iterations;k++)for(const pbSmooth of [pbLambda,pbMu]){
      const smoothGroup=device.createBindGroup({layout:smoothPipeline.getBindGroupLayout(0),entries:[
@@ -2537,7 +2537,7 @@ async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d
 async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,keyPrefix='3d-face-block'){
  const stages=sourceFilterStages();
  const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=Math.max(1,sourceFilterHalo(stages)),outDepth=Math.min(d-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(w,h,outDepth,halo,tileStartX,tileStartY),queue=[];
- const gpuResident=shouldUseGpuResidentSurface(w,h,d,tx,ty,coreDepth,segments?.length||0);
+ const gpuResident=strongSurfaceSmoothingActive()?false:shouldUseGpuResidentSurface(w,h,d,tx,ty,coreDepth,segments?.length||0);
  for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx)queue.push({x,y,z:zStart,width:Math.min(tx,w-x),height:Math.min(ty,h-y),depth:outDepth});
  while(queue.length){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
@@ -2635,7 +2635,7 @@ async function processMemoryMeshRegion(v,target,segments,gpuResident=true){
 }
 async function getMemoryGpuMeshBlock(v,zStart,coreDepth,segments){
  const outDepth=Math.min(v.slices-zStart,coreDepth),tiles=[],[tileStartX,tileStartY]=gpuMeshTileStart(),[tx,ty]=fitSourceTile(v.columns,v.rows,outDepth,1,tileStartX,tileStartY),queue=[];
- const gpuResident=shouldUseGpuResidentSurface(v.columns,v.rows,v.slices,tx,ty,coreDepth,segments?.length||0);
+ const gpuResident=strongSurfaceSmoothingActive()?false:shouldUseGpuResidentSurface(v.columns,v.rows,v.slices,tx,ty,coreDepth,segments?.length||0);
  for(let y=0;y<v.rows;y+=ty)for(let x=0;x<v.columns;x+=tx)queue.push({x,y,z:zStart,width:Math.min(tx,v.columns-x),height:Math.min(ty,v.rows-y),depth:outDepth});
  while(queue.length){
   const target=queue.shift();
@@ -4496,6 +4496,7 @@ class Float32FaceBuilder{
 function surfaceSmoothingActive(){
  return !!surfaceSmoothEnabled?.checked&&Number(surfaceSmoothStrength?.value)>0;
 }
+function strongSurfaceSmoothingActive(){return surfaceSmoothingActive()&&Number(surfaceSmoothStrength?.value)>3;}
 function indexedGeometryFromTrianglePositions(positions){
  const vertexRefs=Math.floor((positions?.length||0)/3);
  if(!vertexRefs)return new THREE.BufferGeometry();
@@ -4974,7 +4975,7 @@ function taubinSmoothGeometry(geometry,strength){
  }
  const coords=new Float32Array(pos.array);
  const tmp=new Float32Array(coords.length);
- const baseStrength=Math.min(strength,1),extra=Math.max(0,strength-3),lambda=(.34+.08*Math.min(extra,3))*baseStrength,mu=(-.36+.03*Math.min(extra,3))*baseStrength;
+ const baseStrength=Math.min(strength,1),lambda=.34*baseStrength,mu=-.36*baseStrength;
  const pass=(src,dst,factor)=>{
   for(let i=0;i<vertexCount;i++){
    const ns=neighbors[i];
@@ -4985,7 +4986,7 @@ function taubinSmoothGeometry(geometry,strength){
    const o=i*3;dst[o]=src[o]+factor*(ax-src[o]);dst[o+1]=src[o+1]+factor*(ay-src[o+1]);dst[o+2]=src[o+2]+factor*(az-src[o+2]);
   }
  };
- const iterations=Math.max(1,Math.round(strength<=1?2+strength*4:strength<=3?6+(strength-1)*18:42+(strength-3)*40));
+ const iterations=Math.max(1,Math.round(strength<=1?2+strength*4:strength<=3?6+(strength-1)*18:42+(strength-3)*24));
  let a=coords,b=tmp;
  for(let k=0;k<iterations;k++){
   pass(a,b,lambda);[a,b]=[b,a];
