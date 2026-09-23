@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-114';const APP_BUILD='114';
+const APP_VERSION='2026.09.23-115';const APP_BUILD='115';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4433,76 +4433,25 @@ function updateCutPreview(point=null){
  const state=sceneState,obj=state?.obj;if(!state||!obj)return;
  if(state.editCutPreview){if(state.editCutPreview.parent)state.editCutPreview.parent.remove(state.editCutPreview);dispose(state.editCutPreview);state.editCutPreview=null}
  const pending=analysisPendingCut;
- if(!pending){
-  state.editCutPreviewPoint=point||null;
-  if(!analysisCutApplying)clearCutResultPreview();
-  request3DRender();return;
- }
+ if(!pending){state.editCutPreviewPoint=point||null;if(!analysisCutApplying)clearCutResultPreview();request3DRender();return}
  const v=current3DVolume||volume,frame=cutSurfaceFrameData(pending.points,pending.mode,+analysisCutOffset.value||0,v,+analysisCutYaw.value||0,+analysisCutPitch.value||0),curve=frame.curve,normals=frame.normals;
- scheduleCutResultPreview();
- if(!v||curve.length<2){request3DRender();return}
+ scheduleCutResultPreview();if(!v||curve.length<2){request3DRender();return}
  const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5),fullDepth=depth*scale,halfKerf=Math.max(0,cutWidthMm())*scale*.5,dir=new THREE.Vector3(frame.dir.x,-frame.dir.y,frame.dir.z).normalize();
  const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
- const localNormal=(n,i)=>{
-  if(n){const q=new THREE.Vector3(n.x,-n.y,n.z);if(q.lengthSq()>1e-12)return q.normalize()}
-  const a=curve[Math.max(0,i-1)],b=curve[Math.min(curve.length-1,i+1)],t=new THREE.Vector3((b.x-a.x)*sx,-(b.y-a.y)*sy,(b.z-a.z)*sz).normalize(),q=new THREE.Vector3().crossVectors(t,dir);
-  return q.lengthSq()>1e-12?q.normalize():new THREE.Vector3(0,1,0);
- };
- const center=curve.map(localPoint),normalVecs=center.map((_,i)=>localNormal(normals?.[i],i)),sideA=center.map(p=>p.clone().addScaledVector(dir,-fullDepth)),sideB=center.map(p=>p.clone().addScaledVector(dir,fullDepth));
- const offsetRow=(row,sign)=>row.map((p,i)=>p.clone().addScaledVector(normalVecs[i],halfKerf*sign));
- const negA=offsetRow(sideA,-1),negC=offsetRow(center,-1),negB=offsetRow(sideB,-1),posA=offsetRow(sideA,1),posC=offsetRow(center,1),posB=offsetRow(sideB,1),faces=[];
- const quad=(a,b,c,d)=>faces.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
- if(halfKerf>1e-7){
-  for(let i=0;i<center.length-1;i++){
-   quad(negA[i],negA[i+1],negC[i+1],negC[i]);quad(negC[i],negC[i+1],negB[i+1],negB[i]);
-   quad(posA[i],posC[i],posC[i+1],posA[i+1]);quad(posC[i],posB[i],posB[i+1],posC[i+1]);
-   quad(negA[i],posA[i],posA[i+1],negA[i+1]);quad(negB[i],negB[i+1],posB[i+1],posB[i]);
-  }
-  const last=center.length-1;
-  quad(negA[0],negC[0],posC[0],posA[0]);quad(negC[0],negB[0],posB[0],posC[0]);
-  quad(negA[last],posA[last],posC[last],negC[last]);quad(negC[last],posC[last],posB[last],negB[last]);
- }else{
-  for(let i=0;i<center.length-1;i++){quad(sideA[i],sideA[i+1],center[i+1],center[i]);quad(center[i],center[i+1],sideB[i+1],sideB[i])}
- }
+ const localNormal=(n,i)=>{if(n){const q=new THREE.Vector3(n.x,-n.y,n.z);if(q.lengthSq()>1e-12)return q.normalize()}const a=curve[Math.max(0,i-1)],b=curve[Math.min(curve.length-1,i+1)],t=new THREE.Vector3((b.x-a.x)*sx,-(b.y-a.y)*sy,(b.z-a.z)*sz).normalize(),q=new THREE.Vector3().crossVectors(t,dir);return q.lengthSq()>1e-12?q.normalize():new THREE.Vector3(0,1,0)};
+ const center=curve.map(localPoint),normalVecs=center.map((_,i)=>localNormal(normals?.[i],i)),rowAtDepth=amount=>center.map(p=>p.clone().addScaledVector(dir,amount)),sideA=rowAtDepth(-fullDepth),sideB=rowAtDepth(fullDepth),offsetRow=(row,sign)=>row.map((p,i)=>p.clone().addScaledVector(normalVecs[i],halfKerf*sign)),negA=offsetRow(sideA,-1),negB=offsetRow(sideB,-1),posA=offsetRow(sideA,1),posB=offsetRow(sideB,1);
+ const quad=(arr,a,b,c,d)=>arr.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z),curtainFaces=(aRow,bRow)=>{const out=[];for(let i=0;i<aRow.length-1;i++)quad(out,aRow[i],aRow[i+1],bRow[i+1],bRow[i]);return out};
+ const makeSurface=(faces,color,opacity,name,order)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));g.computeVertexNormals();const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));m.name=name;m.renderOrder=order;return m};
  const group=new THREE.Group();group.name='cut_preview';
- const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));geom.computeVertexNormals();
- const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.20,depthTest:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));mesh.name='cut_preview_surface';mesh.renderOrder=124;group.add(mesh);
-
- const outlinePoints=[],addCurveEdges=row=>{for(let i=0;i<row.length-1;i++)outlinePoints.push(row[i],row[i+1])},last=center.length-1;
- if(halfKerf>1e-7){
-  addCurveEdges(posA);addCurveEdges(posB);addCurveEdges(negA);addCurveEdges(negB);
-  outlinePoints.push(posA[0],posB[0],negA[0],negB[0],posA[last],posB[last],negA[last],negB[last],posA[0],negA[0],posB[0],negB[0],posA[last],negA[last],posB[last],negB[last]);
- }else{
-  addCurveEdges(sideA);addCurveEdges(sideB);
-  outlinePoints.push(sideA[0],sideB[0],sideA[last],sideB[last]);
- }
- const outlineGeom=new THREE.BufferGeometry().setFromPoints(outlinePoints),outline=new THREE.LineSegments(outlineGeom,new THREE.LineBasicMaterial({color:0x00e5ff,transparent:true,opacity:.98,depthTest:false,depthWrite:false}));outline.name='cut_preview_outline';outline.renderOrder=128;group.add(outline);
-
- const strokePoints=[];for(let i=0;i<center.length-1;i++)strokePoints.push(center[i],center[i+1]);
- const strokeGeom=new THREE.BufferGeometry().setFromPoints(strokePoints),strokeLine=new THREE.LineSegments(strokeGeom,new THREE.LineBasicMaterial({color:0xb9f8ff,transparent:true,opacity:1,depthTest:false,depthWrite:false}));strokeLine.name='cut_preview_drawn_curve';strokeLine.renderOrder=130;group.add(strokeLine);
-
- const sampleCurve=t=>{
-  const u=THREE.MathUtils.clamp(t,0,1)*(center.length-1),i=Math.min(center.length-2,Math.floor(u)),f=u-i;
-  return center[i].clone().lerp(center[i+1],f);
- };
- const sampleNormal=t=>{
-  const u=THREE.MathUtils.clamp(t,0,1)*(normalVecs.length-1),i=Math.min(normalVecs.length-2,Math.floor(u)),f=u-i;
-  return normalVecs[i].clone().lerp(normalVecs[i+1],f).normalize();
- };
- const hatchPoints=[],hatchCount=Math.max(8,Math.min(20,Math.round(center.length/2))),hatchSteps=10,hatchSlope=.07;
- for(let hIdx=0;hIdx<hatchCount;hIdx++){
-  const base=(hIdx+.5)/hatchCount;let prev=null;
-  for(let k=0;k<=hatchSteps;k++){
-   const dv=-1+2*k/hatchSteps,t=base+hatchSlope*dv;
-   if(t<0||t>1){prev=null;continue}
-   const p=sampleCurve(t).addScaledVector(dir,dv*fullDepth);
-   if(halfKerf>1e-7)p.addScaledVector(sampleNormal(t),halfKerf+.0005);
-   if(prev)hatchPoints.push(prev,p.clone());
-   prev=p;
-  }
- }
- const hatchGeom=new THREE.BufferGeometry().setFromPoints(hatchPoints),hatch=new THREE.LineSegments(hatchGeom,new THREE.LineBasicMaterial({color:0x7fefff,transparent:true,opacity:.72,depthTest:false,depthWrite:false}));hatch.name='cut_preview_hatch';hatch.renderOrder=129;group.add(hatch);
-
+ group.add(makeSurface(curtainFaces(sideA,sideB),0x00d8ff,.14,'cut_preview_active_surface',124));
+ if(halfKerf>1e-7){group.add(makeSurface(curtainFaces(negA,negB),0x00bcd4,.055,'cut_preview_kerf_negative',122));group.add(makeSurface(curtainFaces(posA,posB),0x00bcd4,.055,'cut_preview_kerf_positive',122))}
+ const lineMat=(color,opacity=1,depthTest=false)=>new THREE.LineBasicMaterial({color,transparent:opacity<1,opacity,depthTest,depthWrite:false}),addLineSegments=(points,material,name,order)=>{if(!points.length)return;const g=new THREE.BufferGeometry().setFromPoints(points),line=new THREE.LineSegments(g,material);line.name=name;line.renderOrder=order;group.add(line)},addCurveEdges=(dst,row)=>{for(let i=0;i<row.length-1;i++)dst.push(row[i],row[i+1])};
+ const outline=[];addCurveEdges(outline,sideA);addCurveEdges(outline,sideB);outline.push(sideA[0],sideB[0],sideA[sideA.length-1],sideB[sideB.length-1]);addLineSegments(outline,lineMat(0x00e5ff,.98,false),'cut_preview_active_outline',130);
+ const stroke=[];for(let i=0;i<center.length-1;i++)stroke.push(center[i],center[i+1]);addLineSegments(stroke,lineMat(0xe5fcff,1,false),'cut_preview_drawn_curve',132);
+ if(halfKerf>1e-7){const kerfEdges=[];addCurveEdges(kerfEdges,negA);addCurveEdges(kerfEdges,negB);addCurveEdges(kerfEdges,posA);addCurveEdges(kerfEdges,posB);kerfEdges.push(negA[0],negB[0],posA[0],posB[0],negA[negA.length-1],negB[negB.length-1],posA[posA.length-1],posB[posB.length-1]);addLineSegments(kerfEdges,lineMat(0x5cecff,.68,false),'cut_preview_kerf_outline',128)}
+ const sampleCurve=t=>{const u=THREE.MathUtils.clamp(t,0,1)*(center.length-1),i=Math.min(center.length-2,Math.floor(u)),f=u-i;return center[i].clone().lerp(center[i+1],f)},hatchPoints=[],hatchCount=Math.max(7,Math.min(15,Math.round(center.length/3))),steps=8,slope=.055;
+ for(let hIdx=0;hIdx<hatchCount;hIdx++){const base=(hIdx+.5)/hatchCount;let prev=null;for(let k=0;k<=steps;k++){const dv=-1+2*k/steps,t=base+slope*dv;if(t<0||t>1){prev=null;continue}const p=sampleCurve(t).addScaledVector(dir,dv*fullDepth);if(prev)hatchPoints.push(prev,p.clone());prev=p}}
+ addLineSegments(hatchPoints,lineMat(0x91f4ff,.72,false),'cut_preview_hatch',131);
  obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
 function updateThreeEditUi(message=null){
