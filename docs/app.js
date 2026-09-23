@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-61';const APP_BUILD='61';
+const APP_VERSION='2026.09.23-62';const APP_BUILD='62';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -20,7 +20,7 @@ const I18N={
   display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',ctRange:'CT値操作範囲',autoRange:'Auto',fullRange:'Full',rebuild3D:'3D再構築',cancel3D:'再構築をキャンセル',cancelling3D:'キャンセル中…',threeCancelled:'3D再構築をキャンセルしました。以前の3Dを保持しています。',threeCurrent:'3Dは最新',threeStale:'3Dは再構築待ち',threeUpdating:'3D再構築中',mainView:'メインへ',
   segmentation:'セグメンテーション',segments:'組織セグメント',
   bone:'骨',soft:'軟部組織',fat:'脂肪',lung:'肺',min:'最小',max:'最大',opacity:'不透明度',segmentPreset:'セグメントプリセット',addSegment:'セグメントを追加',removeSegment:'削除',opening:'Opening',closing:'Closing',minComponent:'最小連結成分',holeFill:'Hole Filling',
-  surfaceSmooth:'表面平滑化',strength:'強度',sigmoidCenter:'中心',filterThreshold:'検出閾値',iterations:'反復回数',passes:'Pass数',searchRadius:'探索半径',patchRadius:'パッチ半径',spatialSigma:'空間Sigma',intensitySigma:'強度Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'STL書き出し',volumeRender:'GPUボリューム',surfaceRender:'サーフェス表示へ',volumeMode:'体積解析',volumeOff:'体積解析を終了',sliceAnalysis:'断面解析',sliceAnalysisOff:'断面解析を終了',sliceAnalysisHint:'3Dを切断する断面を選択してください',sectionReverse:'反転',sectionOff:'解除',sectionPosition:'断面位置',volumeHint:'3D上の部品をクリックしてください',analysisRegions:'解析領域',mergeSelected:'選択を統合',clearRegions:'すべて解除',showRegion:'表示',hideRegion:'非表示',deleteRegion:'削除',mergedRegion:'統合領域',analysisRegion:'領域',mergeNeedsTwo:'2件以上の領域を選択してください',mergingRegions:'領域を統合中…',edit3D:'3D編集',editNavigate:'操作',cutRegion:'ペン切断',lineCutRegion:'直線切断',editTarget:'対象',editAuto:'自動',editReady:'操作を選択してください',editPenHint:'3D表面をなぞると、その線に沿って切断します',editLineHint:'3D表面上で始点から終点までドラッグすると直線で切断します',editAutoHint:'自動: 最初に触れたセグメントを編集対象にします',removeSelectedRegion:'選択領域を削除',keepSelectedRegion:'選択領域のみ残す',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'編集リセット',cutWidth:'切断幅',cutDepth:'切断深さ',cutYaw:'左右角度',cutPitch:'上下角度',applyCut:'切断を適用',cancelCut:'キャンセル',cutPendingHint:'切断予定範囲を確認し、幅・深さ・角度を調整してから「切断を適用」を押してください',exportSelectedStl:'選択領域STL',selectRegion2D:'2D/3Dで領域を選択',resetFilters:'画像フィルターをリセット',
+  surfaceSmooth:'表面平滑化',strength:'強度',sigmoidCenter:'中心',filterThreshold:'検出閾値',iterations:'反復回数',passes:'Pass数',searchRadius:'探索半径',patchRadius:'パッチ半径',spatialSigma:'空間Sigma',intensitySigma:'強度Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'STL書き出し',volumeRender:'GPUボリューム',surfaceRender:'サーフェス表示へ',volumeMode:'体積解析',volumeOff:'体積解析を終了',sliceAnalysis:'断面解析',sliceAnalysisOff:'断面解析を終了',sliceAnalysisHint:'3Dを切断する断面を選択してください',sectionReverse:'反転',sectionOff:'解除',sectionPosition:'断面位置',volumeHint:'3D上の部品をクリックしてください',analysisRegions:'解析領域',mergeSelected:'選択を統合',clearRegions:'すべて解除',showRegion:'表示',hideRegion:'非表示',deleteRegion:'削除',mergedRegion:'統合領域',analysisRegion:'領域',mergeNeedsTwo:'2件以上の領域を選択してください',mergingRegions:'領域を統合中…',edit3D:'3D編集',editNavigate:'操作',cutRegion:'ペン切断',lineCutRegion:'直線切断',editTarget:'対象',editAuto:'自動',editReady:'操作を選択してください',editPenHint:'3D表面をなぞると、その線に沿って切断します',editLineHint:'3D表面上で始点から終点までドラッグすると直線で切断します',editAutoHint:'自動: 最初に触れたセグメントを編集対象にします',removeSelectedRegion:'選択領域を削除',keepSelectedRegion:'選択領域のみ残す',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'編集リセット',cutWidth:'切断厚さ',cutDepth:'切断深さ',cutYaw:'左右角度',cutPitch:'上下角度',applyCut:'切断を適用',cancelCut:'キャンセル',cutPendingHint:'切断予定範囲を確認し、幅・深さ・角度を調整してから「切断を適用」を押してください',exportSelectedStl:'選択領域STL',selectRegion2D:'2D/3Dで領域を選択',resetFilters:'画像フィルターをリセット',
   controls:'3D: 左ドラッグで回転 / Shift+左ドラッグ・右ドラッグ・中ドラッグで平行移動 / ホイールでズーム。断面画像: 左右スワイプ / マウスホイールでスライス移動',
   seriesUnselected:'シリーズ未選択',selectSeries:'左の一覧からCTシリーズを選択してください。',
   footer:'元のキャリブレーション済みCT値は保持されます。',
@@ -41,7 +41,7 @@ const I18N={
   display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',ctRange:'CT value range',autoRange:'Auto',fullRange:'Full',rebuild3D:'Rebuild 3D',cancel3D:'Cancel rebuild',cancelling3D:'Cancelling…',threeCancelled:'3D rebuild cancelled. Previous 3D retained.',threeCurrent:'3D is current',threeStale:'3D rebuild pending',threeUpdating:'Rebuilding 3D',mainView:'Main',
   segmentation:'SEGMENTATION',segments:'Tissue segments',
   bone:'Bone',soft:'Soft tissue',fat:'Fat',lung:'Lung',min:'Min',max:'Max',opacity:'Opacity',segmentPreset:'Segment preset',addSegment:'Add segment',removeSegment:'Remove',opening:'Opening',closing:'Closing',minComponent:'Min Component',holeFill:'Hole Filling',
-  surfaceSmooth:'Surface Smooth',strength:'Strength',sigmoidCenter:'Center',filterThreshold:'Threshold',iterations:'Iterations',passes:'Passes',searchRadius:'Search Radius',patchRadius:'Patch Radius',spatialSigma:'Spatial Sigma',intensitySigma:'Intensity Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'Export STL',volumeRender:'GPU Volume',surfaceRender:'Back to surface',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',sliceAnalysis:'Section view',sliceAnalysisOff:'Exit section view',sliceAnalysisHint:'Choose a plane to cut the 3D model',sectionReverse:'Reverse',sectionOff:'Off',sectionPosition:'Section position',volumeHint:'Click a 3D component',analysisRegions:'Analysis regions',mergeSelected:'Merge selected',clearRegions:'Clear all',showRegion:'Show',hideRegion:'Hide',deleteRegion:'Delete',mergedRegion:'Merged region',analysisRegion:'Region',mergeNeedsTwo:'Select at least two regions',mergingRegions:'Merging regions…',edit3D:'3D edit',editNavigate:'Navigate',cutRegion:'Pen cut',lineCutRegion:'Line cut',editTarget:'Target',editAuto:'Auto',editReady:'Choose an edit tool',editPenHint:'Draw on the 3D surface to cut along the stroke',editLineHint:'Drag from start to end on the 3D surface for a straight cut',editAutoHint:'Auto: the first touched segment becomes the edit target',removeSelectedRegion:'Delete selected region',keepSelectedRegion:'Keep selected region only',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'Reset edits',cutWidth:'Cut width',cutDepth:'Cut depth',cutYaw:'Horizontal angle',cutPitch:'Vertical angle',applyCut:'Apply cut',cancelCut:'Cancel',cutPendingHint:'Review the planned cut, adjust width, depth and angles, then press Apply cut',exportSelectedStl:'Selected region STL',selectRegion2D:'Select a region in 2D or 3D',resetFilters:'Reset image filters',
+  surfaceSmooth:'Surface Smooth',strength:'Strength',sigmoidCenter:'Center',filterThreshold:'Threshold',iterations:'Iterations',passes:'Passes',searchRadius:'Search Radius',patchRadius:'Patch Radius',spatialSigma:'Spatial Sigma',intensitySigma:'Intensity Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'Export STL',volumeRender:'GPU Volume',surfaceRender:'Back to surface',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',sliceAnalysis:'Section view',sliceAnalysisOff:'Exit section view',sliceAnalysisHint:'Choose a plane to cut the 3D model',sectionReverse:'Reverse',sectionOff:'Off',sectionPosition:'Section position',volumeHint:'Click a 3D component',analysisRegions:'Analysis regions',mergeSelected:'Merge selected',clearRegions:'Clear all',showRegion:'Show',hideRegion:'Hide',deleteRegion:'Delete',mergedRegion:'Merged region',analysisRegion:'Region',mergeNeedsTwo:'Select at least two regions',mergingRegions:'Merging regions…',edit3D:'3D edit',editNavigate:'Navigate',cutRegion:'Pen cut',lineCutRegion:'Line cut',editTarget:'Target',editAuto:'Auto',editReady:'Choose an edit tool',editPenHint:'Draw on the 3D surface to cut along the stroke',editLineHint:'Drag from start to end on the 3D surface for a straight cut',editAutoHint:'Auto: the first touched segment becomes the edit target',removeSelectedRegion:'Delete selected region',keepSelectedRegion:'Keep selected region only',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'Reset edits',cutWidth:'Cut thickness',cutDepth:'Cut depth',cutYaw:'Horizontal angle',cutPitch:'Vertical angle',applyCut:'Apply cut',cancelCut:'Cancel',cutPendingHint:'Review the planned cut, adjust width, depth and angles, then press Apply cut',exportSelectedStl:'Selected region STL',selectRegion2D:'Select a region in 2D or 3D',resetFilters:'Reset image filters',
   controls:'3D: left-drag to rotate / Shift+left-drag, right-drag, or middle-drag to pan / wheel to zoom. MPR: swipe left/right or use the mouse wheel',
   seriesUnselected:'No Series selected',selectSeries:'Select a CT Series from the list on the left.',
   footer:'Original calibrated CT values are preserved.',
@@ -582,7 +582,7 @@ analysisUndo.onclick=()=>void undoSegmentEdit();
 analysisRedo.onclick=()=>void redoSegmentEdit();
 analysisResetEdit.onclick=()=>void resetFocusedSegmentEdit();
 analysisCutWidth.oninput=()=>{analysisCutWidthValue.value=(+analysisCutWidth.value).toFixed(1)+' mm';updateThreeEditUi();updateCutPreview(sceneState?.editCutPreviewPoint)};analysisCutDepth.oninput=()=>{analysisCutDepthValue.value=(+analysisCutDepth.value).toFixed(1)+' mm';updateThreeEditUi();updateCutPreview(sceneState?.editCutPreviewPoint)};analysisCutYaw.oninput=()=>{analysisCutYawValue.value=Math.round(+analysisCutYaw.value)+'°';updateThreeEditUi();updateCutPreview(sceneState?.editCutPreviewPoint)};analysisCutPitch.oninput=()=>{analysisCutPitchValue.value=Math.round(+analysisCutPitch.value)+'°';updateThreeEditUi();updateCutPreview(sceneState?.editCutPreviewPoint)};
-analysisCutApply.onclick=()=>{if(!analysisPendingCut)return;const pending=analysisPendingCut;analysisPendingCut=null;analysisCutScreen=[];updateThreeEditUi(currentLanguage==='ja'?'切断を適用中…':'Applying cut…');void applyCutStroke(pending.points,pending.key)};
+analysisCutApply.onclick=()=>{if(!analysisPendingCut)return;const pending=analysisPendingCut;analysisPendingCut=null;analysisCutScreen=[];updateCutPreview(null);updateThreeEditUi(currentLanguage==='ja'?'切断を適用中…':'Applying cut…');void applyCutStroke(pending.points,pending.key,pending.mode)};
 analysisCutCancel.onclick=()=>{analysisPendingCut=null;analysisCutStroke=null;analysisCutScreen=[];clearEditOverlay();updateCutPreview(null);analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'切断をキャンセルしました':'Cut cancelled');request3DRender()};
 analysisExportSelected.onclick=()=>void exportFocusedAnalysisRegionStl();
 renderModeToggle.onclick=()=>{if(threeRenderMode==='volume')deactivateMedicalVolume();else void activateMedicalVolume()};
@@ -4117,47 +4117,57 @@ async function redoSegmentEdit(){
 async function resetFocusedSegmentEdit(){
  const region=analysisRegionById(analysisFocusedRegionId),key=analysisEditTargetKey||(region?.segmentKeys?.length===1?region.segmentKeys[0]:null)||SEGMENT_PRESET_ORDER.find(k=>segmentEditActive(k));if(!key)return;analysisEditTargetKey=key;const refs=snapshotAnalysisRegionsForSegment(key);pushEditUndo(key);const st=segmentEditState[key];st.keepRuns=null;st.excludeRuns=null;st.finalRuns=null;st.revision++;await refreshEditedSegmentSurface(key);if(refs.length)await rebuildEditedAnalysisForSegment(key,refs);updateAnalysisEditorControls();footer.textContent=currentLanguage==='ja'?'編集をリセットしました':'Edits reset';
 }
-function cutRunsFromVoxelStroke(v,points,widthMm,depthMm,yawDeg=0,pitchDeg=0){
- const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,rows=Array.from({length:d},()=>new Map()),samples=[],radiusMm=Math.max(Math.min(sx,sy,sz)*.45,widthMm*.5);
- const addInterval=(z,y,x0,x1)=>{const map=rows[z],arr=map.get(y)||[];arr.push([x0,x1]);map.set(y,arr)};
- const stamp=p=>{
-  const rz=Math.ceil(radiusMm/sz),ry=Math.ceil(radiusMm/sy);
-  for(let z=Math.max(0,Math.floor(p.z-rz));z<=Math.min(d-1,Math.ceil(p.z+rz));z++){const dz=(z-p.z)*sz;for(let y=Math.max(0,Math.floor(p.y-ry));y<=Math.min(h-1,Math.ceil(p.y+ry));y++){const dy=(y-p.y)*sy,remain=radiusMm*radiusMm-dz*dz-dy*dy;if(remain<0)continue;const rx=Math.sqrt(remain)/sx;addInterval(z,y,Math.max(0,Math.floor(p.x-rx)),Math.min(w-1,Math.ceil(p.x+rx)))}}};
- const rayBounds=(p,ray)=>{
-  let lo=-Infinity,hi=Infinity;
-  for(const [coord,dir,spacing,max] of [[p.x,ray.x,sx,w-1],[p.y,ray.y,sy,h-1],[p.z,ray.z,sz,d-1]]){
-   if(Math.abs(dir)<1e-6){if(coord<0||coord>max)return null;continue}
-   let a=(0-coord)*spacing/dir,b=(max-coord)*spacing/dir;if(a>b)[a,b]=[b,a];lo=Math.max(lo,a);hi=Math.min(hi,b);if(lo>hi)return null
-  }
-  return[lo,hi];
+function cutDirectionFromPoint(p,yawDeg=0,pitchDeg=0){
+ const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
+ const base=norm(p?.ray||{x:0,y:0,z:1}),right=norm(p?.right||{x:1,y:0,z:0}),up=norm(p?.up||{x:0,y:1,z:0});
+ const yaw=yawDeg*Math.PI/180,pitch=pitchDeg*Math.PI/180,cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+ return norm({x:base.x*cy*cp+right.x*sy*cp+up.x*sp,y:base.y*cy*cp+right.y*sy*cp+up.y*sp,z:base.z*cy*cp+right.z*sy*cp+up.z*sp});
+}
+function cutSurfaceStroke(points,mode='pen'){
+ if(!points?.length)return[];
+ return mode==='line'&&points.length>1?[points[0],points[points.length-1]]:points;
+}
+function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode='pen'){
+ const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,minSpacing=Math.min(sx,sy,sz),rows=Array.from({length:d},()=>new Map()),curve=cutSurfaceStroke(points,mode);
+ const addVoxel=(x,y,z)=>{
+  const ix=Math.round(x),iy=Math.round(y),iz=Math.round(z);if(ix<0||iy<0||iz<0||ix>=w||iy>=h||iz>=d)return;
+  const map=rows[iz],arr=map.get(iy)||[];arr.push([ix,ix]);map.set(iy,arr);
  };
- for(let i=0;i<points.length;i++){
-  if(i===0){samples.push(points[i]);continue}
-  const a=points[i-1],b=points[i],dist=Math.hypot((b.x-a.x)*sx,(b.y-a.y)*sy,(b.z-a.z)*sz),steps=Math.max(1,Math.ceil(dist/Math.max(radiusMm*.75,Math.min(sx,sy,sz))));
-  for(let s=1;s<=steps;s++){const t=s/steps,lerp=(va,vb)=>va&&vb?{x:va.x+(vb.x-va.x)*t,y:va.y+(vb.y-va.y)*t,z:va.z+(vb.z-va.z)*t}:vb||va,ray=lerp(a.ray,b.ray),right=lerp(a.right,b.right),up=lerp(a.up,b.up);samples.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t,ray,right,up})}
- }
- const seen=new Set(),stepMm=Math.max(Math.min(sx,sy,sz)*.8,radiusMm*.7,.08);
- for(const p of samples){
-  const ray=p.ray;if(!ray){stamp(p);continue}
-  const normVec=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
-  const base=normVec(ray),right=normVec(p.right||{x:1,y:0,z:0}),up=normVec(p.up||{x:0,y:1,z:0});
-  const yaw=yawDeg*Math.PI/180,pitch=pitchDeg*Math.PI/180,cy=Math.cos(yaw),syaw=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
-  const r=normVec({x:base.x*cy*cp+right.x*syaw*cp+up.x*sp,y:base.y*cy*cp+right.y*syaw*cp+up.y*sp,z:base.z*cy*cp+right.z*syaw*cp+up.z*sp}),bounds=rayBounds(p,r);if(!bounds){stamp(p);continue}
-  const start=Math.max(0,bounds[0]),end=Math.min(bounds[1],Math.max(.1,depthMm));
-  if(end<start)continue;
-  const steps=Math.max(1,Math.ceil((end-start)/stepMm));
-  for(let i=0;i<=steps;i++){const t=start+(end-start)*(i/steps),q={x:p.x+r.x*t/sx,y:p.y+r.y*t/sy,z:p.z+r.z*t/sz},key=Math.round(q.x)+','+Math.round(q.y)+','+Math.round(q.z);if(seen.has(key))continue;seen.add(key);stamp(q)}
+ if(curve.length<2){if(curve[0])addVoxel(curve[0].x,curve[0].y,curve[0].z);return rows.map(rowsToRunSlice)}
+ const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
+ const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
+ const lerpDir=(a,b,t)=>norm({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t});
+ const sampleStep=Math.max(.05,minSpacing*.65),halfKerf=Math.max(minSpacing*.45,(+kerfMm||0)*.5),depth=Math.max(.1,+depthMm||.1);
+ for(let seg=0;seg<curve.length-1;seg++){
+  const a=curve[seg],b=curve[seg+1],tx=(b.x-a.x)*sx,ty=(b.y-a.y)*sy,tz=(b.z-a.z)*sz,segmentMm=Math.hypot(tx,ty,tz);
+  if(segmentMm<1e-6)continue;
+  const tangent=norm({x:tx,y:ty,z:tz}),da=cutDirectionFromPoint(a,yawDeg,pitchDeg),db=cutDirectionFromPoint(b,yawDeg,pitchDeg),alongSteps=Math.max(1,Math.ceil(segmentMm/sampleStep));
+  for(let si=0;si<=alongSteps;si++){
+   const u=si/alongSteps,p={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u},dir=lerpDir(da,db,u);
+   let sheetNormal=cross(tangent,dir),nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z);
+   if(nn<1e-6){sheetNormal=cross(tangent,a.up||{x:0,y:1,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
+   if(nn<1e-6){sheetNormal=cross(tangent,{x:1,y:0,z:0});nn=Math.hypot(sheetNormal.x,sheetNormal.y,sheetNormal.z)}
+   sheetNormal=norm(sheetNormal);
+   const depthSteps=Math.max(1,Math.ceil(depth/sampleStep)),kerfSteps=Math.max(1,Math.ceil((halfKerf*2)/Math.max(minSpacing*.7,.05)));
+   for(let di=0;di<=depthSteps;di++){
+    const dep=depth*di/depthSteps,base={x:p.x+dir.x*dep/sx,y:p.y+dir.y*dep/sy,z:p.z+dir.z*dep/sz};
+    for(let ki=0;ki<=kerfSteps;ki++){
+     const off=-halfKerf+(halfKerf*2)*ki/kerfSteps;
+     addVoxel(base.x+sheetNormal.x*off/sx,base.y+sheetNormal.y*off/sy,base.z+sheetNormal.z*off/sz);
+    }
+   }
+  }
  }
  return rows.map(rowsToRunSlice);
 }
-async function applyCutStroke(points,key=analysisEditTargetKey){
+async function applyCutStroke(points,key=analysisEditTargetKey,mode='pen'){
  if(!key||!SEGMENT_PRESET_ORDER.includes(key)||points.length<1)return;
  const v=current3DVolume||volume;if(!v)return;
  const label=tr(key)||key;
  set3DBusy(true,currentLanguage==='ja'?label+'に切断を適用中…':'Applying cut to '+label+'…');
  updateThreeEditUi(currentLanguage==='ja'?'切断を適用中…':'Applying cut…');
  try{
-  const st=segmentEditState[key],refs=snapshotAnalysisRegionsForSegment(key),cut=cutRunsFromVoxelStroke(v,points,+analysisCutWidth.value||.8,+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0);
+  const st=segmentEditState[key],refs=snapshotAnalysisRegionsForSegment(key),cut=cutRunsFromVoxelStroke(v,points,+analysisCutWidth.value||.8,+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,mode);
   pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,cut,v.slices);st.finalRuns=null;st.revision++;analysisEditTargetKey=key;
   const revision=st.revision;
   updateAnalysisEditorControls();
@@ -4207,34 +4217,27 @@ function setEditTargetHighlight(key=null){
  });
  request3DRender();
 }
-function cutPreviewDirection(point){
- if(!point?.ray)return null;
- const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
- const base=norm(point.ray),right=norm(point.right||{x:1,y:0,z:0}),up=norm(point.up||{x:0,y:1,z:0});
- const yaw=(+analysisCutYaw.value||0)*Math.PI/180,pitch=(+analysisCutPitch.value||0)*Math.PI/180,cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
- return norm({x:base.x*cy*cp+right.x*sy*cp+up.x*sp,y:base.y*cy*cp+right.y*sy*cp+up.y*sp,z:base.z*cy*cp+right.z*sy*cp+up.z*sp});
-}
+function cutPreviewDirection(point){return cutDirectionFromPoint(point,+analysisCutYaw.value||0,+analysisCutPitch.value||0)}
 function updateCutPreview(point=null){
- const state=sceneState,obj=state?.obj;
- if(!state||!obj||analysisEditTool==='select'||!point?.hit){if(state?.editCutPreview)state.editCutPreview.visible=false;if(state)state.editCutPreviewPoint=null;request3DRender();return}
- state.editCutPreviewPoint=point;
- let group=state.editCutPreview;
- if(!group||group.parent!==obj){
-  if(group?.parent)group.parent.remove(group);
-  group=new THREE.Group();group.name='cut_preview';
-  const cylinder=new THREE.Mesh(new THREE.CylinderGeometry(1,1,1,16,1,true),new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.2,depthWrite:false,side:THREE.DoubleSide}));
-  cylinder.name='cut_preview_volume';cylinder.renderOrder=95;group.add(cylinder);
-  const lineGeom=new THREE.BufferGeometry(),line=new THREE.Line(lineGeom,new THREE.LineBasicMaterial({color:0x8eefff,transparent:true,opacity:.95,depthTest:false,depthWrite:false}));
-  line.name='cut_preview_axis';line.renderOrder=96;group.add(line);
-  obj.add(group);state.editCutPreview=group;
+ const state=sceneState,obj=state?.obj;if(!state||!obj)return;
+ if(state.editCutPreview){if(state.editCutPreview.parent)state.editCutPreview.parent.remove(state.editCutPreview);dispose(state.editCutPreview);state.editCutPreview=null}
+ const pending=analysisPendingCut;
+ if(!pending){state.editCutPreviewPoint=point?.hit?point:null;request3DRender();return}
+ const v=current3DVolume||volume,curve=cutSurfaceStroke(pending.points,pending.mode);if(!v||curve.length<2){request3DRender();return}
+ const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depth=Math.max(.1,+analysisCutDepth.value||5);
+ const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
+ const localDir=p=>{const q=cutPreviewDirection(p);return new THREE.Vector3(q.x,-q.y,q.z).normalize()};
+ const faces=[],edges=[];
+ for(let i=0;i<curve.length-1;i++){
+  const a=curve[i],b=curve[i+1],a0=localPoint(a),b0=localPoint(b),a1=a0.clone().addScaledVector(localDir(a),depth*scale),b1=b0.clone().addScaledVector(localDir(b),depth*scale);
+  faces.push(a0.x,a0.y,a0.z,b0.x,b0.y,b0.z,b1.x,b1.y,b1.z,a0.x,a0.y,a0.z,b1.x,b1.y,b1.z,a1.x,a1.y,a1.z);
+  edges.push(a0,b0,b0,b1,b1,a1,a1,a0);
  }
- const v=current3DVolume||volume;if(!v)return;
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),dir=cutPreviewDirection(point);if(!dir)return;
- const start=obj.worldToLocal(point.hit.point.clone()),localDir=new THREE.Vector3(dir.x,-dir.y,dir.z).normalize(),depth=Math.max(.1,+analysisCutDepth.value||5)*scale,radius=Math.max(Math.min(sx,sy,sz)*.45,(+analysisCutWidth.value||.8)*.5)*scale,end=start.clone().addScaledVector(localDir,depth),mid=start.clone().add(end).multiplyScalar(.5);
- const cylinder=group.getObjectByName('cut_preview_volume'),line=group.getObjectByName('cut_preview_axis');
- cylinder.position.copy(mid);cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),localDir);cylinder.scale.set(radius,depth,radius);
- line.geometry.dispose();line.geometry=new THREE.BufferGeometry().setFromPoints([start,end]);
- group.visible=true;request3DRender();
+ const group=new THREE.Group();group.name='cut_preview';
+ const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));
+ const mesh=new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.30,depthWrite:false,side:THREE.DoubleSide}));mesh.name='cut_preview_surface';mesh.renderOrder=95;group.add(mesh);
+ const edgeGeom=new THREE.BufferGeometry().setFromPoints(edges),edge=new THREE.LineSegments(edgeGeom,new THREE.LineBasicMaterial({color:0x9af3ff,transparent:true,opacity:.95,depthTest:false,depthWrite:false}));edge.name='cut_preview_edges';edge.renderOrder=96;group.add(edge);
+ obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
 }
 function updateThreeEditUi(message=null){
  const enabledKeys=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k].active&&segmentState[k].enabled);
