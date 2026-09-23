@@ -314,7 +314,7 @@ function setSectionView(key){
  if(threeRenderMode==='volume')deactivateMedicalVolume();
  sectionViewOpen=true;sectionViewPlane=key;showSectionPlaneOverlay(key);
  if(sectionPosition){sectionPosition.max=planes[key].slider.max;sectionPosition.value=planes[key].slider.value}
- updateSectionClipPlaneWorld();syncSectionClipParent();applySectionClippingMaterials(sceneState?.obj);updateMpr3DPlanePositions();updateSectionViewUi();request3DRender();
+ updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();syncSectionClipParent();applySectionClippingMaterials(sceneState?.obj);updateMpr3DPlanePositions();updateSectionViewUi();request3DRender();
 }
 let analysisRegions=[],nextAnalysisRegionId=1,nextAnalysisColorIndex=0,analysisFocusedRegionId=null,analysisEditTool='select',analysisEditTargetKey=null,analysisEditTargetMode='auto',analysisCutStroke=null,analysisCutScreen=[],analysisPendingCut=null,analysisCutApplying=false;
 function clearThreeEditOverlay(){const ctx=threeEditOverlay?.getContext('2d');ctx?.clearRect(0,0,threeEditOverlay.width,threeEditOverlay.height)}
@@ -3545,7 +3545,7 @@ async function start3D(){
   const step=start.sectionScreenStep,dx=e.clientX-start.x,dy=e.clientY-start.y,delta=step?Math.round((dx*step.x+dy*step.y)/step.len2):Math.round(-dy/8),max=+planes[p].slider.max,idx=Math.max(0,Math.min(max,start.sectionIndex+delta));
   if(idx===+planes[p].slider.value)return;
   planes[p].slider.value=idx;planes[p].label.textContent=idx+1;if(sectionPosition)sectionPosition.value=idx;
-  updateMpr3DPlanePositions();updateSectionClipPlaneWorld();updateSectionViewUi();request3DRender();renderSectionPlaneLive(p);
+  updateMpr3DPlanePositions();updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender();renderSectionPlaneLive(p);
  };
  const drawEditStroke=mode=>{const ctx=threeEditOverlay?.getContext('2d');if(!ctx)return;ctx.clearRect(0,0,threeEditOverlay.width,threeEditOverlay.height);if(!analysisCutScreen.length)return;ctx.save();ctx.strokeStyle='#00e5ff';ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round';ctx.setLineDash(mode==='line'?[8,5]:[]);ctx.beginPath();ctx.moveTo(analysisCutScreen[0].x,analysisCutScreen[0].y);for(let i=1;i<analysisCutScreen.length;i++)ctx.lineTo(analysisCutScreen[i].x,analysisCutScreen[i].y);ctx.stroke();ctx.restore()};
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
