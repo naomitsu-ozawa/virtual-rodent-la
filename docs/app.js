@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-116';const APP_BUILD='116';
+const APP_VERSION='2026.09.23-117';const APP_BUILD='117';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3543,38 +3543,35 @@ async function start3D(){
  const editPoint=e=>{const rect=renderer.domElement.getBoundingClientRect();return{x:e.clientX-rect.left,y:e.clientY-rect.top}};
  const cutSamplesToSurfaceStroke=(samples,mode='pen')=>{
   if(!samples?.length||!sceneState?.obj||!volume)return[];
-  const valid=[];
-  for(let i=0;i<samples.length;i++)if(samples[i]?.surface)valid.push(i);
-  if(!valid.length)return[];
+  const firstHit=samples.findIndex(q=>q?.surface),lastHit=(()=>{for(let i=samples.length-1;i>=0;i--)if(samples[i]?.surface)return i;return-1})();
+  if(firstHit<0||lastHit<=firstHit)return[];
+  const active=samples.slice(firstHit,lastHit+1),valid=[];
+  for(let i=0;i<active.length;i++)if(active[i]?.surface)valid.push(i);
+  if(valid.length<2)return active.filter(q=>q?.surface).map(q=>q.surface);
+  if(mode==='line'){
+   const a=active[valid[0]].surface,b=active[valid[valid.length-1]].surface;
+   return[a,b];
+  }
   const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),rect=renderer.domElement.getBoundingClientRect();
   sceneState.obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
   const toVoxel=(world,meta)=>{
    const local=sceneState.obj.worldToLocal(world.clone());
    return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:{...meta.ray},right:{...meta.right},up:{...meta.up},key:meta.key};
   };
-  const projectAtDepth=(sample,meta,ndcZ)=>{
-   const screen=sample.screen,ndcX=(screen.x/Math.max(rect.width,1))*2-1,ndcY=-(screen.y/Math.max(rect.height,1))*2+1;
-   return toVoxel(new THREE.Vector3(ndcX,ndcY,ndcZ).unproject(camera),meta);
-  };
-  const depthAt=i=>samples[i].surface.hit.point.clone().project(camera).z;
-  const out=new Array(samples.length);
-  for(const i of valid)out[i]=samples[i].surface;
-  const first=valid[0],last=valid[valid.length-1],firstMeta=samples[first].surface,lastMeta=samples[last].surface,firstDepth=depthAt(first),lastDepth=depthAt(last);
-  for(let i=0;i<first;i++)out[i]=projectAtDepth(samples[i],firstMeta,firstDepth);
-  for(let i=last+1;i<samples.length;i++)out[i]=projectAtDepth(samples[i],lastMeta,lastDepth);
+  const out=new Array(active.length);
+  for(const i of valid)out[i]=active[i].surface;
   for(let vi=0;vi<valid.length-1;vi++){
    const ia=valid[vi],ib=valid[vi+1];if(ib<=ia+1)continue;
-   const sa=samples[ia].surface,sb=samples[ib].surface,za=depthAt(ia),zb=depthAt(ib);
+   const sa=active[ia].surface,sb=active[ib].surface,wa=sa.hit.point.clone(),wb=sb.hit.point.clone(),pa=wa.clone().project(camera),pb=wb.clone().project(camera);
    let total=0;const dist=new Float64Array(ib-ia+1);
-   for(let i=ia+1;i<=ib;i++){const p0=samples[i-1].screen,p1=samples[i].screen;total+=Math.hypot(p1.x-p0.x,p1.y-p0.y);dist[i-ia]=total}
+   for(let i=ia+1;i<=ib;i++){const p0=active[i-1].screen,p1=active[i].screen;total+=Math.hypot(p1.x-p0.x,p1.y-p0.y);dist[i-ia]=total}
    for(let i=ia+1;i<ib;i++){
-    const t=total>1e-9?dist[i-ia]/total:(i-ia)/(ib-ia),meta=t<.5?sa:sb;
-    out[i]=projectAtDepth(samples[i],meta,za+(zb-za)*t);
+    const screen=active[i].screen,t=total>1e-9?dist[i-ia]/total:(i-ia)/(ib-ia),ndcX=(screen.x/Math.max(rect.width,1))*2-1,ndcY=-(screen.y/Math.max(rect.height,1))*2+1,ndcZ=pa.z+(pb.z-pa.z)*t;
+    const world=new THREE.Vector3(ndcX,ndcY,ndcZ).unproject(camera);
+    out[i]=toVoxel(world,sa);
    }
   }
-  const full=out.filter(Boolean);
-  if(mode==='line'&&full.length>1)return[full[0],full[full.length-1]];
-  return full;
+  return out.filter(Boolean);
  };
  const sectionDragHit=e=>{
   if(!sectionViewOpen||!sectionViewPlane||analysisEditTool!=='select'||threeRenderMode!=='surface'||!sceneState.obj)return null;
@@ -4414,7 +4411,7 @@ async function rebuildCutResultPreview(revision,pending){
     if(!m)continue;
     if(m.color?.set)m.color.set(0xff5a36);
     if(m.emissive?.set)m.emissive.set(0xff3b12);
-    m.emissiveIntensity=1.15;m.transparent=true;m.opacity=.88;m.depthTest=false;m.depthWrite=false;
+    m.emissiveIntensity=1.15;m.transparent=true;m.opacity=.88;m.depthTest=true;m.depthWrite=false;
     if('polygonOffset' in m){m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2}
    }
    o.renderOrder=120;
@@ -4452,7 +4449,7 @@ function updateCutPreview(point=null){
  const ribbonFaces=(negRow,posRow)=>{const out=[];for(let i=0;i<negRow.length-1;i++)quad(out,negRow[i],posRow[i],posRow[i+1],negRow[i+1]);return out};
  const makeSurface=(faces,color,opacity,name,order)=>{
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(faces,3));g.computeVertexNormals();
-  const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
+  const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthTest:false,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
   m.name=name;m.renderOrder=order;return m;
  };
  const group=new THREE.Group();group.name='cut_preview';
