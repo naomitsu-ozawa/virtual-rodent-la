@@ -4,14 +4,19 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-109';const APP_BUILD='109';
+const APP_VERSION='2026.09.23-110';const APP_BUILD='110';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
   if(!res.ok)return;
   const latest=await res.json(),build=String(latest?.build||'');
   if(!build||build===String(APP_BUILD))return;
-  console.warn('Build marker differs from loaded app.',{loaded:String(APP_BUILD),published:build});
+  const url=new URL(location.href),requested=url.searchParams.get('build');
+  console.warn('Build marker differs from loaded app.',{loaded:String(APP_BUILD),published:build,requested});
+  if(requested===build)return;
+  url.searchParams.set('build',build);
+  url.searchParams.set('_',Date.now().toString(36));
+  location.replace(url.toString());
  }catch(e){console.warn('Version check failed.',e)}
 }
 
