@@ -3405,7 +3405,10 @@ function updateMpr3DPlanePositions(){
 function refreshMpr3DPlaneTexture(p){
  const entry=sceneState?.mprPlaneEntries?.[p];if(!entry||!mpr3DVisibility[p])return;
  const src=planes[p]?.canvas,dst=entry.previewCanvas;
- if(src?.width&&src?.height&&dst){
+ const useFastPreview=!!sceneState?.mprInteractionActive&&!(sectionViewOpen&&sectionViewPlane===p);
+ let painted=false;
+ if(useFastPreview)painted=paintMpr3DPreview(p,+planes[p].slider.value,dst);
+ if(!painted&&src?.width&&src?.height&&dst){
   if(dst.width!==src.width)dst.width=src.width;
   if(dst.height!==src.height)dst.height=src.height;
   const ctx=dst.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(src,0,0);
