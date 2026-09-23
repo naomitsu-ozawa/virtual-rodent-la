@@ -4950,10 +4950,6 @@ async function render3DSourceBacked(v){
  threeLabel.textContent=(sceneState.backend||'3D')+' · building…';set3DBusy(true,'3D構築中…');
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return}
-  if(strongSmooth){
-   for(const {key} of streamActive)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);
-   setGpuComputeBackend('WEBGPU MESH · CPU GLOBAL SMOOTH');
-  }
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);
   syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
@@ -5000,6 +4996,10 @@ async function render3DSourceBacked(v){
    }
   }
   if(revision!==sourceRenderRevision){dispose(group);return}
+  if(strongSmooth){
+   for(const {key} of streamActive)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);
+   setGpuComputeBackend('WEBGPU MESH · CPU GLOBAL SMOOTH');
+  }
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
   const resident=residentTileCount>0&&cpuTileCount===0,mixed=residentTileCount>0&&cpuTileCount>0;threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':mixed?' · GPU/CPU full resolution':' · full resolution');
@@ -5019,10 +5019,6 @@ async function render3DMemoryGpu(v){
  threeLabel.textContent=(sceneState.backend||'3D')+' · GPU building…';set3DBusy(true,'3D構築中…');
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return null}
-  if(strongSmooth){
-   for(const {key} of active)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);
-   setGpuComputeBackend('WEBGPU MESH · CPU GLOBAL SMOOTH');
-  }
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }
@@ -5043,6 +5039,10 @@ async function render3DMemoryGpu(v){
    if(flush){for(const {key} of active)flushSegment(key,lastZ);footer.textContent='3D building · '+gpuFilterRuntime.lastBackend+' · '+(lastZ+1)+' / '+v.slices;set3DBusy(true,'3D構築中… '+(lastZ+1)+' / '+v.slices);await frameYield()}
   }
   if(revision!==sourceRenderRevision){dispose(group);return null}
+  if(strongSmooth){
+   for(const {key} of active)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);
+   setGpuComputeBackend('WEBGPU MESH · CPU GLOBAL SMOOTH');
+  }
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}const resident=residentTileCount>0&&cpuTileCount===0,mixed=residentTileCount>0&&cpuTileCount>0;threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':mixed?' · GPU/CPU full resolution':' · full resolution · GPU');if(resident){setGpuComputeBackend(surfaceSmoothingActive()?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');footer.textContent='3D full resolution · GPU resident · no vertex readback'}else if(mixed){setGpuComputeBackend('GPU+CPU FULL RESOLUTION');footer.textContent='3D full resolution · GPU+CPU exact geometry · GPU-resident evaluation unavailable'}else footer.textContent='3D full resolution · '+gpuFilterRuntime.lastBackend;set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){
