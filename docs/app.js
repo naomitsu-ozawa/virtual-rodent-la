@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-82';const APP_BUILD='82';
+const APP_VERSION='2026.09.23-83';const APP_BUILD='83';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -684,24 +684,23 @@ async function prepareSourceSegmentPostprocess(key){
   renderAll();footer.textContent=currentLanguage==='ja'?(tr(key)||key)+'のセグメント処理を更新しました':'Updated segment processing for '+(tr(key)||key);
  }catch(e){if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);footer.textContent='Segment processing error: '+String(e.message||e)}}
 }
-function refreshAnalysisSurfacesForSmoothing(v=current3DVolume||volume){
- if(!v||!analysisRegions.length)return;
- const regions=[...analysisRegions],focus=analysisFocusedRegionId;
- void (async()=>{
-  for(const region of regions){
-   if(!analysisRegions.includes(region))continue;
-   disposeAnalysisRegionMesh(region);await attachAnalysisRegion(region,v);
-  }
-  if(focus!=null&&analysisRegionById(focus))setAnalysisFocusedRegion(focus);else{request3DRender();renderAnalysisResults()}
- })().catch(e=>{console.error('Analysis smoothing refresh failed.',e);request3DRender()});
-}
 let smoothingRefreshTimer=null;
-function refreshSmoothingSurfaces(){
- clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=null;scheduleSegment3D();refreshAnalysisSurfacesForSmoothing();
+function markSmoothingSettingsChanged(){
+ clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=null;
+ mark3DStale();
 }
-surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;refreshSmoothingSurfaces()};
-surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=null};
-surfaceSmoothStrength.onchange=()=>refreshSmoothingSurfaces();
+surfaceSmoothEnabled.onchange=()=>{
+ surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;
+ markSmoothingSettingsChanged();
+};
+surfaceSmoothStrength.oninput=()=>{
+ surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);
+ markSmoothingSettingsChanged();
+};
+surfaceSmoothStrength.onchange=()=>{
+ surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);
+ markSmoothingSettingsChanged();
+};
 const liveFilterState={timer:null,base:null,key:null};
 function beginLiveFilter(key){
  if(!volume)return;
