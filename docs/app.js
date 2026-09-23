@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-107';const APP_BUILD='107';
+const APP_VERSION='2026.09.23-108';const APP_BUILD='108';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3551,7 +3551,7 @@ async function start3D(){
   sceneState.obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
   const toVoxel=(world,meta)=>{
    const local=sceneState.obj.worldToLocal(world.clone());
-   return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:{...meta.ray},right:{...meta.right},up:{...meta.up},key:meta.key};
+   return{x:(local.x/scale+px/2)/vx,y:(-local.y/scale+py/2)/vy,z:(local.z/scale+pz/2)/vz,ray:{...meta.ray},normal:meta.normal?{...meta.normal}:undefined,right:{...meta.right},up:{...meta.up},key:meta.key};
   };
   const out=new Array(active.length);
   for(const i of valid)out[i]=active[i].surface;
@@ -3806,7 +3806,13 @@ function surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey=null){
  if(!hit)return null;
  const key=segmentKeyFromIntersection(hit);if(!key)return null;
  const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=sceneState.obj.worldToLocal(hit.point.clone()),inv=sceneState.obj.matrixWorld.clone().invert(),toVoxelDir=vec=>{const q=vec.clone().transformDirection(inv).normalize();return{x:q.x,y:-q.y,z:q.z}},localRay=toVoxelDir(raycaster.ray.direction),cameraRight=toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0)),cameraUp=toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1));
- return{x:Math.max(0,Math.min(w-1,Math.round((local.x/scale+px/2)/vx))),y:Math.max(0,Math.min(h-1,Math.round((-local.y/scale+py/2)/vy))),z:Math.max(0,Math.min(d-1,Math.round((local.z/scale+pz/2)/vz))),ray:localRay,right:cameraRight,up:cameraUp,hit,key};
+ let inwardNormal=localRay;
+ if(hit.face?.normal){
+  const normalMatrix=new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld),worldNormal=hit.face.normal.clone().applyMatrix3(normalMatrix).normalize(),localNormal=toVoxelDir(worldNormal);
+  const dot=localNormal.x*localRay.x+localNormal.y*localRay.y+localNormal.z*localRay.z;
+  inwardNormal=dot<0?{x:-localNormal.x,y:-localNormal.y,z:-localNormal.z}:localNormal;
+ }
+ return{x:Math.max(0,Math.min(w-1,Math.round((local.x/scale+px/2)/vx))),y:Math.max(0,Math.min(h-1,Math.round((-local.y/scale+py/2)/vy))),z:Math.max(0,Math.min(d-1,Math.round((local.z/scale+pz/2)/vz))),ray:localRay,normal:inwardNormal,right:cameraRight,up:cameraUp,hit,key};
 }
 function cutPointerVoxel(event,canvas,camera,preferredKey=null){
  return surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey);
@@ -4240,7 +4246,7 @@ async function resetFocusedSegmentEdit(){
 }
 function cutDirectionFromPoint(p,yawDeg=0,pitchDeg=0){
  const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
- const base=norm(p?.ray||{x:0,y:0,z:1}),right=norm(p?.right||{x:1,y:0,z:0}),up=norm(p?.up||{x:0,y:1,z:0});
+ const base=norm(p?.normal||p?.ray||{x:0,y:0,z:1}),right=norm(p?.right||{x:1,y:0,z:0}),up=norm(p?.up||{x:0,y:1,z:0});
  const yaw=yawDeg*Math.PI/180,pitch=pitchDeg*Math.PI/180,cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
  return norm({x:base.x*cy*cp+right.x*sy*cp+up.x*sp,y:base.y*cy*cp+right.y*sy*cp+up.y*sp,z:base.z*cy*cp+right.z*sy*cp+up.z*sp});
 }
