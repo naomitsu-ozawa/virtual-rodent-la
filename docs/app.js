@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-78';const APP_BUILD='78';
+const APP_VERSION='2026.09.23-79';const APP_BUILD='79';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4709,7 +4709,7 @@ async function smoothIsosurfaceGeometry(v,mask,strength){
  }
  if(!indices.length)return null;
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);
- taubinSmoothGeometry(geometry,Math.min(1.5,.25+Math.max(0,strength)*.18));geometry.computeVertexNormals();geometry.computeBoundingSphere();return geometry;
+ taubinSmoothGeometry(geometry,Math.max(0,strength));geometry.computeVertexNormals();geometry.computeBoundingSphere();return geometry;
 }
 function maskFromAnalysisRuns(v,runs){
  const out=new Uint8Array(v.columns*v.rows*v.slices),w=v.columns,h=v.rows;
