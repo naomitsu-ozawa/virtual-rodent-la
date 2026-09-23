@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-56';const APP_BUILD='56';
+const APP_VERSION='2026.09.23-57';const APP_BUILD='57';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -2136,7 +2136,17 @@ function clearMpr3DPreviewCache(){
  mpr3DPreviewCache.token++;mpr3DPreviewCache.signature='';mpr3DPreviewCache.buildingSignature='';mpr3DPreviewCache.building=false;mpr3DPreviewCache.planes={axial:null,coronal:null,sagittal:null};mpr3DPreviewCache.dims={axial:null,coronal:null,sagittal:null};
 }
 function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.clear();sourceSliceCache.bytes=0;sourceOrthogonalPlaneCache.clear();sourceOrthogonalPlaneCacheBytes=0;clearMpr3DPreviewCache()}
-function mpr3DPreviewMaxSide(){return navigator.maxTouchPoints>0?160:224}
+function mpr3DPreviewPlan(v){
+ const touch=navigator.maxTouchPoints>0,target=touch?384:512,budget=(touch?96:192)*1024*1024,w=v.columns,h=v.rows,d=v.slices;
+ const bytesFor=side=>{
+  const aw=Math.min(w,side),ah=Math.min(h,side),cw=Math.min(w,side),ch=Math.min(d,side),sw=Math.min(h,side),sh=Math.min(d,side);
+  return d*aw*ah+h*cw*ch+w*sw*sh;
+ };
+ let side=Math.min(target,Math.max(w,h,d));
+ while(side>224&&bytesFor(side)>budget)side-=32;
+ if(bytesFor(side)>budget)side=224;
+ return{side,bytes:bytesFor(side)};
+}
 function mpr3DPreviewMap(i,n,outN){return outN<=1?0:Math.max(0,Math.min(n-1,Math.round(i*(n-1)/(outN-1))))}
 function mpr3DPreviewSignature(v,stages=sourceFilterStages()){return [v?.series?.seriesUid||'',v?.columns||0,v?.rows||0,v?.slices||0,v?.min||0,v?.max||0,sourceFilterSignature(stages)].join('|')}
 async function ensureMpr3DPreviewCache(){
@@ -2144,7 +2154,7 @@ async function ensureMpr3DPreviewCache(){
  const stages=sourceFilterStages(),signature=mpr3DPreviewSignature(v,stages);
  if(mpr3DPreviewCache.signature===signature&&mpr3DPreviewCache.planes.axial)return true;
  if(mpr3DPreviewCache.building&&mpr3DPreviewCache.buildingSignature===signature)return false;
- const token=++mpr3DPreviewCache.token,maxSide=mpr3DPreviewMaxSide(),w=v.columns,h=v.rows,d=v.slices,series=v.series,min=Number.isFinite(v.min)?v.min:-1024,max=Number.isFinite(v.max)&&v.max>min?v.max:min+1,scale=255/(max-min);
+ const token=++mpr3DPreviewCache.token,plan=mpr3DPreviewPlan(v),maxSide=plan.side,w=v.columns,h=v.rows,d=v.slices,series=v.series,min=Number.isFinite(v.min)?v.min:-1024,max=Number.isFinite(v.max)&&v.max>min?v.max:min+1,scale=255/(max-min);
  const dims={axial:[Math.min(w,maxSide),Math.min(h,maxSide)],coronal:[Math.min(w,maxSide),Math.min(d,maxSide)],sagittal:[Math.min(h,maxSide),Math.min(d,maxSide)]};
  const axial=new Uint8Array(d*dims.axial[0]*dims.axial[1]),coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
  const axX=Array.from({length:dims.axial[0]},(_,i)=>mpr3DPreviewMap(i,w,dims.axial[0])),axY=Array.from({length:dims.axial[1]},(_,i)=>mpr3DPreviewMap(i,h,dims.axial[1]));
