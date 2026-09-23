@@ -4127,17 +4127,26 @@ function setBaseSegmentSurfaceVisibility(key,visible){
  });
 }
 async function buildEditableRunsGroup(v,runs,key,shouldContinue=null){
- const seg=segmentState[key];
- if(surfaceSmoothingActive()){
+ const seg=segmentState[key],smooth=surfaceSmoothingActive();
+ if(smooth&&fullVolumeSmoothIsosurfaceFeasible(v)){
   if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');
   const mask=maskFromAnalysisRuns(v,runs),mesh=await buildSmoothIsoMesh(v,mask,seg,key,true);
   if(shouldContinue&&!shouldContinue()){if(mesh)dispose(mesh);throw new Error('__SUPERSEDED__')}
   if(!mesh)return null;const group=new THREE.Group();group.add(mesh);return group;
  }
  const coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),group=new THREE.Group(),builder=new Float32FaceBuilder(),limit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
- const params={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:true};
- const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions,false,null,false),mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(params));mesh.name='edited_segment_'+key+'_'+z;mesh.userData.segmentKey=key;mesh.userData.editSurface=true;mesh.userData.displayScale=coords.scale;group.add(mesh)};
- try{for(let z=0;z<v.slices;z++){if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');appendAnalysisRunBoundaryFaces(builder,runs[z],z?runs[z-1]:null,z+1<v.slices?runs[z+1]:null,coords,z);if(builder.length>=limit)flush(z);if((z&15)===0)await frameYield()}flush(v.slices-1);return group.children.length?group:null}catch(e){dispose(group);throw e}
+ const params={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!smooth};
+ const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions,false,null,!smooth),mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(params));mesh.name='edited_segment_'+key+'_'+z;mesh.userData.segmentKey=key;mesh.userData.editSurface=true;mesh.userData.displayScale=coords.scale;group.add(mesh)};
+ try{
+  for(let z=0;z<v.slices;z++){
+   if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');
+   appendAnalysisRunBoundaryFaces(builder,runs[z],z?runs[z-1]:null,z+1<v.slices?runs[z+1]:null,coords,z);if(builder.length>=limit)flush(z);
+   if((z&15)===0){await frameYield();if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__')}
+  }
+  flush(v.slices-1);
+  if(smooth)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);
+  return group.children.length?group:null;
+ }catch(e){dispose(group);throw e}
 }
 function segmentUsesRunSurface(key,v=current3DVolume||volume){
  return segmentEditActive(key)||!!(v?.sourceBacked&&segmentState[key]?.active&&segmentState[key]?.enabled&&segmentNeedsGlobalMask(segmentState[key]));
