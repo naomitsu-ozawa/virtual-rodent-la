@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-81';const APP_BUILD='81';
+const APP_VERSION='2026.09.23-82';const APP_BUILD='82';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -696,13 +696,8 @@ function refreshAnalysisSurfacesForSmoothing(v=current3DVolume||volume){
  })().catch(e=>{console.error('Analysis smoothing refresh failed.',e);request3DRender()});
 }
 let smoothingRefreshTimer=null;
-function rebuildSmoothing3DWhenReady(){
- if(!volume||threeRenderMode!=='surface')return;
- if(threeDApplying){clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=setTimeout(rebuildSmoothing3DWhenReady,120);return}
- void rebuildCurrent3D();
-}
 function refreshSmoothingSurfaces(){
- clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=null;scheduleSegment3D();refreshAnalysisSurfacesForSmoothing();rebuildSmoothing3DWhenReady();
+ clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=null;scheduleSegment3D();refreshAnalysisSurfacesForSmoothing();
 }
 surfaceSmoothEnabled.onchange=()=>{surfaceSmoothStrength.disabled=!surfaceSmoothEnabled.checked||!volume;refreshSmoothingSurfaces()};
 surfaceSmoothStrength.oninput=()=>{surfaceSmoothValue.value=(+surfaceSmoothStrength.value).toFixed(2);clearTimeout(smoothingRefreshTimer);smoothingRefreshTimer=null};
