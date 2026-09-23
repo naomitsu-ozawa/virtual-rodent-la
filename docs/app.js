@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.23-48';const APP_BUILD='48';
+const APP_VERSION='2026.09.23-49';const APP_BUILD='49';
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
@@ -4101,7 +4101,7 @@ function cutRunsFromVoxelStroke(v,points,widthMm,depthMm,yawDeg=0,pitchDeg=0){
  for(const p of samples){
   const ray=p.ray;if(!ray){stamp(p);continue}
   const normVec=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}},base=normVec(ray),right=normVec(p.right||{x:1,y:0,z:0}),up=normVec(p.up||{x:0,y:1,z:0}),yaw=yawDeg*Math.PI/180,pitch=pitchDeg*Math.PI/180,cy=Math.cos(yaw),syaw=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch),r=normVec({x:base.x*cy*cp+right.x*syaw*cp+up.x*sp,y:base.y*cy*cp+right.y*syaw*cp+up.y*sp,z:base.z*cy*cp+right.z*syaw*cp+up.z*sp}),bounds=rayBounds(p,r);if(!bounds){stamp(p);continue}
-  const start=Math.max(0,bounds[0]),end=Math.min(bounds[1],Math.max(.1,depthMm));if(end<start)continue,steps=Math.max(1,Math.ceil((end-start)/stepMm));
+  const start=Math.max(0,bounds[0]),end=Math.min(bounds[1],Math.max(.1,depthMm));if(end<start)continue;const steps=Math.max(1,Math.ceil((end-start)/stepMm));
   for(let i=0;i<=steps;i++){const t=start+(end-start)*(i/steps),q={x:p.x+r.x*t/sx,y:p.y+r.y*t/sy,z:p.z+r.z*t/sz},key=Math.round(q.x)+','+Math.round(q.y)+','+Math.round(q.z);if(seen.has(key))continue;seen.add(key);stamp(q)}
  }
  return rows.map(rowsToRunSlice);
