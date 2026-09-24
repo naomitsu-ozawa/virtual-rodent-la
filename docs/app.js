@@ -1184,7 +1184,7 @@ function residentGpuMprAvailable(v=sourceVolume||volume){
 async function prepareResidentGpuVolume(v){
  const mv=sceneState?.medicalVolume;if(!shouldAutoPrepareResidentGpu(v))return false;
  try{
-  await mv.ensure(v);residentMprReadbackDisabled=false;setGpuComputeBackend('WEBGPU VOLUME RESIDENT');return true;
+  await mv.ensure(v,{prepareBricks:false});residentMprReadbackDisabled=false;setGpuComputeBackend('WEBGPU VOLUME RESIDENT');return true;
  }catch(e){
   console.warn('GPU resident volume unavailable; using source-backed MPR fallback.',e);residentMprReadbackDisabled=true;setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);return false;
  }finally{set3DBusy(false)}
