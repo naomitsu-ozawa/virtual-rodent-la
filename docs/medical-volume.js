@@ -233,13 +233,16 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let kind=p.plane.x;let index=p.plane.y;let outW=p.plane.z;let outH=p.plane.w;
  if(i>=outW*outH){return;}
  let ox=i%outW;let oy=i/outW;
+ let sx=min(p.dims.x-1u,(ox*p.dims.x)/outW);
+ let sy=min(p.dims.y-1u,(oy*p.dims.y)/outH);
+ let sz=min(p.dims.z-1u,(oy*p.dims.z)/outH);
  var x:u32;var y:u32;var z:u32;
  if(kind==0u){
-  x=ox;y=oy;z=index;
+  x=sx;y=sy;z=index;
  }else if(kind==1u){
-  x=ox;y=index;z=p.dims.z-1u-oy;
+  x=sx;y=index;z=p.dims.z-1u-sz;
  }else{
-  x=index;y=ox;z=p.dims.z-1u-oy;
+  x=index;y=min(p.dims.y-1u,(ox*p.dims.y)/outW);z=p.dims.z-1u-sz;
  }
  outValues[i]=huAt(x,y,z);
 }`;
@@ -259,7 +262,7 @@ export class MedicalVolumeRenderer{
   this.pipeline=this.device.createRenderPipeline({label:'VRL medical volume raycast',layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
   const pickModule=this.device.createShaderModule({label:'VRL medical volume pick',code:safeWgsl(volumePickShader())});this.pickPipeline=this.device.createComputePipeline({label:'VRL medical volume pick',layout:'auto',compute:{module:pickModule,entryPoint:'main'}});this.pickBuffer=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});this.pickOutput=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
   const brickModule=this.device.createShaderModule({label:'VRL volume minmax bricks',code:safeWgsl(brickShader())});this.brickPipeline=this.device.createComputePipeline({label:'VRL volume minmax bricks',layout:'auto',compute:{module:brickModule,entryPoint:'main'}});this.brickBuffer=null;this.brickDims=[1,1,1];this.brickSize=8;
-  const mprModule=this.device.createShaderModule({label:'VRL resident volume MPR',code:safeWgsl(mprPlaneShader())});this.mprPipeline=this.device.createComputePipeline({label:'VRL resident volume MPR',layout:'auto',compute:{module:mprModule,entryPoint:'main'}});this.mprUniformBuffer=this.device.createBuffer({size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});this.mprReadSerial=Promise.resolve();
+  const mprModule=this.device.createShaderModule({label:'VRL resident volume MPR',code:safeWgsl(mprPlaneShader())});this.mprPipeline=this.device.createComputePipeline({label:'VRL resident volume MPR',layout:'auto',compute:{module:mprModule,entryPoint:'main'}});this.mprUniformBuffer=this.device.createBuffer({size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
   this.texture=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.active=false;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;
  }
  support(v){
@@ -319,13 +322,18 @@ export class MedicalVolumeRenderer{
  hasResident(v){
   return !!(this.texture&&v?.series&&this.seriesId===v.series.id);
  }
- extractPlane(v,plane,index){
+ extractPlane(v,plane,index,{maxSide=0}={}){
   const run=async()=>{
    if(!this.hasResident(v))return null;
    const w=v.columns,h=v.rows,d=v.slices,kind=plane==='axial'?0:plane==='coronal'?1:plane==='sagittal'?2:-1;
    if(kind<0)throw new Error('Unsupported MPR plane: '+plane);
    const maxIndex=kind===0?d-1:kind===1?h-1:w-1;if(index<0||index>maxIndex)throw new Error('MPR plane index out of range');
-   const outW=kind===0?w:kind===1?w:h,outH=kind===0?h:d,count=outW*outH,bytes=count*4;
+   const fullW=kind===0?w:kind===1?w:h,fullH=kind===0?h:d;
+   let outW=fullW,outH=fullH;
+   if(maxSide>0&&Math.max(fullW,fullH)>maxSide){
+    const scale=maxSide/Math.max(fullW,fullH);outW=Math.max(1,Math.round(fullW*scale));outH=Math.max(1,Math.round(fullH*scale));
+   }
+   const count=outW*outH,bytes=count*4;
    if(bytes>(this.device.limits.maxStorageBufferBindingSize||bytes))return null;
    const paramsBytes=new ArrayBuffer(48),u32=new Uint32Array(paramsBytes),f32=new Float32Array(paramsBytes);
    u32.set([w,h,d,0,kind,index,outW,outH],0);f32.set([this.calibration.slope,this.calibration.intercept,this.calibration.signedBias,0],8);
@@ -334,12 +342,12 @@ export class MedicalVolumeRenderer{
    try{
     const group=this.device.createBindGroup({layout:this.mprPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.mprUniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:2,resource:{buffer:output}}]}),encoder=this.device.createCommandEncoder({label:'VRL resident MPR extract'}),pass=encoder.beginComputePass();
     pass.setPipeline(this.mprPipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(count/256));pass.end();encoder.copyBufferToBuffer(output,0,read,0,bytes);this.device.queue.submit([encoder.finish()]);
-    await read.mapAsync(GPUMapMode.READ);const values=new Float32Array(read.getMappedRange().slice(0,bytes));read.unmap();return values;
+    await read.mapAsync(GPUMapMode.READ);const values=new Float32Array(read.getMappedRange().slice(0,bytes));read.unmap();return{values,dims:[outW,outH],fullDims:[fullW,fullH]};
    }finally{
     try{if(read.mapState==='mapped')read.unmap()}catch{}output.destroy();read.destroy();
    }
   };
-  const task=this.mprReadSerial.then(run,run);this.mprReadSerial=task.catch(()=>{});return task;
+  return run();
  }
  setActive(active){
   this.active=!!active;this.canvas.style.display=this.active?'block':'none';
