@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-135';const APP_BUILD='135';
+const APP_VERSION='2026.09.24-136';const APP_BUILD='136';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -925,7 +925,7 @@ const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 const mpr3DOrthoSliding={coronal:false,sagittal:false};
 const orthogonalHighResPrefetch={coronal:{running:false,next:null},sagittal:{running:false,next:null}};
 function prefetchOrthogonalHighRes(p,idx){
- if((p!=='coronal'&&p!=='sagittal')||!volume?.sourceBacked||sourceFilterStages().length||volume.mprData||(p==='sagittal'&&volume.mprSagittalAll))return;
+ if((p!=='coronal'&&p!=='sagittal')||!volume?.sourceBacked||sourceFilterStages().length||volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))return;
  const state=orthogonalHighResPrefetch[p];state.next=idx;if(state.running)return;state.running=true;
  void(async()=>{
   try{
@@ -961,8 +961,8 @@ function schedulePlaneRender(p,immediate=false){
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
  if(p==='axial')refreshMpr3DPlaneTexture(p);
- if(volume?.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&volume.mprSagittalAll))){
-  const values=cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
+ if(volume?.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))){
+  const values=p==='sagittal'&&volume.mprSagittalDisplayAll&&!volume.mprSagittalAll?cachedSagittalDisplayPlane(volume,idx):cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
   if(values){paintSourcePlane(planes[p],dims,values,p,idx);return}
  }
  if(volume?.sourceBacked&&p!=='axial'&&!sourceFilterStages().length){
@@ -1150,7 +1150,7 @@ async function selectSeries(s){
  }finally{prog.classList.add('is-hidden');busy(false)}
 }
 function openSourceBackedVolume(s){
- return{data:null,mprData:null,mprPlaneBuffers:null,sourceBacked:true,series:s,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min:s.min,max:s.max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:'DICOM source'};
+ return{data:null,mprData:null,mprPlaneBuffers:null,mprSagittalDisplayAll:null,mprSagittalDisplayBuffer:null,mprSagittalDisplayMin:null,mprSagittalDisplayMax:null,sourceBacked:true,series:s,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min:s.min,max:s.max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:'DICOM source'};
 }
 function sourceMprCacheLimit(){
  const deviceMemory=Number(navigator.deviceMemory)||0;
@@ -1205,6 +1205,12 @@ async function prepareSourceMprCache(v,onProgress){
  v.mprPlaneBuffers={coronal:coronalAll?null:new Ctor(w*d),sagittal:sagittalAll?null:new Ctor(h*d)};
  if(Number.isFinite(min))v.min=min;if(Number.isFinite(max))v.max=max;
  return true;
+}
+function cachedSagittalDisplayPlane(v,idx){
+ const data=v?.mprSagittalDisplayAll,h=v?.rows||0,d=v?.slices||0;if(!data||idx<0||idx>=v.columns)return null;
+ const n=h*d,off=idx*n,src=data.subarray(off,off+n),out=v.mprSagittalDisplayBuffer?.length===n?v.mprSagittalDisplayBuffer:(v.mprSagittalDisplayBuffer=new Float32Array(n)),min=v.mprSagittalDisplayMin,max=v.mprSagittalDisplayMax,scale=(max-min)/65535;
+ for(let i=0;i<n;i++)out[i]=min+src[i]*scale;
+ return out;
 }
 function cachedSourceMprPlane(v,p,idx){
  const w=v?.columns||0,h=v?.rows||0,d=v?.slices||0;
@@ -2266,10 +2272,10 @@ async function ensureMpr3DPreviewCache(){
  const token=++mpr3DPreviewCache.token,plan=mpr3DPreviewPlan(v),maxSide=plan.side,w=v.columns,h=v.rows,d=v.slices,min=Number.isFinite(v.min)?v.min:-1024,max=Number.isFinite(v.max)&&v.max>min?v.max:min+1,scale=255/(max-min);
  const dims={axial:null,coronal:[Math.min(w,maxSide),Math.min(d,maxSide)],sagittal:[Math.min(h,maxSide),Math.min(d,maxSide)]};
  const coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
- let fullSagittal=null;
- if(canSource&&!stages.length&&!v.mprSagittalAll&&isDesktopMac()){
-  const Ctor=series.compact?Int16Array:Float32Array,bytes=w*h*d*Ctor.BYTES_PER_ELEMENT,hardLimit=1792*1024*1024;
-  if(bytes<=hardLimit)try{fullSagittal=new Ctor(w*h*d)}catch{}
+ let fullSagittal16=null;
+ if(canSource&&!stages.length&&!v.mprSagittalAll&&!v.mprSagittalDisplayAll){
+  const bytes=w*h*d*2,hardLimit=navigator.maxTouchPoints>0?1024*1024*1024:3072*1024*1024;
+  if(bytes<=hardLimit)try{fullSagittal16=new Uint16Array(w*h*d)}catch{}
  }
  const corX=Array.from({length:dims.coronal[0]},(_,i)=>mpr3DPreviewMap(i,w,dims.coronal[0])),sagY=Array.from({length:dims.sagittal[0]},(_,i)=>mpr3DPreviewMap(i,h,dims.sagittal[0]));
  const corRows=new Map(),sagRows=new Map();
@@ -2288,9 +2294,9 @@ async function ensureMpr3DPreviewCache(){
    }
    for(let local=0;local<depth;local++){
     const z=z0+local,src=block?block.subarray(local*plane,(local+1)*plane):(v.mprData?v.mprData.subarray(z*plane,(z+1)*plane):await getCachedSourceSlice(series.slices[z]));
-    if(fullSagittal){
-     const rz=d-1-z;
-     for(let y=0;y<h;y++){const sy=y*w;for(let x=0;x<w;x++)fullSagittal[(x*d+rz)*h+y]=src[sy+x]}
+    if(fullSagittal16){
+     const rz=d-1-z,q16Scale=65535/Math.max(max-min,1e-12);
+     for(let y=0;y<h;y++){const sy=y*w;for(let x=0;x<w;x++)fullSagittal16[(x*d+rz)*h+y]=Math.max(0,Math.min(65535,Math.round((src[sy+x]-min)*q16Scale)))}
     }
     const cr=corRows.get(z);if(cr){const cw=dims.coronal[0],ch=dims.coronal[1];for(const py of cr)for(let y=0;y<h;y++){const row=y*cw*ch+py*cw,sy=y*w;for(let px=0;px<cw;px++)coronal[row+px]=q(src[sy+corX[px]])}}
     const sr=sagRows.get(z);if(sr){const sw=dims.sagittal[0],sh=dims.sagittal[1];for(const py of sr)for(let x=0;x<w;x++){const row=x*sw*sh+py*sw;for(let px=0;px<sw;px++)sagittal[row+px]=q(src[sagY[px]*w+x])}}
@@ -2298,7 +2304,7 @@ async function ensureMpr3DPreviewCache(){
    if((z0&7)===0)await frameYield();
   }
   if(token!==mpr3DPreviewCache.token||volume!==v)throw new Error('__SUPERSEDED__');
-  if(fullSagittal){v.mprSagittalAll=fullSagittal;v.mprCtor=fullSagittal.constructor;if(!v.mprPlaneBuffers)v.mprPlaneBuffers={coronal:null,sagittal:null}}
+  if(fullSagittal16){v.mprSagittalDisplayAll=fullSagittal16;v.mprSagittalDisplayMin=min;v.mprSagittalDisplayMax=max;v.mprSagittalDisplayBuffer=new Float32Array(h*d)}
   mpr3DPreviewCache.signature=signature;mpr3DPreviewCache.min=min;mpr3DPreviewCache.max=max;mpr3DPreviewCache.dims=dims;mpr3DPreviewCache.planes={axial:null,coronal,sagittal};
   for(const p of ['coronal','sagittal'])refreshMpr3DPlaneTexture(p);
   return true;
@@ -3399,8 +3405,8 @@ function paintSourcePlane(c,dims,values,p='axial',idx=0){
 async function renderPlaneSourceBacked(p,revision,idx){
  const c=planes[p],series=volume.series;c.label.textContent=idx+1;if(revision!==planeRenderRevision[p])return;
  try{
-  if(!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&volume.mprSagittalAll))){
-   const values=cachedSourceMprPlane(volume,p,idx);if(revision!==planeRenderRevision[p]||!values)return;
+  if(!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))){
+   const values=p==='sagittal'&&volume.mprSagittalDisplayAll&&!volume.mprSagittalAll?cachedSagittalDisplayPlane(volume,idx):cachedSourceMprPlane(volume,p,idx);if(revision!==planeRenderRevision[p]||!values)return;
    const dims=p==='axial'?[series.columns,series.rows]:p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length];
    paintSourcePlane(c,dims,values,p,idx);return;
   }
@@ -3906,7 +3912,7 @@ function surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey=null){
  if(!sceneState?.obj||!volume)return null;
  sceneState.obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
  const rect=canvas.getBoundingClientRect(),mouse=new THREE.Vector2(((event.clientX-rect.left)/Math.max(rect.width,1))*2-1,-((event.clientY-rect.top)/Math.max(rect.height,1))*2+1),raycaster=new THREE.Raycaster();raycaster.setFromCamera(mouse,camera);
- const hits=raycaster.intersectObjects(sceneState.obj.children,true),hit=preferredKey?hits.find(h=>segmentKeyFromIntersection(h)===preferredKey):hits.find(h=>segmentKeyFromIntersection(h));
+ const targets=cutRaycastTargets(),hits=raycaster.intersectObjects(targets,false),hit=preferredKey?hits.find(h=>segmentKeyFromIntersection(h)===preferredKey):hits.find(h=>segmentKeyFromIntersection(h));
  if(!hit)return null;
  const key=segmentKeyFromIntersection(hit);if(!key)return null;
  const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*vx,py=h*vy,pz=d*vz,scale=3.3/Math.max(px,py,pz,1),local=sceneState.obj.worldToLocal(hit.point.clone()),inv=sceneState.obj.matrixWorld.clone().invert(),toVoxelDir=vec=>{const q=vec.clone().transformDirection(inv).normalize();return{x:q.x,y:-q.y,z:q.z}},localRay=toVoxelDir(raycaster.ray.direction),cameraRight=toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0)),cameraUp=toVoxelDir(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1));
@@ -5321,6 +5327,41 @@ async function ensureEditRaycastReady(key=null,label='3D edit data'){
  }
  if(gpuResidentReadbackPending(key))throw new Error('3D edit mesh changed during preparation');
  return true;
+}
+let cutRaycastMaterial=null;
+function gpuCutRaycastProxy(mesh){
+ if(!mesh?.userData?.gpuResident||!mesh.userData.gpuPositionReady)return null;
+ const src=mesh.geometry?.getAttribute?.('position');if(!src?.array?.length)return null;
+ let proxy=mesh.userData.cutRaycastProxy;
+ if(!proxy){
+  const geometry=new THREE.BufferGeometry(),position=new THREE.BufferAttribute(src.array,3);
+  geometry.setAttribute('position',position);
+  geometry.setDrawRange(mesh.geometry.drawRange.start,mesh.geometry.drawRange.count);
+  for(const g of mesh.geometry.groups||[])geometry.addGroup(g.start,g.count,g.materialIndex);
+  geometry.computeBoundingSphere();
+  cutRaycastMaterial=cutRaycastMaterial||new THREE.MeshBasicMaterial({side:THREE.DoubleSide});
+  const materialCount=Math.max(1,Array.isArray(mesh.material)?mesh.material.length:1),materials=Array.from({length:materialCount},()=>cutRaycastMaterial);
+  proxy=new THREE.Mesh(geometry,materials);
+  proxy.matrixAutoUpdate=false;
+  proxy.userData.segmentKey=mesh.userData.segmentKey||null;
+  proxy.userData.segmentRanges=Array.isArray(mesh.userData.segmentRanges)?mesh.userData.segmentRanges.map(r=>({...r})):[];
+  proxy.userData.displayScale=mesh.userData.displayScale;
+  proxy.userData.cutRaycastProxy=true;
+  proxy.userData.sourceMesh=mesh;
+  mesh.userData.cutRaycastProxy=proxy;
+ }
+ mesh.updateMatrixWorld(true);proxy.matrixWorld.copy(mesh.matrixWorld);
+ return proxy;
+}
+function cutRaycastTargets(){
+ const targets=[];sceneState?.obj?.traverse?.(o=>{
+  if(!o.isMesh)return;
+  const hasSegment=!!o.userData?.segmentKey||Array.isArray(o.userData?.segmentRanges)&&o.userData.segmentRanges.length;
+  if(!hasSegment||o.userData?.cutResultPreview)return;
+  if(o.userData?.gpuResident){const proxy=gpuCutRaycastProxy(o);if(proxy)targets.push(proxy)}
+  else targets.push(o);
+ });
+ return targets;
 }
 function eachGeometryTriangleRange(geometry,start,count,callback){
  const pos=geometry?.getAttribute?.('position');if(!pos)return;
