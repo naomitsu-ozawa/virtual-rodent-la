@@ -2274,8 +2274,8 @@ async function ensureMpr3DPreviewCache(){
  const coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
  let fullSagittal16=null;
  if(canSource&&!stages.length&&!v.mprSagittalAll&&!v.mprSagittalDisplayAll){
-  const bytes=w*h*d*2,hardLimit=navigator.maxTouchPoints>0?1024*1024*1024:3072*1024*1024;
-  if(bytes<=hardLimit)try{fullSagittal16=new Uint16Array(w*h*d)}catch{}
+  const bytes=w*h*d*2,touchHardLimit=1024*1024*1024;
+  if((navigator.maxTouchPoints||0)===0||bytes<=touchHardLimit)try{fullSagittal16=new Uint16Array(w*h*d)}catch{}
  }
  const corX=Array.from({length:dims.coronal[0]},(_,i)=>mpr3DPreviewMap(i,w,dims.coronal[0])),sagY=Array.from({length:dims.sagittal[0]},(_,i)=>mpr3DPreviewMap(i,h,dims.sagittal[0]));
  const corRows=new Map(),sagRows=new Map();
