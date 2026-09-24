@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build143';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build144';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-143';const APP_BUILD='143';
+const APP_VERSION='2026.09.24-144';const APP_BUILD='144';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -498,7 +498,7 @@ function deactivateMedicalVolume(){
  if(threeDDirty)mark3DStale();else mark3DCurrent();
 }
 function clear3DForSeriesChange(){
- sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;residentMprReadbackDisabled=false;clearResidentMprJobs();sceneState?.medicalVolume?.resetData?.();threeRenderMode='surface';setThreeVolumeOverlay(false);clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
+ sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;residentMprReadbackDisabled=false;residentGpuUploadSeriesId=null;clearResidentMprJobs();sceneState?.medicalVolume?.resetData?.();threeRenderMode='surface';setThreeVolumeOverlay(false);clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
  if(sceneState?.obj){sceneState.obj.parent?.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}
  disposeMprPlaneGroup();request3DRender();mark3DStale();
 }
@@ -1199,7 +1199,7 @@ function shouldAutoPrepareResidentGpu(v){
  if(isIPhoneRuntime())return residentGpuVolumeBytes(v)<=512*1024*1024;
  return true;
 }
-let residentMprReadbackDisabled=false,residentMprEpoch=0;
+let residentMprReadbackDisabled=false,residentMprEpoch=0,residentGpuUploadSeriesId=null;
 const residentMprJobs={axial:{running:false,current:null,pending:null},coronal:{running:false,current:null,pending:null},sagittal:{running:false,current:null,pending:null}};
 function residentGpuMprAvailable(v=sourceVolume||volume){
  const mv=sceneState?.medicalVolume;return !!(!residentMprReadbackDisabled&&mv?.hasResident?.(v));
@@ -1212,11 +1212,15 @@ function clearResidentMprJobs(){
 }
 async function prepareResidentGpuVolume(v){
  const mv=sceneState?.medicalVolume;if(!shouldAutoPrepareResidentGpu(v))return false;
+ const seriesId=v?.series?.id||null;residentGpuUploadSeriesId=seriesId;cancelSourceMprWarmup();
  try{
   const previewSide=isIPhoneRuntime()?192:isIPadRuntime()?320:384;await mv.ensure(v,{prepareBricks:false,previewSide});residentMprReadbackDisabled=false;setGpuComputeBackend('WEBGPU VOLUME RESIDENT');return true;
  }catch(e){
   console.warn('GPU resident volume unavailable; using source-backed MPR fallback.',e);residentMprReadbackDisabled=true;setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);return false;
- }finally{set3DBusy(false)}
+ }finally{
+  if(residentGpuUploadSeriesId===seriesId)residentGpuUploadSeriesId=null;
+  set3DBusy(false);
+ }
 }
 function readResidentGpuMprPlane(p,idx,series,{maxSide=0}={}){
  const target=sourceVolume||volume,mv=sceneState?.medicalVolume,state=residentMprJobs[p];
@@ -2359,6 +2363,8 @@ function mpr3DPreviewSignature(v,stages=sourceFilterStages()){return [v?.series?
 async function ensureMpr3DPreviewCache(){
  const v=volume;if(!v)return false;
  const stages=sourceFilterStages(),series=v.series,canSource=!!(v.sourceBacked&&series);
+ if(residentGpuUploadSeriesId&&residentGpuUploadSeriesId===series?.id)return false;
+ if(!stages.length&&residentGpuMprAvailable(v)&&sceneState?.medicalVolume?.hasPreview?.(v))return true;
  if(stages.length&&!canSource)return false;
  if(!v.mprData&&!canSource)return false;
  const signature=mpr3DPreviewSignature(v,stages);
@@ -3390,7 +3396,7 @@ function cancelSourceMprWarmup(){
  if(sourceMprWarmupPlane){planeRenderRevision[sourceMprWarmupPlane]++;sourceMprWarmupPlane=null}
 }
 function scheduleSourceMprWarmup(){
- if(!volume?.sourceBacked||residentGpuMprAvailable(volume))return;
+ if(!volume?.sourceBacked||residentGpuUploadSeriesId===volume?.series?.id||residentGpuMprAvailable(volume))return;
  const token=++sourceMprWarmupToken;
  const run=async()=>{
   if(token!==sourceMprWarmupToken||!volume?.sourceBacked)return;
