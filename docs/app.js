@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build137';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build138';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-137';const APP_BUILD='137';
+const APP_VERSION='2026.09.24-138';const APP_BUILD='138';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -498,7 +498,7 @@ function deactivateMedicalVolume(){
  if(threeDDirty)mark3DStale();else mark3DCurrent();
 }
 function clear3DForSeriesChange(){
- sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;residentMprReadbackDisabled=false;sceneState?.medicalVolume?.resetData?.();threeRenderMode='surface';setThreeVolumeOverlay(false);clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
+ sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;residentMprReadbackDisabled=false;clearResidentMprJobs();sceneState?.medicalVolume?.resetData?.();threeRenderMode='surface';setThreeVolumeOverlay(false);clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
  if(sceneState?.obj){sceneState.obj.parent?.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}
  disposeMprPlaneGroup();request3DRender();mark3DStale();
 }
@@ -954,12 +954,27 @@ function paintFastOrthogonalPreview(p,idx){
  if(ok)updateMprCanvasPhysicalAspect(p);
  return ok;
 }
+function paintResidentGpuPreview(p,idx,result,revision){
+ if(!result?.values||revision!==planeRenderRevision[p]||!planes[p])return false;
+ const [pw,ph]=result.dims,canvas=planes[p].canvas,ctx=canvas.getContext('2d');
+ if(canvas.width!==pw)canvas.width=pw;if(canvas.height!==ph)canvas.height=ph;
+ const image=ctx.createImageData(pw,ph),pixels=new Uint32Array(image.data.buffer),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),values=result.values;
+ for(let i=0;i<values.length;i++){const g=Math.max(0,Math.min(255,Math.round((values[i]-low)*scale)));pixels[i]=(255<<24)|(g<<16)|(g<<8)|g}
+ ctx.putImageData(image,0,0);updateMprCanvasPhysicalAspect(p);refreshMpr3DPlaneTexture(p);return true;
+}
+function scheduleResidentGpuPreview(p,idx,revision){
+ if(p==='axial'||!residentGpuMprAvailable(volume)||sourceFilterStages().length||volumeAnalysisMode)return false;
+ const side=isIPadRuntime()?448:640,series=volume.series;
+ void readResidentGpuMprPlane(p,idx,series,{maxSide:side}).then(result=>paintResidentGpuPreview(p,idx,result,revision));
+ return true;
+}
 function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
  if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate){pushCachedMpr3DPlane(p,idx);prefetchOrthogonalHighRes(p,idx)}}
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
+ if(!immediate&&scheduleResidentGpuPreview(p,idx,revision))return;
  if(p==='axial')refreshMpr3DPlaneTexture(p);
  if(volume?.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))){
   const values=p==='sagittal'&&volume.mprSagittalDisplayAll&&!volume.mprSagittalAll?cachedSagittalDisplayPlane(volume,idx):cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
@@ -1177,9 +1192,14 @@ function shouldAutoPrepareResidentGpu(v){
  if(isIPhoneRuntime())return residentGpuVolumeBytes(v)<=512*1024*1024;
  return true;
 }
-let residentMprReadbackDisabled=false;
+let residentMprReadbackDisabled=false,residentMprEpoch=0;
+const residentMprJobs={axial:{running:false,pending:null},coronal:{running:false,pending:null},sagittal:{running:false,pending:null}};
 function residentGpuMprAvailable(v=sourceVolume||volume){
  const mv=sceneState?.medicalVolume;return !!(!residentMprReadbackDisabled&&mv?.hasResident?.(v));
+}
+function clearResidentMprJobs(){
+ residentMprEpoch++;
+ for(const state of Object.values(residentMprJobs)){if(state.pending)state.pending.resolve(null);state.pending=null}
 }
 async function prepareResidentGpuVolume(v){
  const mv=sceneState?.medicalVolume;if(!shouldAutoPrepareResidentGpu(v))return false;
@@ -1189,11 +1209,31 @@ async function prepareResidentGpuVolume(v){
   console.warn('GPU resident volume unavailable; using source-backed MPR fallback.',e);residentMprReadbackDisabled=true;setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);return false;
  }finally{set3DBusy(false)}
 }
-async function readResidentGpuMprPlane(p,idx,series){
- const target=sourceVolume||volume,mv=sceneState?.medicalVolume;
- if(!target?.sourceBacked||target.series!==series||sourceFilterStages().length||!residentGpuMprAvailable(target)||!mv?.extractPlane)return null;
- try{return await mv.extractPlane(target,p,idx)}
- catch(e){residentMprReadbackDisabled=true;console.warn('GPU resident MPR readback failed; using source DICOM fallback.',e);return null}
+function readResidentGpuMprPlane(p,idx,series,{maxSide=0}={}){
+ const target=sourceVolume||volume,mv=sceneState?.medicalVolume,state=residentMprJobs[p];
+ if(!state||!target?.sourceBacked||target.series!==series||sourceFilterStages().length||!residentGpuMprAvailable(target)||!mv?.extractPlane)return Promise.resolve(null);
+ return new Promise(resolve=>{
+  if(state.pending)state.pending.resolve(null);
+  state.pending={idx,series,target,maxSide,epoch:residentMprEpoch,resolve};
+  if(state.running)return;
+  state.running=true;
+  void(async()=>{
+   try{
+    while(state.pending){
+     const job=state.pending;state.pending=null;
+     let result=null;
+     if(job.epoch===residentMprEpoch&&job.target===sourceVolume){
+      try{result=await mv.extractPlane(job.target,p,job.idx,{maxSide:job.maxSide})}
+      catch(e){
+       residentMprReadbackDisabled=true;console.warn('GPU resident MPR readback failed; using source DICOM fallback.',e);
+       if(state.pending){state.pending.resolve(null);state.pending=null}
+      }
+     }
+     job.resolve(job.epoch===residentMprEpoch?result:null);
+    }
+   }finally{state.running=false}
+  })();
+ });
 }
 function sourceMprDecodeConcurrency(){
  const hc=Math.max(2,Number(navigator.hardwareConcurrency)||4);
@@ -2396,7 +2436,8 @@ async function buildSourceOrthogonalPlane(p,idx,series,revision){
  const cached=sourceOrthogonalCacheGet(p,idx);if(cached)return cached;
  const key=p+':'+idx,pending=sourceOrthogonalPlanePending.get(key);if(pending)return pending;
  const promise=(async()=>{
-  const gpuPlane=await readResidentGpuMprPlane(p,idx,series);if(gpuPlane){sourceOrthogonalCacheSet(p,idx,gpuPlane);return gpuPlane}
+  const gpuResult=await readResidentGpuMprPlane(p,idx,series);if(revision!=null&&revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
+  const gpuPlane=gpuResult?.values||null;if(gpuPlane){sourceOrthogonalCacheSet(p,idx,gpuPlane);return gpuPlane}
   const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],out=new Float32Array(dims[0]*dims[1]),d=series.slices.length;
   let next=0,completed=0;
   const workers=Math.min(d,navigator.maxTouchPoints>0?Math.max(2,Math.min(4,(navigator.hardwareConcurrency||4)-1)):Math.max(4,Math.min(8,(navigator.hardwareConcurrency||8)-1)));
@@ -3456,8 +3497,8 @@ async function renderPlaneSourceBacked(p,revision,idx){
    paintSourcePlane(c,dims,values,p,idx);return;
   }
   if(p==='axial'){
-   const gpuValues=await readResidentGpuMprPlane(p,idx,series);if(revision!==planeRenderRevision[p])return;
-   const values=gpuValues||await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
+   const gpuResult=await readResidentGpuMprPlane(p,idx,series);if(revision!==planeRenderRevision[p])return;
+   const values=gpuResult?.values||await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
    paintSourcePlane(c,[series.columns,series.rows],values,p,idx);return;
   }
   const values=await buildSourceOrthogonalNeighborhood(p,idx,series,revision);if(revision!==planeRenderRevision[p]||!values)return;
@@ -3478,7 +3519,8 @@ function updateMprCanvasPhysicalAspect(p){
 }
 function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 
-function installMprTouch(p){const c=planes[p];let id=null,startX=0,startY=0,start=0,moved=false;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;startY=e.clientY;start=+c.slider.value;moved=false;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const dx=e.clientX-startX,dy=e.clientY-startY;if(Math.hypot(dx,dy)>5)moved=true;if(volumeAnalysisMode&&!moved)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+dx/sens);c.slider.value=Math.max(0,Math.min(max,next));schedulePlaneRender(p)};const end=e=>{if(id!==e.pointerId)return;const wasClick=!moved&&e.type==='pointerup';if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null;if(moved)schedulePlaneRender(p,true);if(wasClick&&selectAnalysisRegionFromMpr(p,e))e.preventDefault()};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));schedulePlaneRender(p,true)},{passive:false})}
+const mprWheelFinalizeTimers={axial:null,coronal:null,sagittal:null};
+function installMprTouch(p){const c=planes[p];let id=null,startX=0,startY=0,start=0,moved=false;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;startY=e.clientY;start=+c.slider.value;moved=false;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const dx=e.clientX-startX,dy=e.clientY-startY;if(Math.hypot(dx,dy)>5)moved=true;if(volumeAnalysisMode&&!moved)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+dx/sens);c.slider.value=Math.max(0,Math.min(max,next));schedulePlaneRender(p)};const end=e=>{if(id!==e.pointerId)return;const wasClick=!moved&&e.type==='pointerup';if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null;if(moved)schedulePlaneRender(p,true);if(wasClick&&selectAnalysisRegionFromMpr(p,e))e.preventDefault()};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));schedulePlaneRender(p);clearTimeout(mprWheelFinalizeTimers[p]);mprWheelFinalizeTimers[p]=setTimeout(()=>schedulePlaneRender(p,true),90)},{passive:false})}
 
 function setMpr3DInteractive(active){
  if(!sceneState)return;sceneState.mprInteractionActive=!!active;
@@ -3616,16 +3658,16 @@ installViewSwapping();
 async function start3D(){
  const scene=new THREE.Scene();scene.background=new THREE.Color(0x090c0e);const camera=new THREE.PerspectiveCamera(38,1,.005,100);camera.position.z=5.2;scene.add(camera);scene.add(new THREE.HemisphereLight(0xffffff,0x182028,2.0));const keyLight=new THREE.DirectionalLight(0xffffff,2.4);keyLight.position.set(2,3,4);scene.add(keyLight);
  const axisWidget=new THREE.Group();axisWidget.name='orientation_axes';camera.add(axisWidget);
- const axisLength=.34,axisOrigin=new THREE.Vector3(0,0,0),axisDefs=[['X',new THREE.Vector3(1,0,0),0xff5a5a],['Y',new THREE.Vector3(0,1,0),0x62d96b],['Z',new THREE.Vector3(0,0,1),0x5d8dff]];
+ const axisLength=.22,axisOrigin=new THREE.Vector3(0,0,0),axisDefs=[['X',new THREE.Vector3(1,0,0),0xff5a5a],['Y',new THREE.Vector3(0,1,0),0x62d96b],['Z',new THREE.Vector3(0,0,1),0x5d8dff]];
  const makeAxisLabel=(label,color)=>{
-  const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const ctx=canvas.getContext('2d');ctx.clearRect(0,0,64,64);ctx.font='700 38px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=7;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(label,32,33);ctx.fillStyle='#'+color.toString(16).padStart(6,'0');ctx.fillText(label,32,33);
-  const texture=new THREE.CanvasTexture(canvas),material=new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false,depthWrite:false}),sprite=new THREE.Sprite(material);sprite.scale.set(.16,.16,1);sprite.renderOrder=1002;return sprite;
+  const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const ctx=canvas.getContext('2d');ctx.clearRect(0,0,64,64);ctx.font='700 30px -apple-system,BlinkMacSystemFont,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=5;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(label,32,33);ctx.fillStyle='#'+color.toString(16).padStart(6,'0');ctx.fillText(label,32,33);
+  const texture=new THREE.CanvasTexture(canvas),material=new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false,depthWrite:false}),sprite=new THREE.Sprite(material);sprite.scale.set(.09,.09,1);sprite.renderOrder=1002;return sprite;
  };
  for(const[label,dir,color]of axisDefs){
-  const arrow=new THREE.ArrowHelper(dir,axisOrigin,axisLength,color,.085,.05);arrow.renderOrder=1001;arrow.line.material.depthTest=false;arrow.line.material.depthWrite=false;arrow.cone.material.depthTest=false;arrow.cone.material.depthWrite=false;axisWidget.add(arrow);
-  const marker=makeAxisLabel(label,color);marker.position.copy(dir).multiplyScalar(axisLength+.09);axisWidget.add(marker);
+  const arrow=new THREE.ArrowHelper(dir,axisOrigin,axisLength,color,.055,.032);arrow.renderOrder=1001;arrow.line.material.depthTest=false;arrow.line.material.depthWrite=false;arrow.cone.material.depthTest=false;arrow.cone.material.depthWrite=false;axisWidget.add(arrow);
+  const marker=makeAxisLabel(label,color);if(label==='Z')marker.position.set(.065,.065,.025);else marker.position.copy(dir).multiplyScalar(axisLength+.05);axisWidget.add(marker);
  }
- const updateAxisWidget=()=>{const depth=1.8,halfH=Math.tan(THREE.MathUtils.degToRad(camera.fov*.5))*depth/Math.max(camera.zoom,1e-6),halfW=halfH*camera.aspect,margin=.46;axisWidget.position.set(Math.max(-halfW+.12,halfW-margin),Math.min(halfH-.12,-halfH+margin),-depth)};
+ const updateAxisWidget=()=>{const depth=1.8,halfH=Math.tan(THREE.MathUtils.degToRad(camera.fov*.5))*depth/Math.max(camera.zoom,1e-6),halfW=halfH*camera.aspect,pad=.16;axisWidget.position.set(-halfW+pad,-halfH+pad,-depth)};
 
  let renderer,backend='WEBGL';
  if('gpu' in navigator){
