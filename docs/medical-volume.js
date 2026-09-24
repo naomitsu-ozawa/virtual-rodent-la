@@ -211,6 +211,40 @@ fn main(){
 }`;
 }
 
+
+function mprPlaneShader(){
+ return \`
+struct MprParams{
+ dims:vec4<u32>,
+ plane:vec4<u32>,
+ calibration:vec4<f32>
+};
+@group(0) @binding(0) var<uniform> p:MprParams;
+@group(0) @binding(1) var volumeTex:texture_3d<f32>;
+@group(0) @binding(2) var<storage,read_write> outValues:array<f32>;
+fn huAt(x:u32,y:u32,z:u32)->f32{
+ let q=textureLoad(volumeTex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg*255.0;
+ let raw=q.x+q.y*256.0-p.calibration.z;
+ return raw*p.calibration.x+p.calibration.y;
+}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;
+ let kind=p.plane.x;let index=p.plane.y;let outW=p.plane.z;let outH=p.plane.w;
+ if(i>=outW*outH){return;}
+ let ox=i%outW;let oy=i/outW;
+ var x:u32;var y:u32;var z:u32;
+ if(kind==0u){
+  x=ox;y=oy;z=index;
+ }else if(kind==1u){
+  x=ox;y=index;z=p.dims.z-1u-oy;
+ }else{
+  x=index;y=ox;z=p.dims.z-1u-oy;
+ }
+ outValues[i]=huAt(x,y,z);
+}\`;
+}
+
 export class MedicalVolumeRenderer{
  constructor({device,host,rendererCanvas,onProgress,onStatus}){
   this.device=device;this.host=host;this.rendererCanvas=rendererCanvas;this.onProgress=onProgress||(()=>{});this.onStatus=onStatus||(()=>{});
@@ -225,6 +259,7 @@ export class MedicalVolumeRenderer{
   this.pipeline=this.device.createRenderPipeline({label:'VRL medical volume raycast',layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
   const pickModule=this.device.createShaderModule({label:'VRL medical volume pick',code:safeWgsl(volumePickShader())});this.pickPipeline=this.device.createComputePipeline({label:'VRL medical volume pick',layout:'auto',compute:{module:pickModule,entryPoint:'main'}});this.pickBuffer=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});this.pickOutput=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
   const brickModule=this.device.createShaderModule({label:'VRL volume minmax bricks',code:safeWgsl(brickShader())});this.brickPipeline=this.device.createComputePipeline({label:'VRL volume minmax bricks',layout:'auto',compute:{module:brickModule,entryPoint:'main'}});this.brickBuffer=null;this.brickDims=[1,1,1];this.brickSize=8;
+  const mprModule=this.device.createShaderModule({label:'VRL resident volume MPR',code:safeWgsl(mprPlaneShader())});this.mprPipeline=this.device.createComputePipeline({label:'VRL resident volume MPR',layout:'auto',compute:{module:mprModule,entryPoint:'main'}});this.mprUniformBuffer=this.device.createBuffer({size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});this.mprReadSerial=Promise.resolve();
   this.texture=null;this.bindGroup=null;this.seriesId=null;this.active=false;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;
  }
  support(v){
@@ -270,6 +305,31 @@ export class MedicalVolumeRenderer{
   this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:3,resource:{buffer:this.brickBuffer}}]});
   this.onStatus('WEBGPU VOLUME READY');
  }
+ hasResident(v){
+  return !!(this.texture&&v?.series&&this.seriesId===v.series.id);
+ }
+ extractPlane(v,plane,index){
+  const run=async()=>{
+   if(!this.hasResident(v))return null;
+   const w=v.columns,h=v.rows,d=v.slices,kind=plane==='axial'?0:plane==='coronal'?1:plane==='sagittal'?2:-1;
+   if(kind<0)throw new Error('Unsupported MPR plane: '+plane);
+   const maxIndex=kind===0?d-1:kind===1?h-1:w-1;if(index<0||index>maxIndex)throw new Error('MPR plane index out of range');
+   const outW=kind===0?w:kind===1?w:h,outH=kind===0?h:d,count=outW*outH,bytes=count*4;
+   if(bytes>(this.device.limits.maxStorageBufferBindingSize||bytes))return null;
+   const paramsBytes=new ArrayBuffer(48),u32=new Uint32Array(paramsBytes),f32=new Float32Array(paramsBytes);
+   u32.set([w,h,d,0,kind,index,outW,outH],0);f32.set([this.calibration.slope,this.calibration.intercept,this.calibration.signedBias,0],8);
+   this.device.queue.writeBuffer(this.mprUniformBuffer,0,paramsBytes);
+   const output=this.device.createBuffer({label:'VRL resident MPR output',size:Math.max(4,bytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),read=this.device.createBuffer({label:'VRL resident MPR readback',size:Math.max(4,bytes),usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+   try{
+    const group=this.device.createBindGroup({layout:this.mprPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.mprUniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:2,resource:{buffer:output}}]}),encoder=this.device.createCommandEncoder({label:'VRL resident MPR extract'}),pass=encoder.beginComputePass();
+    pass.setPipeline(this.mprPipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(count/256));pass.end();encoder.copyBufferToBuffer(output,0,read,0,bytes);this.device.queue.submit([encoder.finish()]);
+    await read.mapAsync(GPUMapMode.READ);const values=new Float32Array(read.getMappedRange().slice(0,bytes));read.unmap();return values;
+   }finally{
+    try{if(read.mapState==='mapped')read.unmap()}catch{}output.destroy();read.destroy();
+   }
+  };
+  const task=this.mprReadSerial.then(run,run);this.mprReadSerial=task.catch(()=>{});return task;
+ }
  setActive(active){
   this.active=!!active;this.canvas.style.display=this.active?'block':'none';
  }
@@ -305,7 +365,7 @@ export class MedicalVolumeRenderer{
   const index=out[3]-1;return{x:out[0],y:out[1],z:out[2],key:segmentOrder[index]};
  }
  resetData(){this.setActive(false);this.texture?.destroy?.();this.brickBuffer?.destroy?.();this.texture=null;this.brickBuffer=null;this.bindGroup=null;this.seriesId=null;this.volume=null}
- destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.canvas.remove()}
+ destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.mprUniformBuffer?.destroy?.();this.canvas.remove()}
 }
 
 
