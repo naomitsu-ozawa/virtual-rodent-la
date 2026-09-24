@@ -3332,7 +3332,7 @@ function cancelSourceMprWarmup(){
  if(sourceMprWarmupPlane){planeRenderRevision[sourceMprWarmupPlane]++;sourceMprWarmupPlane=null}
 }
 function scheduleSourceMprWarmup(){
- if(!volume?.sourceBacked)return;
+ if(!volume?.sourceBacked||residentGpuMprAvailable(volume))return;
  const token=++sourceMprWarmupToken;
  const run=async()=>{
   if(token!==sourceMprWarmupToken||!volume?.sourceBacked)return;
@@ -3372,7 +3372,7 @@ function renderMainMprPreview(){
 function renderAll(){
  if(!volume)return;
  wcVal.value=formatCtValue(+wc.value,+wc.step);wwVal.value=formatCtValue(+ww.value,+ww.step);
- if(volume.sourceBacked&&!sourceFilterStages().length&&volume.mprData){
+ if(volume.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||residentGpuMprAvailable(volume))){
   for(const p of Object.keys(planes))safeRenderPlane(p);
   return;
  }
