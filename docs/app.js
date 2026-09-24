@@ -954,27 +954,12 @@ function paintFastOrthogonalPreview(p,idx){
  if(ok)updateMprCanvasPhysicalAspect(p);
  return ok;
 }
-function paintResidentGpuPreview(p,idx,result,revision){
- if(!result?.values||revision!==planeRenderRevision[p]||!planes[p])return false;
- const [pw,ph]=result.dims,canvas=planes[p].canvas,ctx=canvas.getContext('2d');
- if(canvas.width!==pw)canvas.width=pw;if(canvas.height!==ph)canvas.height=ph;
- const image=ctx.createImageData(pw,ph),pixels=new Uint32Array(image.data.buffer),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),values=result.values;
- for(let i=0;i<values.length;i++){const g=Math.max(0,Math.min(255,Math.round((values[i]-low)*scale)));pixels[i]=(255<<24)|(g<<16)|(g<<8)|g}
- ctx.putImageData(image,0,0);updateMprCanvasPhysicalAspect(p);refreshMpr3DPlaneTexture(p);return true;
-}
-function scheduleResidentGpuPreview(p,idx,revision){
- if(p==='axial'||!residentGpuMprAvailable(volume)||sourceFilterStages().length||volumeAnalysisMode)return false;
- const side=isIPadRuntime()?448:640,series=volume.series;
- void readResidentGpuMprPlane(p,idx,series,{maxSide:side}).then(result=>paintResidentGpuPreview(p,idx,result,revision));
- return true;
-}
 function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
  if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate){pushCachedMpr3DPlane(p,idx);prefetchOrthogonalHighRes(p,idx)}}
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
- if(!immediate&&scheduleResidentGpuPreview(p,idx,revision))return;
  if(p==='axial')refreshMpr3DPlaneTexture(p);
  if(volume?.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))){
   const values=p==='sagittal'&&volume.mprSagittalDisplayAll&&!volume.mprSagittalAll?cachedSagittalDisplayPlane(volume,idx):cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
@@ -1199,7 +1184,7 @@ function residentGpuMprAvailable(v=sourceVolume||volume){
 }
 function clearResidentMprJobs(){
  residentMprEpoch++;
- for(const state of Object.values(residentMprJobs)){if(state.pending)state.pending.resolve(null);state.pending=null}
+ for(const state of Object.values(residentMprJobs)){if(state.pending)state.pending.reject(new Error('__SUPERSEDED__'));state.pending=null}
 }
 async function prepareResidentGpuVolume(v){
  const mv=sceneState?.medicalVolume;if(!shouldAutoPrepareResidentGpu(v))return false;
@@ -1209,27 +1194,25 @@ async function prepareResidentGpuVolume(v){
   console.warn('GPU resident volume unavailable; using source-backed MPR fallback.',e);residentMprReadbackDisabled=true;setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);return false;
  }finally{set3DBusy(false)}
 }
-function readResidentGpuMprPlane(p,idx,series,{maxSide=0}={}){
+function readResidentGpuMprPlane(p,idx,series){
  const target=sourceVolume||volume,mv=sceneState?.medicalVolume,state=residentMprJobs[p];
  if(!state||!target?.sourceBacked||target.series!==series||sourceFilterStages().length||!residentGpuMprAvailable(target)||!mv?.extractPlane)return Promise.resolve(null);
- return new Promise(resolve=>{
-  if(state.pending)state.pending.resolve(null);
-  state.pending={idx,series,target,maxSide,epoch:residentMprEpoch,resolve};
+ return new Promise((resolve,reject)=>{
+  if(state.pending)state.pending.reject(new Error('__SUPERSEDED__'));
+  state.pending={idx,series,target,epoch:residentMprEpoch,resolve,reject};
   if(state.running)return;
   state.running=true;
   void(async()=>{
    try{
     while(state.pending){
      const job=state.pending;state.pending=null;
-     let result=null;
-     if(job.epoch===residentMprEpoch&&job.target===sourceVolume){
-      try{result=await mv.extractPlane(job.target,p,job.idx,{maxSide:job.maxSide})}
-      catch(e){
-       residentMprReadbackDisabled=true;console.warn('GPU resident MPR readback failed; using source DICOM fallback.',e);
-       if(state.pending){state.pending.resolve(null);state.pending=null}
-      }
+     if(job.epoch!==residentMprEpoch||job.target!==sourceVolume){job.reject(new Error('__SUPERSEDED__'));continue}
+     try{job.resolve(await mv.extractPlane(job.target,p,job.idx))}
+     catch(e){
+      if(String(e.message||e)==='__SUPERSEDED__'){job.reject(e);continue}
+      residentMprReadbackDisabled=true;console.warn('GPU resident MPR readback failed; using source DICOM fallback.',e);job.resolve(null);
+      if(state.pending){state.pending.resolve(null);state.pending=null}
      }
-     job.resolve(job.epoch===residentMprEpoch?result:null);
     }
    }finally{state.running=false}
   })();
@@ -2436,7 +2419,7 @@ async function buildSourceOrthogonalPlane(p,idx,series,revision){
  const cached=sourceOrthogonalCacheGet(p,idx);if(cached)return cached;
  const key=p+':'+idx,pending=sourceOrthogonalPlanePending.get(key);if(pending)return pending;
  const promise=(async()=>{
-  const gpuResult=await readResidentGpuMprPlane(p,idx,series);if(revision!=null&&revision!==planeRenderRevision[p])throw new Error('__SUPERSEDED__');
+  const gpuResult=await readResidentGpuMprPlane(p,idx,series);
   const gpuPlane=gpuResult?.values||null;if(gpuPlane){sourceOrthogonalCacheSet(p,idx,gpuPlane);return gpuPlane}
   const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],out=new Float32Array(dims[0]*dims[1]),d=series.slices.length;
   let next=0,completed=0;
@@ -3519,8 +3502,7 @@ function updateMprCanvasPhysicalAspect(p){
 }
 function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 
-const mprWheelFinalizeTimers={axial:null,coronal:null,sagittal:null};
-function installMprTouch(p){const c=planes[p];let id=null,startX=0,startY=0,start=0,moved=false;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;startY=e.clientY;start=+c.slider.value;moved=false;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const dx=e.clientX-startX,dy=e.clientY-startY;if(Math.hypot(dx,dy)>5)moved=true;if(volumeAnalysisMode&&!moved)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+dx/sens);c.slider.value=Math.max(0,Math.min(max,next));schedulePlaneRender(p)};const end=e=>{if(id!==e.pointerId)return;const wasClick=!moved&&e.type==='pointerup';if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null;if(moved)schedulePlaneRender(p,true);if(wasClick&&selectAnalysisRegionFromMpr(p,e))e.preventDefault()};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));schedulePlaneRender(p);clearTimeout(mprWheelFinalizeTimers[p]);mprWheelFinalizeTimers[p]=setTimeout(()=>schedulePlaneRender(p,true),90)},{passive:false})}
+function installMprTouch(p){const c=planes[p];let id=null,startX=0,startY=0,start=0,moved=false;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;startY=e.clientY;start=+c.slider.value;moved=false;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const dx=e.clientX-startX,dy=e.clientY-startY;if(Math.hypot(dx,dy)>5)moved=true;if(volumeAnalysisMode&&!moved)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+dx/sens);c.slider.value=Math.max(0,Math.min(max,next));schedulePlaneRender(p)};const end=e=>{if(id!==e.pointerId)return;const wasClick=!moved&&e.type==='pointerup';if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null;if(moved)schedulePlaneRender(p,true);if(wasClick&&selectAnalysisRegionFromMpr(p,e))e.preventDefault()};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));schedulePlaneRender(p,true)},{passive:false})}
 
 function setMpr3DInteractive(active){
  if(!sceneState)return;sceneState.mprInteractionActive=!!active;
