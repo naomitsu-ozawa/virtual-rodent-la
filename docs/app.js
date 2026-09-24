@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build138';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build139';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-138';const APP_BUILD='138';
+const APP_VERSION='2026.09.24-139';const APP_BUILD='139';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3462,18 +3462,28 @@ function activeMprSegments(){
  return out;
 }
 function paintSourcePlane(c,dims,values,p='axial',idx=0){
- updateMprCanvasPhysicalAspect(p);
+ const started=performance.now();updateMprCanvasPhysicalAspect(p);
  const ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
- const img=reusableMprImage(p,ctx,dims),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments(),hasSegments=activeSegs.length>0;let q=0;
- for(let py=0;py<dims[1];py++)for(let px=0;px<dims[0];px++){
-  const i=py*dims[0]+px,v=values[i],g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
-  if(hasSegments){
+ const img=reusableMprImage(p,ctx,dims),pixels=new Uint32Array(img.data.buffer),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments(),simple=activeSegs.every(item=>!item.processedMask&&!item.processedRuns&&!(segmentEditActive(item.key)&&item.edit.finalRuns));
+ if(simple){
+  const segs=activeSegs.map(item=>({min:item.seg.min,max:item.seg.max,a:item.alpha,ia:1-item.alpha,r:item.rgb[0],g:item.rgb[1],b:item.rgb[2]})),n=values.length;
+  for(let i=0;i<n;i++){
+   const v=values[i];let g=Math.max(0,Math.min(255,Math.round((v-low)*scale))),rr=g,gg=g,bb=g;
+   for(let s=0;s<segs.length;s++){const q=segs[s];if(v<q.min||v>q.max)continue;rr=Math.round(rr*q.ia+q.r*q.a);gg=Math.round(gg*q.ia+q.g*q.a);bb=Math.round(bb*q.ia+q.b*q.a)}
+   pixels[i]=(255<<24)|(bb<<16)|(gg<<8)|rr;
+  }
+ }else{
+  let i=0;
+  for(let py=0;py<dims[1];py++)for(let px=0;px<dims[0];px++,i++){
+   const v=values[i],g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
    const ix=p==='sagittal'?idx:px,iy=p==='coronal'?idx:(p==='sagittal'?px:py),iz=p==='axial'?idx:(volume.slices-1-py);
    for(const item of activeSegs){const {key,seg,edit,processedMask,processedRuns,rgb,alpha}=item,inside=processedRuns?analysisRunsContain(processedRuns,ix,iy,iz):(segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(processedMask?processedMask[iz*volume.rows*volume.columns+iy*volume.columns+ix]===1:(v>=seg.min&&v<=seg.max)));if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha)}
+   pixels[i]=(255<<24)|(bb<<16)|(gg<<8)|rr;
   }
-  img.data[q++]=rr;img.data[q++]=gg;img.data[q++]=bb;img.data[q++]=255;
  }
- ctx.putImageData(img,0,0);drawAnalysisOverlay(p,idx,ctx);refreshMpr3DPlaneTexture(p);
+ ctx.putImageData(img,0,0);drawAnalysisOverlay(p,idx,ctx);
+ if(p==='axial'||mpr3DVisibility[p])refreshMpr3DPlaneTexture(p);
+ return performance.now()-started;
 }
 async function renderPlaneSourceBacked(p,revision,idx){
  const c=planes[p],series=volume.series;c.label.textContent=idx+1;if(revision!==planeRenderRevision[p])return;
@@ -3494,8 +3504,9 @@ async function renderPlaneSourceBacked(p,revision,idx){
    const values=gpuResult?.values||await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
    paintSourcePlane(c,[series.columns,series.rows],values,p,idx);return;
   }
-  const values=await buildSourceOrthogonalNeighborhood(p,idx,series,revision);if(revision!==planeRenderRevision[p]||!values)return;
-  paintSourcePlane(c,p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],values,p,idx);
+  const gpuStart=performance.now(),values=await buildSourceOrthogonalNeighborhood(p,idx,series,revision),gpuMs=performance.now()-gpuStart;if(revision!==planeRenderRevision[p]||!values)return;
+  const paintMs=paintSourcePlane(c,p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],values,p,idx);
+  if(p==='sagittal')console.debug('[VRL S MPR] extract='+gpuMs.toFixed(1)+'ms paint='+paintMs.toFixed(1)+'ms total='+(gpuMs+paintMs).toFixed(1)+'ms');
  }catch(e){if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);footer.textContent='MPR read error: '+String(e.message||e)}}
 }
 
