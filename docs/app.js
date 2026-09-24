@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-137';const APP_BUILD='137';
+const APP_VERSION='2026.09.24-136';const APP_BUILD='136';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -5336,7 +5336,6 @@ function gpuCutRaycastProxy(mesh){
  if(!proxy){
   const geometry=new THREE.BufferGeometry(),position=new THREE.BufferAttribute(src.array,3);
   geometry.setAttribute('position',position);
-  if(mesh.geometry.index)geometry.setIndex(mesh.geometry.index);
   geometry.setDrawRange(mesh.geometry.drawRange.start,mesh.geometry.drawRange.count);
   for(const g of mesh.geometry.groups||[])geometry.addGroup(g.start,g.count,g.materialIndex);
   geometry.computeBoundingSphere();
@@ -5344,7 +5343,6 @@ function gpuCutRaycastProxy(mesh){
   const materialCount=Math.max(1,Array.isArray(mesh.material)?mesh.material.length:1),materials=Array.from({length:materialCount},()=>cutRaycastMaterial);
   proxy=new THREE.Mesh(geometry,materials);
   proxy.matrixAutoUpdate=false;
-  proxy.matrixWorldAutoUpdate=false;
   proxy.userData.segmentKey=mesh.userData.segmentKey||null;
   proxy.userData.segmentRanges=Array.isArray(mesh.userData.segmentRanges)?mesh.userData.segmentRanges.map(r=>({...r})):[];
   proxy.userData.displayScale=mesh.userData.displayScale;
