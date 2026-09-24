@@ -498,7 +498,7 @@ function deactivateMedicalVolume(){
  if(threeDDirty)mark3DStale();else mark3DCurrent();
 }
 function clear3DForSeriesChange(){
- sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
+ sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;residentMprReadbackDisabled=false;sceneState?.medicalVolume?.resetData?.();clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
  if(sceneState?.obj){sceneState.obj.parent?.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}
  disposeMprPlaneGroup();request3DRender();mark3DStale();
 }
@@ -925,7 +925,7 @@ const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 const mpr3DOrthoSliding={coronal:false,sagittal:false};
 const orthogonalHighResPrefetch={coronal:{running:false,next:null},sagittal:{running:false,next:null}};
 function prefetchOrthogonalHighRes(p,idx){
- if((p!=='coronal'&&p!=='sagittal')||!volume?.sourceBacked||sourceFilterStages().length||volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))return;
+ if((p!=='coronal'&&p!=='sagittal')||!volume?.sourceBacked||sourceFilterStages().length||residentGpuMprAvailable(volume)||volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))return;
  const state=orthogonalHighResPrefetch[p];state.next=idx;if(state.running)return;state.running=true;
  void(async()=>{
   try{
@@ -969,7 +969,7 @@ function schedulePlaneRender(p,immediate=false){
   const cached=sourceOrthogonalCacheGet(p,idx);
   if(cached){paintSourcePlane(planes[p],p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],cached,p,idx);return}
  }
- const wait=immediate?0:sourceFilterStages().length?16:0;
+ const wait=immediate?0:sourceFilterStages().length?16:residentGpuMprAvailable(volume)?16:0;
  planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;if(revision===planeRenderRevision[p])safeRenderPlane(p,revision,idx)},wait);
 }
 function renderSectionPlaneLive(p){
@@ -1140,22 +1140,60 @@ async function selectSeries(s){
  try{
   invalidateSourceFilters();
   sourceVolume=s.sourceBacked?openSourceBackedVolume(s):await decode(s,(x,y)=>progress(x,y));
-  if(s.sourceBacked)await prepareSourceMprCache(sourceVolume,(x,y)=>{progress(x,y);const badge=selected.querySelector('.ready-badge');if(badge)badge.textContent='MPR cache '+x+' / '+y});
-  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);scheduleGpuPrewarm();const badge=selected.querySelector('.ready-badge');if(badge)badge.textContent='3D C/S cache…';await ensureMpr3DPreviewCache();phase='render';renderAll();mark3DStale();
-  selected.querySelector('.ready-badge').textContent=s.sourceBacked?(volume.mprData?'CT source ready · MPR cached':'CT source ready · streaming MPR'):'CT volume ready · 2D ready';
-  footer.textContent=s.sourceBacked?(volume.mprData?'Full-resolution source DICOM · MPR memory cache '+fmt(volume.mprData.byteLength):'Full-resolution source-backed DICOM · streaming MPR'):'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
+  volume=sourceVolume;phase='configure';configure(volume);enableProcessingControls(true);scheduleGpuPrewarm();
+  let gpuResident=false;
+  if(s.sourceBacked){
+   const badge=selected.querySelector('.ready-badge');if(badge)badge.textContent='GPU volume…';
+   gpuResident=await prepareResidentGpuVolume(sourceVolume);
+   if(!gpuResident){
+    if(badge)badge.textContent='MPR cache…';
+    await prepareSourceMprCache(sourceVolume,(x,y)=>{progress(x,y);const b=selected.querySelector('.ready-badge');if(b)b.textContent='MPR cache '+x+' / '+y});
+   }
+  }
+  const badge=selected.querySelector('.ready-badge');
+  if(!gpuResident){if(badge)badge.textContent='3D C/S cache…';await ensureMpr3DPreviewCache()}
+  phase='render';renderAll();mark3DStale();
+  if(badge)badge.textContent=s.sourceBacked?(gpuResident?'CT source ready · GPU resident MPR':(volume.mprData?'CT source ready · MPR cached':'CT source ready · streaming MPR')):'CT volume ready · 2D ready';
+  footer.textContent=s.sourceBacked?(gpuResident?'Full-resolution source DICOM · GPU-resident MPR':(volume.mprData?'Full-resolution source DICOM · MPR memory cache '+fmt(volume.mprData.byteLength):'Full-resolution source-backed DICOM · streaming MPR')):'CT range: '+Math.round(volume.min)+' to '+Math.round(volume.max)+' · '+volume.data.constructor.name+' '+fmt(volume.data.byteLength);
  }catch(e){
   console.error(e);const label=phase==='decode'?'Decode failed':phase==='configure'?'Configure failed':'Render failed';
   selected.querySelector('.ready-badge').textContent=label;footer.textContent=label+': '+String(e.message||e)
- }finally{prog.classList.add('is-hidden');busy(false)}
+ }finally{prog.classList.add('is-hidden');busy(false);set3DBusy(false)}
 }
 function openSourceBackedVolume(s){
  return{data:null,mprData:null,mprPlaneBuffers:null,mprSagittalDisplayAll:null,mprSagittalDisplayBuffer:null,mprSagittalDisplayMin:null,mprSagittalDisplayMax:null,sourceBacked:true,series:s,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min:s.min,max:s.max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:'DICOM source'};
 }
+function isIPhoneRuntime(){return /iPhone|iPod/i.test(navigator.userAgent||'')}
+function isIPadRuntime(){return /iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||''))}
 function sourceMprCacheLimit(){
- const deviceMemory=Number(navigator.deviceMemory)||0;
- if(navigator.maxTouchPoints>0)return deviceMemory>=8?768*1024*1024:512*1024*1024;
- return deviceMemory>=16?1536*1024*1024:1024*1024*1024;
+ if(isIPhoneRuntime())return 512*1024*1024;
+ if(isIPadRuntime())return 1536*1024*1024;
+ return Number.MAX_SAFE_INTEGER;
+}
+function residentGpuVolumeBytes(v){return (v?.columns||0)*(v?.rows||0)*(v?.slices||0)*2}
+function shouldAutoPrepareResidentGpu(v){
+ const mv=sceneState?.medicalVolume;if(!mv||!v?.sourceBacked)return false;
+ const support=mv.support(v);if(!support.ok)return false;
+ if(isIPhoneRuntime())return residentGpuVolumeBytes(v)<=512*1024*1024;
+ return true;
+}
+let residentMprReadbackDisabled=false;
+function residentGpuMprAvailable(v=sourceVolume||volume){
+ const mv=sceneState?.medicalVolume;return !!(!residentMprReadbackDisabled&&mv?.hasResident?.(v));
+}
+async function prepareResidentGpuVolume(v){
+ const mv=sceneState?.medicalVolume;if(!shouldAutoPrepareResidentGpu(v))return false;
+ try{
+  await mv.ensure(v);residentMprReadbackDisabled=false;setGpuComputeBackend('WEBGPU VOLUME RESIDENT');return true;
+ }catch(e){
+  console.warn('GPU resident volume unavailable; using source-backed MPR fallback.',e);residentMprReadbackDisabled=true;setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);return false;
+ }finally{set3DBusy(false)}
+}
+async function readResidentGpuMprPlane(p,idx,series){
+ const target=sourceVolume||volume,mv=sceneState?.medicalVolume;
+ if(!target?.sourceBacked||target.series!==series||sourceFilterStages().length||!residentGpuMprAvailable(target)||!mv?.extractPlane)return null;
+ try{return await mv.extractPlane(target,p,idx)}
+ catch(e){residentMprReadbackDisabled=true;console.warn('GPU resident MPR readback failed; using source DICOM fallback.',e);return null}
 }
 function sourceMprDecodeConcurrency(){
  const hc=Math.max(2,Number(navigator.hardwareConcurrency)||4);
@@ -2242,8 +2280,8 @@ async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=n
 
 const sourceSliceCache={map:new Map(),bytes:0},sourceOrthogonalPlaneCache=new Map(),sourceOrthogonalPlanePending=new Map();let sourceOrthogonalPlaneCacheBytes=0;
 const mpr3DPreviewCache={token:0,signature:'',buildingSignature:'',building:false,min:0,max:1,planes:{axial:null,coronal:null,sagittal:null},dims:{axial:null,coronal:null,sagittal:null}};
-function sourceSliceCacheLimit(){return navigator.maxTouchPoints>0?48*1024*1024:128*1024*1024}
-function sourceOrthogonalCacheLimit(){return navigator.maxTouchPoints>0?32*1024*1024:64*1024*1024}
+function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024}
+function sourceOrthogonalCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?256*1024*1024:512*1024*1024}
 function clearMpr3DPreviewCache(){
  mpr3DPreviewCache.token++;mpr3DPreviewCache.signature='';mpr3DPreviewCache.buildingSignature='';mpr3DPreviewCache.building=false;mpr3DPreviewCache.planes={axial:null,coronal:null,sagittal:null};mpr3DPreviewCache.dims={axial:null,coronal:null,sagittal:null};
 }
@@ -2358,6 +2396,7 @@ async function buildSourceOrthogonalPlane(p,idx,series,revision){
  const cached=sourceOrthogonalCacheGet(p,idx);if(cached)return cached;
  const key=p+':'+idx,pending=sourceOrthogonalPlanePending.get(key);if(pending)return pending;
  const promise=(async()=>{
+  const gpuPlane=await readResidentGpuMprPlane(p,idx,series);if(gpuPlane){sourceOrthogonalCacheSet(p,idx,gpuPlane);return gpuPlane}
   const dims=p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],out=new Float32Array(dims[0]*dims[1]),d=series.slices.length;
   let next=0,completed=0;
   const workers=Math.min(d,navigator.maxTouchPoints>0?Math.max(2,Math.min(4,(navigator.hardwareConcurrency||4)-1)):Math.max(4,Math.min(8,(navigator.hardwareConcurrency||8)-1)));
@@ -3417,7 +3456,8 @@ async function renderPlaneSourceBacked(p,revision,idx){
    paintSourcePlane(c,dims,values,p,idx);return;
   }
   if(p==='axial'){
-   const values=await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
+   const gpuValues=await readResidentGpuMprPlane(p,idx,series);if(revision!==planeRenderRevision[p])return;
+   const values=gpuValues||await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
    paintSourcePlane(c,[series.columns,series.rows],values,p,idx);return;
   }
   const values=await buildSourceOrthogonalNeighborhood(p,idx,series,revision);if(revision!==planeRenderRevision[p]||!values)return;
