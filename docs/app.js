@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build142';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build143';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-142';const APP_BUILD='142';
+const APP_VERSION='2026.09.24-143';const APP_BUILD='143';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -961,7 +961,19 @@ function paintResidentCachedMprPreview(p,idx){
  if(canvas.width!==dims[0])canvas.width=dims[0];if(canvas.height!==dims[1])canvas.height=dims[1];
  const image=ctx.createImageData(dims[0],dims[1]),pixels=new Uint32Array(image.data.buffer),values=result.values,cal=result.calibration||{slope:1,intercept:0,signedBias:0},low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);
  for(let i=0;i<values.length;i++){const hu=(values[i]-cal.signedBias)*cal.slope+cal.intercept,g=Math.max(0,Math.min(255,Math.round((hu-low)*scale)));pixels[i]=(255<<24)|(g<<16)|(g<<8)|g}
- ctx.putImageData(image,0,0);updateMprCanvasPhysicalAspect(p);return true;
+ ctx.putImageData(image,0,0);updateMprCanvasPhysicalAspect(p);
+ const entry=sceneState?.mprPlaneEntries?.[p];
+ if(entry&&mpr3DVisibility[p]){
+  const [tw,th]=dims;
+  if(!entry.liveTexture||entry.liveTexture.image?.width!==tw||entry.liveTexture.image?.height!==th){
+   entry.liveTexture?.dispose?.();entry.liveData=new Uint8Array(tw*th*4);entry.livePixels=new Uint32Array(entry.liveData.buffer);
+   entry.liveTexture=new THREE.DataTexture(entry.liveData,tw,th,THREE.RGBAFormat,THREE.UnsignedByteType);entry.liveTexture.minFilter=THREE.LinearFilter;entry.liveTexture.magFilter=THREE.LinearFilter;entry.liveTexture.generateMipmaps=false;entry.liveTexture.flipY=true;
+  }
+  entry.liveData.set(image.data);entry.liveTexture.needsUpdate=true;
+  if(entry.mesh.material.map!==entry.liveTexture){entry.mesh.material.map=entry.liveTexture;entry.mesh.material.needsUpdate=true}
+  request3DRender();
+ }
+ return true;
 }
 function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
