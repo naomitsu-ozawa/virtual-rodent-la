@@ -3760,19 +3760,19 @@ async function start3D(){
   };
 
   // Candidate vertices come only from triangles actually touched by the stroke.
-  // Preserve the drawn curve and translate it rigidly to the surface vertex nearest to that curve on screen.
-  let anchorWorld=null,anchorMeta=null,anchorScreen=null,bestStrokeD2=Infinity,bestCameraD2=Infinity;
+  // The contact anchor is the candidate vertex closest to the camera, not the 2D-nearest vertex.
+  let anchorWorld=null,anchorMeta=null,anchorScreen=null,bestCameraD2=Infinity;
   const seen=new Set();
   for(const i of hitSamples){
    const surface=samples[i].surface,hit=surface.hit,geom=hit.object?.geometry,pos=geom?.getAttribute?.('position'),face=hit.face;
    if(!pos||!face)continue;
    for(const vi of [face.a,face.b,face.c]){
     const key=(hit.object.uuid||'mesh')+':'+vi;if(seen.has(key))continue;seen.add(key);
-    const world=new THREE.Vector3().fromBufferAttribute(pos,vi).applyMatrix4(hit.object.matrixWorld),ndc=world.clone().project(camera),screen={x:(ndc.x+1)*.5*Math.max(rect.width,1),y:(1-ndc.y)*.5*Math.max(rect.height,1)},nearest=nearestPointOnStroke(screen);
-    if(!nearest)continue;
-    const cameraD2=world.distanceToSquared(camera.position);
-    if(nearest.d2<bestStrokeD2-1e-6||(Math.abs(nearest.d2-bestStrokeD2)<=1e-6&&cameraD2<bestCameraD2)){
-     bestStrokeD2=nearest.d2;bestCameraD2=cameraD2;anchorWorld=world;anchorMeta=surface;anchorScreen=screen;
+    const world=new THREE.Vector3().fromBufferAttribute(pos,vi).applyMatrix4(hit.object.matrixWorld),cameraD2=world.distanceToSquared(camera.position);
+    if(cameraD2<bestCameraD2){
+     bestCameraD2=cameraD2;anchorWorld=world;anchorMeta=surface;
+     const ndc=world.clone().project(camera);
+     anchorScreen={x:(ndc.x+1)*.5*Math.max(rect.width,1),y:(1-ndc.y)*.5*Math.max(rect.height,1)};
     }
    }
   }
