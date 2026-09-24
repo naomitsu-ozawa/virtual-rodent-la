@@ -213,7 +213,7 @@ fn main(){
 
 
 function mprPlaneShader(){
- return \`
+ return `
 struct MprParams{
  dims:vec4<u32>,
  plane:vec4<u32>,
@@ -242,7 +242,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
   x=index;y=ox;z=p.dims.z-1u-oy;
  }
  outValues[i]=huAt(x,y,z);
-}\`;
+}`;
 }
 
 export class MedicalVolumeRenderer{
