@@ -322,13 +322,18 @@ export class MedicalVolumeRenderer{
  hasResident(v){
   return !!(this.texture&&v?.series&&this.seriesId===v.series.id);
  }
- extractPlane(v,plane,index){
+ extractPlane(v,plane,index,{maxSide=0}={}){
   const run=async()=>{
    if(!this.hasResident(v))return null;
    const w=v.columns,h=v.rows,d=v.slices,kind=plane==='axial'?0:plane==='coronal'?1:plane==='sagittal'?2:-1;
    if(kind<0)throw new Error('Unsupported MPR plane: '+plane);
    const maxIndex=kind===0?d-1:kind===1?h-1:w-1;if(index<0||index>maxIndex)throw new Error('MPR plane index out of range');
-   const outW=kind===0?w:kind===1?w:h,outH=kind===0?h:d,count=outW*outH,bytes=count*4;
+   const fullW=kind===0?w:kind===1?w:h,fullH=kind===0?h:d;
+   let outW=fullW,outH=fullH;
+   if(maxSide>0&&Math.max(fullW,fullH)>maxSide){
+    const ratio=maxSide/Math.max(fullW,fullH);outW=Math.max(1,Math.round(fullW*ratio));outH=Math.max(1,Math.round(fullH*ratio));
+   }
+   const count=outW*outH,bytes=count*4;
    if(bytes>(this.device.limits.maxStorageBufferBindingSize||bytes))return null;
    const paramsBytes=new ArrayBuffer(48),u32=new Uint32Array(paramsBytes),f32=new Float32Array(paramsBytes);
    u32.set([w,h,d,0,kind,index,outW,outH],0);f32.set([this.calibration.slope,this.calibration.intercept,this.calibration.signedBias,0],8);
@@ -338,7 +343,7 @@ export class MedicalVolumeRenderer{
    try{
     const group=this.device.createBindGroup({layout:this.mprPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:uniform}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:2,resource:{buffer:output}}]}),encoder=this.device.createCommandEncoder({label:'VRL resident MPR extract'}),pass=encoder.beginComputePass();
     pass.setPipeline(this.mprPipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(count/256));pass.end();encoder.copyBufferToBuffer(output,0,read,0,bytes);this.device.queue.submit([encoder.finish()]);
-    await read.mapAsync(GPUMapMode.READ);const values=new Float32Array(read.getMappedRange().slice(0,bytes));read.unmap();return{values,dims:[outW,outH]};
+    await read.mapAsync(GPUMapMode.READ);const values=new Float32Array(read.getMappedRange().slice(0,bytes));read.unmap();return{values,dims:[outW,outH],fullDims:[fullW,fullH]};
    }finally{
     try{if(read.mapState==='mapped')read.unmap()}catch{}uniform.destroy();output.destroy();read.destroy();
    }
