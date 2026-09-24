@@ -3974,8 +3974,13 @@ function consumeGpuAnalysisRuns(items,zStart,depth,w,h,seed,uf,prevRows,sliceRun
  }
  return rows;
 }
+function sourceAnalysisBlockDepth(w,h){
+ const preferred=navigator.maxTouchPoints>0?4:16,maxGroups=65535,workgroupSize=256,plane=Math.max(1,w*h),safe=Math.max(1,Math.floor(maxGroups*workgroupSize/plane));
+ return Math.max(1,Math.min(preferred,safe));
+}
 async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision){
  const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),device=await ensureGpuFilterDevice();if(!device)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
+ const maxGroups=Number(device.limits?.maxComputeWorkgroupsPerDimension)||65535;if(Math.ceil(series.columns*series.rows*coreDepth/256)>maxGroups)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
  let rawError=null;
  if(!stages.length&&series.slices.slice(zStart,zStart+coreDepth).every(meta=>isNativeDicomTransferSyntax(meta.ts))){
   try{
@@ -3999,7 +4004,7 @@ async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision)
 async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
  const device=await ensureGpuFilterDevice();if(!device||segmentNeedsGlobalMask(seg))return null;
  const w=v.columns,h=v.rows,d=v.slices,uf=new RunUnionFind(),sliceRuns=new Array(d),seed={x:Math.max(0,Math.min(w-1,x0)),y:Math.max(0,Math.min(h-1,y0)),z:Math.max(0,Math.min(d-1,z0)),label:null,bestDist2:Infinity},plane=w*h;
- let prevRows=null,done=0;const blockDepth=navigator.maxTouchPoints>0?4:16;
+ let prevRows=null,done=0;const blockDepth=sourceAnalysisBlockDepth(w,h);
  try{
   for(let z0b=0;z0b<d;z0b+=blockDepth){
    const coreDepth=Math.min(blockDepth,d-z0b),data=readMemoryRegion(v,{x:0,y:0,z:z0b,width:w,height:h,depth:coreDepth}),target={x:0,y:0,z:0,width:w,height:h,depth:coreDepth};
@@ -4015,7 +4020,7 @@ async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
 async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
  const w=v.columns,h=v.rows,d=v.slices,analysisRevision=sourceFilterRuntime.revision,uf=new RunUnionFind(),sliceRuns=new Array(d);
  const seed={x:Math.max(0,Math.min(w-1,x0)),y:Math.max(0,Math.min(h-1,y0)),z:Math.max(0,Math.min(d-1,z0)),label:null,bestDist2:Infinity};
- let prevRows=null,done=0,gpuUsed=false,hadCpuPath=false;const blockDepth=navigator.maxTouchPoints>0?4:16;
+ let prevRows=null,done=0,gpuUsed=false,hadCpuPath=false;const blockDepth=sourceAnalysisBlockDepth(w,h);
  for(let z0b=0;z0b<d;z0b+=blockDepth){
   if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   let gpuBlock=null;
@@ -4388,7 +4393,7 @@ async function sourceRunsForSegment(v,key,seg){
   const memoryView=sourceMprMemoryView(v);
   return thresholdRunsFromMemory(memoryView,seg);
  }
- const d=v.slices,w=v.columns,h=v.rows,out=Array.from({length:d},()=>new Uint32Array(0)),revision=sourceFilterRuntime.revision,blockDepth=navigator.maxTouchPoints>0?4:16;
+ const d=v.slices,w=v.columns,h=v.rows,out=Array.from({length:d},()=>new Uint32Array(0)),revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
  for(let z0=0;z0<d;z0+=blockDepth){
   let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision)}catch(e){console.warn('Edit base GPU RLE failed; using exact CPU RLE path.',e)}
   if(gpu){
