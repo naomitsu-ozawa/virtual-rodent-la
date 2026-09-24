@@ -131,7 +131,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
     let spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
     let a=u.segments[u32(idx)*2u];let col=u.segments[u32(idx)*2u+1u].rgb;
     let alpha=clamp(a.z,0.03,1.0);let lit=col*diffuse+vec3<f32>(spec);
-    acc.rgb+=(1.0-acc.a)*lit*alpha;acc.a+=(1.0-acc.a)*alpha;
+    let contribution=(1.0-acc.a)*alpha;acc=vec4<f32>(acc.rgb+lit*contribution,acc.a+contribution);
    }
    lastIndex=idx;
   }
