@@ -3835,7 +3835,7 @@ async function start3D(){
   return out;
  };
  const collectCutSurfaceSamples=async(screenCurve)=>{
-  const rect=renderer.domElement.getBoundingClientRect(),probePoints=resampleCutScreenCurve(screenCurve,3),samples=[];let preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;
+  const rect=renderer.domElement.getBoundingClientRect(),probeStep=sceneState?.cutRaycastAccelerated?3:Math.max(24,Math.ceil(screenCurve.length/6)),probePoints=resampleCutScreenCurve(screenCurve,probeStep),samples=[];let preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;
   for(let i=0;i<probePoints.length;i++){
    const screen=probePoints[i],surface=cutPointerVoxel({clientX:rect.left+screen.x,clientY:rect.top+screen.y},renderer.domElement,camera,preferred);
    samples.push({screen,surface});
@@ -5491,7 +5491,7 @@ function gpuResidentReadbackPending(key=null){
 }
 let cutBvhModulePromise=null,cutRaycastMaterial=null;
 async function cutBvhModule(){
- if(!cutBvhModulePromise)cutBvhModulePromise=import('https://esm.sh/three-mesh-bvh@0.9.2?bundle&deps=three@0.186.0');
+ if(!cutBvhModulePromise)cutBvhModulePromise=import('https://esm.sh/three-mesh-bvh@0.9.15?deps=three@0.186.0').catch(e=>{console.warn('Cut BVH acceleration unavailable.',e);cutBvhModulePromise=null;return null});
  return cutBvhModulePromise;
 }
 function segmentCutRaycastProxy(mesh){
@@ -5526,15 +5526,17 @@ function cutRaycastSourceMeshes(key=null){
  });return meshes;
 }
 async function ensureCutRaycastAcceleration(key=null){
- const {MeshBVH,acceleratedRaycast}=await cutBvhModule(),meshes=cutRaycastSourceMeshes(key);
- let built=0;
+ const mod=await cutBvhModule(),meshes=cutRaycastSourceMeshes(key);if(!mod){if(sceneState)sceneState.cutRaycastAccelerated=false;return 0}
+ const {MeshBVH,acceleratedRaycast}=mod;let built=0,ready=0;
  for(const mesh of meshes){
   const proxy=segmentCutRaycastProxy(mesh);if(!proxy)continue;
   if(!proxy.geometry.boundsTree){
    proxy.geometry.boundsTree=new MeshBVH(proxy.geometry,{indirect:true,verbose:false,targetLeafSize:16});
    proxy.raycast=acceleratedRaycast;built++;await frameYield();
   }else if(proxy.raycast!==acceleratedRaycast)proxy.raycast=acceleratedRaycast;
+  if(proxy.geometry.boundsTree)ready++;
  }
+ if(sceneState)sceneState.cutRaycastAccelerated=ready>0&&ready===meshes.length;
  return built;
 }
 async function ensureEditRaycastReady(key=null,label='3D edit data'){
