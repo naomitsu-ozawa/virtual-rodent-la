@@ -5455,49 +5455,69 @@ async function ensureGpuResidentCpuPositions(key=null,label='GPU readback'){
 function gpuResidentReadbackPending(key=null){
  let pending=false;sceneState?.obj?.traverse?.(o=>{if(pending||!o.isMesh||!o.userData?.gpuResident||o.userData?.gpuPositionReady)return;if(key&&meshSegmentRanges(o,key).length===0)return;pending=true});return pending;
 }
-async function ensureEditRaycastReady(key=null,label='3D edit data'){
- for(let attempt=0;attempt<4;attempt++){
-  const obj=sceneState?.obj;
-  await ensureGpuResidentCpuPositions(key,label);
-  if(sceneState?.obj===obj&&!gpuResidentReadbackPending(key))return true;
-  await frameYield();
- }
- if(gpuResidentReadbackPending(key))throw new Error('3D edit mesh changed during preparation');
- return true;
+let cutBvhModulePromise=null,cutRaycastMaterial=null;
+async function cutBvhModule(){
+ if(!cutBvhModulePromise)cutBvhModulePromise=import('https://esm.sh/three-mesh-bvh@0.9.2?bundle&deps=three@0.186.0');
+ return cutBvhModulePromise;
 }
-let cutRaycastMaterial=null;
-function gpuCutRaycastProxy(mesh){
- if(!mesh?.userData?.gpuResident||!mesh.userData.gpuPositionReady)return null;
- const src=mesh.geometry?.getAttribute?.('position');if(!src?.array?.length)return null;
+function segmentCutRaycastProxy(mesh){
+ if(!mesh?.geometry)return null;
+ if(mesh.userData?.gpuResident&&!mesh.userData.gpuPositionReady)return null;
+ const src=mesh.geometry.getAttribute?.('position');if(!src?.array?.length)return null;
  let proxy=mesh.userData.cutRaycastProxy;
  if(!proxy){
-  const geometry=new THREE.BufferGeometry(),position=new THREE.BufferAttribute(src.array,3);
-  geometry.setAttribute('position',position);
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(src.array,src.itemSize||3,src.normalized||false));
+  const index=mesh.geometry.index;if(index?.array)geometry.setIndex(new THREE.BufferAttribute(index.array,1,index.normalized||false));
   geometry.setDrawRange(mesh.geometry.drawRange.start,mesh.geometry.drawRange.count);
   for(const g of mesh.geometry.groups||[])geometry.addGroup(g.start,g.count,g.materialIndex);
   geometry.computeBoundingSphere();
   cutRaycastMaterial=cutRaycastMaterial||new THREE.MeshBasicMaterial({side:THREE.DoubleSide});
   const materialCount=Math.max(1,Array.isArray(mesh.material)?mesh.material.length:1),materials=Array.from({length:materialCount},()=>cutRaycastMaterial);
-  proxy=new THREE.Mesh(geometry,materials);
-  proxy.matrixAutoUpdate=false;
+  proxy=new THREE.Mesh(geometry,materials);proxy.matrixAutoUpdate=false;
   proxy.userData.segmentKey=mesh.userData.segmentKey||null;
   proxy.userData.segmentRanges=Array.isArray(mesh.userData.segmentRanges)?mesh.userData.segmentRanges.map(r=>({...r})):[];
-  proxy.userData.displayScale=mesh.userData.displayScale;
-  proxy.userData.cutRaycastProxy=true;
-  proxy.userData.sourceMesh=mesh;
+  proxy.userData.displayScale=mesh.userData.displayScale;proxy.userData.cutRaycastProxy=true;proxy.userData.sourceMesh=mesh;
   mesh.userData.cutRaycastProxy=proxy;
  }
- mesh.updateMatrixWorld(true);proxy.matrixWorld.copy(mesh.matrixWorld);
- return proxy;
+ mesh.updateMatrixWorld(true);proxy.matrixWorld.copy(mesh.matrixWorld);return proxy;
+}
+function cutRaycastSourceMeshes(key=null){
+ const meshes=[];sceneState?.obj?.traverse?.(o=>{
+  if(!o.isMesh||o.userData?.cutResultPreview)return;
+  const hasSegment=!!o.userData?.segmentKey||Array.isArray(o.userData?.segmentRanges)&&o.userData.segmentRanges.length;
+  if(!hasSegment)return;
+  if(key&&meshSegmentRanges(o,key).length===0)return;
+  meshes.push(o);
+ });return meshes;
+}
+async function ensureCutRaycastAcceleration(key=null){
+ const {MeshBVH,acceleratedRaycast}=await cutBvhModule(),meshes=cutRaycastSourceMeshes(key);
+ let built=0;
+ for(const mesh of meshes){
+  const proxy=segmentCutRaycastProxy(mesh);if(!proxy)continue;
+  if(!proxy.geometry.boundsTree){
+   proxy.geometry.boundsTree=new MeshBVH(proxy.geometry,{indirect:true,verbose:false,targetLeafSize:16});
+   proxy.raycast=acceleratedRaycast;built++;await frameYield();
+  }else if(proxy.raycast!==acceleratedRaycast)proxy.raycast=acceleratedRaycast;
+ }
+ return built;
+}
+async function ensureEditRaycastReady(key=null,label='3D edit data'){
+ for(let attempt=0;attempt<4;attempt++){
+  const obj=sceneState?.obj;
+  await ensureGpuResidentCpuPositions(key,label);
+  if(sceneState?.obj===obj&&!gpuResidentReadbackPending(key)){
+   await ensureCutRaycastAcceleration(key);
+   if(sceneState?.obj===obj)return true;
+  }
+  await frameYield();
+ }
+ if(gpuResidentReadbackPending(key))throw new Error('3D edit mesh changed during preparation');
+ await ensureCutRaycastAcceleration(key);return true;
 }
 function cutRaycastTargets(){
- const targets=[];sceneState?.obj?.traverse?.(o=>{
-  if(!o.isMesh)return;
-  const hasSegment=!!o.userData?.segmentKey||Array.isArray(o.userData?.segmentRanges)&&o.userData.segmentRanges.length;
-  if(!hasSegment||o.userData?.cutResultPreview)return;
-  if(o.userData?.gpuResident){const proxy=gpuCutRaycastProxy(o);if(proxy)targets.push(proxy)}
-  else targets.push(o);
- });
+ const targets=[];for(const mesh of cutRaycastSourceMeshes()){const proxy=segmentCutRaycastProxy(mesh);if(proxy)targets.push(proxy)}
  return targets;
 }
 function eachGeometryTriangleRange(geometry,start,count,callback){
