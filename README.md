@@ -39,6 +39,12 @@
 
 元のキャリブレーション済みCT値は保持され、表示・フィルター処理は作業用ボリュームに対して行います。
 
+## 動作対象
+
+- 主対象: WebGPU対応のMac、iPad
+- iPhone: 軽量なDICOMシリーズの表示を想定した補助対応。大容量シリーズは主な動作対象に含めません。
+- 大容量source-backed CTでは、対応環境でフル解像度の3D textureをGPUへ常駐させ、MPR断面でも同じGPUボリュームを再利用します。GPU常駐に失敗した場合は元DICOMからのsource-backed経路へフォールバックします。
+
 ## 言語
 
 アプリの初期表示は日本語です。
@@ -102,6 +108,12 @@ AGPLv3の条件に適合しないクローズドな商用利用を希望する�
 Virtual Rodent Lab is a browser-based DICOM CT viewer for mouse and other small-animal imaging.
 
 The app uses Japanese by default. Use the language button in the top-right corner to switch between Japanese and English.
+
+### Target platforms
+
+- Primary: WebGPU-capable Mac and iPad
+- iPhone: best-effort support for lighter DICOM series; large-volume datasets are outside the primary target.
+- Large source-backed CT series use a full-resolution GPU-resident 3D texture when available, and MPR views reuse that volume. The viewer falls back to the source-backed DICOM path if GPU residency is unavailable.
 
 ### Current capabilities
 
