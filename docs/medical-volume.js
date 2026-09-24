@@ -260,7 +260,7 @@ export class MedicalVolumeRenderer{
   const pickModule=this.device.createShaderModule({label:'VRL medical volume pick',code:safeWgsl(volumePickShader())});this.pickPipeline=this.device.createComputePipeline({label:'VRL medical volume pick',layout:'auto',compute:{module:pickModule,entryPoint:'main'}});this.pickBuffer=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});this.pickOutput=this.device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
   const brickModule=this.device.createShaderModule({label:'VRL volume minmax bricks',code:safeWgsl(brickShader())});this.brickPipeline=this.device.createComputePipeline({label:'VRL volume minmax bricks',layout:'auto',compute:{module:brickModule,entryPoint:'main'}});this.brickBuffer=null;this.brickDims=[1,1,1];this.brickSize=8;
   const mprModule=this.device.createShaderModule({label:'VRL resident volume MPR',code:safeWgsl(mprPlaneShader())});this.mprPipeline=this.device.createComputePipeline({label:'VRL resident volume MPR',layout:'auto',compute:{module:mprModule,entryPoint:'main'}});this.mprUniformBuffer=this.device.createBuffer({size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});this.mprReadSerial=Promise.resolve();
-  this.texture=null;this.bindGroup=null;this.seriesId=null;this.active=false;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;
+  this.texture=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.active=false;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;
  }
  support(v){
   const s=v?.series;if(!v?.sourceBacked||!s)return{ok:false,reason:'GPU volume currently targets source-backed DICOM'};
@@ -273,9 +273,12 @@ export class MedicalVolumeRenderer{
   if(s.columns>lim||s.rows>lim||s.slices.length>lim)return{ok:false,reason:'Volume exceeds maxTextureDimension3D '+lim};
   return{ok:true};
  }
- async ensure(v){
+ async ensure(v,{prepareBricks=true}={}){
   const support=this.support(v);if(!support.ok)throw new Error(support.reason);
-  const s=v.series;if(this.seriesId===s.id&&this.texture){this.volume=v;return}
+  const s=v.series;
+  if(this.seriesId===s.id&&this.texture){
+   this.volume=v;if(prepareBricks)await this.ensureBricks();return;
+  }
   this.resetData();this.volume=v;this.onStatus('WEBGPU VOLUME UPLOAD');
   const first=s.slices[0],signed=!!first.signed;let texture,popped=false;
   this.device.pushErrorScope?.('validation');
@@ -297,13 +300,21 @@ export class MedicalVolumeRenderer{
   }
   const px=s.columns*s.spacingX,py=s.rows*s.spacingY,pz=s.slices.length*s.spacingZ,maxP=Math.max(px,py,pz,1),scale=3.3/maxP;
   this.halfExtents=[px*scale*.5,py*scale*.5,pz*scale*.5];this.step=Math.max(1e-5,Math.min(s.spacingX,s.spacingY,s.spacingZ)*scale*.85);
-  this.calibration={slope:first.slope,intercept:first.intercept,signedBias:signed?32768:0};this.texture=texture;this.seriesId=s.id;
-  const bs=this.brickSize,bx=Math.ceil(s.columns/bs),by=Math.ceil(s.rows/bs),bz=Math.ceil(s.slices.length/bs),brickCount=bx*by*bz;this.brickDims=[bx,by,bz];
-  this.brickBuffer=this.device.createBuffer({label:'VRL volume minmax bricks',size:Math.max(8,brickCount*8),usage:GPUBufferUsage.STORAGE});
+  this.calibration={slope:first.slope,intercept:first.intercept,signedBias:signed?32768:0};this.texture=texture;this.seriesId=s.id;this.bricksReady=false;
+  if(prepareBricks)await this.ensureBricks();else this.onStatus('WEBGPU VOLUME RESIDENT');
+ }
+ async ensureBricks(){
+  if(this.bricksReady)return;
+  const s=this.volume?.series;if(!s||!this.texture)throw new Error('GPU volume texture is not resident');
+  const first=s.slices[0],signed=!!first.signed,bs=this.brickSize,bx=Math.ceil(s.columns/bs),by=Math.ceil(s.rows/bs),bz=Math.ceil(s.slices.length/bs),brickCount=bx*by*bz;this.brickDims=[bx,by,bz];
+  this.brickBuffer?.destroy?.();this.brickBuffer=this.device.createBuffer({label:'VRL volume minmax bricks',size:Math.max(8,brickCount*8),usage:GPUBufferUsage.STORAGE});
   const meta=smallStorage(this.device,new Uint32Array([s.columns,s.rows,s.slices.length,bx,by,bz,bs,0])),params=smallStorage(this.device,new Float32Array([first.slope,first.intercept,signed?32768:0,0]));
-  const brickGroup=this.device.createBindGroup({layout:this.brickPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.texture.createView({dimension:'3d'})},{binding:1,resource:{buffer:meta}},{binding:2,resource:{buffer:params}},{binding:3,resource:{buffer:this.brickBuffer}}]}),brickEncoder=this.device.createCommandEncoder({label:'VRL volume minmax bricks'}),brickPass=brickEncoder.beginComputePass();brickPass.setPipeline(this.brickPipeline);brickPass.setBindGroup(0,brickGroup);brickPass.dispatchWorkgroups(Math.ceil(brickCount/64));brickPass.end();this.device.queue.submit([brickEncoder.finish()]);await this.device.queue.onSubmittedWorkDone();meta.destroy();params.destroy();
+  try{
+   const brickGroup=this.device.createBindGroup({layout:this.brickPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.texture.createView({dimension:'3d'})},{binding:1,resource:{buffer:meta}},{binding:2,resource:{buffer:params}},{binding:3,resource:{buffer:this.brickBuffer}}]}),brickEncoder=this.device.createCommandEncoder({label:'VRL volume minmax bricks'}),brickPass=brickEncoder.beginComputePass();
+   brickPass.setPipeline(this.brickPipeline);brickPass.setBindGroup(0,brickGroup);brickPass.dispatchWorkgroups(Math.ceil(brickCount/64));brickPass.end();this.device.queue.submit([brickEncoder.finish()]);await this.device.queue.onSubmittedWorkDone();
+  }finally{meta.destroy();params.destroy()}
   this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},{binding:3,resource:{buffer:this.brickBuffer}}]});
-  this.onStatus('WEBGPU VOLUME READY');
+  this.bricksReady=true;this.onStatus('WEBGPU VOLUME READY');
  }
  hasResident(v){
   return !!(this.texture&&v?.series&&this.seriesId===v.series.id);
@@ -364,7 +375,7 @@ export class MedicalVolumeRenderer{
   await read.mapAsync(GPUMapMode.READ);const out=new Uint32Array(read.getMappedRange().slice(0));read.unmap();read.destroy();if(!out[3])return null;
   const index=out[3]-1;return{x:out[0],y:out[1],z:out[2],key:segmentOrder[index]};
  }
- resetData(){this.setActive(false);this.texture?.destroy?.();this.brickBuffer?.destroy?.();this.texture=null;this.brickBuffer=null;this.bindGroup=null;this.seriesId=null;this.volume=null}
+ resetData(){this.setActive(false);this.texture?.destroy?.();this.brickBuffer?.destroy?.();this.texture=null;this.brickBuffer=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.volume=null}
  destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.mprUniformBuffer?.destroy?.();this.canvas.remove()}
 }
 
