@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build141';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build142';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-141';const APP_BUILD='141';
+const APP_VERSION='2026.09.24-142';const APP_BUILD='142';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -954,20 +954,14 @@ function paintFastOrthogonalPreview(p,idx){
  if(ok)updateMprCanvasPhysicalAspect(p);
  return ok;
 }
-function paintResidentGpuMprPreview(p,idx,result,revision){
- if(!result?.values||revision!==planeRenderRevision[p]||!planes[p])return false;
+function paintResidentCachedMprPreview(p,idx){
+ if(p==='axial'||!residentGpuMprAvailable(volume)||sourceFilterStages().length||volumeAnalysisMode)return false;
+ const mv=sceneState?.medicalVolume,result=mv?.previewPlane?.(volume,p,idx);if(!result?.values)return false;
  const dims=result.dims,canvas=planes[p].canvas,ctx=canvas.getContext('2d');
  if(canvas.width!==dims[0])canvas.width=dims[0];if(canvas.height!==dims[1])canvas.height=dims[1];
- const image=ctx.createImageData(dims[0],dims[1]),pixels=new Uint32Array(image.data.buffer),values=result.values,low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);
- for(let i=0;i<values.length;i++){const g=Math.max(0,Math.min(255,Math.round((values[i]-low)*scale)));pixels[i]=(255<<24)|(g<<16)|(g<<8)|g}
- ctx.putImageData(image,0,0);updateMprCanvasPhysicalAspect(p);
- return true;
-}
-function scheduleResidentGpuMprPreview(p,idx,revision){
- if(p==='axial'||!residentGpuMprAvailable(volume)||sourceFilterStages().length||volumeAnalysisMode)return false;
- const side=isIPadRuntime()?384:512,series=volume.series;
- void readResidentGpuMprPlane(p,idx,series,{maxSide:side}).then(result=>paintResidentGpuMprPreview(p,idx,result,revision)).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__')console.warn('GPU MPR preview failed.',e)});
- return true;
+ const image=ctx.createImageData(dims[0],dims[1]),pixels=new Uint32Array(image.data.buffer),values=result.values,cal=result.calibration||{slope:1,intercept:0,signedBias:0},low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);
+ for(let i=0;i<values.length;i++){const hu=(values[i]-cal.signedBias)*cal.slope+cal.intercept,g=Math.max(0,Math.min(255,Math.round((hu-low)*scale)));pixels[i]=(255<<24)|(g<<16)|(g<<8)|g}
+ ctx.putImageData(image,0,0);updateMprCanvasPhysicalAspect(p);return true;
 }
 function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
@@ -975,7 +969,7 @@ function schedulePlaneRender(p,immediate=false){
  if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate){pushCachedMpr3DPlane(p,idx);prefetchOrthogonalHighRes(p,idx)}}
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
- if(!immediate&&scheduleResidentGpuMprPreview(p,idx,revision))return;
+ if(!immediate&&paintResidentCachedMprPreview(p,idx))return;
  if(p==='axial')refreshMpr3DPlaneTexture(p);
  if(volume?.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))){
   const values=p==='sagittal'&&volume.mprSagittalDisplayAll&&!volume.mprSagittalAll?cachedSagittalDisplayPlane(volume,idx):cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
@@ -1207,7 +1201,7 @@ function clearResidentMprJobs(){
 async function prepareResidentGpuVolume(v){
  const mv=sceneState?.medicalVolume;if(!shouldAutoPrepareResidentGpu(v))return false;
  try{
-  await mv.ensure(v,{prepareBricks:false});residentMprReadbackDisabled=false;setGpuComputeBackend('WEBGPU VOLUME RESIDENT');return true;
+  const previewSide=isIPhoneRuntime()?192:isIPadRuntime()?320:384;await mv.ensure(v,{prepareBricks:false,previewSide});residentMprReadbackDisabled=false;setGpuComputeBackend('WEBGPU VOLUME RESIDENT');return true;
  }catch(e){
   console.warn('GPU resident volume unavailable; using source-backed MPR fallback.',e);residentMprReadbackDisabled=true;setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);return false;
  }finally{set3DBusy(false)}
