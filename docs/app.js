@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-133';const APP_BUILD='133';
+const APP_VERSION='2026.09.24-134';const APP_BUILD='134';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -925,7 +925,7 @@ const planeRenderTimers={axial:null,coronal:null,sagittal:null};
 const mpr3DOrthoSliding={coronal:false,sagittal:false};
 const orthogonalHighResPrefetch={coronal:{running:false,next:null},sagittal:{running:false,next:null}};
 function prefetchOrthogonalHighRes(p,idx){
- if((p!=='coronal'&&p!=='sagittal')||!volume?.sourceBacked||sourceFilterStages().length||volume.mprData)return;
+ if((p!=='coronal'&&p!=='sagittal')||!volume?.sourceBacked||sourceFilterStages().length||volume.mprData||(p==='sagittal'&&volume.mprSagittalAll))return;
  const state=orthogonalHighResPrefetch[p];state.next=idx;if(state.running)return;state.running=true;
  void(async()=>{
   try{
@@ -961,9 +961,9 @@ function schedulePlaneRender(p,immediate=false){
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
  if(p==='axial')refreshMpr3DPlaneTexture(p);
- if(volume?.sourceBacked&&volume.mprData&&!sourceFilterStages().length){
+ if(volume?.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&volume.mprSagittalAll))){
   const values=cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
-  paintSourcePlane(planes[p],dims,values,p,idx);return;
+  if(values){paintSourcePlane(planes[p],dims,values,p,idx);return}
  }
  if(volume?.sourceBacked&&p!=='axial'&&!sourceFilterStages().length){
   const cached=sourceOrthogonalCacheGet(p,idx);
@@ -1168,8 +1168,14 @@ async function prepareSourceMprCache(v,onProgress){
  let data,coronalAll=null,sagittalAll=null;
  try{
   data=new Ctor(count);
-  if(volumeBytes*3<=limit){coronalAll=new Ctor(count);sagittalAll=new Ctor(count)}
- }catch{return false}
+  if(isDesktopMac()||volumeBytes*2<=limit)sagittalAll=new Ctor(count);
+  if(volumeBytes*3<=limit)coronalAll=new Ctor(count);
+ }catch{
+  try{
+   data=data||new Ctor(count);
+   sagittalAll=null;coronalAll=null;
+  }catch{return false}
+ }
  let next=0,completed=0,min=Infinity,max=-Infinity;
  const decodeOne=async z=>{
   const slice=await decodeSourceSlice(s.slices[z]),base=z*plane,corZ=d-1-z;
@@ -1201,8 +1207,10 @@ async function prepareSourceMprCache(v,onProgress){
  return true;
 }
 function cachedSourceMprPlane(v,p,idx){
+ const w=v?.columns||0,h=v?.rows||0,d=v?.slices||0;
+ if(p==='sagittal'&&v?.mprSagittalAll)return v.mprSagittalAll.subarray(idx*d*h,(idx+1)*d*h);
  const data=v?.mprData;if(!data)return null;
- const Ctor=v.mprCtor||data.constructor,w=v.columns,h=v.rows,d=v.slices,plane=w*h;
+ const Ctor=v.mprCtor||data.constructor,plane=w*h;
  if(p==='axial')return data.subarray(idx*plane,(idx+1)*plane);
  if(p==='coronal'){
   if(v.mprCoronalAll)return v.mprCoronalAll.subarray(idx*d*w,(idx+1)*d*w);
@@ -1210,7 +1218,6 @@ function cachedSourceMprPlane(v,p,idx){
   for(let z=0;z<d;z++){const src=z*plane+idx*w,dst=(d-1-z)*w;out.set(data.subarray(src,src+w),dst)}
   return out;
  }
- if(v.mprSagittalAll)return v.mprSagittalAll.subarray(idx*d*h,(idx+1)*d*h);
  const out=v.mprPlaneBuffers?.sagittal||new Ctor(h*d);
  for(let z=0;z<d;z++){const base=z*plane,dst=(d-1-z)*h;for(let y=0;y<h;y++)out[dst+y]=data[base+y*w+idx]}
  return out;
@@ -3382,7 +3389,7 @@ function paintSourcePlane(c,dims,values,p='axial',idx=0){
 async function renderPlaneSourceBacked(p,revision,idx){
  const c=planes[p],series=volume.series;c.label.textContent=idx+1;if(revision!==planeRenderRevision[p])return;
  try{
-  if(!sourceFilterStages().length&&volume.mprData){
+  if(!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&volume.mprSagittalAll))){
    const values=cachedSourceMprPlane(volume,p,idx);if(revision!==planeRenderRevision[p]||!values)return;
    const dims=p==='axial'?[series.columns,series.rows]:p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length];
    paintSourcePlane(c,dims,values,p,idx);return;
@@ -3677,7 +3684,7 @@ async function start3D(){
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
  renderer.domElement.onpointerdown=e=>{const cutTool=analysisEditTool==='pen'||analysisEditTool==='line',cutReady=cutTool&&!analysisPendingCut&&!analysisCutApplying&&e.button===0&&!e.altKey&&threeRenderMode==='surface'&&!!sceneState.obj,sectionHit=!cutReady&&e.button===0&&!e.altKey?sectionDragHit(e):null,mode=cutReady?(analysisEditTool==='line'?'cut-line':'cut-pen'):sectionHit?'section-drag':isMousePanStart(e)?'pan':'rotate',point={x:e.clientX,y:e.clientY,mode,pointerType:e.pointerType};if(!cutReady&&!sectionHit)begin3DInteraction();pointers.set(e.pointerId,point);pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY,mode,sectionPlane:sectionHit?sectionViewPlane:null,sectionIndex:sectionHit?+planes[sectionViewPlane].slider.value:null,sectionScreenStep:sectionHit?sectionScreenStep():null,cutFrame:null});if(sectionHit){renderer.domElement.style.cursor='grabbing';footer.textContent=(currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面をドラッグ中':'Dragging '+sectionPlaneLabel(sectionViewPlane)+' section')}if(cutReady){analysisCutStroke=[];analysisCutScreen=[editPoint(e)];const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode,surface=cutPointerVoxel(e,renderer.domElement,camera,preferred);pointerStarts.get(e.pointerId).cutSamples=[{screen:analysisCutScreen[0],surface}];if(surface){if(analysisEditTargetMode==='auto'&&surface.key)analysisEditTargetKey=surface.key;else if(analysisEditTargetMode!=='auto')analysisEditTargetKey=preferred;analysisCutStroke.push(surface)}updateThreeEditUi(analysisEditTargetKey?(tr(analysisEditTargetKey)||analysisEditTargetKey)+' · '+(analysisEditTool==='pen'?tr('cutRegion'):tr('lineCutRegion')):(currentLanguage==='ja'?'空間から描画中 · 3D表面に触れると切断面を開始します':'Drawing from space · cut surface starts when the stroke reaches the 3D surface'));footer.textContent=analysisEditTargetKey?(currentLanguage==='ja'?(tr(analysisEditTargetKey)||analysisEditTargetKey)+'を編集中':'Editing '+(tr(analysisEditTargetKey)||analysisEditTargetKey)):(currentLanguage==='ja'?'3D表面への接触待ち':'Waiting for 3D surface contact');drawEditStroke(analysisEditTool)}renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2}}};
  renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId),start=pointerStarts.get(e.pointerId);if(!prev){if((analysisEditTool==='pen'||analysisEditTool==='line')&&!analysisPendingCut&&!analysisCutApplying&&sceneState.obj){const preferred=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateCutPreview(surfaceSegmentPointerVoxel(e,renderer.domElement,camera,preferred))}return}pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='section-drag'){dragSectionPlane(start,e);return}if(prev.mode==='cut-pen'||prev.mode==='cut-line'){const preferred=analysisEditTargetMode==='auto'?analysisEditTargetKey:analysisEditTargetMode,screen=editPoint(e),surface=cutPointerVoxel(e,renderer.domElement,camera,preferred),samples=start?.cutSamples||(start.cutSamples=[]);if(prev.mode==='cut-line')analysisCutScreen=[analysisCutScreen[0],screen];else if(Math.hypot(dx,dy)>=1)analysisCutScreen.push(screen);samples.push({screen,surface});if(surface){if(analysisEditTargetMode==='auto'&&!analysisEditTargetKey&&surface.key)analysisEditTargetKey=surface.key;if(prev.mode==='cut-line'){const hits=samples.filter(q=>q.surface).map(q=>q.surface);analysisCutStroke=hits.length>1?[hits[0],hits[hits.length-1]]:hits}else{const last=analysisCutStroke?.[analysisCutStroke.length-1];if(!last||Math.hypot(surface.x-last.x,surface.y-last.y,surface.z-last.z)>.2)analysisCutStroke.push(surface)}}updateCutPreview(surface);drawEditStroke(prev.mode==='cut-line'?'line':'pen');return}if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dx*.008);const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),dy*.008);sceneState.obj.quaternion.premultiply(qYaw);sceneState.obj.quaternion.premultiply(qPitch);sceneState.obj.quaternion.normalize();request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(lastPinch){distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}lastPinch=d;lastCenter=center;request3DRender()};
- const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag',stroke=isCut?[...(analysisCutStroke||[])]:null,cutSamples=isCut?[...(start?.cutSamples||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&!isCut&&!isSectionDrag)end3DInteraction();if(isSectionDrag){renderer.domElement.style.cursor='';if(start?.sectionPlane===sectionViewPlane)schedulePlaneRender(sectionViewPlane,true);footer.textContent=currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面 '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1):sectionPlaneLabel(sectionViewPlane)+' section '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1);return}if(isCut){analysisCutStroke=null;const cutMode=start?.mode==='cut-line'?'line':'pen',surfaceStroke=cutSamplesToSurfaceStroke(cutSamples,cutMode),finalStroke=(surfaceStroke.length>=2?surfaceStroke:stroke)||[];if(e.type==='pointerup'&&finalStroke.length>=2&&analysisEditTargetKey){analysisPendingCut={points:finalStroke,key:analysisEditTargetKey,mode:cutMode};analysisCutScreen=[];clearThreeEditOverlay();sceneState.editCutPreviewPoint=finalStroke[finalStroke.length-1];updateCutPreview(sceneState.editCutPreviewPoint);footer.textContent=currentLanguage==='ja'?'切断予定を作成しました。深さ・幅・角度を調整してください':'Cut plan created. Adjust depth, width and angles.';updateThreeEditUi(tr('cutPendingHint'))}else{analysisCutScreen=[];clearThreeEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'切断線が対象表面にありません':'The cut stroke did not hit the target surface')}return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
+ const endPointer=e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag';if(isCut&&e.type==='pointerup'){const preferred=analysisEditTargetMode==='auto'?analysisEditTargetKey:analysisEditTargetMode,screen=editPoint(e),surface=cutPointerVoxel(e,renderer.domElement,camera,preferred),samples=start?.cutSamples||(start.cutSamples=[]),last=samples[samples.length-1];if(!last||Math.hypot(screen.x-last.screen.x,screen.y-last.screen.y)>.25||surface!==last.surface)samples.push({screen,surface});if(surface){if(analysisEditTargetMode==='auto'&&!analysisEditTargetKey&&surface.key)analysisEditTargetKey=surface.key;else if(analysisEditTargetMode!=='auto')analysisEditTargetKey=preferred}}const stroke=isCut?[...(analysisCutStroke||[])]:null,cutSamples=isCut?[...(start?.cutSamples||[])]:null;clear3DPointerState(e.pointerId);if(!pointers.size&&!isCut&&!isSectionDrag)end3DInteraction();if(isSectionDrag){renderer.domElement.style.cursor='';if(start?.sectionPlane===sectionViewPlane)schedulePlaneRender(sectionViewPlane,true);footer.textContent=currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面 '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1):sectionPlaneLabel(sectionViewPlane)+' section '+(+planes[sectionViewPlane].slider.value+1)+' / '+(+planes[sectionViewPlane].slider.max+1);return}if(isCut){analysisCutStroke=null;const cutMode=start?.mode==='cut-line'?'line':'pen',surfaceStroke=cutSamplesToSurfaceStroke(cutSamples,cutMode),finalStroke=(surfaceStroke.length>=2?surfaceStroke:stroke)||[];if(e.type==='pointerup'&&finalStroke.length>=2&&analysisEditTargetKey){analysisPendingCut={points:finalStroke,key:analysisEditTargetKey,mode:cutMode};analysisCutScreen=[];clearThreeEditOverlay();sceneState.editCutPreviewPoint=finalStroke[finalStroke.length-1];updateCutPreview(sceneState.editCutPreviewPoint);footer.textContent=currentLanguage==='ja'?'切断予定を作成しました。深さ・幅・角度を調整してください':'Cut plan created. Adjust depth, width and angles.';updateThreeEditUi(tr('cutPendingHint'))}else{analysisCutScreen=[];clearThreeEditOverlay();updateThreeEditUi(currentLanguage==='ja'?'切断線が対象表面にありません':'The cut stroke did not hit the target surface')}return}if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}};
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
  renderer.domElement.onlostpointercapture=e=>{const start=pointerStarts.get(e.pointerId);pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(!analysisPendingCut){analysisCutScreen=[];clearThreeEditOverlay()}renderer.domElement.style.cursor='';if(pointers.size<2){lastPinch=0;lastCenter=null}if(!pointers.size&&start?.mode!=='section-drag')end3DInteraction()};
  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
