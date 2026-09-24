@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build144';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build145';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-144';const APP_BUILD='144';
+const APP_VERSION='2026.09.24-145';const APP_BUILD='145';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -991,7 +991,7 @@ function schedulePlaneRender(p,immediate=false){
   const cached=sourceOrthogonalCacheGet(p,idx);
   if(cached){paintSourcePlane(planes[p],p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],cached,p,idx);return}
  }
- const wait=immediate?0:sourceFilterStages().length?16:residentGpuMprAvailable(volume)?16:0;
+ const wait=immediate||p==='axial'?0:sourceFilterStages().length?16:residentGpuMprAvailable(volume)?16:0;
  planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;if(revision===planeRenderRevision[p])safeRenderPlane(p,revision,idx)},wait);
 }
 function renderSectionPlaneLive(p){
@@ -3530,8 +3530,7 @@ async function renderPlaneSourceBacked(p,revision,idx){
    paintSourcePlane(c,dims,values,p,idx);return;
   }
   if(p==='axial'){
-   const gpuResult=await readResidentGpuMprPlane(p,idx,series);if(revision!==planeRenderRevision[p])return;
-   const values=gpuResult?.values||await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
+   const values=await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
    paintSourcePlane(c,[series.columns,series.rows],values,p,idx);return;
   }
   const gpuStart=performance.now(),values=await buildSourceOrthogonalNeighborhood(p,idx,series,revision),gpuMs=performance.now()-gpuStart;if(revision!==planeRenderRevision[p]||!values)return;
