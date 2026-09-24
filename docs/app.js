@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260922-build15-wgsl';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260924-build137';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.24-136';const APP_BUILD='136';
+const APP_VERSION='2026.09.24-137';const APP_BUILD='137';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -498,7 +498,7 @@ function deactivateMedicalVolume(){
  if(threeDDirty)mark3DStale();else mark3DCurrent();
 }
 function clear3DForSeriesChange(){
- sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;residentMprReadbackDisabled=false;sceneState?.medicalVolume?.resetData?.();clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
+ sourceRenderRevision++;threeDCancelRequested=false;current3DVolume=null;memoryGpuPreviewActive=false;residentMprReadbackDisabled=false;sceneState?.medicalVolume?.resetData?.();threeRenderMode='surface';setThreeVolumeOverlay(false);clearMemoryFilterPreviewCache();set3DBusy(false);clearAnalysisHighlight();
  if(sceneState?.obj){sceneState.obj.parent?.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}
  disposeMprPlaneGroup();request3DRender();mark3DStale();
 }
