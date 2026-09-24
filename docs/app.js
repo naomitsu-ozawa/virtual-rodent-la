@@ -1178,13 +1178,15 @@ function shouldAutoPrepareResidentGpu(v){
  return true;
 }
 let residentMprReadbackDisabled=false,residentMprEpoch=0;
-const residentMprJobs={axial:{running:false,pending:null},coronal:{running:false,pending:null},sagittal:{running:false,pending:null}};
+const residentMprJobs={axial:{running:false,current:null,pending:null},coronal:{running:false,current:null,pending:null},sagittal:{running:false,current:null,pending:null}};
 function residentGpuMprAvailable(v=sourceVolume||volume){
  const mv=sceneState?.medicalVolume;return !!(!residentMprReadbackDisabled&&mv?.hasResident?.(v));
 }
 function clearResidentMprJobs(){
  residentMprEpoch++;
- for(const state of Object.values(residentMprJobs)){if(state.pending)state.pending.reject(new Error('__SUPERSEDED__'));state.pending=null}
+ for(const state of Object.values(residentMprJobs)){
+  if(state.pending){for(const waiter of state.pending.waiters)waiter.reject(new Error('__SUPERSEDED__'));state.pending=null}
+ }
 }
 async function prepareResidentGpuVolume(v){
  const mv=sceneState?.medicalVolume;if(!shouldAutoPrepareResidentGpu(v))return false;
@@ -1198,21 +1200,29 @@ function readResidentGpuMprPlane(p,idx,series){
  const target=sourceVolume||volume,mv=sceneState?.medicalVolume,state=residentMprJobs[p];
  if(!state||!target?.sourceBacked||target.series!==series||sourceFilterStages().length||!residentGpuMprAvailable(target)||!mv?.extractPlane)return Promise.resolve(null);
  return new Promise((resolve,reject)=>{
-  if(state.pending)state.pending.reject(new Error('__SUPERSEDED__'));
-  state.pending={idx,series,target,epoch:residentMprEpoch,resolve,reject};
+  const waiter={resolve,reject};
+  if(state.current&&state.current.idx===idx&&state.current.series===series&&state.current.target===target){state.current.waiters.push(waiter);return}
+  if(state.pending&&state.pending.idx===idx&&state.pending.series===series&&state.pending.target===target){state.pending.waiters.push(waiter);return}
+  if(state.pending){for(const old of state.pending.waiters)old.reject(new Error('__SUPERSEDED__'))}
+  state.pending={idx,series,target,epoch:residentMprEpoch,waiters:[waiter]};
   if(state.running)return;
   state.running=true;
   void(async()=>{
    try{
     while(state.pending){
-     const job=state.pending;state.pending=null;
-     if(job.epoch!==residentMprEpoch||job.target!==sourceVolume){job.reject(new Error('__SUPERSEDED__'));continue}
-     try{job.resolve(await mv.extractPlane(job.target,p,job.idx))}
-     catch(e){
-      if(String(e.message||e)==='__SUPERSEDED__'){job.reject(e);continue}
-      residentMprReadbackDisabled=true;console.warn('GPU resident MPR readback failed; using source DICOM fallback.',e);job.resolve(null);
-      if(state.pending){state.pending.resolve(null);state.pending=null}
-     }
+     const job=state.pending;state.pending=null;state.current=job;
+     if(job.epoch!==residentMprEpoch||job.target!==sourceVolume){for(const w of job.waiters)w.reject(new Error('__SUPERSEDED__'));state.current=null;continue}
+     try{
+      const result=await mv.extractPlane(job.target,p,job.idx);
+      for(const w of job.waiters)w.resolve(result);
+     }catch(e){
+      if(String(e.message||e)==='__SUPERSEDED__'){for(const w of job.waiters)w.reject(e)}
+      else{
+       residentMprReadbackDisabled=true;console.warn('GPU resident MPR readback failed; using source DICOM fallback.',e);
+       for(const w of job.waiters)w.resolve(null);
+       if(state.pending){for(const pending of state.pending.waiters)pending.resolve(null);state.pending=null}
+      }
+     }finally{state.current=null}
     }
    }finally{state.running=false}
   })();
