@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260925-build184-resize1';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.25-184.3';const APP_BUILD='184';
+const APP_VERSION='2026.09.25-184.4';const APP_BUILD='184';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4665,6 +4665,23 @@ function analysisRunsOverlap(a,b){
  }
  return false;
 }
+function expandRegionDeleteRuns(currentRuns,regionRuns,d){
+ const out=new Array(d);let addedVoxels=0;
+ for(let z=0;z<d;z++){
+  const selected=regionRuns?.[z];
+  if(!selected?.length){out[z]=new Uint32Array(0);continue}
+  const rows=rowIntervalsFromRuns(selected),insideRows=new Map();
+  for(const [y,intervals] of rows){
+   if(intervals.length<4)continue;
+   const gaps=[];
+   for(let i=0;i+3<intervals.length;i+=2){const x0=intervals[i+1]+1,x1=intervals[i+2]-1;if(x1>=x0)gaps.push([x0,x1])}
+   if(gaps.length)insideRows.set(y,gaps);
+  }
+  const interior=rowsToRunSlice(insideRows),enclosed=interior.length?intersectRunSlice(currentRuns?.[z],interior):new Uint32Array(0),combined=unionRunSlice(selected,enclosed);
+  out[z]=combined;addedVoxels+=analysisRunsVoxelCount([combined])-analysisRunsVoxelCount([selected]);
+ }
+ return{runsBySlice:out,addedVoxels};
+}
 function unionAnalysisRuns(regions,d){
  const out=new Array(d);
  for(let z=0;z<d;z++){
@@ -4915,8 +4932,11 @@ async function rebuildEditedAnalysisForSegment(key,referenceRegions=null){
  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key);await rebuildEditedAnalysisForSegment(key,refs)}footer.textContent=currentLanguage==='ja'?'選択領域だけを残しました':'Kept the selected region only';
 }
 async function applyEditRemoveSelected(){
- const region=analysisRegionById(analysisFocusedRegionId);if(!region||region.segmentKeys.length!==1)return;const key=region.segmentKeys[0],st=segmentEditState[key],v=current3DVolume||volume,refs=snapshotAnalysisRegionsForSegment(key).filter(r=>!analysisRunsOverlap(r.runsBySlice,region.runsBySlice));pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,region.runsBySlice,v.slices);st.finalRuns=null;st.revision++;
- if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs)}footer.textContent=currentLanguage==='ja'?'選択領域を削除しました':'Deleted the selected region';
+ const region=analysisRegionById(analysisFocusedRegionId);if(!region||region.segmentKeys.length!==1)return;const key=region.segmentKeys[0],st=segmentEditState[key],v=current3DVolume||volume;
+ const currentRuns=await getFinalSegmentRuns(key,v),expanded=expandRegionDeleteRuns(currentRuns,region.runsBySlice,v.slices),deleteRuns=expanded.runsBySlice,refs=snapshotAnalysisRegionsForSegment(key).filter(r=>!analysisRunsOverlap(r.runsBySlice,deleteRuns));
+ pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,deleteRuns,v.slices);st.finalRuns=null;st.revision++;
+ if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs)}
+ footer.textContent=currentLanguage==='ja'?(expanded.addedVoxels?'選択領域と内部の独立構造を削除しました':'選択領域を削除しました'):(expanded.addedVoxels?'Deleted selected region and enclosed structures':'Deleted the selected region');
 }
 async function undoSegmentEdit(){
  const region=analysisRegionById(analysisFocusedRegionId),key=analysisEditTargetKey||(region?.segmentKeys?.length===1?region.segmentKeys[0]:null)||SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length);if(!key)return;analysisEditTargetKey=key;const st=segmentEditState[key],snap=st.undo.pop();if(!snap)return;st.redo.push(editSnapshot(key));restoreEditSnapshot(key,snap);
