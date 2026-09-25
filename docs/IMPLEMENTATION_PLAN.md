@@ -67,6 +67,14 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 
 ## Architecture rules
 
+- See `docs/AGENT_LOG.md` for a running record of AI-agent work sessions;
+  read it before starting new work and append to it when finishing.
+- Do not commit per-build preview snapshot directories (`docs/preview-*`)
+  to `main`. These were previously checked in directly and grew to ~25 MB
+  across 49 copies; they are preserved on the `archive/previews` branch
+  instead. If a preview/staging deployment mechanism is needed again, use
+  a separate branch, a build artifact, or GitHub Pages deploy previews
+  rather than committing full copies to `main`.
 - `docs/app.js` is the canonical deployed implementation.
 - Browser-first and local-data-first.
 - No mandatory DICOM upload.

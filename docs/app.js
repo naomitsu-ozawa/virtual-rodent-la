@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260925-build172';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260925-build185';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.25-172';const APP_BUILD='172';
+const APP_VERSION='2026.09.25-185';const APP_BUILD='185';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -45,6 +45,7 @@ const I18N={
   demoFailed:'公開デモを読み込めませんでした',dicomChecking:'DICOMを確認中…',
   pixelDeferred:'Pixel Dataはまだ展開しません。',noSeries:'DICOMシリーズを検出できませんでした',
   original:'元のキャリブレーション済みCT値',processingReset:'処理をリセットしました。元のキャリブレーション済みCT値を復元しました',
+  ipadSettings:'設定',ipadClose:'閉じる',ipadData:'データ',ipadDisplay:'表示・Seg',ipadEdit:'3D編集',ipadView3d:'3D',ipadView2d:'2D',ipadViewSplit:'分割',
   demoCache:'公開デモ: キャッシュ済みデータを使用',demoDone:'公開デモ: ダウンロード完了。端末キャッシュへ保存中'
  },
  en:{
@@ -66,6 +67,7 @@ const I18N={
   demoFailed:'Could not load the public demo',dicomChecking:'Checking DICOM…',
   pixelDeferred:'Pixel Data has not been expanded yet.',noSeries:'No DICOM Series detected',
   original:'Original calibrated CT values',processingReset:'Processing reset. Original calibrated CT values restored.',
+  ipadSettings:'Settings',ipadClose:'Close',ipadData:'Data',ipadDisplay:'Display / Seg',ipadEdit:'3D edit',ipadView3d:'3D',ipadView2d:'2D',ipadViewSplit:'Split',
   demoCache:'Public demo: using cached data',demoDone:'Public demo: download complete. Saving to device cache'
  }
 };
@@ -210,14 +212,84 @@ app.innerHTML=`
   </div>
   <button id="filter-reset" class="tool-chip filter-reset" data-i18n="resetFilters" disabled>画像フィルターをリセット</button>
 </div><p class="hint" data-i18n="controls">3D操作は3D画面右下の「？」から確認できます。断面画像: 左右スワイプ / マウスホイールでスライス移動</p></section></div></aside>
-<section class="viewer-grid" id="viewer-grid"><section id="main-view-slot" class="view-slot view-slot-main"><article class="viewport-card view-card view-card-3d" data-view-key="3d"><div class="viewport-label view-toolbar"><strong>3D</strong><span id="three-label">WebGPU</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="3d" data-i18n="mainView">メインへ</button></div><div class="volume-analysis-panel"><button id="render-mode-toggle" class="tool-chip" data-i18n="volumeRender" disabled>GPUボリューム</button><button id="volume-analysis-toggle" class="tool-chip" data-i18n="volumeMode" disabled>体積解析</button><button id="section-view-toggle" class="tool-chip" data-i18n="sliceAnalysis" disabled>断面解析</button><div id="section-view-result" class="volume-analysis-result is-hidden"><strong data-i18n="sliceAnalysis">断面解析</strong><div class="section-view-actions"><button type="button" data-section-view="axial">Axial</button><button type="button" data-section-view="coronal">Coronal</button><button type="button" data-section-view="sagittal">Sagittal</button><button id="section-reverse" type="button" data-i18n="sectionReverse">反転</button><button type="button" data-section-view="off" data-i18n="sectionOff">解除</button></div><label class="section-position-control"><span data-i18n="sectionPosition">断面位置</span><output id="section-position-value">—</output><input id="section-position" type="range" min="0" max="0" value="0" disabled></label><div class="section-cap-settings" style="display:grid;gap:6px;padding:7px 0"><label style="display:flex;align-items:center;gap:7px"><input id="section-slice-image" type="checkbox" checked><span data-i18n="sectionSliceImage">スライス画像を表示</span></label><label style="display:flex;align-items:center;gap:7px"><input id="section-cap-enabled" type="checkbox" checked><span data-i18n="sectionCap">断面キャップ</span></label><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center"><span data-i18n="sectionCapOpacity">キャップ不透明度</span><output id="section-cap-opacity-value">85%</output><input id="section-cap-opacity" type="range" min="0" max="100" step="1" value="85" style="grid-column:1/-1;width:100%"></label><label style="display:flex;align-items:center;gap:7px"><input id="section-cap-hatch" type="checkbox" checked><span data-i18n="sectionCapHatch">ハッチング</span></label></div><span id="section-view-readout" data-i18n="sliceAnalysisHint">3Dを切断する断面を選択してください</span></div><div class="three-overlay-controls" aria-label="3D overlays"><button type="button" class="tool-chip is-active" data-3d-overlay="axes">XYZ</button><button type="button" class="tool-chip" data-3d-overlay="axial">Axial</button><button type="button" class="tool-chip" data-3d-overlay="coronal">Coronal</button><button type="button" class="tool-chip" data-3d-overlay="sagittal">Sagittal</button></div><div class="mpr-opacity-settings" style="display:grid;gap:6px;min-width:230px;padding:7px 9px;border:1px solid #334047;border-radius:9px;background:rgba(12,16,18,.88)"><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;font-size:10px;color:#afc3cb"><span data-i18n="mprSurfaceOpacity">断面不透明度（サーフェス）</span><output id="mpr-surface-opacity-value" style="color:#e0edf1;font-variant-numeric:tabular-nums">64%</output><input id="mpr-surface-opacity" type="range" min="0" max="100" step="1" value="64" style="grid-column:1/-1;width:100%"></label><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;font-size:10px;color:#afc3cb"><span data-i18n="mprVolumeOpacity">断面不透明度（GPU）</span><output id="mpr-volume-opacity-value" style="color:#e0edf1;font-variant-numeric:tabular-nums">24%</output><input id="mpr-volume-opacity" type="range" min="0" max="100" step="1" value="24" style="grid-column:1/-1;width:100%"></label></div><details class="three-edit-panel"><summary class="three-edit-panel-head"><strong data-i18n="edit3D">3D編集</strong><span id="three-edit-status" class="three-edit-status" data-i18n="editReady">操作を選択してください</span></summary><div class="analysis-editor-actions"><button id="analysis-navigate" type="button" class="is-active" data-i18n="editNavigate">操作</button><button id="analysis-cut" type="button" disabled data-i18n="cutRegion">ペン切断</button><button id="analysis-line-cut" type="button" disabled data-i18n="lineCutRegion">直線切断</button><label class="three-edit-target"><span data-i18n="editTarget">対象</span><select id="analysis-edit-target"><option value="auto" data-i18n="editAuto">自動</option><option value="bone">Bone</option><option value="soft">Soft</option><option value="fat">Fat</option><option value="lung">Lung</option></select></label><button id="analysis-undo" type="button" disabled data-i18n="undoEdit">Undo</button><button id="analysis-redo" type="button" disabled data-i18n="redoEdit">Redo</button><button id="analysis-reset-edit" type="button" disabled data-i18n="resetEdit">編集リセット</button><label class="analysis-cut-width"><span data-i18n="cutWidth">切断幅</span><output id="analysis-cut-width-value">0.80 mm</output><input id="analysis-cut-width" type="range" min="0" max="5" step="0.05" value="0.8"></label><label class="analysis-cut-width"><span data-i18n="cutDepth">切断深さ</span><output id="analysis-cut-depth-value">5.0 mm</output><input id="analysis-cut-depth" type="range" min="0.1" max="100" step="0.1" value="5"></label><label class="analysis-cut-width"><span data-i18n="cutYaw">左右角度</span><output id="analysis-cut-yaw-value">0.0°</output><input id="analysis-cut-yaw" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutPitch">上下角度</span><output id="analysis-cut-pitch-value">0.0°</output><input id="analysis-cut-pitch" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutOffset">切断面位置</span><output id="analysis-cut-offset-value">0.0 mm</output><input id="analysis-cut-offset" type="range" min="-100" max="100" step="0.1" value="0"></label><div class="analysis-cut-confirm"><button id="analysis-cut-apply" type="button" disabled data-i18n="applyCut">切断を適用</button><button id="analysis-cut-cancel" type="button" disabled data-i18n="cancelCut">キャンセル</button></div></div><div id="three-edit-help" class="three-edit-help" data-i18n="editAutoHint">自動: 最初に触れたセグメントを編集対象にします</div></details><div id="volume-analysis-result" class="volume-analysis-result is-hidden"><div id="analysis-summary" class="analysis-summary"></div><div class="analysis-actions"><button id="analysis-merge" type="button" disabled data-i18n="mergeSelected">選択を統合</button><button id="analysis-clear" type="button" disabled data-i18n="clearRegions">すべて解除</button><button id="analysis-remove-selected" type="button" disabled data-i18n="removeSelectedRegion">選択領域を削除</button><button id="analysis-keep-selected" type="button" disabled data-i18n="keepSelectedRegion">選択領域のみ残す</button><button id="analysis-export-selected" type="button" disabled data-i18n="exportSelectedStl">選択領域STL</button></div><div id="analysis-region-list" class="analysis-region-list"></div></div></div><div id="viewport-3d" class="viewport viewport-3d"></div><canvas id="three-edit-overlay" class="three-edit-overlay" aria-hidden="true"></canvas><div id="three-busy" class="three-busy is-hidden" role="status" aria-live="polite"><div class="three-busy-spinner" aria-hidden="true"></div><strong id="three-busy-label">3D構築中…</strong><button id="three-busy-cancel" class="three-busy-cancel" type="button" data-i18n="cancel3D">再構築をキャンセル</button></div><div id="selected" class="selected-series-overlay"><strong data-i18n="seriesUnselected">シリーズ未選択</strong><span data-i18n="selectSeries">左の一覧からCTシリーズを選択してください。</span></div></article></section><section id="sub-view-slots" class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<section class="view-slot view-slot-sub"><article class="viewport-card view-card view-card-mpr" data-view-key="${p}"><div class="viewport-label view-toolbar"><strong>${p[0].toUpperCase()+p.slice(1)}</strong><span id="${p}-label">—</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="${p}" data-i18n="mainView">メインへ</button></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article></section>`).join('')}</section></section></section>
+<section class="viewer-grid" id="viewer-grid"><section id="main-view-slot" class="view-slot view-slot-main"><article class="viewport-card view-card view-card-3d" data-view-key="3d"><div class="viewport-label view-toolbar"><strong>3D</strong><span id="three-label">WebGPU</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="3d" data-i18n="mainView">メインへ</button></div><div class="volume-analysis-panel"><button id="render-mode-toggle" class="tool-chip" data-i18n="volumeRender" disabled>GPUボリューム</button><label id="ipad-gpu-quality-control" class="tool-chip is-hidden" style="display:none;align-items:center;gap:6px"><span>iPad GPU</span><select id="ipad-gpu-quality" aria-label="iPad GPU volume resolution"><option value="512">512</option><option value="768">768</option></select></label><button id="volume-analysis-toggle" class="tool-chip" data-i18n="volumeMode" disabled>体積解析</button><button id="section-view-toggle" class="tool-chip" data-i18n="sliceAnalysis" disabled>断面解析</button><div id="section-view-result" class="volume-analysis-result is-hidden"><strong data-i18n="sliceAnalysis">断面解析</strong><div class="section-view-actions"><button type="button" data-section-view="axial">Axial</button><button type="button" data-section-view="coronal">Coronal</button><button type="button" data-section-view="sagittal">Sagittal</button><button id="section-reverse" type="button" data-i18n="sectionReverse">反転</button><button type="button" data-section-view="off" data-i18n="sectionOff">解除</button></div><label class="section-position-control"><span data-i18n="sectionPosition">断面位置</span><output id="section-position-value">—</output><input id="section-position" type="range" min="0" max="0" value="0" disabled></label><div class="section-cap-settings" style="display:grid;gap:6px;padding:7px 0"><label style="display:flex;align-items:center;gap:7px"><input id="section-slice-image" type="checkbox" checked><span data-i18n="sectionSliceImage">スライス画像を表示</span></label><label style="display:flex;align-items:center;gap:7px"><input id="section-cap-enabled" type="checkbox" checked><span data-i18n="sectionCap">断面キャップ</span></label><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center"><span data-i18n="sectionCapOpacity">キャップ不透明度</span><output id="section-cap-opacity-value">85%</output><input id="section-cap-opacity" type="range" min="0" max="100" step="1" value="85" style="grid-column:1/-1;width:100%"></label><label style="display:flex;align-items:center;gap:7px"><input id="section-cap-hatch" type="checkbox" checked><span data-i18n="sectionCapHatch">ハッチング</span></label></div><span id="section-view-readout" data-i18n="sliceAnalysisHint">3Dを切断する断面を選択してください</span></div><div class="three-overlay-controls" aria-label="3D overlays"><button type="button" class="tool-chip is-active" data-3d-overlay="axes">XYZ</button><button type="button" class="tool-chip" data-3d-overlay="axial">Axial</button><button type="button" class="tool-chip" data-3d-overlay="coronal">Coronal</button><button type="button" class="tool-chip" data-3d-overlay="sagittal">Sagittal</button></div><div class="mpr-opacity-settings" style="display:grid;gap:6px;min-width:230px;padding:7px 9px;border:1px solid #334047;border-radius:9px;background:rgba(12,16,18,.88)"><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;font-size:10px;color:#afc3cb"><span data-i18n="mprSurfaceOpacity">断面不透明度（サーフェス）</span><output id="mpr-surface-opacity-value" style="color:#e0edf1;font-variant-numeric:tabular-nums">64%</output><input id="mpr-surface-opacity" type="range" min="0" max="100" step="1" value="64" style="grid-column:1/-1;width:100%"></label><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;font-size:10px;color:#afc3cb"><span data-i18n="mprVolumeOpacity">断面不透明度（GPU）</span><output id="mpr-volume-opacity-value" style="color:#e0edf1;font-variant-numeric:tabular-nums">24%</output><input id="mpr-volume-opacity" type="range" min="0" max="100" step="1" value="24" style="grid-column:1/-1;width:100%"></label></div><details class="three-edit-panel"><summary class="three-edit-panel-head"><strong data-i18n="edit3D">3D編集</strong><span id="three-edit-status" class="three-edit-status" data-i18n="editReady">操作を選択してください</span></summary><div class="analysis-editor-actions"><button id="analysis-navigate" type="button" class="is-active" data-i18n="editNavigate">操作</button><button id="analysis-cut" type="button" disabled data-i18n="cutRegion">ペン切断</button><button id="analysis-line-cut" type="button" disabled data-i18n="lineCutRegion">直線切断</button><label class="three-edit-target"><span data-i18n="editTarget">対象</span><select id="analysis-edit-target"><option value="auto" data-i18n="editAuto">自動</option><option value="bone">Bone</option><option value="soft">Soft</option><option value="fat">Fat</option><option value="lung">Lung</option></select></label><button id="analysis-undo" type="button" disabled data-i18n="undoEdit">Undo</button><button id="analysis-redo" type="button" disabled data-i18n="redoEdit">Redo</button><button id="analysis-reset-edit" type="button" disabled data-i18n="resetEdit">編集リセット</button><label class="analysis-cut-width"><span data-i18n="cutWidth">切断幅</span><output id="analysis-cut-width-value">0.80 mm</output><input id="analysis-cut-width" type="range" min="0" max="5" step="0.05" value="0.8"></label><label class="analysis-cut-width"><span data-i18n="cutDepth">切断深さ</span><output id="analysis-cut-depth-value">5.0 mm</output><input id="analysis-cut-depth" type="range" min="0.1" max="100" step="0.1" value="5"></label><label class="analysis-cut-width"><span data-i18n="cutYaw">左右角度</span><output id="analysis-cut-yaw-value">0.0°</output><input id="analysis-cut-yaw" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutPitch">上下角度</span><output id="analysis-cut-pitch-value">0.0°</output><input id="analysis-cut-pitch" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutOffset">切断面位置</span><output id="analysis-cut-offset-value">0.0 mm</output><input id="analysis-cut-offset" type="range" min="-100" max="100" step="0.1" value="0"></label><div class="analysis-cut-confirm"><button id="analysis-cut-apply" type="button" disabled data-i18n="applyCut">切断を適用</button><button id="analysis-cut-cancel" type="button" disabled data-i18n="cancelCut">キャンセル</button></div></div><div id="three-edit-help" class="three-edit-help" data-i18n="editAutoHint">自動: 最初に触れたセグメントを編集対象にします</div></details><div id="volume-analysis-result" class="volume-analysis-result is-hidden"><div id="analysis-summary" class="analysis-summary"></div><div class="analysis-actions"><button id="analysis-merge" type="button" disabled data-i18n="mergeSelected">選択を統合</button><button id="analysis-clear" type="button" disabled data-i18n="clearRegions">すべて解除</button><button id="analysis-remove-selected" type="button" disabled data-i18n="removeSelectedRegion">選択領域を削除</button><button id="analysis-keep-selected" type="button" disabled data-i18n="keepSelectedRegion">選択領域のみ残す</button><button id="analysis-export-selected" type="button" disabled data-i18n="exportSelectedStl">選択領域STL</button></div><div id="analysis-region-list" class="analysis-region-list"></div></div></div><div id="viewport-3d" class="viewport viewport-3d"></div><canvas id="three-edit-overlay" class="three-edit-overlay" aria-hidden="true"></canvas><div id="three-busy" class="three-busy is-hidden" role="status" aria-live="polite"><div class="three-busy-spinner" aria-hidden="true"></div><strong id="three-busy-label">3D構築中…</strong><button id="three-busy-cancel" class="three-busy-cancel" type="button" data-i18n="cancel3D">再構築をキャンセル</button></div><div id="selected" class="selected-series-overlay"><strong data-i18n="seriesUnselected">シリーズ未選択</strong><span data-i18n="selectSeries">左の一覧からCTシリーズを選択してください。</span></div></article></section><section id="sub-view-slots" class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<section class="view-slot view-slot-sub"><article class="viewport-card view-card view-card-mpr" data-view-key="${p}"><div class="viewport-label view-toolbar"><strong>${p[0].toUpperCase()+p.slice(1)}</strong><span id="${p}-label">—</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="${p}" data-i18n="mainView">メインへ</button></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article></section>`).join('')}</section></section></section>
 <div id="app-version-badge" class="app-version-badge" aria-label="Application version"></div><footer><span id="footer" data-i18n="footer">元のキャリブレーション済みCT値は保持されます。</span><a href="https://github.com/naomitsu-ozawa/virtual-rodent-la" target="_blank" rel="noopener">Source / License</a></footer></main>`;
 
 const $=s=>document.querySelector(s);
+
+// Unified range controls:
+// - wheel works on every range input
+// - pointer dragging is relative and intentionally slower than the browser default
+const RANGE_DRAG_MOUSE_GAIN=.48,RANGE_DRAG_TOUCH_GAIN=.36;
+const rangeNumber=(el,name,fallback)=>{const n=Number(el?.[name]);return Number.isFinite(n)?n:fallback};
+const rangeStep=el=>{
+ const raw=el?.getAttribute?.('step'),n=raw&&raw!=='any'?Number(raw):1;
+ return Number.isFinite(n)&&n>0?n:1;
+};
+const rangePrecision=step=>{
+ const s=String(step);if(/e-/i.test(s)){const m=s.match(/e-(\d+)/i);return m?Math.min(8,+m[1]):6}
+ const dot=s.indexOf('.');return dot<0?0:Math.min(8,s.length-dot-1);
+};
+const clampRangeValue=(el,value)=>{
+ const min=rangeNumber(el,'min',0),max=rangeNumber(el,'max',100),step=rangeStep(el),precision=rangePrecision(step);
+ const clamped=Math.max(min,Math.min(max,value)),snapped=min+Math.round((clamped-min)/step)*step;
+ return Math.max(min,Math.min(max,Number(snapped.toFixed(precision))));
+};
+const setRangeValue=(el,value,commit=false)=>{
+ const next=clampRangeValue(el,value);if(Number(el.value)===next)return false;
+ el.value=String(next);el.dispatchEvent(new Event('input',{bubbles:true}));
+ if(commit)el.dispatchEvent(new Event('change',{bubbles:true}));
+ return true;
+};
+const rangeWheelState=new WeakMap();
+document.addEventListener('wheel',e=>{
+ const el=e.target?.closest?.('input[type="range"]');if(!el||el.disabled)return;
+ e.preventDefault();
+ const delta=Math.abs(e.deltaY)>=Math.abs(e.deltaX)?e.deltaY:e.deltaX;if(!delta)return;
+ const modeScale=e.deltaMode===1?16:e.deltaMode===2?80:1,state=rangeWheelState.get(el)||{acc:0,timer:null};
+ state.acc+=delta*modeScale;
+ const threshold=42,min=rangeNumber(el,'min',0),max=rangeNumber(el,'max',100),step=rangeStep(el),span=Math.max(step,max-min),coarseSteps=Math.max(1,Math.round(span/(step*220)));
+ let ticks=0;
+ while(Math.abs(state.acc)>=threshold&&Math.abs(ticks)<24){const sign=state.acc>0?1:-1;ticks+=sign;state.acc-=sign*threshold}
+ if(!ticks&&Math.abs(delta)>=80){ticks=delta>0?1:-1;state.acc=0}
+ if(ticks){
+  const multiplier=e.shiftKey?5:1;
+  setRangeValue(el,Number(el.value)-ticks*step*coarseSteps*multiplier,false);
+  clearTimeout(state.timer);state.timer=setTimeout(()=>el.dispatchEvent(new Event('change',{bubbles:true})),140);
+ }
+ rangeWheelState.set(el,state);
+},{passive:false,capture:true});
+
+let precisionRangeDrag=null;
+document.addEventListener('pointerdown',e=>{
+ const el=e.target?.closest?.('input[type="range"]');if(!el||el.disabled||e.button!==0)return;
+ const min=rangeNumber(el,'min',0),max=rangeNumber(el,'max',100),step=rangeStep(el),steps=Math.max(1,(max-min)/step);
+ const gain=steps<=12 ? 0.78 : (e.pointerType==='touch'?RANGE_DRAG_TOUCH_GAIN:RANGE_DRAG_MOUSE_GAIN);
+ precisionRangeDrag={el,id:e.pointerId,startX:e.clientX,startValue:Number(el.value),min,max,step,gain,moved:false};
+ el.focus({preventScroll:true});el.style.touchAction='none';
+ try{el.setPointerCapture(e.pointerId)}catch{}
+ e.preventDefault();
+},{capture:true});
+document.addEventListener('pointermove',e=>{
+ const d=precisionRangeDrag;if(!d||d.id!==e.pointerId||d.el.disabled)return;
+ const width=Math.max(80,d.el.getBoundingClientRect().width),dx=e.clientX-d.startX;
+ if(Math.abs(dx)>1)d.moved=true;
+ const value=d.startValue+(dx/width)*(d.max-d.min)*d.gain;
+ setRangeValue(d.el,value,false);e.preventDefault();
+},{capture:true});
+const finishPrecisionRangeDrag=e=>{
+ const d=precisionRangeDrag;if(!d||d.id!==e.pointerId)return;
+ try{if(d.el.hasPointerCapture(e.pointerId))d.el.releasePointerCapture(e.pointerId)}catch{}
+ d.el.style.touchAction='';if(d.moved)d.el.dispatchEvent(new Event('change',{bubbles:true}));
+ precisionRangeDrag=null;e.preventDefault();
+};
+document.addEventListener('pointerup',finishPrecisionRangeDrag,{capture:true});
+document.addEventListener('pointercancel',finishPrecisionRangeDrag,{capture:true});
+
 const appVersionBadge=$('#app-version-badge');
 const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spatialPasses=$('#spatial-passes'),spatialPassesValue=$('#spatial-passes-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),spikeHoleThreshold=$('#spike-hole-threshold'),spikeHoleThresholdValue=$('#spike-hole-threshold-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),nlmSearchRadius=$('#nlm-search-radius'),nlmSearchRadiusValue=$('#nlm-search-radius-value'),nlmPatchRadius=$('#nlm-patch-radius'),nlmPatchRadiusValue=$('#nlm-patch-radius-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),anisotropicIterations=$('#anisotropic-iterations'),anisotropicIterationsValue=$('#anisotropic-iterations-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),sigmoidCenter=$('#sigmoid-center'),sigmoidCenterValue=$('#sigmoid-center-value'),bilateralBtn=$('#filter-bilateral'),bilateralStrength=$('#bilateral-strength'),bilateralStrengthValue=$('#bilateral-strength-value'),bilateralSpatial=$('#bilateral-spatial'),bilateralSpatialValue=$('#bilateral-spatial-value'),bilateralIntensity=$('#bilateral-intensity'),bilateralIntensityValue=$('#bilateral-intensity-value'),bilateralPasses=$('#bilateral-passes'),bilateralPassesValue=$('#bilateral-passes-value'),tvBtn=$('#filter-tv'),tvWeight=$('#tv-weight'),tvWeightValue=$('#tv-weight-value'),tvIterations=$('#tv-iterations'),tvIterationsValue=$('#tv-iterations-value'),unsharpBtn=$('#filter-unsharp'),unsharpRadius=$('#unsharp-radius'),unsharpRadiusValue=$('#unsharp-radius-value'),unsharpAmount=$('#unsharp-amount'),unsharpAmountValue=$('#unsharp-amount-value'),unsharpThreshold=$('#unsharp-threshold'),unsharpThresholdValue=$('#unsharp-threshold-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),sectionViewToggle=$('#section-view-toggle'),sectionViewResult=$('#section-view-result'),sectionViewReadout=$('#section-view-readout'),sectionPosition=$('#section-position'),sectionPositionValue=$('#section-position-value'),sectionReverse=$('#section-reverse'),sectionSliceImageControl=$('#section-slice-image'),sectionCapEnabledControl=$('#section-cap-enabled'),sectionCapOpacityControl=$('#section-cap-opacity'),sectionCapOpacityValue=$('#section-cap-opacity-value'),sectionCapHatchControl=$('#section-cap-hatch'),analysisSummary=$('#analysis-summary'),analysisMergeButton=$('#analysis-merge'),analysisClearButton=$('#analysis-clear'),analysisRegionList=$('#analysis-region-list'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button'),segmentAddSelect=$('#segment-add-select'),segmentAddButton=$('#segment-add-button'),segmentControls=$('#segment-controls');
 const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
-const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),threeBusyCancel=$('#three-busy-cancel'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterRebuild3D=$('#filter-rebuild-3d'),filter3DState=$('#filter-3d-state'),renderModeToggle=$('#render-mode-toggle'),mprSurfaceOpacity=$('#mpr-surface-opacity'),mprSurfaceOpacityValue=$('#mpr-surface-opacity-value'),mprVolumeOpacity=$('#mpr-volume-opacity'),mprVolumeOpacityValue=$('#mpr-volume-opacity-value'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
+const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),threeBusyCancel=$('#three-busy-cancel'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterRebuild3D=$('#filter-rebuild-3d'),filter3DState=$('#filter-3d-state'),renderModeToggle=$('#render-mode-toggle'),ipadGpuQualityControl=$('#ipad-gpu-quality-control'),ipadGpuQuality=$('#ipad-gpu-quality'),mprSurfaceOpacity=$('#mpr-surface-opacity'),mprSurfaceOpacityValue=$('#mpr-surface-opacity-value'),mprVolumeOpacity=$('#mpr-volume-opacity'),mprVolumeOpacityValue=$('#mpr-volume-opacity-value'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
 const mprResizeObserver=typeof ResizeObserver!=='undefined'?new ResizeObserver(()=>{if(volume)for(const p of Object.keys(planes))updateMprCanvasPhysicalAspect(p)}):null;
 for(const p of Object.keys(planes))if(planes[p].canvas?.parentElement)mprResizeObserver?.observe(planes[p].canvas.parentElement);
 const analysisNavigateButton=$('#analysis-navigate'),analysisCutButton=$('#analysis-cut'),analysisLineCutButton=$('#analysis-line-cut'),analysisEditTargetSelect=$('#analysis-edit-target'),threeEditStatus=$('#three-edit-status'),threeEditHelp=$('#three-edit-help'),threeEditOverlay=$('#three-edit-overlay'),analysisRemoveSelected=$('#analysis-remove-selected'),analysisKeepSelected=$('#analysis-keep-selected'),analysisUndo=$('#analysis-undo'),analysisRedo=$('#analysis-redo'),analysisResetEdit=$('#analysis-reset-edit'),analysisExportSelected=$('#analysis-export-selected'),analysisCutWidth=$('#analysis-cut-width'),analysisCutWidthValue=$('#analysis-cut-width-value'),analysisCutDepth=$('#analysis-cut-depth'),analysisCutDepthValue=$('#analysis-cut-depth-value'),analysisCutYaw=$('#analysis-cut-yaw'),analysisCutYawValue=$('#analysis-cut-yaw-value'),analysisCutPitch=$('#analysis-cut-pitch'),analysisCutPitchValue=$('#analysis-cut-pitch-value'),analysisCutOffset=$('#analysis-cut-offset'),analysisCutOffsetValue=$('#analysis-cut-offset-value'),analysisCutApply=$('#analysis-cut-apply'),analysisCutCancel=$('#analysis-cut-cancel');
@@ -467,7 +539,7 @@ function mark3DCurrent(){set3DState('current')}
 function mark3DUpdating(){set3DState('updating')}
 function updateRenderModeControl(v=volume){
  if(!renderModeToggle)return;
- const mv=sceneState?.medicalVolume,support=mv&&v?mv.support(v):{ok:false,reason:'WebGPU volume unavailable'};
+ const mv=sceneState?.medicalVolume,support=mv&&v?mv.support(v,gpuVolumePlanOptions()):{ok:false,reason:'WebGPU volume unavailable'};
  renderModeToggle.disabled=!support.ok;
  renderModeToggle.removeAttribute('data-i18n');renderModeToggle.textContent=threeRenderMode==='volume'?tr('surfaceRender'):tr('volumeRender');
  renderModeToggle.title=support.ok?'':(support.reason||'');
@@ -524,12 +596,13 @@ function syncGpuVolumeEdits(v=sourceVolume||volume){
 async function activateMedicalVolume(){
  const mv=sceneState?.medicalVolume,target=sourceVolume||volume;if(!mv||!target)return;
  if(sourceFilterStages().length){footer.textContent=currentLanguage==='ja'?'GPUボリュームは現在、未フィルターCTを表示します。フィルター適用中はサーフェス表示を使用してください。':'GPU Volume currently displays unfiltered CT. Use surface mode while filters are active.';return}
- const support=mv.support(target);if(!support.ok){footer.textContent='GPU Volume: '+support.reason;updateRenderModeControl(target);return}
+ const planOptions=gpuVolumePlanOptions(),support=mv.support(target,planOptions);if(!support.ok){footer.textContent='GPU Volume: '+support.reason;updateRenderModeControl(target);return}
  set3DBusy(true,currentLanguage==='ja'?'GPUボリューム準備中…':'Preparing GPU volume…');
  try{
-  await mv.ensure(target);ensureVolumeTransformProxy();threeRenderMode='volume';mv.setActive(true);syncGpuVolumeEdits(target);setThreeVolumeOverlay(true);syncMpr3DOverlayPresentation();volumeAnalysisToggle.disabled=false;
-  threeLabel.textContent=(sceneState.backend||'3D')+' · GPU volume';setGpuComputeBackend('WEBGPU VOLUME RAYCAST');updateRenderModeControl(target);request3DRender();
-  footer.textContent=currentLanguage==='ja'?'GPUボリューム · 16-bit CTを3D textureから直接描画':'GPU Volume · direct 16-bit CT 3D-texture ray casting';
+  await mv.ensure(target,planOptions);ensureVolumeTransformProxy();threeRenderMode='volume';mv.setActive(true);syncGpuVolumeEdits(target);setThreeVolumeOverlay(true);syncMpr3DOverlayPresentation();volumeAnalysisToggle.disabled=false;
+  const reduced=!!mv.isReduced?.(target),dims=mv.textureDims||[],profile=gpuVolumeProfileLabel();
+  threeLabel.textContent=(sceneState.backend||'3D')+(reduced?' · '+profile+' GPU volume':' · GPU volume');setGpuComputeBackend(reduced?'WEBGPU '+profile.toUpperCase()+' VOLUME RAYCAST · LINEAR':'WEBGPU VOLUME RAYCAST');updateRenderModeControl(target);request3DRender();
+  footer.textContent=reduced?(profile+' GPUボリューム · '+dims.join('×')+' · '+fmt(mv.textureBytes)+' · MPR/元データはフル解像度'):(currentLanguage==='ja'?'GPUボリューム · 16-bit CTを3D textureから直接描画':'GPU Volume · direct 16-bit CT 3D-texture ray casting');
  }catch(e){console.error(e);mv.setActive(false);threeRenderMode='surface';setGpuComputeBackend('GPU VOLUME ERROR',e?.message||e);footer.textContent='GPU Volume error: '+String(e.message||e);updateRenderModeControl(target)}
  finally{set3DBusy(false)}
 }
@@ -683,7 +756,7 @@ renderModeToggle.onclick=async()=>{
   if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();syncSectionClipParent();applySectionClippingMaterials(sceneState?.obj);request3DRender()}
  }else await activateMedicalVolume();
 };
-sectionViewToggle.onclick=()=>{if(!volume)return;sectionViewOpen=!sectionViewOpen;if(!sectionViewOpen)clearSectionView();else updateSectionViewUi()};
+sectionViewToggle.onclick=()=>{if(!volume)return;sectionViewOpen=!sectionViewOpen;if(!sectionViewOpen)clearSectionView();else{requestIPadSettingsTab('display');updateSectionViewUi()}};
 document.querySelectorAll('[data-section-view]').forEach(button=>button.addEventListener('click',()=>setSectionView(button.dataset.sectionView)));
 sectionReverse.onclick=()=>{if(!sectionViewPlane)return;sectionViewReverse=!sectionViewReverse;if(threeRenderMode!=='volume'){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();syncSectionClipParent();applySectionClippingMaterials(sceneState?.obj)}updateSectionViewUi();request3DRender()};
 sectionPosition.oninput=()=>{if(!sectionViewPlane)return;const p=sectionViewPlane,idx=Math.max(0,Math.min(+planes[p].slider.max,+sectionPosition.value));planes[p].slider.value=idx;planes[p].label.textContent=idx+1;updateMpr3DPlanePositions();if(threeRenderMode!=='volume'){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup()}updateSectionViewUi();request3DRender();if(threeRenderMode!=='volume')renderSectionPlaneLive(p)};
@@ -704,6 +777,7 @@ volumeAnalysisToggle.onclick=async()=>{
   if(threeRenderMode!=='volume')await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'体積解析用データを取得中':'Preparing volume analysis');
   if(!volume)return;
   volumeAnalysisMode=true;
+  requestIPadSettingsTab('display');
   volumeAnalysisToggle.textContent=tr('volumeOff');
   volumeAnalysisToggle.classList.add('is-active');
   volumeAnalysisResult.classList.remove('is-hidden');
@@ -1215,8 +1289,15 @@ function groupSeries(slices){
 
 function renderSeries(series){list.replaceChildren();for(const s of series){const b=document.createElement('button');b.className='series-card';b.innerHTML='<div class="series-card-header"><div><span class="modality-badge">'+esc(s.modality)+'</span><strong>'+esc(s.description)+'</strong></div><strong class="memory-estimate">'+fmt(s.bytes)+'</strong></div><dl class="series-meta-grid"><div><dt>Slices</dt><dd>'+s.slices.length+'</dd></div><div><dt>Matrix</dt><dd>'+s.columns+' × '+s.rows+'</dd></div><div><dt>Voxel</dt><dd>'+s.spacingX.toFixed(4)+' × '+s.spacingY.toFixed(4)+' × '+s.spacingZ.toFixed(4)+' mm</dd></div><div><dt>Stored</dt><dd>'+s.bits+'-bit</dd></div></dl><p class="series-note">推定展開サイズ: '+fmt(s.decodedBytes)+' · '+(s.sourceBacked?'フル解像度・ストリーミング':(s.compact?'Int16':'Float32'))+'</p>';b.onclick=()=>selectSeries(s);b.dataset.id=s.id;list.appendChild(b)}}
 
+function requestIPadSettingsTab(tab){
+ if(!isIPadRuntime())return;
+ document.dispatchEvent(new CustomEvent('vrl-ipad-settings-tab',{detail:{tab}}));
+}
+
+
 async function selectSeries(s){
  activeId=s.id;activeSeries=s;clear3DForSeriesChange();
+ requestIPadSettingsTab('display');
  for(const n of list.children)n.classList.toggle('is-selected',n.dataset.id===activeId);
  selected.innerHTML='<strong>'+esc(s.description)+'</strong><span>'+esc(s.modality)+' · '+s.slices.length+' slices · '+s.columns+'×'+s.rows+(s.sourceBacked?' · full resolution':'')+'</span><span class="ready-badge">CT volume loading…</span>';
  prog.classList.remove('is-hidden');busy(true);let phase='decode';
@@ -1249,18 +1330,132 @@ function openSourceBackedVolume(s){
 }
 function isIPhoneRuntime(){return /iPhone|iPod/i.test(navigator.userAgent||'')}
 function isIPadRuntime(){return /iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||''))}
+function initIPadWorkspaceUi(){
+ if(!isIPadRuntime())return;
+ const shell=document.querySelector('.app-shell'),workspace=document.querySelector('.workspace'),sidebar=document.querySelector('.sidebar'),sidebarScroll=document.querySelector('.sidebar-scroll'),viewer=document.querySelector('#viewer-grid'),topbar=document.querySelector('.topbar');
+ if(!shell||!workspace||!sidebar||!sidebarScroll||!viewer||!topbar)return;
+ document.documentElement.classList.add('vrl-ipad-ui','ipad-settings-persistent');
+ shell.classList.add('ipad-mode-3d');
+
+ const toolbar=document.createElement('div');
+ toolbar.id='ipad-workspace-toolbar';toolbar.className='ipad-workspace-toolbar';
+ toolbar.innerHTML='<div class="ipad-view-modes" role="group" aria-label="View mode"><button type="button" class="is-active" data-ipad-view-mode="3d" data-i18n="ipadView3d">3D</button><button type="button" data-ipad-view-mode="2d" data-i18n="ipadView2d">2D</button><button type="button" data-ipad-view-mode="split" data-i18n="ipadViewSplit">分割</button></div><div class="ipad-mpr-tabs" role="tablist" aria-label="MPR plane"><button type="button" class="is-active" data-ipad-mpr="axial">Axial</button><button type="button" data-ipad-mpr="coronal">Coronal</button><button type="button" data-ipad-mpr="sagittal">Sagittal</button></div>';
+ topbar.after(toolbar);
+
+ const settingsHead=document.createElement('div');settingsHead.className='ipad-drawer-head ipad-settings-head';
+ settingsHead.innerHTML='<strong data-i18n="ipadSettings">設定</strong>';
+ sidebar.insertBefore(settingsHead,sidebarScroll);
+ const drawerTabs=document.createElement('div');drawerTabs.className='ipad-drawer-tabs';
+ drawerTabs.innerHTML='<button type="button" data-ipad-drawer-tab="data" data-i18n="ipadData">データ</button><button type="button" class="is-active" data-ipad-drawer-tab="display" data-i18n="ipadDisplay">表示・Seg</button><button type="button" data-ipad-drawer-tab="edit" data-i18n="ipadEdit">3D編集</button>';
+ sidebarScroll.insertBefore(drawerTabs,sidebarScroll.firstChild);
+
+ const panels=[...sidebarScroll.querySelectorAll(':scope > .panel')];
+ const dataPanel=panels[0]||null,displayPanel=panels.find(p=>p.classList.contains('compact-panel'))||panels[1]||null;
+ if(dataPanel)dataPanel.dataset.ipadDrawerSection='data';
+ if(displayPanel)displayPanel.dataset.ipadDrawerSection='display';
+
+ const editDetails=document.querySelector('.three-edit-panel');
+ if(editDetails){
+  const editPanel=document.createElement('section');editPanel.className='panel ipad-edit-drawer-panel';editPanel.dataset.ipadDrawerSection='edit';
+  editPanel.appendChild(editDetails);sidebarScroll.appendChild(editPanel);editDetails.open=true;
+ }
+ const ctRange=document.querySelector('.ct-range-mode'),gpuQuality=document.querySelector('#ipad-gpu-quality-control'),mprOpacity=document.querySelector('.mpr-opacity-settings');
+ if(displayPanel&&ctRange&&gpuQuality){gpuQuality.classList.remove('is-hidden');gpuQuality.style.display='inline-flex';ctRange.insertAdjacentElement('afterend',gpuQuality)}
+ if(displayPanel&&mprOpacity)displayPanel.appendChild(mprOpacity);
+
+ const sectionResult=document.querySelector('#section-view-result'),analysisResult=document.querySelector('#volume-analysis-result');
+ if(displayPanel&&(sectionResult||analysisResult)){
+  const analysisSettings=document.createElement('div');analysisSettings.className='ipad-analysis-settings';
+  if(sectionResult)analysisSettings.appendChild(sectionResult);
+  if(analysisResult)analysisSettings.appendChild(analysisResult);
+  const anchor=gpuQuality?.parentElement===displayPanel?gpuQuality:ctRange;
+  if(anchor)anchor.insertAdjacentElement('afterend',analysisSettings);else displayPanel.prepend(analysisSettings);
+ }
+
+ const footerBar=document.querySelector('.app-shell > footer');
+ if(appVersionBadge&&footerBar)footerBar.appendChild(appVersionBadge);
+
+ let drawerTab='display',viewMode='3d',mprPlane='axial';
+ const refreshLayout=()=>{
+  requestAnimationFrame(()=>{
+   try{sceneState?.resize?.()}catch{}
+   try{if(volume)for(const p of Object.keys(planes))updateMprCanvasPhysicalAspect(p)}catch{}
+   try{request3DRender()}catch{}
+  });
+ };
+ const setDrawerTab=tab=>{
+  drawerTab=tab;
+  sidebarScroll.querySelectorAll('[data-ipad-drawer-tab]').forEach(b=>b.classList.toggle('is-active',b.dataset.ipadDrawerTab===tab));
+  sidebarScroll.querySelectorAll('[data-ipad-drawer-section]').forEach(p=>p.classList.toggle('is-ipad-drawer-hidden',p.dataset.ipadDrawerSection!==tab));
+  if(tab==='edit'&&editDetails)editDetails.open=true;
+  refreshLayout();
+ };
+ const onSettingsTabRequest=e=>{
+  const tab=e?.detail?.tab;
+  if(['data','display','edit'].includes(tab))setDrawerTab(tab);
+ };
+ document.addEventListener('vrl-ipad-settings-tab',onSettingsTabRequest);
+
+ const setMprPlane=plane=>{
+  mprPlane=['axial','coronal','sagittal'].includes(plane)?plane:'axial';
+  toolbar.querySelectorAll('[data-ipad-mpr]').forEach(b=>b.classList.toggle('is-active',b.dataset.ipadMpr===mprPlane));
+  document.querySelectorAll('#sub-view-slots .view-slot-sub').forEach(slot=>slot.classList.toggle('is-ipad-active',slot.querySelector('[data-view-key]')?.dataset.viewKey===mprPlane));
+  try{schedulePlaneRender(mprPlane,true)}catch{}
+  refreshLayout();
+ };
+ const setViewMode=mode=>{
+  viewMode=['3d','2d','split'].includes(mode)?mode:'3d';
+  shell.classList.remove('ipad-mode-3d','ipad-mode-2d','ipad-mode-split');shell.classList.add('ipad-mode-'+viewMode);
+  toolbar.querySelectorAll('[data-ipad-view-mode]').forEach(b=>b.classList.toggle('is-active',b.dataset.ipadViewMode===viewMode));
+  setMprPlane(mprPlane);
+ };
+ drawerTabs.querySelectorAll('[data-ipad-drawer-tab]').forEach(b=>b.addEventListener('click',()=>setDrawerTab(b.dataset.ipadDrawerTab)));
+ toolbar.querySelectorAll('[data-ipad-view-mode]').forEach(b=>b.addEventListener('click',()=>setViewMode(b.dataset.ipadViewMode)));
+ toolbar.querySelectorAll('[data-ipad-mpr]').forEach(b=>b.addEventListener('click',()=>setMprPlane(b.dataset.ipadMpr)));
+ window.addEventListener('orientationchange',refreshLayout,{passive:true});
+ window.addEventListener('resize',()=>{if(isIPadRuntime())refreshLayout()},{passive:true});
+ setDrawerTab('data');setMprPlane('axial');setViewMode('3d');applyLanguage(currentLanguage);
+}
 function sourceMprCacheLimit(){
  if(isIPhoneRuntime())return 512*1024*1024;
  if(isIPadRuntime())return 1536*1024*1024;
  return Number.MAX_SAFE_INTEGER;
 }
 function residentGpuVolumeBytes(v){return (v?.columns||0)*(v?.rows||0)*(v?.slices||0)*2}
+let ipadGpuTargetSide=512;
+function gpuVolumePlanOptions(){
+ if(isIPadRuntime())return{maxTextureBytes:0,targetInPlane:ipadGpuTargetSide};
+ if(isIPhoneRuntime())return{maxTextureBytes:96*1024*1024,targetInPlane:0};
+ return{maxTextureBytes:0,targetInPlane:0};
+}
+function gpuVolumeProfileLabel(){
+ if(isIPadRuntime())return'iPad '+ipadGpuTargetSide;
+ if(isIPhoneRuntime())return'iPhone';
+ return'GPU';
+}
 function shouldAutoPrepareResidentGpu(v){
  const mv=sceneState?.medicalVolume;if(!mv||!v?.sourceBacked)return false;
- const support=mv.support(v);if(!support.ok)return false;
- if(isIPhoneRuntime())return residentGpuVolumeBytes(v)<=512*1024*1024;
- return true;
+ const support=mv.support(v,gpuVolumePlanOptions());return !!support.ok;
 }
+function initIPadGpuQualityControl(){
+ if(!ipadGpuQualityControl||!ipadGpuQuality)return;
+ if(!isIPadRuntime()){ipadGpuQualityControl.classList.add('is-hidden');ipadGpuQualityControl.style.display='none';return}
+ ipadGpuQualityControl.classList.remove('is-hidden');ipadGpuQualityControl.style.display='inline-flex';ipadGpuQuality.value=String(ipadGpuTargetSide);
+ ipadGpuQuality.onchange=async()=>{
+  const next=+ipadGpuQuality.value===768?768:512;if(next===ipadGpuTargetSide)return;
+  ipadGpuTargetSide=next;
+  const mv=sceneState?.medicalVolume,target=sourceVolume||volume,wasVolume=threeRenderMode==='volume'&&!!mv?.active;
+  if(!mv||!target?.sourceBacked){updateRenderModeControl(target);return}
+  clearResidentMprJobs();residentMprReadbackDisabled=true;mv.resetData();
+  set3DBusy(true,'iPad GPU '+next+' 準備中…');
+  const ok=await prepareResidentGpuVolume(target);
+  if(ok&&wasVolume)await activateMedicalVolume();
+  else if(ok){mv.setActive(false);threeRenderMode='surface';setThreeVolumeOverlay(false);updateRenderModeControl(target);request3DRender()}
+  if(ok)footer.textContent='iPad GPU '+next+' · '+(mv.textureDims||[]).join('×')+' · '+fmt(mv.textureBytes);
+ };
+}
+initIPadWorkspaceUi();
+initIPadGpuQualityControl();
 let residentMprReadbackDisabled=false,residentMprEpoch=0,residentGpuUploadSeriesId=null;
 const residentMprJobs={axial:{running:false,current:null,pending:null},coronal:{running:false,current:null,pending:null},sagittal:{running:false,current:null,pending:null}};
 function residentGpuMprAvailable(v=sourceVolume||volume){
@@ -1273,10 +1468,19 @@ function clearResidentMprJobs(){
  }
 }
 async function prepareResidentGpuVolume(v){
- const mv=sceneState?.medicalVolume;if(!shouldAutoPrepareResidentGpu(v))return false;
+ const mv=sceneState?.medicalVolume;if(!mv||!v?.sourceBacked)return false;
+ const planOptions=gpuVolumePlanOptions(),support=mv.support(v,planOptions);if(!support.ok)return false;
  const seriesId=v?.series?.id||null;residentGpuUploadSeriesId=seriesId;cancelSourceMprWarmup();
  try{
-  const previewSide=isIPhoneRuntime()?192:isIPadRuntime()?320:384;await mv.ensure(v,{prepareBricks:false,previewSide});residentMprReadbackDisabled=false;setGpuComputeBackend('WEBGPU VOLUME RESIDENT');return true;
+  const previewSide=(planOptions.maxTextureBytes||planOptions.targetInPlane)?0:384;
+  await mv.ensure(v,{prepareBricks:false,previewSide,...planOptions});
+  residentMprReadbackDisabled=!!mv.isReduced?.(v);
+  if(mv.isReduced?.(v)){
+   const dims=mv.textureDims||[],profile=gpuVolumeProfileLabel();
+   setGpuComputeBackend('WEBGPU '+profile.toUpperCase()+' VOLUME · LINEAR');
+   footer.textContent=profile+' GPUボリューム · '+dims.join('×')+' · '+fmt(mv.textureBytes)+' / 2D MPRは原寸ソース';
+  }else setGpuComputeBackend('WEBGPU VOLUME RESIDENT');
+  return true;
  }catch(e){
   console.warn('GPU resident volume unavailable; using source-backed MPR fallback.',e);residentMprReadbackDisabled=true;setGpuComputeBackend('GPU VOLUME FALLBACK',e?.message||e);return false;
  }finally{
@@ -1535,7 +1739,7 @@ function shouldUseGpuResidentSurface(w,h,d,tx,ty,blockDepth,segmentCount){
 function gpuAdapterLabel(adapter){
  try{
   const info=adapter?.info;if(!info)return'';
-  return [info.vendor,info.architecture,info.device,info.description].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  return [...new Set([info.vendor,info.architecture,info.device,info.description].filter(Boolean).map(v=>String(v).trim()).filter(Boolean))].join(' ');
  }catch{return''}
 }
 function gpuDeviceMode(device){return device?.features?.has?.('core-features-and-limits')?'CORE':'COMPAT'}
@@ -1661,8 +1865,8 @@ fn main(@builtin(local_invocation_index) localIndex : u32) {
   return true;
  }finally{try{out.destroy()}catch{}try{read.destroy()}catch{}}
 }
-function adoptRendererGpuDevice(renderer,adapter=null){
- const device=renderer?.backend?.device;
+function adoptRendererGpuDevice(renderer,adapter=null,explicitDevice=null){
+ const device=explicitDevice||renderer?.backend?.device;
  if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
  clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);gpuPrewarmIndex=0;gpuPrewarmScheduled=false;installGpuErrorListener(device);
  try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();gpuPrewarmIndex=0;gpuPrewarmScheduled=false;setGpuComputeBackend('GPU DEVICE LOST','WebGPU device lost')}})}catch{}
@@ -1673,6 +1877,13 @@ async function ensureGpuFilterDevice(){
  if(!('gpu' in navigator)){gpuFilterRuntime.disabled=true;setGpuComputeBackend('CPU · WebGPU unavailable','navigator.gpu is unavailable');return null}
  gpuFilterRuntime.disabled=false;
  if(gpuFilterRuntime.device)return gpuFilterRuntime.device;
+ // Safari/iPad can refuse a second adapter request even while the Three.js WebGPU
+ // renderer already owns a valid GPUDevice. Reuse that renderer device first.
+ const rendererDevice=sceneState?.renderer?.backend?.device;
+ if(rendererDevice&&typeof rendererDevice.createBuffer==='function'){
+  adoptRendererGpuDevice(sceneState.renderer,gpuFilterRuntime.adapter,rendererDevice);
+  if(gpuFilterRuntime.device)return gpuFilterRuntime.device;
+ }
  if(gpuFilterRuntime.initPromise)return gpuFilterRuntime.initPromise;
  const now=performance.now();if(gpuFilterRuntime.retryAfter>now)return null;
  gpuFilterRuntime.initPromise=(async()=>{
@@ -3783,7 +3994,7 @@ async function start3D(){
  let renderer,backend='WEBGL';
  if('gpu' in navigator){
   try{
-   const core=await requestVrlGpuDevice(),gpuRenderer=new THREE.WebGPURenderer({antialias:true,alpha:true,device:core.device});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';adoptRendererGpuDevice(gpuRenderer,core.adapter);
+   const core=await requestVrlGpuDevice(),gpuRenderer=new THREE.WebGPURenderer({antialias:true,alpha:true,device:core.device});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';adoptRendererGpuDevice(gpuRenderer,core.adapter,core.device);
   }catch(error){
    console.warn('WebGPU core init failed; falling back to WebGL.',error);
   }
@@ -3799,7 +4010,7 @@ async function start3D(){
  if(backend==='WEBGPU')try{sceneState.medicalVolume=new MedicalVolumeRenderer({device:renderer.backend.device,host:viewport,rendererCanvas:renderer.domElement,onProgress:(a,b)=>set3DBusy(true,(currentLanguage==='ja'?'GPUボリューム準備中… ':'Preparing GPU volume… ')+a+' / '+b),onStatus:label=>setGpuComputeBackend(label)})}catch(e){console.warn('Medical volume renderer unavailable.',e)}
  updateGpuStatus();updateRenderModeControl();void ensureGpuFilterDevice().then(()=>updateGpuStatus());
  const pointers=new Map();const pointerStarts=new Map();const MIN_3D_DISTANCE=.05,MAX_3D_DISTANCE=12;let distance=5.2,lastPinch=0,lastCenter=null,lastTwist=null;
- const full3DPixelRatio=Math.min(devicePixelRatio,2);let active3DPixelRatio=full3DPixelRatio,wheelQualityTimer=null;
+ const full3DPixelRatio=Math.min(devicePixelRatio,2);let active3DPixelRatio=full3DPixelRatio,wheelQualityTimer=null,fastInteractionActive=false,fastInteractionTier=-1;
  const pivotIndicator=document.createElement('div');
  Object.assign(pivotIndicator.style,{position:'absolute',left:'50%',top:'50%',width:'18px',height:'18px',transform:'translate(-50%,-50%)',border:'1px solid rgba(255,255,255,.78)',borderRadius:'50%',boxSizing:'border-box',pointerEvents:'none',zIndex:'12',opacity:'0',transition:'opacity 90ms linear'});
  const pivotDot=document.createElement('div');Object.assign(pivotDot.style,{position:'absolute',left:'50%',top:'50%',width:'4px',height:'4px',transform:'translate(-50%,-50%)',borderRadius:'50%',background:'rgba(255,255,255,.92)'});
@@ -3845,8 +4056,29 @@ async function start3D(){
 
  const showViewPivot=()=>{pivotIndicator.style.opacity='1'};
  const hideViewPivot=()=>{pivotIndicator.style.opacity='0'};
- const begin3DInteraction=()=>{if(threeRenderMode==='surface')setMpr3DInteractive(true)};
- const end3DInteraction=()=>{if(threeRenderMode==='surface')setMpr3DInteractive(false);hideViewPivot()};
+ const setHeavyOverlayInteraction=active=>{
+  for(const group of [sceneState?.analysisMesh,sceneState?.cutResultPreviewGroup]){
+   if(!group)continue;
+   if(active){
+    if(group.userData._interactionPrevVisible===undefined)group.userData._interactionPrevVisible=group.visible;
+    group.visible=false;
+   }else if(group.userData._interactionPrevVisible!==undefined){
+    group.visible=!!group.userData._interactionPrevVisible;delete group.userData._interactionPrevVisible;
+   }
+  }
+ };
+ const interactionQualityTier=()=>distance<2.15?2:distance<3.45?1:0;
+ const setFastInteraction=active=>{
+  const next=!!active,tier=next?interactionQualityTier():-1;
+  if(fastInteractionActive===next&&fastInteractionTier===tier)return;
+  fastInteractionActive=next;fastInteractionTier=tier;
+  const touch=(navigator.maxTouchPoints||0)>0,ratios=touch?[0.75,0.60,0.48]:[1.0,0.78,0.58];
+  active3DPixelRatio=next?Math.min(full3DPixelRatio,ratios[tier]||ratios[0]):full3DPixelRatio;
+  renderer.setPixelRatio(active3DPixelRatio);renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);
+  sceneState?.medicalVolume?.setInteractive?.(next,next?tier:0);setHeavyOverlayInteraction(next);request3DRender();
+ };
+ const begin3DInteraction=()=>{setFastInteraction(true);setMpr3DInteractive(true)};
+ const end3DInteraction=()=>{setMpr3DInteractive(false);setFastInteraction(false);hideViewPivot()};
  const isMousePanStart=e=>e.pointerType==='mouse'&&(e.button===1||e.button===2||e.shiftKey);
  const viewCenterPivot=()=>{
   if(!sceneState.obj)return new THREE.Vector3();
@@ -3997,7 +4229,7 @@ async function start3D(){
  };
  renderer.domElement.oncontextmenu=e=>e.preventDefault();
  renderer.domElement.onpointerdown=e=>{const cutTool=analysisEditTool==='pen'||analysisEditTool==='line',editViewReady=!!sceneState.obj&&(threeRenderMode==='surface'||(threeRenderMode==='volume'&&!!sceneState?.medicalVolume?.active)),cutReady=cutTool&&!analysisPendingCut&&!analysisCutApplying&&!analysisEditPreparing&&e.button===0&&!e.altKey&&editViewReady,sectionHit=!cutReady&&e.button===0&&!e.altKey?sectionDragHit(e):null,mode=cutReady?(analysisEditTool==='line'?'cut-line':'cut-pen'):sectionHit?'section-drag':isMousePanStart(e)?'pan':(e.altKey?'roll':'rotate'),point={x:e.clientX,y:e.clientY,mode,pointerType:e.pointerType};if(!cutReady&&!sectionHit){begin3DInteraction();if(mode==='rotate'||mode==='roll')showViewPivot()}pointers.set(e.pointerId,point);pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY,mode,sectionPlane:sectionHit?sectionViewPlane:null,sectionIndex:sectionHit?+planes[sectionViewPlane].slider.value:null,sectionScreenStep:sectionHit?sectionScreenStep():null,cutFrame:null});if(sectionHit){renderer.domElement.style.cursor='grabbing';footer.textContent=(currentLanguage==='ja'?sectionPlaneLabel(sectionViewPlane)+'断面をドラッグ中':'Dragging '+sectionPlaneLabel(sectionViewPlane)+' section')}if(cutReady){analysisCutStroke=[];analysisCutScreen=[editPoint(e)];pointerStarts.get(e.pointerId).cutSamples=[];analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateThreeEditUi(analysisEditTargetKey?(tr(analysisEditTargetKey)||analysisEditTargetKey)+' · '+(analysisEditTool==='pen'?tr('cutRegion'):tr('lineCutRegion')):(currentLanguage==='ja'?'切断線を描画中':'Drawing cut stroke'));footer.textContent=currentLanguage==='ja'?'切断線を描画中':'Drawing cut stroke';drawEditStroke(analysisEditTool)}renderer.domElement.setPointerCapture(e.pointerId);if(pointers.size>=2){const[a,b]=[...pointers.values()];lastPinch=Math.hypot(b.x-a.x,b.y-a.y);lastCenter={x:(a.x+b.x)/2,y:(a.y+b.y)/2};lastTwist=Math.atan2(b.y-a.y,b.x-a.x)}};
- renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId),start=pointerStarts.get(e.pointerId);if(!prev)return;pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='section-drag'){dragSectionPlane(start,e);return}if(prev.mode==='cut-pen'||prev.mode==='cut-line'){appendCutScreenPoints(e,prev.mode==='cut-line'?'line':'pen');return}if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}if(prev.mode==='roll'){const rect=renderer.domElement.getBoundingClientRect(),cx=rect.left+rect.width*.5,cy=rect.top+rect.height*.5,a0=Math.atan2(prev.y-cy,prev.x-cx),a1=Math.atan2(e.clientY-cy,e.clientX-cx);let da=a1-a0;if(da>Math.PI)da-=Math.PI*2;if(da<-Math.PI)da+=Math.PI*2;if(Math.hypot(prev.x-cx,prev.y-cy)<24)da=dx*.008;showViewPivot();rollAroundViewCenter(da);request3DRender();return}showViewPivot();rotateAroundViewCenter(dx,dy);request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2},twist=Math.atan2(b.y-a.y,b.x-a.x);if(lastPinch){showViewPivot();distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}if(lastTwist!=null){let da=twist-lastTwist;if(da>Math.PI)da-=Math.PI*2;if(da<-Math.PI)da+=Math.PI*2;if(Math.abs(da)>.001){showViewPivot();rollAroundViewCenter(da)}}lastPinch=d;lastCenter=center;lastTwist=twist;request3DRender()};
+ renderer.domElement.onpointermove=e=>{const prev=pointers.get(e.pointerId),start=pointerStarts.get(e.pointerId);if(!prev)return;pointers.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});if(!sceneState.obj)return;if(pointers.size===1){const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(prev.mode==='section-drag'){dragSectionPlane(start,e);return}if(prev.mode==='cut-pen'||prev.mode==='cut-line'){appendCutScreenPoints(e,prev.mode==='cut-line'?'line':'pen');return}if(prev.mode==='pan'){pan3D(dx,dy);request3DRender();return}if(prev.mode==='roll'){const rect=renderer.domElement.getBoundingClientRect(),cx=rect.left+rect.width*.5,cy=rect.top+rect.height*.5,a0=Math.atan2(prev.y-cy,prev.x-cx),a1=Math.atan2(e.clientY-cy,e.clientX-cx);let da=a1-a0;if(da>Math.PI)da-=Math.PI*2;if(da<-Math.PI)da+=Math.PI*2;if(Math.hypot(prev.x-cx,prev.y-cy)<24)da=dx*.008;showViewPivot();rollAroundViewCenter(da);request3DRender();return}showViewPivot();rotateAroundViewCenter(dx,dy);request3DRender();return}const[a,b]=[...pointers.values()],d=Math.hypot(b.x-a.x,b.y-a.y),center={x:(a.x+b.x)/2,y:(a.y+b.y)/2},twist=Math.atan2(b.y-a.y,b.x-a.x);if(lastPinch){showViewPivot();distance=THREE.MathUtils.clamp(distance*(lastPinch/Math.max(d,1)),MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;setFastInteraction(true)}if(lastCenter){pan3D(center.x-lastCenter.x,center.y-lastCenter.y)}if(lastTwist!=null){let da=twist-lastTwist;if(da>Math.PI)da-=Math.PI*2;if(da<-Math.PI)da+=Math.PI*2;if(Math.abs(da)>.001){showViewPivot();rollAroundViewCenter(da)}}lastPinch=d;lastCenter=center;lastTwist=twist;request3DRender()};
  const endPointer=async e=>{const start=pointerStarts.get(e.pointerId),wasSingle=pointers.size===1,isCut=start?.mode==='cut-pen'||start?.mode==='cut-line',isSectionDrag=start?.mode==='section-drag';
   if(isCut&&e.type==='pointerup')appendCutScreenPoints(e,start.mode==='cut-line'?'line':'pen');
   const screenCurve=isCut?[...analysisCutScreen]:null;
@@ -4018,10 +4250,10 @@ async function start3D(){
   if(e.type==='pointerup'&&e.button===0&&wasSingle&&start?.mode==='rotate'&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6&&volumeAnalysisMode&&!volumeAnalysisBusy){void analyzeVolumeAtPointer(e,renderer.domElement,camera)}
  };
  renderer.domElement.onpointerup=endPointer;renderer.domElement.onpointercancel=endPointer;
- renderer.domElement.onlostpointercapture=e=>{const start=pointerStarts.get(e.pointerId);pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(!analysisPendingCut){analysisCutScreen=[];clearThreeEditOverlay()}renderer.domElement.style.cursor='';if(pointers.size<2){lastPinch=0;lastCenter=null}if(!pointers.size&&start?.mode!=='section-drag')end3DInteraction()};
- renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();showViewPivot();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
+ renderer.domElement.onlostpointercapture=e=>{const start=pointerStarts.get(e.pointerId);pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(!analysisPendingCut){analysisCutScreen=[];clearThreeEditOverlay()}renderer.domElement.style.cursor='';if(pointers.size<2){lastPinch=0;lastCenter=null;lastTwist=null}if(!pointers.size&&start?.mode!=='section-drag')end3DInteraction()};
+ renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();showViewPivot();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;setFastInteraction(true);request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
  const resize=()=>{camera.aspect=viewport.clientWidth/Math.max(viewport.clientHeight,1);camera.updateProjectionMatrix();updateAxisWidget();renderer.setPixelRatio(active3DPixelRatio);renderer.setSize(viewport.clientWidth,viewport.clientHeight,false);resizeEditOverlay();sceneState?.medicalVolume?.resize();request3DRender()};sceneState.resize=resize;new ResizeObserver(resize).observe(viewport);resize();
- renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;sceneState.needsRender=false;if(sceneState.obj){axisWidget.quaternion.copy(sceneState.obj.quaternion);if(sectionViewOpen&&sectionViewPlane)updateSectionClipPlaneWorld();if(sceneState.mprPlaneGroup){sceneState.mprPlaneGroup.visible=true;sceneState.mprPlaneGroup.position.copy(sceneState.obj.position);sceneState.mprPlaneGroup.quaternion.copy(sceneState.obj.quaternion);sceneState.mprPlaneGroup.scale.copy(sceneState.obj.scale)}}else if(sceneState.mprPlaneGroup)sceneState.mprPlaneGroup.visible=false;if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){sceneState.medicalVolume.render(camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,{indices:[+planes.axial.slider.value,+planes.coronal.slider.value,+planes.sagittal.slider.value],visible:[sectionViewOpen&&sectionViewPlane==='axial'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.axial?1:0),sectionViewOpen&&sectionViewPlane==='coronal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.coronal?1:0),sectionViewOpen&&sectionViewPlane==='sagittal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.sagittal?1:0)],opacity:mpr3DVolumeOpacity,windowCenter:+wc.value,windowWidth:+ww.value,section:{active:sectionViewOpen&&!!sectionViewPlane,plane:sectionViewPlane,index:sectionViewPlane?+planes[sectionViewPlane].slider.value:0,reverse:sectionViewReverse,capEnabled:sectionCapEnabled,capOpacity:sectionCapOpacity,hatch:sectionCapHatch}});renderer.render(scene,camera)}else renderer.render(scene,camera)});
+ renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;sceneState.needsRender=false;if(sceneState.obj){axisWidget.quaternion.copy(sceneState.obj.quaternion);if(sectionViewOpen&&sectionViewPlane)updateSectionClipPlaneWorld();if(sceneState.mprPlaneGroup){sceneState.mprPlaneGroup.visible=true;sceneState.mprPlaneGroup.position.copy(sceneState.obj.position);sceneState.mprPlaneGroup.quaternion.copy(sceneState.obj.quaternion);sceneState.mprPlaneGroup.scale.copy(sceneState.obj.scale)}}else if(sceneState.mprPlaneGroup)sceneState.mprPlaneGroup.visible=false;if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){const interactiveVisible=fastInteractionActive?[sectionViewOpen&&sectionViewPlane==='axial'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='coronal'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='sagittal'&&sectionSliceImageVisible?1:0]:[sectionViewOpen&&sectionViewPlane==='axial'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.axial?1:0),sectionViewOpen&&sectionViewPlane==='coronal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.coronal?1:0),sectionViewOpen&&sectionViewPlane==='sagittal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.sagittal?1:0)];sceneState.medicalVolume.render(camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,{indices:[+planes.axial.slider.value,+planes.coronal.slider.value,+planes.sagittal.slider.value],visible:interactiveVisible,opacity:mpr3DVolumeOpacity,windowCenter:+wc.value,windowWidth:+ww.value,section:{active:sectionViewOpen&&!!sectionViewPlane,plane:sectionViewPlane,index:sectionViewPlane?+planes[sectionViewPlane].slider.value:0,reverse:sectionViewReverse,capEnabled:sectionCapEnabled,capOpacity:sectionCapOpacity,hatch:sectionCapHatch}});renderer.render(scene,camera)}else renderer.render(scene,camera)});
 }
 class RunUnionFind{
  constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
@@ -5112,9 +5344,31 @@ function analysisRegionName(region){
 }
 function renderAnalysisResults(statusText=null){
  if(!analysisSummary||!analysisRegionList)return;
- if(statusText)analysisSummary.textContent=statusText;
- else if(!analysisRegions.length)analysisSummary.textContent=tr('volumeHint');
- else analysisSummary.textContent=tr('analysisRegions')+': '+analysisRegions.length;
+ analysisSummary.replaceChildren();
+ if(statusText){
+  analysisSummary.textContent=statusText;
+ }else if(!analysisRegions.length){
+  analysisSummary.textContent=tr('volumeHint');
+ }else{
+  const focused=analysisRegionById(analysisFocusedRegionId)||analysisRegions[analysisRegions.length-1];
+  const count=document.createElement('div');count.className='analysis-result-count';count.textContent=tr('analysisRegions')+': '+analysisRegions.length;
+  analysisSummary.appendChild(count);
+  if(focused){
+   const card=document.createElement('div');card.className='analysis-result-card';
+   const head=document.createElement('div');head.className='analysis-result-head';
+   const swatch=document.createElement('span');swatch.className='analysis-region-swatch';swatch.style.background=analysisColorCss(focused.color);
+   const title=document.createElement('strong');title.textContent=(currentLanguage==='ja'?'解析結果 · ':'Result · ')+analysisRegionName(focused);
+   head.append(swatch,title);
+   const volumeRow=document.createElement('div');volumeRow.className='analysis-result-primary';
+   const volumeLabel=document.createElement('span');volumeLabel.textContent=currentLanguage==='ja'?'体積':'Volume';
+   const volumeValue=document.createElement('strong');volumeValue.textContent=focused.mm3.toFixed(2)+' mm³';
+   volumeRow.append(volumeLabel,volumeValue);
+   const meta=document.createElement('div');meta.className='analysis-result-meta';
+   const tissue=focused.segmentKeys.map(k=>tr(k)||k).join(' + ');
+   meta.textContent=tissue+' · '+focused.voxels.toLocaleString()+' voxels';
+   card.append(head,volumeRow,meta);analysisSummary.appendChild(card);
+  }
+ }
  analysisMergeButton.disabled=analysisRegions.filter(r=>r.selected).length<2||volumeAnalysisBusy;
  analysisClearButton.disabled=!analysisRegions.length||volumeAnalysisBusy;updateAnalysisEditorControls();
  analysisRegionList.replaceChildren();

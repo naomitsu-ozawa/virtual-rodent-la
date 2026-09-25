@@ -54,12 +54,14 @@ struct Uniforms{
  mprVisible:vec4<f32>,
  mprWindow:vec4<f32>,
  section:vec4<f32>,
- sectionCap:vec4<f32>
+ sectionCap:vec4<f32>,
+ textureDims:vec4<f32>
 };
 @group(0) @binding(0) var<uniform> u:Uniforms;
 @group(0) @binding(1) var volumeTex:texture_3d<f32>;
 @group(0) @binding(2) var<storage,read> editRows:array<u32>;
 @group(0) @binding(3) var<storage,read> brickMinMax:array<vec2<f32>>;
+@group(0) @binding(4) var volumeSampler:sampler;
 @group(0) @binding(5) var<storage,read> editIntervals:array<u32>;
 @group(0) @binding(6) var<storage,read> previewRows:array<u32>;
 @group(0) @binding(7) var<storage,read> previewIntervals:array<u32>;
@@ -81,10 +83,15 @@ fn texCoord(p:vec3<f32>)->vec3<f32>{
  return vec3<f32>(p.x/(2.0*u.halfStep.x)+0.5,0.5-p.y/(2.0*u.halfStep.y),p.z/(2.0*u.halfStep.z)+0.5);
 }
 fn huAt(tc0:vec3<f32>)->f32{
- let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
- let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
+ var q:vec2<f32>;
+ if(u.textureDims.w>0.5){
+  q=textureSampleLevel(volumeTex,volumeSampler,tc,0.0).rg*255.0;
+ }else{
+  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+  q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
+ }
  let raw=q.x+q.y*256.0-u.calibration.y;
  return raw*u.dimsSlope.w+u.calibration.x;
 }
@@ -191,7 +198,7 @@ fn capSegmentIndex(tc0:vec3<f32>)->i32{
  return -1;
 }
 fn brickMayContain(p:vec3<f32>)->bool{
- let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999));let dims=max(u.dimsSlope.xyz,vec3<f32>(1.0));let bs=max(u.viewport.w,1.0);
+ let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999));let dims=max(u.textureDims.xyz,vec3<f32>(1.0));let bs=max(u.viewport.w,1.0);
  let voxel=vec3<u32>(tc*dims);let bx=voxel.x/u32(bs);let by=voxel.y/u32(bs);let bz=voxel.z/u32(bs);let bcx=u32(u.calibration.z);let bcy=u32(u.calibration.w);
  let mm=brickMinMax[bz*bcx*bcy+by*bcx+bx];
  for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){return true;}}
@@ -206,11 +213,11 @@ fn brickExitDistance(p:vec3<f32>,dir:vec3<f32>)->f32{
  return best;
 }
 fn gradientAt(tc:vec3<f32>)->vec3<f32>{
- let d=vec3<f32>(1.0/max(u.dimsSlope.x,1.0),1.0/max(u.dimsSlope.y,1.0),1.0/max(u.dimsSlope.z,1.0));
+ let d=vec3<f32>(1.0/max(u.textureDims.x,1.0),1.0/max(u.textureDims.y,1.0),1.0/max(u.textureDims.z,1.0));
  let gx=huAt(tc+vec3<f32>(d.x,0.0,0.0))-huAt(tc-vec3<f32>(d.x,0.0,0.0));
  let gy=huAt(tc+vec3<f32>(0.0,d.y,0.0))-huAt(tc-vec3<f32>(0.0,d.y,0.0));
  let gz=huAt(tc+vec3<f32>(0.0,0.0,d.z))-huAt(tc-vec3<f32>(0.0,0.0,d.z));
- let voxel=2.0*u.halfStep.xyz/max(u.dimsSlope.xyz,vec3<f32>(1.0));
+ let voxel=2.0*u.halfStep.xyz/max(u.textureDims.xyz,vec3<f32>(1.0));
  let g=vec3<f32>(gx/max(voxel.x,1e-6),-gy/max(voxel.y,1e-6),gz/max(voxel.z,1e-6));
  let l=length(g);if(l<1e-6){return vec3<f32>(0.0,0.0,1.0);}return g/l;
 }
@@ -374,7 +381,8 @@ function volumePickShader(){
  return `
 struct Uniforms{
  camOrigin:vec4<f32>,camRightTan:vec4<f32>,camUpAspect:vec4<f32>,camForward:vec4<f32>,
- halfStep:vec4<f32>,dimsSlope:vec4<f32>,calibration:vec4<f32>,viewport:vec4<f32>,segments:array<vec4<f32>,8>
+ halfStep:vec4<f32>,dimsSlope:vec4<f32>,calibration:vec4<f32>,viewport:vec4<f32>,segments:array<vec4<f32>,8>,
+ mprIndices:vec4<f32>,mprVisible:vec4<f32>,mprWindow:vec4<f32>,section:vec4<f32>,sectionCap:vec4<f32>,textureDims:vec4<f32>
 };
 @group(0) @binding(0) var<uniform> u:Uniforms;
 @group(0) @binding(1) var volumeTex:texture_3d<f32>;
@@ -388,7 +396,7 @@ fn hitBox(orig:vec3<f32>,dir:vec3<f32>,halfBox:vec3<f32>)->vec2<f32>{
 }
 fn texCoord(p:vec3<f32>)->vec3<f32>{return vec3<f32>(p.x/(2.0*u.halfStep.x)+0.5,0.5-p.y/(2.0*u.halfStep.y),p.z/(2.0*u.halfStep.z)+0.5);}
 fn huAt(tc0:vec3<f32>)->f32{
- let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
  let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
@@ -492,6 +500,23 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 }`;
 }
 
+function volumeTexturePlan(v,maxTextureBytes=0,maxTextureDim=Infinity,targetInPlane=0){
+ const sw=Math.max(1,v?.columns||0),sh=Math.max(1,v?.rows||0),sd=Math.max(1,v?.slices||0),sourceBytes=sw*sh*sd*2;
+ let scale=1;
+ const inPlaneMax=Math.max(sw,sh);
+ if(targetInPlane>0&&inPlaneMax>targetInPlane)scale=Math.min(scale,targetInPlane/inPlaneMax);
+ if(maxTextureBytes>0&&sourceBytes>maxTextureBytes)scale=Math.min(scale,Math.cbrt(maxTextureBytes/sourceBytes)*0.965);
+ const maxSourceDim=Math.max(sw,sh,sd);
+ if(Number.isFinite(maxTextureDim)&&maxTextureDim>0&&maxSourceDim>maxTextureDim)scale=Math.min(scale,maxTextureDim/maxSourceDim);
+ let tw=Math.max(1,Math.floor(sw*scale)),th=Math.max(1,Math.floor(sh*scale)),td=Math.max(1,Math.floor(sd*scale));
+ if(maxTextureBytes>0){
+  while(tw*th*td*2>maxTextureBytes){
+   if(tw>=th&&tw>=td&&tw>1)tw--;else if(th>=td&&th>1)th--;else if(td>1)td--;else break;
+  }
+ }
+ return{sourceDims:[sw,sh,sd],dims:[tw,th,td],sourceBytes,bytes:tw*th*td*2,reduced:tw!==sw||th!==sh||td!==sd};
+}
+
 export class MedicalVolumeRenderer{
  constructor({device,host,rendererCanvas,onProgress,onStatus}){
   this.device=device;this.host=host;this.rendererCanvas=rendererCanvas;this.onProgress=onProgress||(()=>{});this.onStatus=onStatus||(()=>{});
@@ -500,7 +525,7 @@ export class MedicalVolumeRenderer{
   this.host.style.position='relative';this.host.appendChild(this.canvas);
   this.context=this.canvas.getContext('webgpu');this.format=navigator.gpu.getPreferredCanvasFormat();
   this.context.configure({device:this.device,format:this.format,alphaMode:'opaque'});
-  this.uniformBuffer=this.device.createBuffer({size:336,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+  this.uniformBuffer=this.device.createBuffer({size:352,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
   this.sampler=this.device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge',addressModeW:'clamp-to-edge'});
   const module=this.device.createShaderModule({label:'VRL medical volume raycast',code:safeWgsl(volumeShader())});
   this.pipeline=this.device.createRenderPipeline({label:'VRL medical volume raycast',layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
@@ -510,30 +535,31 @@ export class MedicalVolumeRenderer{
   this.editRowsBuffer=null;this.editIntervalsBuffer=null;this.editSignature='';this.clearEditRuns();
   this.previewRowsBuffer=null;this.previewIntervalsBuffer=null;this.previewSignature='';this.clearPreviewRuns();
   this.appliedCutRowsBuffer=null;this.appliedCutIntervalsBuffer=null;this.appliedCutSignature='';this.clearAppliedCutRuns();
-  this.texture=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.previewVolume=null;this.previewPlaneBuffers={coronal:null,sagittal:null};this.active=false;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;
+  this.texture=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.previewVolume=null;this.previewPlaneBuffers={coronal:null,sagittal:null};this.active=false;this.interactive=false;this.interactionTier=0;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;this.textureDims=[1,1,1];this.reducedVolume=false;this.textureBytes=0;this.planSignature='';
+  this.frameData=new Float32Array(88);this.tmpInv=new THREE.Matrix4();this.tmpOrigin=new THREE.Vector3();this.tmpQuat=new THREE.Quaternion();this.tmpRight=new THREE.Vector3();this.tmpUp=new THREE.Vector3();this.tmpForward=new THREE.Vector3();
  }
- support(v){
+ support(v,{maxTextureBytes=0,targetInPlane=0}={}){
   const s=v?.series;if(!v?.sourceBacked||!s)return{ok:false,reason:'GPU volume currently targets source-backed DICOM'};
   if(!this.device||!this.context)return{ok:false,reason:'WebGPU device unavailable'};
   if(!s.slices.length||s.slices.some(m=>m.bits!==16||m.samples!==1||!UNCOMPRESSED_TS.has(m.ts)))return{ok:false,reason:'16-bit uncompressed single-channel DICOM required'};
   if(s.slices.some(m=>m.rows!==s.rows||m.columns!==s.columns))return{ok:false,reason:'Inconsistent DICOM matrix'};
   const first=s.slices[0],slope=first.slope,intercept=first.intercept,signed=!!first.signed;
   if(s.slices.some(m=>Math.abs(m.slope-slope)>1e-9||Math.abs(m.intercept-intercept)>1e-6||!!m.signed!==signed))return{ok:false,reason:'Per-slice calibration differs'};
-  const lim=this.device.limits.maxTextureDimension3D;
-  if(s.columns>lim||s.rows>lim||s.slices.length>lim)return{ok:false,reason:'Volume exceeds maxTextureDimension3D '+lim};
-  return{ok:true};
+  const lim=this.device.limits.maxTextureDimension3D,plan=volumeTexturePlan(v,maxTextureBytes,lim,targetInPlane);
+  if(plan.dims[0]>lim||plan.dims[1]>lim||plan.dims[2]>lim)return{ok:false,reason:'Volume exceeds maxTextureDimension3D '+lim};
+  return{ok:true,plan};
  }
- async ensure(v,{prepareBricks=true,previewSide=0}={}){
-  const support=this.support(v);if(!support.ok)throw new Error(support.reason);
-  const s=v.series;
-  if(this.seriesId===s.id&&this.texture){
+ async ensure(v,{prepareBricks=true,previewSide=0,maxTextureBytes=0,targetInPlane=0}={}){
+  const support=this.support(v,{maxTextureBytes,targetInPlane});if(!support.ok)throw new Error(support.reason);
+  const s=v.series,plan=support.plan,[tw,th,td]=plan.dims,planSignature=plan.dims.join('x');
+  if(this.seriesId===s.id&&this.texture&&this.planSignature===planSignature){
    this.volume=v;if(prepareBricks)await this.ensureBricks();return;
   }
-  this.resetData();this.volume=v;this.onStatus('WEBGPU VOLUME UPLOAD');
+  this.resetData();this.volume=v;this.onStatus(plan.reduced?'WEBGPU MOBILE VOLUME UPLOAD':'WEBGPU VOLUME UPLOAD');
   const first=s.slices[0],signed=!!first.signed;let texture,popped=false;
   let preview=null,previewSourceZ=null,previewX=null,previewY=null;
   const previewMax=Math.max(0,Math.floor(previewSide||0));
-  if(previewMax>0){
+  if(previewMax>0&&!plan.reduced){
    const ratio=Math.min(1,previewMax/Math.max(s.columns,s.rows,s.slices.length)),pw=Math.max(1,Math.round(s.columns*ratio)),ph=Math.max(1,Math.round(s.rows*ratio)),pd=Math.max(1,Math.round(s.slices.length*ratio));
    try{
     preview={data:new Uint16Array(pw*ph*pd),dims:[pw,ph,pd],sourceDims:[s.columns,s.rows,s.slices.length]};
@@ -546,24 +572,37 @@ export class MedicalVolumeRenderer{
   }
   this.device.pushErrorScope?.('validation');
   try{
-   texture=this.device.createTexture({label:'VRL DICOM volume',size:{width:s.columns,height:s.rows,depthOrArrayLayers:s.slices.length},dimension:'3d',format:'rg8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
-   for(let z=0;z<s.slices.length;z++){
-    const packed=await packedRgSlice(s.slices[z]);
-    this.device.queue.writeTexture({texture,origin:{x:0,y:0,z}},packed,{bytesPerRow:s.columns*2,rowsPerImage:s.rows},{width:s.columns,height:s.rows,depthOrArrayLayers:1});
-    if(preview&&previewSourceZ){
-     const pz=previewSourceZ[z];
-     if(pz>=0){
-      const [pw,ph]=preview.dims,base=pz*pw*ph;
-      for(let py=0;py<ph;py++){
-       const sy=previewY[py],srcRow=sy*s.columns*2,dstRow=base+py*pw;
-       for(let px=0;px<pw;px++){const off=srcRow+previewX[px]*2;preview.data[dstRow+px]=packed[off]|(packed[off+1]<<8)}
+   texture=this.device.createTexture({label:plan.reduced?'VRL mobile reduced DICOM volume':'VRL DICOM volume',size:{width:tw,height:th,depthOrArrayLayers:td},dimension:'3d',format:'rg8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
+   if(plan.reduced){
+    const xMap=new Uint32Array(tw),yMap=new Uint32Array(th),zMap=new Uint32Array(td);
+    for(let x=0;x<tw;x++)xMap[x]=tw<=1?0:Math.round(x*(s.columns-1)/(tw-1));
+    for(let y=0;y<th;y++)yMap[y]=th<=1?0:Math.round(y*(s.rows-1)/(th-1));
+    for(let z=0;z<td;z++)zMap[z]=td<=1?0:Math.round(z*(s.slices.length-1)/(td-1));
+    const rowBytes=tw*2,rowStride=Math.ceil(rowBytes/256)*256,reducedSlice=new Uint8Array(rowStride*th);
+    for(let tz=0;tz<td;tz++){
+     const packed=await packedRgSlice(s.slices[zMap[tz]]);reducedSlice.fill(0);
+     for(let y=0;y<th;y++){
+      const srcRow=yMap[y]*s.columns*2,dstRow=y*rowStride;
+      for(let x=0;x<tw;x++){const so=srcRow+xMap[x]*2,doff=dstRow+x*2;reducedSlice[doff]=packed[so];reducedSlice[doff+1]=packed[so+1]}
+     }
+     this.device.queue.writeTexture({texture,origin:{x:0,y:0,z:tz}},reducedSlice,{bytesPerRow:rowStride,rowsPerImage:th},{width:tw,height:th,depthOrArrayLayers:1});
+     if((tz&15)===15||tz===td-1){this.onProgress(tz+1,td);try{await this.device.queue.onSubmittedWorkDone()}catch{}await new Promise(requestAnimationFrame)}
+    }
+   }else{
+    for(let z=0;z<s.slices.length;z++){
+     const packed=await packedRgSlice(s.slices[z]);
+     this.device.queue.writeTexture({texture,origin:{x:0,y:0,z}},packed,{bytesPerRow:s.columns*2,rowsPerImage:s.rows},{width:s.columns,height:s.rows,depthOrArrayLayers:1});
+     if(preview&&previewSourceZ){
+      const pz=previewSourceZ[z];
+      if(pz>=0){
+       const [pw,ph]=preview.dims,base=pz*pw*ph;
+       for(let py=0;py<ph;py++){
+        const sy=previewY[py],srcRow=sy*s.columns*2,dstRow=base+py*pw;
+        for(let px=0;px<pw;px++){const off=srcRow+previewX[px]*2;preview.data[dstRow+px]=packed[off]|(packed[off+1]<<8)}
+       }
       }
      }
-    }
-    if((z&31)===31||z===s.slices.length-1){
-     this.onProgress(z+1,s.slices.length);
-     try{await this.device.queue.onSubmittedWorkDone()}catch{}
-     await new Promise(requestAnimationFrame);
+     if((z&31)===31||z===s.slices.length-1){this.onProgress(z+1,s.slices.length);try{await this.device.queue.onSubmittedWorkDone()}catch{}await new Promise(requestAnimationFrame)}
     }
    }
    const validation=await this.device.popErrorScope?.();popped=true;if(validation)throw new Error(validation.message);
@@ -572,16 +611,17 @@ export class MedicalVolumeRenderer{
    texture?.destroy?.();throw e;
   }
   const px=s.columns*s.spacingX,py=s.rows*s.spacingY,pz=s.slices.length*s.spacingZ,maxP=Math.max(px,py,pz,1),scale=3.3/maxP;
-  this.halfExtents=[px*scale*.5,py*scale*.5,pz*scale*.5];this.step=Math.max(1e-5,Math.min(s.spacingX,s.spacingY,s.spacingZ)*scale*.85);
-  this.calibration={slope:first.slope,intercept:first.intercept,signedBias:signed?32768:0};this.texture=texture;this.seriesId=s.id;this.bricksReady=false;this.previewVolume=preview;this.previewPlaneBuffers={coronal:null,sagittal:null};
-  if(prepareBricks)await this.ensureBricks();else this.onStatus('WEBGPU VOLUME RESIDENT');
+  this.halfExtents=[px*scale*.5,py*scale*.5,pz*scale*.5];
+  const effX=px/tw,effY=py/th,effZ=pz/td;this.step=Math.max(1e-5,Math.min(effX,effY,effZ)*scale*.85);
+  this.calibration={slope:first.slope,intercept:first.intercept,signedBias:signed?32768:0};this.texture=texture;this.textureDims=[tw,th,td];this.reducedVolume=plan.reduced;this.textureBytes=plan.bytes;this.planSignature=planSignature;this.seriesId=s.id;this.bricksReady=false;this.previewVolume=preview;this.previewPlaneBuffers={coronal:null,sagittal:null};
+  if(prepareBricks)await this.ensureBricks();else this.onStatus(plan.reduced?'WEBGPU MOBILE VOLUME RESIDENT':'WEBGPU VOLUME RESIDENT');
  }
  async ensureBricks(){
   if(this.bricksReady)return;
   const s=this.volume?.series;if(!s||!this.texture)throw new Error('GPU volume texture is not resident');
-  const first=s.slices[0],signed=!!first.signed,bs=this.brickSize,bx=Math.ceil(s.columns/bs),by=Math.ceil(s.rows/bs),bz=Math.ceil(s.slices.length/bs),brickCount=bx*by*bz;this.brickDims=[bx,by,bz];
+  const first=s.slices[0],signed=!!first.signed,[tw,th,td]=this.textureDims,bs=this.brickSize,bx=Math.ceil(tw/bs),by=Math.ceil(th/bs),bz=Math.ceil(td/bs),brickCount=bx*by*bz;this.brickDims=[bx,by,bz];
   this.brickBuffer?.destroy?.();this.brickBuffer=this.device.createBuffer({label:'VRL volume minmax bricks',size:Math.max(8,brickCount*8),usage:GPUBufferUsage.STORAGE});
-  const meta=smallStorage(this.device,new Uint32Array([s.columns,s.rows,s.slices.length,bx,by,bz,bs,0])),params=smallStorage(this.device,new Float32Array([first.slope,first.intercept,signed?32768:0,0]));
+  const meta=smallStorage(this.device,new Uint32Array([tw,th,td,bx,by,bz,bs,0])),params=smallStorage(this.device,new Float32Array([first.slope,first.intercept,signed?32768:0,0]));
   try{
    const brickGroup=this.device.createBindGroup({layout:this.brickPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.texture.createView({dimension:'3d'})},{binding:1,resource:{buffer:meta}},{binding:2,resource:{buffer:params}},{binding:3,resource:{buffer:this.brickBuffer}}]}),brickEncoder=this.device.createCommandEncoder({label:'VRL volume minmax bricks'}),brickPass=brickEncoder.beginComputePass();
    brickPass.setPipeline(this.brickPipeline);brickPass.setBindGroup(0,brickGroup);brickPass.dispatchWorkgroups(Math.ceil(brickCount/64));brickPass.end();this.device.queue.submit([brickEncoder.finish()]);await this.device.queue.onSubmittedWorkDone();
@@ -593,7 +633,7 @@ export class MedicalVolumeRenderer{
   if(!this.texture||!this.brickBuffer||!this.editRowsBuffer||!this.editIntervalsBuffer||!this.previewRowsBuffer||!this.previewIntervalsBuffer||!this.appliedCutRowsBuffer||!this.appliedCutIntervalsBuffer){this.bindGroup=null;return}
   this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},
-   {binding:2,resource:{buffer:this.editRowsBuffer}},{binding:3,resource:{buffer:this.brickBuffer}},{binding:5,resource:{buffer:this.editIntervalsBuffer}},
+   {binding:2,resource:{buffer:this.editRowsBuffer}},{binding:3,resource:{buffer:this.brickBuffer}},{binding:4,resource:this.sampler},{binding:5,resource:{buffer:this.editIntervalsBuffer}},
    {binding:6,resource:{buffer:this.previewRowsBuffer}},{binding:7,resource:{buffer:this.previewIntervalsBuffer}},
    {binding:8,resource:{buffer:this.appliedCutRowsBuffer}},{binding:9,resource:{buffer:this.appliedCutIntervalsBuffer}}
   ]});
@@ -734,6 +774,9 @@ export class MedicalVolumeRenderer{
  hasResident(v){
   return !!(this.texture&&v?.series&&this.seriesId===v.series.id);
  }
+ isReduced(v){
+  return !!(this.reducedVolume&&this.hasResident(v));
+ }
  hasPreview(v){
   return !!(this.previewVolume&&this.hasResident(v));
  }
@@ -759,7 +802,7 @@ export class MedicalVolumeRenderer{
  }
  extractPlane(v,plane,index,{maxSide=0}={}){
   const run=async()=>{
-   if(!this.hasResident(v))return null;
+   if(!this.hasResident(v)||this.reducedVolume)return null;
    const w=v.columns,h=v.rows,d=v.slices,kind=plane==='axial'?0:plane==='coronal'?1:plane==='sagittal'?2:-1;
    if(kind<0)throw new Error('Unsupported MPR plane: '+plane);
    const maxIndex=kind===0?d-1:kind===1?h-1:w-1;if(index<0||index>maxIndex)throw new Error('MPR plane index out of range');
@@ -788,18 +831,25 @@ export class MedicalVolumeRenderer{
  setActive(active){
   this.active=!!active;this.canvas.style.display=this.active?'block':'none';
  }
- resize(){
-  const ratio=Math.min(window.devicePixelRatio||1,1.5),w=Math.max(1,Math.floor(this.host.clientWidth*ratio)),h=Math.max(1,Math.floor(this.host.clientHeight*ratio));
-  if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h}
+ setInteractive(active,tier=0){
+  const next=!!active,nextTier=next?Math.max(0,Math.min(2,Math.round(+tier||0))):0;
+  if(this.interactive===next&&this.interactionTier===nextTier)return;
+  this.interactive=next;this.interactionTier=nextTier;this.resize(true);
+ }
+ resize(force=false){
+  const dpr=window.devicePixelRatio||1,touch=(navigator.maxTouchPoints||0)>0;
+  const interactiveRatios=touch?[0.72,0.58,0.46]:[0.9,0.7,0.52];
+  const ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5),w=Math.max(1,Math.floor(this.host.clientWidth*ratio)),h=Math.max(1,Math.floor(this.host.clientHeight*ratio));
+  if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h}
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
   if(!this.active||!this.texture||!this.bindGroup||!obj)return;
   this.resize();camera.updateMatrixWorld(true);obj.updateMatrixWorld(true);
-  const inv=obj.matrixWorld.clone().invert(),origin=camera.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv),q=camera.getWorldQuaternion(new THREE.Quaternion());
-  const right=new THREE.Vector3(1,0,0).applyQuaternion(q).transformDirection(inv),up=new THREE.Vector3(0,1,0).applyQuaternion(q).transformDirection(inv),forward=new THREE.Vector3(0,0,-1).applyQuaternion(q).transformDirection(inv);
-  const data=new Float32Array(84),put=(slot,a,b,c,d)=>{const i=slot*4;data[i]=a;data[i+1]=b;data[i+2]=c;data[i+3]=d};
+  const inv=this.tmpInv.copy(obj.matrixWorld).invert(),origin=camera.getWorldPosition(this.tmpOrigin).applyMatrix4(inv),q=camera.getWorldQuaternion(this.tmpQuat);
+  const right=this.tmpRight.set(1,0,0).applyQuaternion(q).transformDirection(inv),up=this.tmpUp.set(0,1,0).applyQuaternion(q).transformDirection(inv),forward=this.tmpForward.set(0,0,-1).applyQuaternion(q).transformDirection(inv);
+  const data=this.frameData,put=(slot,a,b,c,d)=>{const i=slot*4;data[i]=a;data[i+1]=b;data[i+2]=c;data[i+3]=d};
   put(0,origin.x,origin.y,origin.z,0);put(1,right.x,right.y,right.z,Math.tan(THREE.MathUtils.degToRad(camera.fov*.5)));put(2,up.x,up.y,up.z,camera.aspect);put(3,forward.x,forward.y,forward.z,0);
-  put(4,this.halfExtents[0],this.halfExtents[1],this.halfExtents[2],this.step);
+  const interactionStep=this.interactive?[1.65,2.0,2.5][this.interactionTier]||1.65:1;put(4,this.halfExtents[0],this.halfExtents[1],this.halfExtents[2],this.step*interactionStep);
   put(5,this.volume.columns,this.volume.rows,this.volume.slices,this.calibration.slope);put(6,this.calibration.intercept,this.calibration.signedBias,this.brickDims[0],this.brickDims[1]);put(7,this.canvas.width,this.canvas.height,this.brickDims[2],this.brickSize);
   for(let s=0;s<4;s++){
    const key=segmentOrder[s],seg=segmentState[key],enabled=seg?.active&&seg?.enabled?1:0,color=new THREE.Color(seg?.color||'#ffffff');
@@ -819,6 +869,7 @@ export class MedicalVolumeRenderer{
   }
   put(19,active?mode:0,coord,section.reverse?-1:1,0);
   put(20,section.capEnabled?1:0,Number.isFinite(+section.capOpacity)?Math.max(0,Math.min(1,+section.capOpacity)):.85,section.hatch?1:0,28);
+  put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],this.reducedVolume?1:0);
   this.device.queue.writeBuffer(this.uniformBuffer,0,data);
   const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();this.device.queue.submit([encoder.finish()]);
@@ -845,7 +896,7 @@ export class MedicalVolumeRenderer{
  async pick(clientX,clientY,camera,obj,segmentState,segmentOrder,preferredKey=null){
   const result=await this.pickMany([{clientX,clientY}],camera,obj,segmentState,segmentOrder,preferredKey);return result[0]||null;
  }
- resetData(){this.setActive(false);this.texture?.destroy?.();this.brickBuffer?.destroy?.();this.texture=null;this.brickBuffer=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.previewVolume=null;this.previewPlaneBuffers={coronal:null,sagittal:null};this.volume=null;this.clearEditRuns();this.clearPreviewRuns();this.clearAppliedCutRuns()}
+ resetData(){this.setActive(false);this.texture?.destroy?.();this.brickBuffer?.destroy?.();this.texture=null;this.brickBuffer=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.previewVolume=null;this.previewPlaneBuffers={coronal:null,sagittal:null};this.volume=null;this.textureDims=[1,1,1];this.reducedVolume=false;this.textureBytes=0;this.planSignature='';this.clearEditRuns();this.clearPreviewRuns();this.clearAppliedCutRuns()}
  destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();this.previewRowsBuffer?.destroy?.();this.previewIntervalsBuffer?.destroy?.();this.appliedCutRowsBuffer?.destroy?.();this.appliedCutIntervalsBuffer?.destroy?.();this.mprUniformBuffer?.destroy?.();this.canvas.remove()}
 }
 
