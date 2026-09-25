@@ -95,12 +95,22 @@ fn huAt(tc0:vec3<f32>)->f32{
  let raw=q.x+q.y*256.0-u.calibration.y;
  return raw*u.dimsSlope.w+u.calibration.x;
 }
+fn maskVoxelAt(tc0:vec3<f32>)->vec3<u32>{
+ let src=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let tex=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ if(all(src==tex)){return min(vec3<u32>(tc*vec3<f32>(src)),src-vec3<u32>(1u));}
+ let tp=min(vec3<u32>(tc*vec3<f32>(tex)),tex-vec3<u32>(1u));
+ let sx=u32(round(f32(tp.x)*f32(max(src.x-1u,1u))/f32(max(tex.x-1u,1u))));
+ let sy=u32(round(f32(tp.y)*f32(max(src.y-1u,1u))/f32(max(tex.y-1u,1u))));
+ let sz=u32(round(f32(tp.z)*f32(max(src.z-1u,1u))/f32(max(tex.z-1u,1u))));
+ return min(vec3<u32>(sx,sy,sz),src-vec3<u32>(1u));
+}
 fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
  let activeMask=editRows[0];if((activeMask&(1u<<seg))==0u){return true;}
  let keepMask=editRows[1];
  let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
- let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ let p=maskVoxelAt(tc0);
  let rowCount=dims.y*dims.z;
  let base=2u+seg*(rowCount+1u);
  let row=p.z*dims.y+p.y;
@@ -118,8 +128,7 @@ fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
 fn previewContains(seg:u32,tc0:vec3<f32>)->bool{
  let target=previewRows[0];if(target==0u||target!=seg+1u){return false;}
  let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
- let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ let p=maskVoxelAt(tc0);
  let row=p.z*dims.y+p.y;
  let start=previewRows[1u+row];
  let finish=previewRows[2u+row];
@@ -136,8 +145,7 @@ fn appliedCutContains(seg:u32,tc0:vec3<f32>)->bool{
  let activeMask=appliedCutRows[0];
  if((activeMask&(1u<<seg))==0u){return false;}
  let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
- let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ let p=maskVoxelAt(tc0);
  let rowCount=dims.y*dims.z;
  let base=1u+seg*(rowCount+1u);
  let row=p.z*dims.y+p.y;
@@ -402,12 +410,22 @@ fn huAt(tc0:vec3<f32>)->f32{
  let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
  return (q.x+q.y*256.0-u.calibration.y)*u.dimsSlope.w+u.calibration.x;
 }
+fn maskVoxelAt(tc0:vec3<f32>)->vec3<u32>{
+ let src=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let tex=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ if(all(src==tex)){return min(vec3<u32>(tc*vec3<f32>(src)),src-vec3<u32>(1u));}
+ let tp=min(vec3<u32>(tc*vec3<f32>(tex)),tex-vec3<u32>(1u));
+ let sx=u32(round(f32(tp.x)*f32(max(src.x-1u,1u))/f32(max(tex.x-1u,1u))));
+ let sy=u32(round(f32(tp.y)*f32(max(src.y-1u,1u))/f32(max(tex.y-1u,1u))));
+ let sz=u32(round(f32(tp.z)*f32(max(src.z-1u,1u))/f32(max(tex.z-1u,1u))));
+ return min(vec3<u32>(sx,sy,sz),src-vec3<u32>(1u));
+}
 fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
  let activeMask=editRows[0];if((activeMask&(1u<<seg))==0u){return true;}
  let keepMask=editRows[1];
  let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
- let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ let p=maskVoxelAt(tc0);
  let rowCount=dims.y*dims.z;
  let base=2u+seg*(rowCount+1u);
  let row=p.z*dims.y+p.y;
@@ -454,9 +472,10 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
    var lo=previousT;var hi=t;
    for(var r:u32=0u;r<5u;r=r+1u){let mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(u.camOrigin.xyz+dir*mid),preferred)==idx){hi=mid;}else{lo=mid;}}
    let tc=clamp(texCoord(u.camOrigin.xyz+dir*hi),vec3<f32>(0.0),vec3<f32>(0.999999));
-   result[ob]=min(u32(tc.x*u.dimsSlope.x),u32(u.dimsSlope.x)-1u);
-   result[ob+1u]=min(u32(tc.y*u.dimsSlope.y),u32(u.dimsSlope.y)-1u);
-   result[ob+2u]=min(u32(tc.z*u.dimsSlope.z),u32(u.dimsSlope.z)-1u);
+   let sourceP=maskVoxelAt(tc);
+   result[ob]=sourceP.x;
+   result[ob+1u]=sourceP.y;
+   result[ob+2u]=sourceP.z;
    result[ob+3u]=u32(idx)+1u;return;
   }
   previousT=t;t+=step;
