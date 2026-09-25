@@ -390,3 +390,446 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
  .three-edit-panel{max-width:min(310px,calc(100vw - 80px))}
  .three-edit-panel:not([open]) .three-edit-status{max-width:130px}
 }
+
+
+/* Build 181: iPad workspace layout. Scoped by runtime class so desktop/Mac UI is unchanged. */
+html.vrl-ipad-ui,
+html.vrl-ipad-ui body,
+html.vrl-ipad-ui #app{height:100%;overflow:hidden}
+html.vrl-ipad-ui .app-shell{
+  height:100dvh;min-height:0;padding:8px;gap:8px;
+  grid-template-rows:auto auto minmax(0,1fr) auto;
+}
+html.vrl-ipad-ui .topbar{min-height:48px;gap:10px}
+html.vrl-ipad-ui .topbar .eyebrow,
+html.vrl-ipad-ui .topbar .subtitle{display:none}
+html.vrl-ipad-ui .topbar h1{font-size:20px;white-space:nowrap}
+html.vrl-ipad-ui .topbar-actions{gap:6px;flex-wrap:nowrap;min-width:0}
+html.vrl-ipad-ui .topbar-actions .primary-button,
+html.vrl-ipad-ui .topbar-actions .secondary-button,
+html.vrl-ipad-ui .topbar-actions .status{min-height:40px;padding:7px 10px;font-size:10px;white-space:nowrap}
+html.vrl-ipad-ui .topbar-actions .status{max-width:240px;overflow:hidden;text-overflow:ellipsis}
+
+.ipad-workspace-toolbar{display:none}
+html.vrl-ipad-ui .ipad-workspace-toolbar{
+  display:flex;align-items:center;gap:8px;min-height:46px;padding:5px 7px;
+  border:1px solid #273137;border-radius:12px;background:#101416;
+}
+html.vrl-ipad-ui .ipad-toolbar-button,
+html.vrl-ipad-ui .ipad-view-modes button,
+html.vrl-ipad-ui .ipad-mpr-tabs button,
+html.vrl-ipad-ui .ipad-drawer-head button,
+html.vrl-ipad-ui .ipad-drawer-tabs button{
+  min-height:40px;border:1px solid #344047;border-radius:9px;background:#171d20;color:#d7e4e9;
+  padding:7px 11px;font-size:12px;font-weight:800;touch-action:manipulation;
+}
+html.vrl-ipad-ui .ipad-view-modes,
+html.vrl-ipad-ui .ipad-mpr-tabs{display:flex;align-items:center;gap:5px}
+html.vrl-ipad-ui .ipad-mpr-tabs{margin-left:auto}
+html.vrl-ipad-ui .ipad-view-modes button.is-active,
+html.vrl-ipad-ui .ipad-mpr-tabs button.is-active,
+html.vrl-ipad-ui .ipad-drawer-tabs button.is-active{
+  background:#17313d;border-color:#67b2d1;color:#e4f8ff;
+}
+
+html.vrl-ipad-ui .workspace{display:block;min-height:0;overflow:hidden}
+html.vrl-ipad-ui .viewer-grid{height:100%;min-height:0;display:grid;gap:8px}
+html.vrl-ipad-ui .view-slot-main,
+html.vrl-ipad-ui .view-slot-main>.viewport-card{width:100%;height:100%;min-height:0;margin:0}
+html.vrl-ipad-ui .viewport-3d{min-height:0;height:100%}
+html.vrl-ipad-ui .view-drag-handle,
+html.vrl-ipad-ui .view-main-button{display:none!important}
+
+html.vrl-ipad-ui .mpr-column{height:100%;min-height:0;display:block}
+html.vrl-ipad-ui .mpr-column .view-slot-sub{display:none;width:100%;height:100%;min-height:0;margin:0}
+html.vrl-ipad-ui .mpr-column .view-slot-sub.is-ipad-active{display:block}
+html.vrl-ipad-ui .mpr-column .viewport-card{width:100%;height:100%;min-height:0}
+html.vrl-ipad-ui .mpr-canvas{width:100%;height:100%;min-height:0}
+
+html.vrl-ipad-ui .ipad-mode-3d .viewer-grid{grid-template-columns:1fr}
+html.vrl-ipad-ui .ipad-mode-3d #sub-view-slots{display:none}
+html.vrl-ipad-ui .ipad-mode-3d #main-view-slot{display:block}
+html.vrl-ipad-ui .ipad-mode-2d .viewer-grid{grid-template-columns:1fr}
+html.vrl-ipad-ui .ipad-mode-2d #main-view-slot{display:none}
+html.vrl-ipad-ui .ipad-mode-2d #sub-view-slots{display:block}
+html.vrl-ipad-ui .ipad-mode-split .viewer-grid{grid-template-columns:minmax(0,1.55fr) minmax(290px,.85fr)}
+html.vrl-ipad-ui .ipad-mode-split #main-view-slot,
+html.vrl-ipad-ui .ipad-mode-split #sub-view-slots{display:block}
+
+html.vrl-ipad-ui .sidebar{
+  position:fixed;z-index:1300;top:0;bottom:0;left:0;width:min(430px,84vw);
+  display:grid!important;grid-template-rows:auto minmax(0,1fr);gap:0;
+  transform:translateX(-105%);transition:transform .18s ease;
+  border-right:1px solid #344047;background:#0d1113;box-shadow:12px 0 36px rgba(0,0,0,.42);
+  overflow:hidden;
+}
+html.vrl-ipad-ui.ipad-sidebar-open .sidebar{transform:translateX(0)}
+html.vrl-ipad-ui .ipad-sidebar-backdrop{
+  display:none;position:fixed;z-index:1290;inset:0;border:0;background:rgba(0,0,0,.42);padding:0;
+}
+html.vrl-ipad-ui.ipad-sidebar-open .ipad-sidebar-backdrop{display:block}
+html.vrl-ipad-ui .ipad-drawer-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;
+  border-bottom:1px solid #293237;background:#111619;
+}
+html.vrl-ipad-ui .ipad-drawer-head strong{font-size:16px}
+html.vrl-ipad-ui .sidebar-scroll{
+  height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;padding:10px;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;
+}
+html.vrl-ipad-ui .ipad-drawer-tabs{
+  position:sticky;top:-10px;z-index:3;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;
+  padding:10px 0;background:#0d1113;
+}
+html.vrl-ipad-ui .is-ipad-drawer-hidden{display:none!important}
+html.vrl-ipad-ui .sidebar-scroll>.panel{margin:0 0 10px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel{padding:10px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .three-edit-panel{
+  width:100%;max-width:none;border:0;background:transparent;backdrop-filter:none;
+}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .three-edit-panel-head{display:none}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .analysis-editor-actions{padding:0;gap:8px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .analysis-editor-actions button,
+html.vrl-ipad-ui .ipad-edit-drawer-panel .three-edit-target select{min-height:44px;font-size:12px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .analysis-cut-width{font-size:11px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .analysis-cut-width input{min-height:44px}
+
+html.vrl-ipad-ui #ipad-gpu-quality-control{
+  width:100%;justify-content:space-between;margin:6px 0 10px;min-height:44px!important;
+  border:1px solid #344047!important;background:#14191c!important;color:#d8e4e9!important;
+}
+html.vrl-ipad-ui #ipad-gpu-quality-control select{
+  min-height:34px;border:1px solid #3b4850;border-radius:7px;background:#0f1417;color:#e1edf1;padding:4px 8px;
+}
+html.vrl-ipad-ui .mpr-opacity-settings{min-width:0!important;width:100%!important;margin-top:10px}
+
+html.vrl-ipad-ui .volume-analysis-panel{
+  top:8px;right:8px;max-width:min(340px,58%);gap:6px;
+}
+html.vrl-ipad-ui .volume-analysis-panel>.tool-chip{min-height:40px}
+html.vrl-ipad-ui .three-overlay-controls{max-width:300px}
+html.vrl-ipad-ui .three-overlay-controls .tool-chip{min-height:36px;padding:6px 9px}
+
+html.vrl-ipad-ui #section-view-result{
+  position:fixed;z-index:1500;left:12px;right:12px;bottom:12px;
+  width:auto;max-width:none;min-width:0;max-height:46dvh;overflow:auto;
+  padding:14px 16px 16px;border-radius:15px;background:rgba(10,14,16,.97);
+  box-shadow:0 -12px 38px rgba(0,0,0,.4);pointer-events:auto;
+  -webkit-overflow-scrolling:touch;
+}
+html.vrl-ipad-ui #section-view-result .section-view-actions{gap:8px}
+html.vrl-ipad-ui #section-view-result .section-view-actions button{min-height:42px;padding:8px 12px;font-size:12px}
+html.vrl-ipad-ui #section-view-result input[type=range]{min-height:44px}
+html.vrl-ipad-ui #section-view-result .section-cap-settings{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px!important}
+html.vrl-ipad-ui #section-view-result .section-cap-settings label{min-height:40px}
+
+html.vrl-ipad-ui .selected-series-overlay{max-width:min(420px,56%);padding:8px 10px}
+html.vrl-ipad-ui footer{min-height:18px;display:flex;justify-content:space-between;gap:10px}
+
+@media (orientation:portrait){
+ html.vrl-ipad-ui .ipad-mode-split .viewer-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,1.2fr) minmax(260px,.8fr)}
+ html.vrl-ipad-ui .ipad-mode-split #main-view-slot,
+ html.vrl-ipad-ui .ipad-mode-split #sub-view-slots{min-height:0}
+ html.vrl-ipad-ui .topbar-actions #gpu-status{display:none}
+ html.vrl-ipad-ui .ipad-workspace-toolbar{flex-wrap:wrap}
+ html.vrl-ipad-ui .ipad-mpr-tabs{margin-left:0}
+}
+
+
+/* Build 182: keep iPad settings visible at all times.
+   Landscape = left settings rail. Portrait = bottom settings panel. */
+html.vrl-ipad-ui.ipad-settings-persistent .workspace{
+  display:grid;
+  grid-template-columns:minmax(270px,300px) minmax(0,1fr);
+  gap:8px;
+  min-height:0;
+  overflow:hidden;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar{
+  position:static;
+  z-index:auto;
+  top:auto;bottom:auto;left:auto;
+  width:auto;min-width:0;height:100%;
+  transform:none!important;
+  transition:none;
+  border:1px solid #273137;
+  border-radius:12px;
+  box-shadow:none;
+  background:#0d1113;
+  overflow:hidden;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-sidebar-backdrop{display:none!important}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-head{
+  display:flex;
+  min-height:42px;
+  padding:9px 12px;
+  border-bottom:1px solid #293237;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-head button{display:none!important}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar-scroll{
+  height:calc(100% - 42px);
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding:8px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-tabs{
+  top:-8px;
+  padding:8px 0;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-tabs button{
+  min-height:38px;
+  padding:6px 8px;
+  font-size:11px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .viewer-grid{
+  height:100%;
+  min-height:0;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-workspace-toolbar{
+  padding-left:8px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-toolbar-button{display:none!important}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-mpr-tabs{margin-left:auto}
+
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .panel{
+  padding:10px;
+  border-radius:10px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .panel-heading{margin-bottom:7px}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .range-row{margin-bottom:7px}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .range-row input[type=range],
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .segment-range input[type=range]{
+  min-height:38px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-editor-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-editor-actions>button,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .three-edit-target,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-width,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-confirm{
+  min-width:0;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .three-edit-target,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-width,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-confirm{
+  grid-column:1 / -1;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-confirm{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+
+@media (orientation:portrait){
+ html.vrl-ipad-ui.ipad-settings-persistent .workspace{
+   grid-template-columns:1fr;
+   grid-template-rows:minmax(0,1fr) minmax(250px,34dvh);
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .viewer-grid{grid-row:1}
+ html.vrl-ipad-ui.ipad-settings-persistent .sidebar{
+   grid-row:2;
+   width:100%;
+   height:100%;
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-head{
+   min-height:38px;
+   padding:7px 10px;
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .sidebar-scroll{
+   height:calc(100% - 38px);
+   padding:6px 8px 8px;
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-tabs{
+   top:-6px;
+   grid-template-columns:repeat(3,minmax(0,1fr));
+   padding:6px 0;
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .sidebar .panel{padding:8px}
+ html.vrl-ipad-ui.ipad-settings-persistent .series-list{max-height:20dvh}
+}
+
+
+/* Build 184: iPad overlap audit.
+   Large analysis controls live in the persistent settings column, not over the 3D viewport. */
+html.vrl-ipad-ui .ipad-analysis-settings{
+  display:grid;
+  gap:8px;
+  margin:8px 0 10px;
+}
+html.vrl-ipad-ui .ipad-analysis-settings:empty{display:none}
+html.vrl-ipad-ui #section-view-result,
+html.vrl-ipad-ui #volume-analysis-result{
+  position:static!important;
+  inset:auto!important;
+  left:auto!important;
+  right:auto!important;
+  bottom:auto!important;
+  top:auto!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  max-height:none!important;
+  overflow:visible!important;
+  margin:0!important;
+  padding:10px!important;
+  border-radius:10px!important;
+  box-shadow:none!important;
+  background:#14191c!important;
+  pointer-events:auto!important;
+}
+html.vrl-ipad-ui #section-view-result .section-view-actions{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+}
+html.vrl-ipad-ui #section-view-result .section-view-actions button{
+  min-height:40px;
+  padding:7px 8px;
+  font-size:11px;
+}
+html.vrl-ipad-ui #section-view-result .section-position-control{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:4px 8px;
+  align-items:center;
+}
+html.vrl-ipad-ui #section-view-result .section-position-control input{
+  grid-column:1/-1;
+  width:100%;
+  min-height:40px;
+}
+html.vrl-ipad-ui #section-view-result .section-cap-settings{
+  grid-template-columns:1fr!important;
+  gap:6px!important;
+}
+html.vrl-ipad-ui #section-view-result .section-cap-settings label{
+  min-height:38px;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-actions button{
+  min-height:40px;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-region-list{
+  max-height:240px;
+  overflow:auto;
+  pointer-events:auto;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-region-row,
+html.vrl-ipad-ui #volume-analysis-result .analysis-summary,
+html.vrl-ipad-ui #volume-analysis-result .analysis-region-info{
+  pointer-events:auto;
+}
+
+/* Keep only compact, non-modal controls over the 3D viewport. */
+html.vrl-ipad-ui .volume-analysis-panel{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  justify-content:flex-end;
+  gap:6px;
+  max-width:min(560px,72%);
+}
+html.vrl-ipad-ui .volume-analysis-panel>.tool-chip{
+  min-height:38px;
+}
+html.vrl-ipad-ui .three-overlay-controls{
+  flex:0 1 auto;
+  max-width:100%;
+}
+html.vrl-ipad-ui .three-overlay-controls .tool-chip{
+  min-height:38px;
+}
+
+/* Version marker stays visible without covering 3D navigation buttons. */
+html.vrl-ipad-ui .app-version-badge{
+  position:static!important;
+  right:auto!important;
+  bottom:auto!important;
+  margin-left:auto;
+  flex:none;
+}
+html.vrl-ipad-ui footer{
+  align-items:center;
+}
+
+/* Leave the lower-right 3D navigation area unobstructed. */
+html.vrl-ipad-ui .selected-series-overlay{
+  right:auto;
+  max-width:min(420px,48%);
+}
+@media (orientation:portrait){
+ html.vrl-ipad-ui .volume-analysis-panel{max-width:min(460px,88%)}
+ html.vrl-ipad-ui #section-view-result .section-view-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+
+/* Build 185: make the active volume-analysis result explicit and readable. */
+.analysis-summary{
+  display:grid;
+  gap:7px;
+}
+.analysis-result-count{
+  font-size:11px;
+  color:#cfe0e7;
+}
+.analysis-result-card{
+  display:grid;
+  gap:7px;
+  padding:9px 10px;
+  border:1px solid #3a515c;
+  border-radius:9px;
+  background:#10171a;
+}
+.analysis-result-head{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-width:0;
+}
+.analysis-result-head strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+  color:#e9f5f8;
+}
+.analysis-result-primary{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+}
+.analysis-result-primary span{
+  font-size:10px;
+  color:#9db0b8;
+}
+.analysis-result-primary strong{
+  font-size:18px;
+  line-height:1;
+  color:#f1fbff;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.analysis-result-meta{
+  font-size:10px;
+  line-height:1.35;
+  color:#9fb2ba;
+  overflow-wrap:anywhere;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-summary{
+  pointer-events:auto;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-region-info span{
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+}
