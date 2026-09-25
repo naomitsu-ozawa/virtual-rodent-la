@@ -38,6 +38,68 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — test/setup-infra
+
+**Agent:** Claude (via claude.ai)
+**Task:** Priority #2 — set up test infrastructure and GitHub Actions CI.
+
+### What changed
+- Three test layers:
+  1. **Static checks** (`tests/static/`, Vitest): `node --check` on every
+     `docs/*.js`, and a build-marker consistency test (APP_BUILD /
+     APP_VERSION in `docs/app.js`, `docs/version.json`, the `?v=...-buildNNN`
+     cache-busting queries in `docs/index.html`, and the medical-volume.js
+     import tag must all agree).
+  2. **Unit tests** (`tests/unit/`, Vitest): `volumeTexturePlan` from
+     `docs/medical-volume.js`. The only production-code change in this
+     branch is adding `export` to that function (no behavior change).
+  3. **Browser smoke tests** (`tests/e2e/`, Playwright/Chromium): app boots
+     with no uncaught page errors, main controls render, version badge
+     shows the build from version.json with no `?build=` reload, and the
+     JA/EN toggle works. `demo.spec.js` downloads the Zenodo demo and only
+     runs with `RUN_DEMO_E2E=1` (Actions: "Run workflow" → run_demo).
+- `vitest.config.js` aliases the exact CDN import URLs to the same pinned
+  npm packages (three 0.186.0, dicom-parser 1.8.21, fflate 0.8.2), so app
+  modules can be imported in Node without network. Versions are pinned
+  exactly in package.json; **if a CDN URL version changes, update the
+  alias and package.json together.**
+- `scripts/serve-docs.mjs`: zero-dependency static server for `docs/`
+  (mimics GitHub Pages). Used by Playwright; also `npm run serve`.
+- `.github/workflows/ci.yml`: runs on push to main, PRs, and manually.
+  Job `unit` → job `e2e` (uploads Playwright report on failure).
+- npm scripts: `test`, `test:watch`, `test:e2e`, `test:e2e:demo`, `serve`.
+
+### Why
+- The build-marker test targets a real failure mode of this repo:
+  `ensureLatestDeployedBuild()` force-reloads when markers disagree, and
+  markers were being hand-edited per preview build.
+- `docs/app.js` has top-level DOM side effects, so it cannot be imported in
+  Node yet. Real unit coverage of DICOM parsing, segmentation, filters etc.
+  becomes possible after priority #3 (module split); extract pure logic
+  into importable modules and add tests there as part of that work.
+- E2E runs against the real CDN imports (as deployed), so CDN/module-graph
+  breakage is caught.
+
+### Notes for agents pushing from outside a local checkout
+- A fine-grained PAT needs **Contents: RW**, **Pull requests: RW**, and
+  **Workflows: RW** (pushes touching `.github/workflows/` are rejected
+  without it). Reading Actions job logs via the API additionally needs
+  **Actions: Read**; without it, `/actions/jobs/{id}/logs` returns 403, but
+  run/job/step status is still readable.
+- CI triggers on push to `main`, on PRs, and manually. Pushing a feature
+  branch alone does not run CI — open a PR.
+- First CI run on PR #13: both jobs green (smoke tests step ~7 s).
+
+### Follow-up / open questions
+- Headless CI has no GPU; WebGPU paths are not exercised, only boot and
+  (with swiftshader) potentially WebGL. GPU correctness still needs manual
+  testing on real devices.
+- Candidate next tests after the split: DICOM header parsing / series
+  grouping with synthetic DICOM files, RescaleSlope/Intercept calibration,
+  slice ordering, STL export geometry, filter kernels on tiny volumes.
+
+---
+
 ## 2026-09-26 — chore/cleanup-previews-promote-185
 
 **Agent:** Claude (Sonnet, via claude.ai)

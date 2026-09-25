@@ -5,10 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "preview": "vite"
+    "preview": "vite",
+    "serve": "node scripts/serve-docs.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:demo": "RUN_DEMO_E2E=1 playwright test tests/e2e/demo.spec.js"
   },
   "devDependencies": {
-    "vite": "8.3.0"
+    "@playwright/test": "1.63.0",
+    "dicom-parser": "1.8.21",
+    "fflate": "0.8.2",
+    "three": "0.186.0",
+    "vite": "8.3.0",
+    "vitest": "5.0.2"
   },
   "license": "AGPL-3.0-only"
 }

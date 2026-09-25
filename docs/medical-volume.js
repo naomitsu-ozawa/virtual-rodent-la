@@ -500,7 +500,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 }`;
 }
 
-function volumeTexturePlan(v,maxTextureBytes=0,maxTextureDim=Infinity,targetInPlane=0){
+export function volumeTexturePlan(v,maxTextureBytes=0,maxTextureDim=Infinity,targetInPlane=0){
  const sw=Math.max(1,v?.columns||0),sh=Math.max(1,v?.rows||0),sd=Math.max(1,v?.slices||0),sourceBytes=sw*sh*sd*2;
  let scale=1;
  const inPlaneMax=Math.max(sw,sh);

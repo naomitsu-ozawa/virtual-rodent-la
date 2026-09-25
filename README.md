@@ -79,6 +79,17 @@ npm install
 npm run dev
 ```
 
+テスト：
+
+```
+npm test              # 構文・ビルド番号整合性チェック + ユニットテスト (Vitest)
+npx playwright install chromium
+npm run test:e2e      # ブラウザ起動スモークテスト (Playwright)
+npm run test:e2e:demo # 公開デモ(約20.8MB)の読み込みテスト
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) で push / PR ごとに自動実行されます。AIエージェントによる作業記録は `docs/AGENT_LOG.md` を参照してください。
+
 ルートの開発ページは、GitHub Pagesと同じ `docs/app.js` / `docs/style.css` を読み込みます。
 
 ## ライセンス
