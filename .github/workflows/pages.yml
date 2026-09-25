@@ -1,0 +1,53 @@
+name: Pages
+
+# Publishes the site from the gh-pages branch:
+# - push to main       -> docs/ deployed to the site root (production)
+# - pull request       -> docs/ deployed to /pr-preview/pr-<N>/ and the URL is
+#                         posted as a PR comment; removed when the PR closes
+# This replaces committing docs/preview-NNN/ snapshot folders to main: open a
+# PR and check the preview URL on a real device (iPad/Mac with WebGPU).
+#
+# Requires Settings > Pages > Source: "Deploy from a branch", gh-pages / (root).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: write        # push to gh-pages
+  pull-requests: write   # preview link comment
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  production:
+    name: Deploy main to site root
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: JamesIves/github-pages-deploy-action@v4.9.0
+        with:
+          folder: docs
+          branch: gh-pages
+          clean-exclude: pr-preview/   # keep PR previews when main redeploys
+          force: false                 # rebase instead of force-push (previews may land concurrently)
+
+  preview:
+    name: PR preview
+    # Previews need a write token, which PRs from forks do not get.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rossjrw/pr-preview-action@v1.8.1
+        with:
+          source-dir: docs
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          qr-code: false
