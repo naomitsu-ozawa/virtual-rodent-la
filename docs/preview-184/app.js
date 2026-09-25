@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260925-build184-resize1';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.25-184.4';const APP_BUILD='184';
+const APP_VERSION='2026.09.25-184.5';const APP_BUILD='184';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -3945,10 +3945,10 @@ function refreshMpr3DPlaneTexture(p){
 function request3DRender(){
  if(sceneState)sceneState.needsRender=true;
 }
-function set3DBusy(busyState,label='3D構築中…'){
+function set3DBusy(busyState,label='3D構築中…',cancelable=true){
  if(threeBusy)threeBusy.classList.toggle('is-hidden',!busyState);
  if(threeBusyLabel)threeBusyLabel.textContent=label;
- if(threeBusyCancel){threeBusyCancel.disabled=!busyState||threeDCancelRequested;threeBusyCancel.textContent=threeDCancelRequested?tr('cancelling3D'):tr('cancel3D')}
+ if(threeBusyCancel){threeBusyCancel.classList.toggle('is-hidden',!busyState||!cancelable);threeBusyCancel.disabled=!busyState||!cancelable||threeDCancelRequested;threeBusyCancel.textContent=threeDCancelRequested?tr('cancelling3D'):tr('cancel3D')}
 }
 function currentMainViewKey(){return mainViewSlot?.querySelector('.view-card')?.dataset.viewKey||'3d'}
 function swapViewCards(a,b){
@@ -4505,7 +4505,7 @@ async function segmentKeyAtVoxel(v,x,y,z){
 async function analyzeVolumeComponentAtVoxel(analysisVolume,key,x,y,z){
  const [vx,vy,vz]=analysisVolume.spacing,w=analysisVolume.columns,h=analysisVolume.rows,d=analysisVolume.slices,seg=segmentState[key];
  if(segmentEditActive(key)||(analysisVolume.sourceBacked&&segmentNeedsGlobalMask(seg))){
-  const runs=await getFinalSegmentRuns(key,analysisVolume),comps=componentsFromRuns(runs,w,h,d);let comp=comps.find(item=>analysisRunsContain(item.runsBySlice,x,y,z));
+  const runs=await getFinalSegmentRuns(key,analysisVolume),comps=await componentsFromRunsAsync(runs,w,h,d,(phase,done,total)=>{if(threeBusyLabel)threeBusyLabel.textContent=(currentLanguage==='ja'?'領域を解析中… ':'Analyzing region… ')+done+' / '+total});let comp=comps.find(item=>analysisRunsContain(item.runsBySlice,x,y,z));
   if(!comp){for(let r=1;r<=2&&!comp;r++)for(let dz=-r;dz<=r&&!comp;dz++)for(let dy=-r;dy<=r&&!comp;dy++)for(let dx=-r;dx<=r;dx++){const ix=x+dx,iy=y+dy,iz=z+dz;if(ix<0||iy<0||iz<0||ix>=w||iy>=h||iz>=d)continue;comp=comps.find(item=>analysisRunsContain(item.runsBySlice,ix,iy,iz));if(comp)break}}
   if(!comp)throw new Error(currentLanguage==='ja'?'処理後の領域を特定できませんでした':'Could not identify the processed component');
   const mm3=comp.voxels*vx*vy*vz;setGpuComputeBackend('PROCESSED RLE · CPU CONNECTIVITY');return addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice:comp.runsBySlice,voxels:comp.voxels,mm3});
@@ -4556,7 +4556,8 @@ async function analyzeEditRegionAtPointer(event,canvas,camera){
  const key=preferredKey||picked.key;if(!key)return;
  const existing=analysisRegionAtVoxel(picked.x,picked.y,picked.z);
  if(existing?.segmentKeys?.includes(key)){setAnalysisFocusedRegion(existing.id,{x:picked.x,y:picked.y,z:picked.z});updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'領域を選択しました · 「選択領域を削除」で削除できます':'Region selected · use Delete selected region');return}
- const ok=await analyzeVolumeAtVoxel(picked.x,picked.y,picked.z,key,false);
+ set3DBusy(true,currentLanguage==='ja'?'領域を解析中…':'Analyzing region…',false);await frameYield();
+ let ok=false;try{ok=await analyzeVolumeAtVoxel(picked.x,picked.y,picked.z,key,false)}finally{set3DBusy(false,'',false)}
  if(ok){updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'領域を選択しました · 「選択領域を削除」で削除できます':'Region selected · use Delete selected region')}
 }
 async function analyzeVolumeAtPointer(event,canvas,camera){
@@ -4665,22 +4666,31 @@ function analysisRunsOverlap(a,b){
  }
  return false;
 }
-function expandRegionDeleteRuns(currentRuns,regionRuns,d){
- const out=new Array(d);let addedVoxels=0;
- for(let z=0;z<d;z++){
-  const selected=regionRuns?.[z];
-  if(!selected?.length){out[z]=new Uint32Array(0);continue}
-  const rows=rowIntervalsFromRuns(selected),insideRows=new Map();
-  for(const [y,intervals] of rows){
-   if(intervals.length<4)continue;
-   const gaps=[];
-   for(let i=0;i+3<intervals.length;i+=2){const x0=intervals[i+1]+1,x1=intervals[i+2]-1;if(x1>=x0)gaps.push([x0,x1])}
-   if(gaps.length)insideRows.set(y,gaps);
-  }
-  const interior=rowsToRunSlice(insideRows),enclosed=interior.length?intersectRunSlice(currentRuns?.[z],interior):new Uint32Array(0),combined=unionRunSlice(selected,enclosed);
-  out[z]=combined;addedVoxels+=analysisRunsVoxelCount([combined])-analysisRunsVoxelCount([selected]);
+function analysisRunsBounds(runsBySlice){
+ let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity;
+ for(let z=0;z<(runsBySlice?.length||0);z++){
+  const rec=runsBySlice[z];if(!rec?.length)continue;
+  minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z);
+  for(let i=0;i<rec.length;i+=3){minY=Math.min(minY,rec[i]);maxY=Math.max(maxY,rec[i]);minX=Math.min(minX,rec[i+1]);maxX=Math.max(maxX,rec[i+2])}
  }
- return{runsBySlice:out,addedVoxels};
+ return Number.isFinite(minX)?{minX,minY,minZ,maxX,maxY,maxZ}:null;
+}
+function boundsContained(inner,outer,margin=2){
+ if(!inner||!outer)return false;
+ return inner.minX>=outer.minX-margin&&inner.maxX<=outer.maxX+margin&&inner.minY>=outer.minY-margin&&inner.maxY<=outer.maxY+margin&&inner.minZ>=outer.minZ-margin&&inner.maxZ<=outer.maxZ+margin;
+}
+async function expandRegionDeleteRuns(currentRuns,regionRuns,w,h,d){
+ let out=regionRuns.map(rec=>rec?new Uint32Array(rec):new Uint32Array(0)),addedVoxels=0,addedComponents=0;
+ const selectedBounds=analysisRunsBounds(regionRuns);if(!selectedBounds)return{runsBySlice:out,addedVoxels,addedComponents};
+ const comps=await componentsFromRunsAsync(currentRuns,w,h,d,(phase,done,total)=>{
+  if(threeBusyLabel)threeBusyLabel.textContent=(currentLanguage==='ja'?'削除対象を3D解析中… ':'Analyzing 3D delete target… ')+done+' / '+total;
+ });
+ for(const comp of comps){
+  if(analysisRunsOverlap(comp.runsBySlice,regionRuns))continue;
+  const bounds=analysisRunsBounds(comp.runsBySlice);if(!boundsContained(bounds,selectedBounds,2))continue;
+  out=unionRunArrays(out,comp.runsBySlice,d);addedVoxels+=comp.voxels;addedComponents++;
+ }
+ return{runsBySlice:out,addedVoxels,addedComponents};
 }
 function unionAnalysisRuns(regions,d){
  const out=new Array(d);
@@ -4908,6 +4918,20 @@ function componentsFromRuns(runs,w,h,d){
  for(let z=0;z<d;z++){const rec=labeled[z];for(let i=0;i<rec.length;i+=4){const root=uf.find(rec[i+3]);let g=groups.get(root);if(!g){g={root,runsBySlice:Array.from({length:d},()=>[])};groups.set(root,g)}g.runsBySlice[z].push(rec[i],rec[i+1],rec[i+2])}}
  return [...groups.values()].map(g=>{g.runsBySlice=g.runsBySlice.map(a=>new Uint32Array(a));g.voxels=uf.size[uf.find(g.root)];return g}).sort((a,b)=>b.voxels-a.voxels);
 }
+async function componentsFromRunsAsync(runs,w,h,d,onProgress=null){
+ const uf=new RunUnionFind(),labeled=new Array(d),seed={x:-999999,y:-999999,z:-999999,label:null,bestDist2:Infinity};let prevRows=null;
+ for(let z=0;z<d;z++){
+  const map=rowIntervalsFromRuns(runs[z]),res=sourceRunSliceFromRanges(map,w,h,z,seed,uf,prevRows);labeled[z]=res.records;prevRows=res.rows;
+  if((z&15)===0){onProgress?.('label',z+1,d);await frameYield()}
+ }
+ const groups=new Map();
+ for(let z=0;z<d;z++){
+  const rec=labeled[z];for(let i=0;i<rec.length;i+=4){const root=uf.find(rec[i+3]);let g=groups.get(root);if(!g){g={root,runsBySlice:Array.from({length:d},()=>[])};groups.set(root,g)}g.runsBySlice[z].push(rec[i],rec[i+1],rec[i+2])}
+  if((z&31)===0){onProgress?.('collect',z+1,d);await frameYield()}
+ }
+ onProgress?.('collect',d,d);
+ return [...groups.values()].map(g=>{g.runsBySlice=g.runsBySlice.map(a=>new Uint32Array(a));g.voxels=uf.size[uf.find(g.root)];return g}).sort((a,b)=>b.voxels-a.voxels);
+}
 function componentAtVoxel(runs,w,h,d,x,y,z){
  const comps=componentsFromRuns(runs,w,h,d);return comps.find(comp=>analysisRunsContain(comp.runsBySlice,x,y,z))||null;
 }
@@ -4933,10 +4957,14 @@ async function rebuildEditedAnalysisForSegment(key,referenceRegions=null){
 }
 async function applyEditRemoveSelected(){
  const region=analysisRegionById(analysisFocusedRegionId);if(!region||region.segmentKeys.length!==1)return;const key=region.segmentKeys[0],st=segmentEditState[key],v=current3DVolume||volume;
- const currentRuns=await getFinalSegmentRuns(key,v),expanded=expandRegionDeleteRuns(currentRuns,region.runsBySlice,v.slices),deleteRuns=expanded.runsBySlice,refs=snapshotAnalysisRegionsForSegment(key).filter(r=>!analysisRunsOverlap(r.runsBySlice,deleteRuns));
- pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,deleteRuns,v.slices);st.finalRuns=null;st.revision++;
- if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs)}
- footer.textContent=currentLanguage==='ja'?(expanded.addedVoxels?'選択領域と内部の独立構造を削除しました':'選択領域を削除しました'):(expanded.addedVoxels?'Deleted selected region and enclosed structures':'Deleted the selected region');
+ set3DBusy(true,currentLanguage==='ja'?'削除対象を3D解析中…':'Analyzing 3D delete target…',false);await frameYield();
+ try{
+  const currentRuns=await getFinalSegmentRuns(key,v),expanded=await expandRegionDeleteRuns(currentRuns,region.runsBySlice,v.columns,v.rows,v.slices),deleteRuns=expanded.runsBySlice,refs=snapshotAnalysisRegionsForSegment(key).filter(r=>!analysisRunsOverlap(r.runsBySlice,deleteRuns));
+  if(threeBusyLabel)threeBusyLabel.textContent=currentLanguage==='ja'?'削除を3Dへ反映中…':'Applying deletion to 3D…';await frameYield();
+  pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,deleteRuns,v.slices);st.finalRuns=null;st.revision++;
+  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs)}
+  footer.textContent=currentLanguage==='ja'?(expanded.addedComponents?'選択領域と内部の独立構造 '+expanded.addedComponents+' 件を削除しました':'選択領域を削除しました'):(expanded.addedComponents?'Deleted selected region and '+expanded.addedComponents+' enclosed component(s)':'Deleted the selected region');
+ }finally{set3DBusy(false,'',false)}
 }
 async function undoSegmentEdit(){
  const region=analysisRegionById(analysisFocusedRegionId),key=analysisEditTargetKey||(region?.segmentKeys?.length===1?region.segmentKeys[0]:null)||SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length);if(!key)return;analysisEditTargetKey=key;const st=segmentEditState[key],snap=st.undo.pop();if(!snap)return;st.redo.push(editSnapshot(key));restoreEditSnapshot(key,snap);
