@@ -80,6 +80,16 @@ has enough context to continue without re-deriving decisions from scratch.
 - E2E runs against the real CDN imports (as deployed), so CDN/module-graph
   breakage is caught.
 
+### Notes for agents pushing from outside a local checkout
+- A fine-grained PAT needs **Contents: RW**, **Pull requests: RW**, and
+  **Workflows: RW** (pushes touching `.github/workflows/` are rejected
+  without it). Reading Actions job logs via the API additionally needs
+  **Actions: Read**; without it, `/actions/jobs/{id}/logs` returns 403, but
+  run/job/step status is still readable.
+- CI triggers on push to `main`, on PRs, and manually. Pushing a feature
+  branch alone does not run CI — open a PR.
+- First CI run on PR #13: both jobs green (smoke tests step ~7 s).
+
 ### Follow-up / open questions
 - Headless CI has no GPU; WebGPU paths are not exercised, only boot and
   (with swiftshader) potentially WebGL. GPU correctness still needs manual
