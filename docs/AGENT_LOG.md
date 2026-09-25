@@ -38,6 +38,44 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — ci/pages-previews
+
+**Agent:** Claude (via claude.ai)
+**Task:** Restore the owner's device-testing workflow without committing
+preview folders to `main`.
+
+### Context (important for all agents)
+- The owner has **no local development environment**. The
+  `docs/preview-NNN/` folders (archived in the first cleanup) were how each
+  build was tested on a real device (iPad/Mac, WebGPU) through GitHub
+  Pages. Removing them without a replacement removed the only way to test.
+  Do not propose local checks (`npm run serve`) as the owner's
+  verification step; use PR preview URLs.
+
+### What changed
+- `.github/workflows/pages.yml`:
+  - push to `main` → `docs/` deployed to the root of the `gh-pages`
+    branch (JamesIves/github-pages-deploy-action, `clean-exclude:
+    pr-preview/`, `force: false`).
+  - same-repo PRs → `docs/` deployed to `gh-pages:/pr-preview/pr-<N>/`
+    (rossjrw/pr-preview-action), link posted as a sticky PR comment,
+    preview removed when the PR is closed/merged.
+- One-time owner action (agent PAT has no Pages permission): Settings →
+  Pages → Source "Deploy from a branch", branch `gh-pages`, `/ (root)`.
+  Previously `main` + `/docs`.
+- The app only uses relative URLs (`./app.js`, `./version.json`, …), so it
+  works unchanged under the preview subpath; `ensureLatestDeployedBuild`
+  compares against the preview's own `version.json`.
+
+### Follow-up / open questions
+- Previews share the production origin, so browser storage/caches (e.g.
+  the demo cache `virtual-rodent-demo-v2`) are shared with production.
+  Harmless today; keep in mind if storage formats change.
+- `gh-pages` history grows with each deploy; it can be reset as an orphan
+  branch occasionally without affecting `main`.
+
+---
+
 ## 2026-09-26 — test/setup-infra
 
 **Agent:** Claude (via claude.ai)
