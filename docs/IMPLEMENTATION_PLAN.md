@@ -70,11 +70,15 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - See `docs/AGENT_LOG.md` for a running record of AI-agent work sessions;
   read it before starting new work and append to it when finishing.
 - Do not commit per-build preview snapshot directories (`docs/preview-*`)
-  to `main`. These were previously checked in directly and grew to ~25 MB
-  across 49 copies; they are preserved on the `archive/previews` branch
-  instead. If a preview/staging deployment mechanism is needed again, use
-  a separate branch, a build artifact, or GitHub Pages deploy previews
-  rather than committing full copies to `main`.
+  to `main` (they grew to ~25 MB across 49 copies; preserved on the
+  `archive/previews` branch). They existed because there is no local test
+  environment: every change is checked on a real device via GitHub Pages.
+  That need is now met by `.github/workflows/pages.yml`: every same-repo
+  pull request is published to
+  `https://naomitsu-ozawa.github.io/virtual-rodent-la/pr-preview/pr-<N>/`
+  (link posted on the PR, removed on close), and `main` is published to
+  the site root from the `gh-pages` branch. Check GPU/WebGPU behavior on
+  the preview URL before merging, since CI has no GPU.
 - `docs/app.js` is the canonical deployed implementation.
 - Browser-first and local-data-first.
 - No mandatory DICOM upload.
