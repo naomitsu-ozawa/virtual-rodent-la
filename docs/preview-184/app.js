@@ -2,9 +2,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260925-build184-resize1';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260925-build184-editmap1';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.25-184.5';const APP_BUILD='184';
+const APP_VERSION='2026.09.25-184.6';const APP_BUILD='184';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -4666,32 +4666,6 @@ function analysisRunsOverlap(a,b){
  }
  return false;
 }
-function analysisRunsBounds(runsBySlice){
- let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity;
- for(let z=0;z<(runsBySlice?.length||0);z++){
-  const rec=runsBySlice[z];if(!rec?.length)continue;
-  minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z);
-  for(let i=0;i<rec.length;i+=3){minY=Math.min(minY,rec[i]);maxY=Math.max(maxY,rec[i]);minX=Math.min(minX,rec[i+1]);maxX=Math.max(maxX,rec[i+2])}
- }
- return Number.isFinite(minX)?{minX,minY,minZ,maxX,maxY,maxZ}:null;
-}
-function boundsContained(inner,outer,margin=2){
- if(!inner||!outer)return false;
- return inner.minX>=outer.minX-margin&&inner.maxX<=outer.maxX+margin&&inner.minY>=outer.minY-margin&&inner.maxY<=outer.maxY+margin&&inner.minZ>=outer.minZ-margin&&inner.maxZ<=outer.maxZ+margin;
-}
-async function expandRegionDeleteRuns(currentRuns,regionRuns,w,h,d){
- let out=regionRuns.map(rec=>rec?new Uint32Array(rec):new Uint32Array(0)),addedVoxels=0,addedComponents=0;
- const selectedBounds=analysisRunsBounds(regionRuns);if(!selectedBounds)return{runsBySlice:out,addedVoxels,addedComponents};
- const comps=await componentsFromRunsAsync(currentRuns,w,h,d,(phase,done,total)=>{
-  if(threeBusyLabel)threeBusyLabel.textContent=(currentLanguage==='ja'?'削除対象を3D解析中… ':'Analyzing 3D delete target… ')+done+' / '+total;
- });
- for(const comp of comps){
-  if(analysisRunsOverlap(comp.runsBySlice,regionRuns))continue;
-  const bounds=analysisRunsBounds(comp.runsBySlice);if(!boundsContained(bounds,selectedBounds,2))continue;
-  out=unionRunArrays(out,comp.runsBySlice,d);addedVoxels+=comp.voxels;addedComponents++;
- }
- return{runsBySlice:out,addedVoxels,addedComponents};
-}
 function unionAnalysisRuns(regions,d){
  const out=new Array(d);
  for(let z=0;z<d;z++){
@@ -4956,14 +4930,12 @@ async function rebuildEditedAnalysisForSegment(key,referenceRegions=null){
  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key);await rebuildEditedAnalysisForSegment(key,refs)}footer.textContent=currentLanguage==='ja'?'選択領域だけを残しました':'Kept the selected region only';
 }
 async function applyEditRemoveSelected(){
- const region=analysisRegionById(analysisFocusedRegionId);if(!region||region.segmentKeys.length!==1)return;const key=region.segmentKeys[0],st=segmentEditState[key],v=current3DVolume||volume;
- set3DBusy(true,currentLanguage==='ja'?'削除対象を3D解析中…':'Analyzing 3D delete target…',false);await frameYield();
+ const region=analysisRegionById(analysisFocusedRegionId);if(!region||region.segmentKeys.length!==1)return;const key=region.segmentKeys[0],st=segmentEditState[key],v=current3DVolume||volume,refs=snapshotAnalysisRegionsForSegment(key).filter(r=>!analysisRunsOverlap(r.runsBySlice,region.runsBySlice));
+ set3DBusy(true,currentLanguage==='ja'?'選択領域を削除中…':'Deleting selected region…',false);await frameYield();
  try{
-  const currentRuns=await getFinalSegmentRuns(key,v),expanded=await expandRegionDeleteRuns(currentRuns,region.runsBySlice,v.columns,v.rows,v.slices),deleteRuns=expanded.runsBySlice,refs=snapshotAnalysisRegionsForSegment(key).filter(r=>!analysisRunsOverlap(r.runsBySlice,deleteRuns));
-  if(threeBusyLabel)threeBusyLabel.textContent=currentLanguage==='ja'?'削除を3Dへ反映中…':'Applying deletion to 3D…';await frameYield();
-  pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,deleteRuns,v.slices);st.finalRuns=null;st.revision++;
+  pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,region.runsBySlice,v.slices);st.finalRuns=null;st.revision++;
   if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs)}
-  footer.textContent=currentLanguage==='ja'?(expanded.addedComponents?'選択領域と内部の独立構造 '+expanded.addedComponents+' 件を削除しました':'選択領域を削除しました'):(expanded.addedComponents?'Deleted selected region and '+expanded.addedComponents+' enclosed component(s)':'Deleted the selected region');
+  footer.textContent=currentLanguage==='ja'?'選択領域を削除しました':'Deleted the selected region';
  }finally{set3DBusy(false,'',false)}
 }
 async function undoSegmentEdit(){
