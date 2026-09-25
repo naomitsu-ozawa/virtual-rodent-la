@@ -3799,7 +3799,7 @@ async function start3D(){
  if(backend==='WEBGPU')try{sceneState.medicalVolume=new MedicalVolumeRenderer({device:renderer.backend.device,host:viewport,rendererCanvas:renderer.domElement,onProgress:(a,b)=>set3DBusy(true,(currentLanguage==='ja'?'GPUボリューム準備中… ':'Preparing GPU volume… ')+a+' / '+b),onStatus:label=>setGpuComputeBackend(label)})}catch(e){console.warn('Medical volume renderer unavailable.',e)}
  updateGpuStatus();updateRenderModeControl();void ensureGpuFilterDevice().then(()=>updateGpuStatus());
  const pointers=new Map();const pointerStarts=new Map();const MIN_3D_DISTANCE=.05,MAX_3D_DISTANCE=12;let distance=5.2,lastPinch=0,lastCenter=null,lastTwist=null;
- const full3DPixelRatio=Math.min(devicePixelRatio,2),interactive3DPixelRatio=Math.min(full3DPixelRatio,(navigator.maxTouchPoints||0)>0?.75:1);let active3DPixelRatio=full3DPixelRatio,wheelQualityTimer=null,fastInteractionActive=false;
+ const full3DPixelRatio=Math.min(devicePixelRatio,2),interactive3DPixelRatio=Math.min(full3DPixelRatio,((navigator.maxTouchPoints||0)>0 ? 0.75 : 1));let active3DPixelRatio=full3DPixelRatio,wheelQualityTimer=null,fastInteractionActive=false;
  const pivotIndicator=document.createElement('div');
  Object.assign(pivotIndicator.style,{position:'absolute',left:'50%',top:'50%',width:'18px',height:'18px',transform:'translate(-50%,-50%)',border:'1px solid rgba(255,255,255,.78)',borderRadius:'50%',boxSizing:'border-box',pointerEvents:'none',zIndex:'12',opacity:'0',transition:'opacity 90ms linear'});
  const pivotDot=document.createElement('div');Object.assign(pivotDot.style,{position:'absolute',left:'50%',top:'50%',width:'4px',height:'4px',transform:'translate(-50%,-50%)',borderRadius:'50%',background:'rgba(255,255,255,.92)'});
