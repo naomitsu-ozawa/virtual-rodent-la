@@ -599,7 +599,7 @@ async function activateMedicalVolume(){
  try{
   await mv.ensure(target,{maxTextureBytes:mobileBudget});ensureVolumeTransformProxy();threeRenderMode='volume';mv.setActive(true);syncGpuVolumeEdits(target);setThreeVolumeOverlay(true);syncMpr3DOverlayPresentation();volumeAnalysisToggle.disabled=false;
   const reduced=!!mv.isReduced?.(target),dims=mv.textureDims||[];
-  threeLabel.textContent=(sceneState.backend||'3D')+(reduced?' · mobile GPU volume':' · GPU volume');setGpuComputeBackend(reduced?'WEBGPU MOBILE VOLUME RAYCAST':'WEBGPU VOLUME RAYCAST');updateRenderModeControl(target);request3DRender();
+  threeLabel.textContent=(sceneState.backend||'3D')+(reduced?' · mobile GPU volume':' · GPU volume');setGpuComputeBackend(reduced?'WEBGPU MOBILE VOLUME RAYCAST · LINEAR':'WEBGPU VOLUME RAYCAST');updateRenderModeControl(target);request3DRender();
   footer.textContent=reduced?(currentLanguage==='ja'?'iPad/iPhone簡略GPUボリューム · '+dims.join('×')+' · '+fmt(mv.textureBytes)+' · MPR/元データはフル解像度':'Mobile reduced GPU Volume · '+dims.join('×')+' · '+fmt(mv.textureBytes)+' · MPR/source remain full resolution'):(currentLanguage==='ja'?'GPUボリューム · 16-bit CTを3D textureから直接描画':'GPU Volume · direct 16-bit CT 3D-texture ray casting');
  }catch(e){console.error(e);mv.setActive(false);threeRenderMode='surface';setGpuComputeBackend('GPU VOLUME ERROR',e?.message||e);footer.textContent='GPU Volume error: '+String(e.message||e);updateRenderModeControl(target)}
  finally{set3DBusy(false)}
@@ -1327,8 +1327,8 @@ function sourceMprCacheLimit(){
 }
 function residentGpuVolumeBytes(v){return (v?.columns||0)*(v?.rows||0)*(v?.slices||0)*2}
 function mobileGpuVolumeBudget(){
- if(isIPhoneRuntime())return 128*1024*1024;
- if(isIPadRuntime())return 384*1024*1024;
+ if(isIPhoneRuntime())return 96*1024*1024;
+ if(isIPadRuntime())return 256*1024*1024;
  return 0;
 }
 function shouldAutoPrepareResidentGpu(v){
@@ -1356,7 +1356,7 @@ async function prepareResidentGpuVolume(v){
   residentMprReadbackDisabled=!!mv.isReduced?.(v);
   if(mv.isReduced?.(v)){
    const dims=mv.textureDims||[];
-   setGpuComputeBackend('WEBGPU MOBILE VOLUME');
+   setGpuComputeBackend('WEBGPU MOBILE VOLUME · LINEAR');
    footer.textContent=(currentLanguage==='ja'?'iPad/iPhone簡略GPUボリューム · '+dims.join('×')+' · '+fmt(mv.textureBytes)+' / 2D MPRは原寸ソース':'Mobile reduced GPU volume · '+dims.join('×')+' · '+fmt(mv.textureBytes)+' / 2D MPR uses full-resolution source');
   }else setGpuComputeBackend('WEBGPU VOLUME RESIDENT');
   return true;
