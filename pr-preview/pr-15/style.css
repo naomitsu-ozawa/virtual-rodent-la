@@ -1,0 +1,835 @@
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e9eef1;background:#0b0d0f;font-synthesis:none;text-rendering:optimizeLegibility}
+*{box-sizing:border-box}
+html,body,#app{width:100%;min-width:320px;height:100%;margin:0}
+body{overflow:hidden;background:#0b0d0f}
+button,input{font:inherit}button{color:inherit}
+.app-shell{width:100%;height:100dvh;padding:14px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px}
+.topbar{min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.eyebrow,.panel-kicker{margin:0 0 4px;font-size:10px;font-weight:800;letter-spacing:.14em;color:#7f919b}
+h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
+.subtitle{margin:7px 0 0;color:#89979f;font-size:13px}
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.status,.primary-button,.secondary-button,.ready-badge{border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.04em}
+.status{padding:8px 11px;border:1px solid #2f373c}.status-checking{background:#20262a;color:#b5c0c6}.status-ok{background:#173321;color:#9ce0ae;border-color:#2c6740}.status-warning{background:#392e17;color:#f1cf7d;border-color:#65502a}.status-error{background:#3b1d20;color:#f1a4aa;border-color:#6f3037}
+.primary-button,.secondary-button{border:1px solid #476b7d;padding:10px 14px;cursor:pointer;min-height:44px}.primary-button{background:#1f4d63;color:#f3fbff}.secondary-button{background:#1a2024;color:#d4e0e5;border-color:#3b4850}.primary-button:disabled,.secondary-button:disabled{opacity:.55;cursor:wait}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.workspace{min-height:0;display:grid;grid-template-columns:minmax(290px,360px) minmax(0,1fr);gap:12px}
+.sidebar{min-height:0;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:12px}
+.panel,.viewport-card{border:1px solid #252c30;background:#111517;border-radius:14px;overflow:hidden}
+.panel{min-height:0;padding:14px;display:flex;flex-direction:column}.compact-panel{min-height:auto}
+.panel-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.panel-heading h2{margin:0;font-size:15px}
+.empty-state{flex:1;min-height:130px;border:1px dashed #30383d;border-radius:10px;display:grid;place-content:center;gap:6px;text-align:center;padding:20px;color:#a7b4ba}.empty-state span,.hint{color:#76878f;font-size:12px}.is-hidden{display:none!important}
+.progress-wrap{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:10px}.progress-track{height:5px;overflow:hidden;border-radius:99px;background:#22292d}.progress-bar{width:0;height:100%;background:#5fa7c6;transition:width 80ms linear}.progress-wrap span{font-size:11px;color:#83949c}
+.series-list{min-height:0;overflow:auto;display:grid;gap:8px}.series-card{width:100%;border:1px solid #293136;border-radius:10px;background:#151a1d;padding:11px;text-align:left;cursor:pointer}.series-card.is-selected{border-color:#67b2d1;box-shadow:inset 0 0 0 1px #67b2d1}.series-card-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.series-card-header>div{min-width:0;display:grid;gap:6px}.series-card-header strong{font-size:13px;overflow:hidden;text-overflow:ellipsis}.modality-badge{width:fit-content;padding:3px 6px;border-radius:5px;background:#25363e;color:#9fd1e6;font-size:10px;font-weight:800}.memory-estimate{flex:none;color:#b8d9e7}
+.series-meta-grid{margin:10px 0 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 10px}.series-meta-grid dt{font-size:9px;color:#6f8088;text-transform:uppercase;letter-spacing:.06em}.series-meta-grid dd{margin:2px 0 0;font-size:11px;color:#c4cdd1;word-break:break-word}.series-note{margin:9px 0 0;font-size:10px;line-height:1.35;color:#6f8088;word-break:break-word}
+.range-row{display:grid;grid-template-columns:1fr auto;gap:5px 10px;align-items:center;margin-bottom:10px;font-size:11px;color:#a7b5bb}.range-row output{color:#d8e6ec;font-variant-numeric:tabular-nums}.range-row input[type=range]{grid-column:1/-1;width:100%;min-height:44px}
+.tool-grid{display:flex;flex-wrap:wrap;gap:6px}.tool-chip{border:1px solid #293237;border-radius:7px;padding:7px 8px;background:#171c1f;color:#7d8b92;font-size:11px;min-height:44px}.hint{margin:9px 0 0}
+.viewer-grid{min-width:0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,31%);gap:12px}.viewport-card{position:relative;min-height:0;background:#0f1214}.viewport-card-main{min-height:360px}.mpr-column{min-height:0;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:12px}.viewport-label{position:absolute;z-index:4;top:10px;left:10px;display:flex;align-items:center;gap:7px;pointer-events:none}.viewport-label strong{font-size:11px;letter-spacing:.07em;text-transform:uppercase}.viewport-label span{font-size:10px;color:#71828a}
+.viewport{width:100%;height:100%;min-height:320px}.viewport canvas,.viewport-3d,.mpr-canvas{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.viewport canvas{display:block;width:100%;height:100%}
+.selected-series-overlay{position:absolute;z-index:4;left:14px;bottom:14px;max-width:min(480px,calc(100% - 28px));padding:10px 12px;border:1px solid rgba(118,141,151,.26);border-radius:10px;background:rgba(17,22,25,.84);backdrop-filter:blur(12px);display:grid;gap:4px;pointer-events:none}.selected-series-overlay strong{font-size:12px}.selected-series-overlay span{font-size:11px;color:#87979e}.ready-badge{width:fit-content;margin-top:3px;padding:4px 7px;background:#183426;color:#8ed8a9!important}.ready-badge-error{background:#421f25!important;color:#f1a5ad!important}
+.mpr-canvas{display:block;width:100%;height:100%;object-fit:contain;background:#020304}.slice-slider{position:absolute;z-index:5;left:12px;right:12px;bottom:8px;width:calc(100% - 24px);opacity:.82;min-height:44px}
+.error-panel{width:100%;height:100%;display:grid;place-content:center;gap:8px;text-align:center;padding:28px;color:#e5a0a5}footer{color:#64747c;font-size:11px}
+@media(max-width:900px){body{overflow:auto}.app-shell{height:auto;min-height:100dvh}.workspace,.viewer-grid{grid-template-columns:1fr}.sidebar{grid-template-rows:auto auto}.series-list{max-height:360px}.mpr-column{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:none}.mpr-canvas{min-height:180px}}
+@media(max-width:640px){.app-shell{padding:9px}.topbar{align-items:flex-start;flex-direction:column}.topbar-actions{width:100%;flex-wrap:wrap;gap:8px}.status{width:100%;text-align:center}.primary-button,.secondary-button{flex:1 1 calc(50% - 4px)}.subtitle{display:none}.viewport-card-main{min-height:56dvh}.mpr-column{grid-template-columns:1fr;grid-template-rows:repeat(3,240px);gap:10px}.mpr-card{min-height:240px}.selected-series-overlay{left:8px;right:8px;bottom:8px;max-width:none}footer{font-size:10px}}
+
+.segment-heading{margin-top:10px}
+.segment-controls{display:grid;gap:8px;margin-bottom:10px}
+.segment-card{border:1px solid #293237;border-radius:10px;padding:9px;background:#14191c}
+.segment-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+.segment-card-head label{display:flex;align-items:center;gap:8px;font-size:12px}
+.segment-card-head input[type="checkbox"]{width:20px;height:20px}
+.segment-color{width:44px;height:32px;padding:0;border:1px solid #344047;border-radius:7px;background:transparent}
+.segment-range{display:grid;grid-template-columns:58px 1fr auto;gap:7px;align-items:center;font-size:10px;color:#8fa0a8}
+.segment-range input[type="range"]{grid-column:1/-1;width:100%;min-height:34px}
+.segment-range output{font-variant-numeric:tabular-nums;color:#d7e2e7}
+.filter-grid{margin-top:4px}
+@media(max-width:640px){
+ .segment-card{padding:10px}
+ .segment-card-head label{font-size:13px}
+ .segment-range{grid-template-columns:64px 1fr auto;font-size:11px}
+ .segment-color{width:48px;height:38px}
+}
+
+.surface-smooth-card{border:1px solid #293237;border-radius:10px;padding:10px;background:#14191c;margin:8px 0 10px}
+.surface-smooth-toggle{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px}
+.surface-smooth-toggle input{width:20px;height:20px}
+
+
+.filter-control-list{display:grid;gap:8px;margin-top:6px}
+.filter-control-card{border:1px solid #293237;border-radius:10px;padding:9px;background:#14191c}
+.filter-control-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+.filter-control-head strong{font-size:12px}
+.filter-apply{min-width:72px}
+.filter-reset{width:100%;justify-content:center}
+@media(max-width:640px){
+ .filter-control-card{padding:10px}
+ .filter-control-head strong{font-size:13px}
+}
+
+.filter-auto{display:inline-flex;align-items:center;justify-content:center;min-width:58px;opacity:.75;pointer-events:none}
+
+.filter-enable-label{display:flex;align-items:center;gap:12px;min-height:44px;width:100%;cursor:pointer}
+.filter-enable-label input[type=checkbox]{width:22px;height:22px;accent-color:#0a84ff;flex:none}
+.filter-enable-label strong{font-size:16px}
+.filter-enable-label:has(input:disabled){opacity:.55;cursor:default}
+
+/* Mobile: leave side gutters so page scrolling is easy beside the 3D viewport. */
+@media(max-width:640px){
+  .viewport-card-main{
+    width:calc(100% - 52px);
+    margin-inline:auto;
+    min-height:56dvh;
+  }
+  .viewport-3d,
+  .viewport-3d canvas{
+    touch-action:none;
+  }
+}
+
+/* Mobile: keep 3D and MPR viewports narrow enough to leave scroll gutters. */
+@media(max-width:640px){
+  .viewport-card-main,
+  .mpr-card{
+    width:calc(100% - 52px);
+    margin-inline:auto;
+  }
+  .mpr-column{
+    width:100%;
+  }
+}
+
+/* Mobile: 3D viewport interaction takes priority over page scrolling.
+   Use the side gutters for page scroll. */
+@media(max-width:640px){
+  .viewport-card-main .viewport-3d,
+  .viewport-card-main .viewport-3d canvas{
+    touch-action:none !important;
+    overscroll-behavior:contain;
+  }
+}
+
+
+/* Tablet landscape and desktop: use a dedicated inner scroll container. */
+@media(min-width:901px){
+  .workspace{
+    min-height:0;
+    overflow:hidden;
+  }
+  .sidebar{
+    min-height:0;
+    overflow:hidden;
+    display:block;
+  }
+  .sidebar-scroll{
+    height:100%;
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:contain;
+    touch-action:pan-y;
+    padding-right:4px;
+  }
+  .sidebar-scroll>.panel{
+    margin-bottom:12px;
+  }
+  .sidebar-scroll>.panel:last-child{
+    margin-bottom:0;
+  }
+  .series-list{
+    max-height:32vh;
+  }
+  .sidebar-scroll input[type="range"]{
+    touch-action:pan-y;
+  }
+}
+
+.segment-export-stl{width:100%;min-height:36px;margin-top:8px;border:1px solid #3b4850;border-radius:8px;background:#1a2024;color:#d4e0e5;font-size:11px;font-weight:800;cursor:pointer}
+.segment-export-stl:disabled{opacity:.45;cursor:default}
+
+.volume-analysis-panel{position:absolute;z-index:6;top:10px;right:10px;display:grid;justify-items:end;gap:8px;max-width:min(260px,70%)}
+.volume-analysis-panel .tool-chip{min-height:36px;border:1px solid #3b4850;border-radius:8px;background:#1a2024;color:#d4e0e5;padding:7px 10px;font-size:11px;font-weight:800}
+.volume-analysis-panel .tool-chip.is-active{border-color:#67b2d1;background:#17313d;color:#dff6ff}
+.volume-analysis-result{display:grid;gap:3px;min-width:160px;padding:9px 10px;border:1px solid #334047;border-radius:9px;background:rgba(12,16,18,.9);font-size:11px;color:#d8e4e9}
+.volume-analysis-result strong{font-size:12px}
+.volume-analysis-result span{font-variant-numeric:tabular-nums}
+
+.filter-select{min-height:34px;border:1px solid #3b4850;border-radius:8px;background:#11171a;color:#d8e4e9;padding:5px 8px;font-size:11px}
+.filter-select:disabled{opacity:.45}
+
+.filter-reorder-controls{display:inline-flex;align-items:center;gap:4px;margin-left:auto}.filter-order-button{width:24px;height:24px;border:1px solid #3b4850;border-radius:6px;background:#11171a;color:#d8e4e9;line-height:1;cursor:pointer}.filter-order-button:disabled{opacity:.28;cursor:default}.filter-drag-handle{padding:2px 4px;cursor:grab;user-select:none;touch-action:none;opacity:.75}.filter-control-card.is-dragging{opacity:.5}
+
+.filter-add-row{display:flex;gap:8px;align-items:center;margin:10px 0}.filter-add-row .filter-select{flex:1}.filter-internal-toggle{display:none}.filter-remove-button{width:24px;height:24px;border:1px solid #5a3b3b;border-radius:6px;background:#1a1111;color:#e7b8b8;line-height:1;cursor:pointer}.filter-remove-button:hover{background:#251515}
+
+.segment-add-row{display:flex;gap:8px;align-items:end;margin:10px 0}.segment-preset-label{display:grid;gap:4px;flex:1;font-size:11px;color:#9fb0b8}.segment-remove-button{width:100%;margin-top:6px;border:1px solid #5a3b3b;border-radius:7px;background:#1a1111;color:#e7b8b8;padding:7px 8px;cursor:pointer}.segment-remove-button:disabled{opacity:.4;cursor:default}
+
+
+.processing-overlay{
+  position:fixed;
+  inset:0;
+  z-index:1000;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  background:rgba(5,8,10,.54);
+  backdrop-filter:blur(2px);
+  -webkit-backdrop-filter:blur(2px);
+  color:#eef5f8;
+  pointer-events:none;
+}
+.processing-overlay.is-hidden{display:none}
+.processing-overlay strong{
+  padding:7px 11px;
+  border-radius:8px;
+  background:rgba(12,16,18,.88);
+  border:1px solid #334047;
+  font-size:13px;
+  letter-spacing:.01em;
+}
+.processing-spinner{
+  width:44px;
+  height:44px;
+  border:4px solid rgba(255,255,255,.22);
+  border-top-color:#fff;
+  border-radius:50%;
+  animation:vrl-processing-spin .8s linear infinite;
+}
+@keyframes vrl-processing-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .processing-spinner{animation-duration:1.6s}
+}
+
+.three-busy{
+  position:absolute;
+  inset:0;
+  z-index:8;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  pointer-events:none;
+  background:rgba(5,8,10,.28);
+  color:#eef5f8;
+}
+.three-busy.is-hidden{display:none}
+.three-busy strong{
+  padding:6px 10px;
+  border-radius:8px;
+  background:rgba(10,14,16,.86);
+  border:1px solid #344048;
+  font-size:13px;
+}
+.three-busy-spinner{
+  width:42px;
+  height:42px;
+  border:4px solid rgba(255,255,255,.22);
+  border-top-color:#fff;
+  border-radius:50%;
+  animation:vrl-processing-spin .8s linear infinite;
+}
+
+.viewport-card-main{position:relative}
+
+.ct-range-mode{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 9px;font-size:11px;color:#a7b5bb}
+.ct-range-buttons{display:inline-flex;border:1px solid #344047;border-radius:8px;overflow:hidden}
+.range-mode-button{min-width:52px;min-height:34px;border:0;border-right:1px solid #344047;background:#11171a;color:#8fa0a8;padding:5px 9px;font-size:11px;font-weight:700}
+.range-mode-button:last-child{border-right:0}.range-mode-button.is-active{background:#21313a;color:#eef7fb}.range-mode-button:disabled{opacity:.42}
+.filter-3d-commit{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:8px 0 10px}
+.filter-rebuild-3d{justify-content:center;color:#d7e6ec;border-color:#3e5965}.filter-rebuild-3d:not(:disabled){background:#18313d;border-color:#5e9bb5;color:#e7f8ff}
+.filter-3d-state{font-size:10px;padding:5px 7px;border-radius:7px;border:1px solid #314047;color:#8fa0a8;white-space:nowrap}
+.filter-3d-state.is-stale{background:#3a2e17;border-color:#705b2f;color:#f0d58c}.filter-3d-state.is-updating{background:#17313d;border-color:#4d7d91;color:#ccefff}.filter-3d-state.is-current{background:#183426;border-color:#315d42;color:#a8dfba}
+.view-slot{min-width:0;min-height:0;position:relative}
+.view-slot-main{min-height:360px}.view-slot-main>.viewport-card{width:100%;height:100%;min-height:360px}
+.view-slot-sub{min-height:0}.view-slot-sub>.viewport-card{width:100%;height:100%;min-height:0}
+.view-slot-sub .viewport,.view-slot-sub .mpr-canvas{min-height:0}
+.view-toolbar{pointer-events:auto;right:10px;width:auto}.view-toolbar>strong,.view-toolbar>span:not(.view-drag-handle){pointer-events:none}
+.view-drag-handle{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid #344047;border-radius:7px;background:rgba(17,23,26,.88);color:#a7b5bb;cursor:grab;touch-action:none;user-select:none;font-size:14px;line-height:1}
+.view-drag-handle:active{cursor:grabbing}.view-main-button{min-height:30px;border:1px solid #344047;border-radius:7px;background:rgba(17,23,26,.88);color:#cbd8dd;padding:4px 7px;font-size:10px;font-weight:700}
+.view-slot-main .view-main-button{display:none}.view-card.is-view-dragging{outline:2px solid #71b8d6;outline-offset:-2px;opacity:.82}.view-card.is-view-drop-target{outline:2px dashed #9bd7ee;outline-offset:-4px}
+@media(max-width:900px){.view-slot-main{min-height:420px}.view-slot-main>.viewport-card{min-height:420px}.view-slot-sub{min-height:180px}}
+@media(max-width:640px){.view-slot-main{width:calc(100% - 52px);margin-inline:auto;min-height:56dvh}.view-slot-main>.viewport-card{min-height:56dvh}.view-slot-sub{width:calc(100% - 52px);margin-inline:auto;min-height:240px}.view-main-button{font-size:9px;padding:3px 6px}}
+
+.view-toolbar{right:auto;width:max-content;max-width:calc(100% - 20px)}
+
+.three-busy-cancel{
+  pointer-events:auto;
+  min-width:148px;
+  min-height:46px;
+  padding:10px 16px;
+  border:1px solid #a95a5a;
+  border-radius:10px;
+  background:rgba(78,24,24,.94);
+  color:#fff1f1;
+  font-size:13px;
+  font-weight:800;
+  cursor:pointer;
+  touch-action:manipulation;
+  box-shadow:0 6px 20px rgba(0,0,0,.28);
+}
+.three-busy-cancel:active{transform:translateY(1px)}
+.three-busy-cancel:disabled{opacity:.58;cursor:default}
+.filter-rebuild-3d.is-cancel{
+  background:#4a2020!important;
+  border-color:#a55a5a!important;
+  color:#fff0f0!important;
+}
+
+.volume-analysis-panel{max-width:min(390px,88%)}
+.volume-analysis-result{min-width:290px;max-width:390px;gap:8px}
+.analysis-summary{font-size:11px;color:#cfe0e7;min-height:16px}
+.analysis-actions{display:flex;gap:6px}
+.analysis-actions button,.analysis-region-button,.analysis-editor-actions button{min-height:32px;border:1px solid #3b4850;border-radius:7px;background:#151c20;color:#dbe7eb;padding:5px 8px;font-size:10px;font-weight:750;cursor:pointer}
+.analysis-actions button:disabled,.analysis-region-button:disabled,.analysis-editor-actions button:disabled{opacity:.4;cursor:default}
+.analysis-editor-actions{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding-top:2px;border-top:1px solid #28343a}
+.analysis-editor-actions button.is-active{border-color:#67b2d1;background:#17313d;color:#dff6ff}
+.analysis-cut-width{display:grid;grid-template-columns:auto auto;gap:2px 6px;align-items:center;min-width:150px;padding:3px 0;color:#afc3cb;font-size:9px}
+.analysis-cut-width input{grid-column:1 / -1;width:150px}
+.analysis-cut-width output{font-variant-numeric:tabular-nums;text-align:right;color:#e0edf1}
+.analysis-region-list{display:grid;gap:6px;max-height:240px;overflow:auto;overscroll-behavior:contain}
+.analysis-region-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:7px;border:1px solid #2d3940;border-radius:8px;background:rgba(17,23,26,.88)}
+.analysis-region-row.is-focused{border-color:#69b8d8;background:rgba(27,54,66,.92);box-shadow:0 0 0 1px rgba(105,184,216,.18) inset}
+.analysis-region-select{width:18px;height:18px}
+.analysis-region-info{display:grid;gap:2px;min-width:0}
+.analysis-region-info strong{font-size:11px;color:#e6f3f7}
+.analysis-region-info span{font-size:9px;color:#9fb2ba;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.analysis-region-delete{border-color:#694040;color:#efbcbc}
+@media(max-width:640px){.volume-analysis-panel{max-width:calc(100% - 20px)}.volume-analysis-result{min-width:min(310px,calc(100vw - 80px));max-width:calc(100vw - 80px)}.analysis-region-row{grid-template-columns:auto minmax(0,1fr) auto}.analysis-region-delete{grid-column:3}.analysis-region-button{padding:5px 6px}}
+
+.app-version-badge{
+  position:fixed;
+  right:10px;
+  bottom:8px;
+  z-index:1200;
+  padding:5px 8px;
+  border:1px solid rgba(110,130,140,.55);
+  border-radius:7px;
+  background:rgba(9,13,15,.82);
+  color:#aebdc4;
+  font-size:10px;
+  font-weight:700;
+  line-height:1;
+  font-variant-numeric:tabular-nums;
+  pointer-events:none;
+  user-select:none;
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+}
+@media(max-width:640px){
+  .app-version-badge{right:6px;bottom:6px;font-size:9px;padding:4px 6px}
+}
+
+.analysis-region-row{
+  grid-template-columns:auto auto minmax(0,1fr) auto auto;
+}
+.analysis-region-swatch{
+  width:14px;
+  height:14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.42);
+  box-shadow:0 0 0 1px rgba(0,0,0,.28) inset,0 0 8px rgba(255,255,255,.08);
+  flex:none;
+}
+@media(max-width:640px){
+  .analysis-region-row{grid-template-columns:auto auto minmax(0,1fr) auto}
+}
+
+/* Keep 3D rotation available under the volume-analysis overlay.
+   Only actual controls consume pointer input. */
+.volume-analysis-panel,
+.volume-analysis-result,
+.analysis-summary,
+.analysis-region-list,
+.analysis-region-row,
+.analysis-region-info,
+.analysis-region-swatch{
+  pointer-events:none;
+}
+.volume-analysis-panel button,
+.volume-analysis-panel input,
+.volume-analysis-panel select,
+.volume-analysis-panel label,
+.volume-analysis-panel summary,
+.three-edit-panel,
+.three-edit-panel-head{
+  pointer-events:auto;
+  touch-action:manipulation;
+}
+
+.three-overlay-controls{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:260px}.three-overlay-controls .tool-chip{min-height:28px;padding:4px 7px;font-size:10px}
+
+.three-edit-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:7;pointer-events:none}
+.section-view-actions{display:flex;flex-wrap:wrap;gap:4px}.section-view-actions button{border:1px solid #3b4850;border-radius:7px;background:#11171a;color:#d8e4e9;padding:5px 7px;font-size:10px;font-weight:800;cursor:pointer}
+
+.three-edit-panel{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;border:1px solid rgba(93,141,255,.24);border-radius:8px;background:rgba(9,12,14,.78);backdrop-filter:blur(6px)}.three-edit-panel>strong{font-size:11px;white-space:nowrap}.three-edit-panel .analysis-editor-actions{display:flex;align-items:center;gap:4px;flex-wrap:wrap}.three-edit-panel button{min-height:28px}.three-edit-panel .analysis-cut-width{display:grid;grid-template-columns:1fr auto;gap:3px 8px;flex:1 1 100%;width:100%;min-width:0;font-size:10px}.three-edit-panel .analysis-cut-width input{grid-column:1/-1;width:100%;min-width:0;min-height:32px;touch-action:none}
+
+.three-edit-panel{display:grid;grid-template-columns:1fr;gap:6px}
+.three-edit-panel-head{display:flex;align-items:center;gap:8px;min-width:0}
+.three-edit-panel-head>strong{font-size:11px;white-space:nowrap}
+.three-edit-status{font-size:10px;line-height:1.25;color:#cbd9df;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.three-edit-help{font-size:10px;line-height:1.35;color:#9fb0b8}
+.three-edit-target{display:flex;align-items:center;gap:4px;font-size:10px}
+.three-edit-target select{min-height:28px;border:1px solid #3b4850;border-radius:7px;background:#11171a;color:#d8e4e9;padding:4px 6px}
+.viewport.is-editing-3d{cursor:crosshair}
+.three-edit-panel button.is-active{outline:2px solid rgba(0,229,255,.45);outline-offset:1px}
+
+#viewport-3d.is-editing-3d,#viewport-3d.is-editing-3d canvas{cursor:crosshair!important}
+
+/* 3D edit controls stay out of the viewport until explicitly opened. */
+.three-edit-panel{max-width:min(390px,88%);padding:0;overflow:hidden}
+.three-edit-panel-head{padding:6px 8px;cursor:pointer;list-style:none;user-select:none;touch-action:manipulation}
+.three-edit-panel-head::-webkit-details-marker{display:none}
+.three-edit-panel-head::after{content:'▾';margin-left:auto;color:#91a5ae;font-size:10px;transition:transform .12s ease}
+.three-edit-panel[open] .three-edit-panel-head::after{transform:rotate(180deg)}
+.three-edit-panel:not([open]) .three-edit-status{max-width:170px}
+.three-edit-panel[open] .analysis-editor-actions{padding:6px 8px 2px}
+.three-edit-panel[open] .three-edit-help{padding:0 8px 7px}
+@media(max-width:640px){
+ .three-edit-panel{max-width:min(310px,calc(100vw - 80px))}
+ .three-edit-panel:not([open]) .three-edit-status{max-width:130px}
+}
+
+
+/* Build 181: iPad workspace layout. Scoped by runtime class so desktop/Mac UI is unchanged. */
+html.vrl-ipad-ui,
+html.vrl-ipad-ui body,
+html.vrl-ipad-ui #app{height:100%;overflow:hidden}
+html.vrl-ipad-ui .app-shell{
+  height:100dvh;min-height:0;padding:8px;gap:8px;
+  grid-template-rows:auto auto minmax(0,1fr) auto;
+}
+html.vrl-ipad-ui .topbar{min-height:48px;gap:10px}
+html.vrl-ipad-ui .topbar .eyebrow,
+html.vrl-ipad-ui .topbar .subtitle{display:none}
+html.vrl-ipad-ui .topbar h1{font-size:20px;white-space:nowrap}
+html.vrl-ipad-ui .topbar-actions{gap:6px;flex-wrap:nowrap;min-width:0}
+html.vrl-ipad-ui .topbar-actions .primary-button,
+html.vrl-ipad-ui .topbar-actions .secondary-button,
+html.vrl-ipad-ui .topbar-actions .status{min-height:40px;padding:7px 10px;font-size:10px;white-space:nowrap}
+html.vrl-ipad-ui .topbar-actions .status{max-width:240px;overflow:hidden;text-overflow:ellipsis}
+
+.ipad-workspace-toolbar{display:none}
+html.vrl-ipad-ui .ipad-workspace-toolbar{
+  display:flex;align-items:center;gap:8px;min-height:46px;padding:5px 7px;
+  border:1px solid #273137;border-radius:12px;background:#101416;
+}
+html.vrl-ipad-ui .ipad-toolbar-button,
+html.vrl-ipad-ui .ipad-view-modes button,
+html.vrl-ipad-ui .ipad-mpr-tabs button,
+html.vrl-ipad-ui .ipad-drawer-head button,
+html.vrl-ipad-ui .ipad-drawer-tabs button{
+  min-height:40px;border:1px solid #344047;border-radius:9px;background:#171d20;color:#d7e4e9;
+  padding:7px 11px;font-size:12px;font-weight:800;touch-action:manipulation;
+}
+html.vrl-ipad-ui .ipad-view-modes,
+html.vrl-ipad-ui .ipad-mpr-tabs{display:flex;align-items:center;gap:5px}
+html.vrl-ipad-ui .ipad-mpr-tabs{margin-left:auto}
+html.vrl-ipad-ui .ipad-view-modes button.is-active,
+html.vrl-ipad-ui .ipad-mpr-tabs button.is-active,
+html.vrl-ipad-ui .ipad-drawer-tabs button.is-active{
+  background:#17313d;border-color:#67b2d1;color:#e4f8ff;
+}
+
+html.vrl-ipad-ui .workspace{display:block;min-height:0;overflow:hidden}
+html.vrl-ipad-ui .viewer-grid{height:100%;min-height:0;display:grid;gap:8px}
+html.vrl-ipad-ui .view-slot-main,
+html.vrl-ipad-ui .view-slot-main>.viewport-card{width:100%;height:100%;min-height:0;margin:0}
+html.vrl-ipad-ui .viewport-3d{min-height:0;height:100%}
+html.vrl-ipad-ui .view-drag-handle,
+html.vrl-ipad-ui .view-main-button{display:none!important}
+
+html.vrl-ipad-ui .mpr-column{height:100%;min-height:0;display:block}
+html.vrl-ipad-ui .mpr-column .view-slot-sub{display:none;width:100%;height:100%;min-height:0;margin:0}
+html.vrl-ipad-ui .mpr-column .view-slot-sub.is-ipad-active{display:block}
+html.vrl-ipad-ui .mpr-column .viewport-card{width:100%;height:100%;min-height:0}
+html.vrl-ipad-ui .mpr-canvas{width:100%;height:100%;min-height:0}
+
+html.vrl-ipad-ui .ipad-mode-3d .viewer-grid{grid-template-columns:1fr}
+html.vrl-ipad-ui .ipad-mode-3d #sub-view-slots{display:none}
+html.vrl-ipad-ui .ipad-mode-3d #main-view-slot{display:block}
+html.vrl-ipad-ui .ipad-mode-2d .viewer-grid{grid-template-columns:1fr}
+html.vrl-ipad-ui .ipad-mode-2d #main-view-slot{display:none}
+html.vrl-ipad-ui .ipad-mode-2d #sub-view-slots{display:block}
+html.vrl-ipad-ui .ipad-mode-split .viewer-grid{grid-template-columns:minmax(0,1.55fr) minmax(290px,.85fr)}
+html.vrl-ipad-ui .ipad-mode-split #main-view-slot,
+html.vrl-ipad-ui .ipad-mode-split #sub-view-slots{display:block}
+
+html.vrl-ipad-ui .sidebar{
+  position:fixed;z-index:1300;top:0;bottom:0;left:0;width:min(430px,84vw);
+  display:grid!important;grid-template-rows:auto minmax(0,1fr);gap:0;
+  transform:translateX(-105%);transition:transform .18s ease;
+  border-right:1px solid #344047;background:#0d1113;box-shadow:12px 0 36px rgba(0,0,0,.42);
+  overflow:hidden;
+}
+html.vrl-ipad-ui.ipad-sidebar-open .sidebar{transform:translateX(0)}
+html.vrl-ipad-ui .ipad-sidebar-backdrop{
+  display:none;position:fixed;z-index:1290;inset:0;border:0;background:rgba(0,0,0,.42);padding:0;
+}
+html.vrl-ipad-ui.ipad-sidebar-open .ipad-sidebar-backdrop{display:block}
+html.vrl-ipad-ui .ipad-drawer-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;
+  border-bottom:1px solid #293237;background:#111619;
+}
+html.vrl-ipad-ui .ipad-drawer-head strong{font-size:16px}
+html.vrl-ipad-ui .sidebar-scroll{
+  height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;padding:10px;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;
+}
+html.vrl-ipad-ui .ipad-drawer-tabs{
+  position:sticky;top:-10px;z-index:3;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;
+  padding:10px 0;background:#0d1113;
+}
+html.vrl-ipad-ui .is-ipad-drawer-hidden{display:none!important}
+html.vrl-ipad-ui .sidebar-scroll>.panel{margin:0 0 10px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel{padding:10px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .three-edit-panel{
+  width:100%;max-width:none;border:0;background:transparent;backdrop-filter:none;
+}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .three-edit-panel-head{display:none}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .analysis-editor-actions{padding:0;gap:8px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .analysis-editor-actions button,
+html.vrl-ipad-ui .ipad-edit-drawer-panel .three-edit-target select{min-height:44px;font-size:12px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .analysis-cut-width{font-size:11px}
+html.vrl-ipad-ui .ipad-edit-drawer-panel .analysis-cut-width input{min-height:44px}
+
+html.vrl-ipad-ui #ipad-gpu-quality-control{
+  width:100%;justify-content:space-between;margin:6px 0 10px;min-height:44px!important;
+  border:1px solid #344047!important;background:#14191c!important;color:#d8e4e9!important;
+}
+html.vrl-ipad-ui #ipad-gpu-quality-control select{
+  min-height:34px;border:1px solid #3b4850;border-radius:7px;background:#0f1417;color:#e1edf1;padding:4px 8px;
+}
+html.vrl-ipad-ui .mpr-opacity-settings{min-width:0!important;width:100%!important;margin-top:10px}
+
+html.vrl-ipad-ui .volume-analysis-panel{
+  top:8px;right:8px;max-width:min(340px,58%);gap:6px;
+}
+html.vrl-ipad-ui .volume-analysis-panel>.tool-chip{min-height:40px}
+html.vrl-ipad-ui .three-overlay-controls{max-width:300px}
+html.vrl-ipad-ui .three-overlay-controls .tool-chip{min-height:36px;padding:6px 9px}
+
+html.vrl-ipad-ui #section-view-result{
+  position:fixed;z-index:1500;left:12px;right:12px;bottom:12px;
+  width:auto;max-width:none;min-width:0;max-height:46dvh;overflow:auto;
+  padding:14px 16px 16px;border-radius:15px;background:rgba(10,14,16,.97);
+  box-shadow:0 -12px 38px rgba(0,0,0,.4);pointer-events:auto;
+  -webkit-overflow-scrolling:touch;
+}
+html.vrl-ipad-ui #section-view-result .section-view-actions{gap:8px}
+html.vrl-ipad-ui #section-view-result .section-view-actions button{min-height:42px;padding:8px 12px;font-size:12px}
+html.vrl-ipad-ui #section-view-result input[type=range]{min-height:44px}
+html.vrl-ipad-ui #section-view-result .section-cap-settings{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px!important}
+html.vrl-ipad-ui #section-view-result .section-cap-settings label{min-height:40px}
+
+html.vrl-ipad-ui .selected-series-overlay{max-width:min(420px,56%);padding:8px 10px}
+html.vrl-ipad-ui footer{min-height:18px;display:flex;justify-content:space-between;gap:10px}
+
+@media (orientation:portrait){
+ html.vrl-ipad-ui .ipad-mode-split .viewer-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,1.2fr) minmax(260px,.8fr)}
+ html.vrl-ipad-ui .ipad-mode-split #main-view-slot,
+ html.vrl-ipad-ui .ipad-mode-split #sub-view-slots{min-height:0}
+ html.vrl-ipad-ui .topbar-actions #gpu-status{display:none}
+ html.vrl-ipad-ui .ipad-workspace-toolbar{flex-wrap:wrap}
+ html.vrl-ipad-ui .ipad-mpr-tabs{margin-left:0}
+}
+
+
+/* Build 182: keep iPad settings visible at all times.
+   Landscape = left settings rail. Portrait = bottom settings panel. */
+html.vrl-ipad-ui.ipad-settings-persistent .workspace{
+  display:grid;
+  grid-template-columns:minmax(270px,300px) minmax(0,1fr);
+  gap:8px;
+  min-height:0;
+  overflow:hidden;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar{
+  position:static;
+  z-index:auto;
+  top:auto;bottom:auto;left:auto;
+  width:auto;min-width:0;height:100%;
+  transform:none!important;
+  transition:none;
+  border:1px solid #273137;
+  border-radius:12px;
+  box-shadow:none;
+  background:#0d1113;
+  overflow:hidden;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-sidebar-backdrop{display:none!important}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-head{
+  display:flex;
+  min-height:42px;
+  padding:9px 12px;
+  border-bottom:1px solid #293237;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-head button{display:none!important}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar-scroll{
+  height:calc(100% - 42px);
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding:8px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-tabs{
+  top:-8px;
+  padding:8px 0;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-tabs button{
+  min-height:38px;
+  padding:6px 8px;
+  font-size:11px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .viewer-grid{
+  height:100%;
+  min-height:0;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-workspace-toolbar{
+  padding-left:8px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-toolbar-button{display:none!important}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-mpr-tabs{margin-left:auto}
+
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .panel{
+  padding:10px;
+  border-radius:10px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .panel-heading{margin-bottom:7px}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .range-row{margin-bottom:7px}
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .range-row input[type=range],
+html.vrl-ipad-ui.ipad-settings-persistent .sidebar .segment-range input[type=range]{
+  min-height:38px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-editor-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-editor-actions>button,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .three-edit-target,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-width,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-confirm{
+  min-width:0;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .three-edit-target,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-width,
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-confirm{
+  grid-column:1 / -1;
+}
+html.vrl-ipad-ui.ipad-settings-persistent .ipad-edit-drawer-panel .analysis-cut-confirm{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+
+@media (orientation:portrait){
+ html.vrl-ipad-ui.ipad-settings-persistent .workspace{
+   grid-template-columns:1fr;
+   grid-template-rows:minmax(0,1fr) minmax(250px,34dvh);
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .viewer-grid{grid-row:1}
+ html.vrl-ipad-ui.ipad-settings-persistent .sidebar{
+   grid-row:2;
+   width:100%;
+   height:100%;
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-head{
+   min-height:38px;
+   padding:7px 10px;
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .sidebar-scroll{
+   height:calc(100% - 38px);
+   padding:6px 8px 8px;
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .ipad-drawer-tabs{
+   top:-6px;
+   grid-template-columns:repeat(3,minmax(0,1fr));
+   padding:6px 0;
+ }
+ html.vrl-ipad-ui.ipad-settings-persistent .sidebar .panel{padding:8px}
+ html.vrl-ipad-ui.ipad-settings-persistent .series-list{max-height:20dvh}
+}
+
+
+/* Build 184: iPad overlap audit.
+   Large analysis controls live in the persistent settings column, not over the 3D viewport. */
+html.vrl-ipad-ui .ipad-analysis-settings{
+  display:grid;
+  gap:8px;
+  margin:8px 0 10px;
+}
+html.vrl-ipad-ui .ipad-analysis-settings:empty{display:none}
+html.vrl-ipad-ui #section-view-result,
+html.vrl-ipad-ui #volume-analysis-result{
+  position:static!important;
+  inset:auto!important;
+  left:auto!important;
+  right:auto!important;
+  bottom:auto!important;
+  top:auto!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  max-height:none!important;
+  overflow:visible!important;
+  margin:0!important;
+  padding:10px!important;
+  border-radius:10px!important;
+  box-shadow:none!important;
+  background:#14191c!important;
+  pointer-events:auto!important;
+}
+html.vrl-ipad-ui #section-view-result .section-view-actions{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+}
+html.vrl-ipad-ui #section-view-result .section-view-actions button{
+  min-height:40px;
+  padding:7px 8px;
+  font-size:11px;
+}
+html.vrl-ipad-ui #section-view-result .section-position-control{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:4px 8px;
+  align-items:center;
+}
+html.vrl-ipad-ui #section-view-result .section-position-control input{
+  grid-column:1/-1;
+  width:100%;
+  min-height:40px;
+}
+html.vrl-ipad-ui #section-view-result .section-cap-settings{
+  grid-template-columns:1fr!important;
+  gap:6px!important;
+}
+html.vrl-ipad-ui #section-view-result .section-cap-settings label{
+  min-height:38px;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-actions button{
+  min-height:40px;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-region-list{
+  max-height:240px;
+  overflow:auto;
+  pointer-events:auto;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-region-row,
+html.vrl-ipad-ui #volume-analysis-result .analysis-summary,
+html.vrl-ipad-ui #volume-analysis-result .analysis-region-info{
+  pointer-events:auto;
+}
+
+/* Keep only compact, non-modal controls over the 3D viewport. */
+html.vrl-ipad-ui .volume-analysis-panel{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  justify-content:flex-end;
+  gap:6px;
+  max-width:min(560px,72%);
+}
+html.vrl-ipad-ui .volume-analysis-panel>.tool-chip{
+  min-height:38px;
+}
+html.vrl-ipad-ui .three-overlay-controls{
+  flex:0 1 auto;
+  max-width:100%;
+}
+html.vrl-ipad-ui .three-overlay-controls .tool-chip{
+  min-height:38px;
+}
+
+/* Version marker stays visible without covering 3D navigation buttons. */
+html.vrl-ipad-ui .app-version-badge{
+  position:static!important;
+  right:auto!important;
+  bottom:auto!important;
+  margin-left:auto;
+  flex:none;
+}
+html.vrl-ipad-ui footer{
+  align-items:center;
+}
+
+/* Leave the lower-right 3D navigation area unobstructed. */
+html.vrl-ipad-ui .selected-series-overlay{
+  right:auto;
+  max-width:min(420px,48%);
+}
+@media (orientation:portrait){
+ html.vrl-ipad-ui .volume-analysis-panel{max-width:min(460px,88%)}
+ html.vrl-ipad-ui #section-view-result .section-view-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+
+/* Build 185: make the active volume-analysis result explicit and readable. */
+.analysis-summary{
+  display:grid;
+  gap:7px;
+}
+.analysis-result-count{
+  font-size:11px;
+  color:#cfe0e7;
+}
+.analysis-result-card{
+  display:grid;
+  gap:7px;
+  padding:9px 10px;
+  border:1px solid #3a515c;
+  border-radius:9px;
+  background:#10171a;
+}
+.analysis-result-head{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-width:0;
+}
+.analysis-result-head strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+  color:#e9f5f8;
+}
+.analysis-result-primary{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+}
+.analysis-result-primary span{
+  font-size:10px;
+  color:#9db0b8;
+}
+.analysis-result-primary strong{
+  font-size:18px;
+  line-height:1;
+  color:#f1fbff;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.analysis-result-meta{
+  font-size:10px;
+  line-height:1.35;
+  color:#9fb2ba;
+  overflow-wrap:anywhere;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-summary{
+  pointer-events:auto;
+}
+html.vrl-ipad-ui #volume-analysis-result .analysis-region-info span{
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+}
