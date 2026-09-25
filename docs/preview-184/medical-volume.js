@@ -837,9 +837,10 @@ export class MedicalVolumeRenderer{
   this.interactive=next;this.interactionTier=nextTier;this.resize(true);
  }
  resize(force=false){
+  const hostW=this.host.clientWidth,hostH=this.host.clientHeight;if(hostW<8||hostH<8)return;
   const dpr=window.devicePixelRatio||1,touch=(navigator.maxTouchPoints||0)>0;
   const interactiveRatios=touch?[0.72,0.58,0.46]:[0.9,0.7,0.52];
-  const ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5),w=Math.max(1,Math.floor(this.host.clientWidth*ratio)),h=Math.max(1,Math.floor(this.host.clientHeight*ratio));
+  const ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5),w=Math.max(1,Math.floor(hostW*ratio)),h=Math.max(1,Math.floor(hostH*ratio));
   if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h}
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
