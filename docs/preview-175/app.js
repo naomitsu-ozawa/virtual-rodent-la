@@ -262,7 +262,7 @@ let precisionRangeDrag=null;
 document.addEventListener('pointerdown',e=>{
  const el=e.target?.closest?.('input[type="range"]');if(!el||el.disabled||e.button!==0)return;
  const min=rangeNumber(el,'min',0),max=rangeNumber(el,'max',100),step=rangeStep(el),steps=Math.max(1,(max-min)/step);
- const gain=steps<=12?.78:(e.pointerType==='touch'?RANGE_DRAG_TOUCH_GAIN:RANGE_DRAG_MOUSE_GAIN);
+ const gain=steps<=12 ? 0.78 : (e.pointerType==='touch'?RANGE_DRAG_TOUCH_GAIN:RANGE_DRAG_MOUSE_GAIN);
  precisionRangeDrag={el,id:e.pointerId,startX:e.clientX,startValue:Number(el.value),min,max,step,gain,moved:false};
  el.focus({preventScroll:true});el.style.touchAction='none';
  try{el.setPointerCapture(e.pointerId)}catch{}
