@@ -61,6 +61,7 @@ struct Uniforms{
 @group(0) @binding(1) var volumeTex:texture_3d<f32>;
 @group(0) @binding(2) var<storage,read> editRows:array<u32>;
 @group(0) @binding(3) var<storage,read> brickMinMax:array<vec2<f32>>;
+@group(0) @binding(4) var volumeSampler:sampler;
 @group(0) @binding(5) var<storage,read> editIntervals:array<u32>;
 @group(0) @binding(6) var<storage,read> previewRows:array<u32>;
 @group(0) @binding(7) var<storage,read> previewIntervals:array<u32>;
@@ -84,8 +85,13 @@ fn texCoord(p:vec3<f32>)->vec3<f32>{
 fn huAt(tc0:vec3<f32>)->f32{
  let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
- let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
+ var q:vec2<f32>;
+ if(u.textureDims.w>0.5){
+  q=textureSampleLevel(volumeTex,volumeSampler,tc,0.0).rg*255.0;
+ }else{
+  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+  q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
+ }
  let raw=q.x+q.y*256.0-u.calibration.y;
  return raw*u.dimsSlope.w+u.calibration.x;
 }
@@ -625,7 +631,7 @@ export class MedicalVolumeRenderer{
   if(!this.texture||!this.brickBuffer||!this.editRowsBuffer||!this.editIntervalsBuffer||!this.previewRowsBuffer||!this.previewIntervalsBuffer||!this.appliedCutRowsBuffer||!this.appliedCutIntervalsBuffer){this.bindGroup=null;return}
   this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},
-   {binding:2,resource:{buffer:this.editRowsBuffer}},{binding:3,resource:{buffer:this.brickBuffer}},{binding:5,resource:{buffer:this.editIntervalsBuffer}},
+   {binding:2,resource:{buffer:this.editRowsBuffer}},{binding:3,resource:{buffer:this.brickBuffer}},{binding:4,resource:this.sampler},{binding:5,resource:{buffer:this.editIntervalsBuffer}},
    {binding:6,resource:{buffer:this.previewRowsBuffer}},{binding:7,resource:{buffer:this.previewIntervalsBuffer}},
    {binding:8,resource:{buffer:this.appliedCutRowsBuffer}},{binding:9,resource:{buffer:this.appliedCutIntervalsBuffer}}
   ]});
@@ -841,7 +847,7 @@ export class MedicalVolumeRenderer{
   const right=this.tmpRight.set(1,0,0).applyQuaternion(q).transformDirection(inv),up=this.tmpUp.set(0,1,0).applyQuaternion(q).transformDirection(inv),forward=this.tmpForward.set(0,0,-1).applyQuaternion(q).transformDirection(inv);
   const data=this.frameData,put=(slot,a,b,c,d)=>{const i=slot*4;data[i]=a;data[i+1]=b;data[i+2]=c;data[i+3]=d};
   put(0,origin.x,origin.y,origin.z,0);put(1,right.x,right.y,right.z,Math.tan(THREE.MathUtils.degToRad(camera.fov*.5)));put(2,up.x,up.y,up.z,camera.aspect);put(3,forward.x,forward.y,forward.z,0);
-  const interactionStep=this.interactive?[1.65,2.0,2.5][this.interactionTier]||1.65:1,reducedQuality=this.reducedVolume ? 0.78 : 1;put(4,this.halfExtents[0],this.halfExtents[1],this.halfExtents[2],this.step*interactionStep*reducedQuality);
+  const interactionStep=this.interactive?[1.65,2.0,2.5][this.interactionTier]||1.65:1;put(4,this.halfExtents[0],this.halfExtents[1],this.halfExtents[2],this.step*interactionStep);
   put(5,this.volume.columns,this.volume.rows,this.volume.slices,this.calibration.slope);put(6,this.calibration.intercept,this.calibration.signedBias,this.brickDims[0],this.brickDims[1]);put(7,this.canvas.width,this.canvas.height,this.brickDims[2],this.brickSize);
   for(let s=0;s<4;s++){
    const key=segmentOrder[s],seg=segmentState[key],enabled=seg?.active&&seg?.enabled?1:0,color=new THREE.Color(seg?.color||'#ffffff');
