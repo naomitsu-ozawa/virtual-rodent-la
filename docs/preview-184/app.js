@@ -4,7 +4,7 @@ import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260925-build184-texturemask1';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.25-184.7';const APP_BUILD='184';
+const APP_VERSION='2026.09.25-184.8';const APP_BUILD='184';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -746,8 +746,22 @@ function refreshCutControlReadouts(){
  analysisCutPitchValue.value=(+analysisCutPitch.value).toFixed(1)+'°';
  analysisCutOffsetValue.value=(+analysisCutOffset.value).toFixed(1)+' mm';
 }
-const onCutControlInput=()=>{refreshCutControlReadouts();updateThreeEditUi();updateCutPreview(sceneState?.editCutPreviewPoint)};
-analysisCutWidth.oninput=onCutControlInput;analysisCutDepth.oninput=onCutControlInput;analysisCutYaw.oninput=onCutControlInput;analysisCutPitch.oninput=onCutControlInput;analysisCutOffset.oninput=onCutControlInput;
+let cutControlPreviewRaf=0;
+const onCutControlInput=()=>{
+ refreshCutControlReadouts();updateThreeEditUi();
+ if(cutControlPreviewRaf)cancelAnimationFrame(cutControlPreviewRaf);
+ cutControlPreviewRaf=requestAnimationFrame(()=>{
+  cutControlPreviewRaf=0;
+  updateCutPreview(sceneState?.editCutPreviewPoint);
+  if(analysisPendingCut&&threeRenderMode==='volume'&&sceneState?.medicalVolume?.active)scheduleCutResultPreview(0);
+  request3DRender();
+ });
+};
+for(const control of [analysisCutWidth,analysisCutDepth,analysisCutYaw,analysisCutPitch,analysisCutOffset]){
+ control.oninput=onCutControlInput;
+ control.onchange=onCutControlInput;
+ control.onpointermove=e=>{if(e.buttons||e.pointerType==='touch'||e.pointerType==='pen')onCutControlInput()};
+}
 analysisCutApply.onclick=async()=>{if(!analysisPendingCut||analysisCutApplying)return;const pending=analysisPendingCut;analysisPendingCut=null;analysisCutApplying=true;analysisCutStroke=null;analysisCutScreen=[];clearThreeEditOverlay();if(sceneState)sceneState.editCutPreviewPoint=null;updateCutPreview(null);updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'切断を反映中…':'Applying cut…');let ok=false;try{ok=await applyCutStroke(pending.points,pending.key,pending.mode)}finally{clearCutResultPreview();analysisCutApplying=false;analysisEditTool='select';analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;if(sceneState)sceneState.editCutPreviewPoint=null;updateAnalysisEditorControls();const ready=ok?(currentLanguage==='ja'?'切断を反映しました · 操作モードに戻りました':'Cut applied · returned to Navigate'):(currentLanguage==='ja'?'切断結果を確認してください · 操作モードに戻りました':'Check cut result · returned to Navigate');updateThreeEditUi(ready);request3DRender()}};
 analysisCutCancel.onclick=()=>{if(analysisCutApplying)return;analysisPendingCut=null;analysisCutStroke=null;analysisCutScreen=[];clearThreeEditOverlay();clearCutResultPreview();if(sceneState)sceneState.editCutPreviewPoint=null;updateCutPreview(null);analysisEditTargetKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;updateAnalysisEditorControls();updateThreeEditUi(currentLanguage==='ja'?'切断をキャンセルしました':'Cut cancelled');request3DRender()};
 analysisExportSelected.onclick=()=>void exportFocusedAnalysisRegionStl();
@@ -4530,7 +4544,9 @@ async function analyzeVolumeComponentAtVoxel(analysisVolume,key,x,y,z){
 }
 async function analyzeVolumeAtVoxel(x,y,z,keyHint=null,showResult=true){
  if(!volume||volumeAnalysisBusy)return false;const analysisVolume=current3DVolume||volume;
- volumeAnalysisBusy=true;if(showResult)volumeAnalysisResult.classList.remove('is-hidden');renderAnalysisResults(currentLanguage==='ja'?'解析中…':'Analyzing…');
+ volumeAnalysisBusy=true;
+ if(showResult){volumeAnalysisResult.classList.remove('is-hidden');set3DBusy(true,currentLanguage==='ja'?'体積解析中…':'Analyzing volume…',false);await frameYield()}
+ renderAnalysisResults(currentLanguage==='ja'?'解析中…':'Analyzing…');
  try{
   const key=keyHint||await segmentKeyAtVoxel(analysisVolume,x,y,z);
   if(!key){renderAnalysisResults(currentLanguage==='ja'?'選択位置に解析対象の領域がありません':'No analyzable segment at the selected point');return false}
@@ -4538,7 +4554,11 @@ async function analyzeVolumeAtVoxel(x,y,z,keyHint=null,showResult=true){
  }catch(e){
   if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);renderAnalysisResults((currentLanguage==='ja'?'体積解析エラー: ':'Volume analysis error: ')+String(e.message||e))}
   return false;
- }finally{volumeAnalysisBusy=false;renderAnalysisResults()}
+ }finally{
+  volumeAnalysisBusy=false;
+  if(showResult)set3DBusy(false,'',false);
+  renderAnalysisResults();
+ }
 }
 async function analyzeEditRegionAtPointer(event,canvas,camera){
  if(!volume||!sceneState?.obj||volumeAnalysisBusy)return;
