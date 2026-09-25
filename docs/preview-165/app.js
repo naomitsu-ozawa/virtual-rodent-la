@@ -4671,14 +4671,8 @@ async function applyCutStroke(points,key=analysisEditTargetKey,mode='pen'){
  const v=current3DVolume||volume;if(!v)return false;
  const label=tr(key)||key,st=segmentEditState[key],refs=snapshotAnalysisRegionsForSegment(key);
  try{
-  const rawCut=cutRunsFromVoxelStroke(v,points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,mode,+analysisCutOffset.value||0);
-  const currentRuns=await getFinalSegmentRuns(key,v);
-  if(!currentRuns)throw new Error(currentLanguage==='ja'?'対象セグメントを取得できません':'Target segment unavailable');
-  const cut=intersectRunArrays(rawCut,currentRuns,v.slices);
-  const cutVoxels=analysisRunsVoxelCount(cut);
-  if(!cutVoxels)throw new Error(currentLanguage==='ja'?'切断線が対象表面にありません':'Cut does not intersect the target surface');
+  const cut=cutRunsFromVoxelStroke(v,points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,mode,+analysisCutOffset.value||0);
   pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,cut,v.slices);st.cutRuns=unionRunArrays(st.cutRuns,cut,v.slices);st.rawCutSurface=true;st.finalRuns=null;st.revision++;analysisEditTargetKey=key;
-  console.info('[VRL CUT] applied',{key,cutVoxels,widthMm:cutWidthMm(),depthMm:+analysisCutDepth.value||5});
   const revision=st.revision;
   if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){
    syncGpuVolumeEdits(sourceVolume||volume);if(refs.length)clearAnalysisHighlight();

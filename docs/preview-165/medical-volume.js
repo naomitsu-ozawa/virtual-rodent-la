@@ -145,18 +145,6 @@ fn appliedCutContains(seg:u32,tc0:vec3<f32>)->bool{
  }
  return false;
 }
-fn appliedCutBoundary(seg:u32,tc0:vec3<f32>)->bool{
- let dims=max(u.dimsSlope.xyz,vec3<f32>(1.0));
- let d=vec3<f32>(1.0/dims.x,1.0/dims.y,1.0/dims.z);
- let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- if(appliedCutContains(seg,tc+vec3<f32>(d.x,0.0,0.0))){return true;}
- if(appliedCutContains(seg,tc-vec3<f32>(d.x,0.0,0.0))){return true;}
- if(appliedCutContains(seg,tc+vec3<f32>(0.0,d.y,0.0))){return true;}
- if(appliedCutContains(seg,tc-vec3<f32>(0.0,d.y,0.0))){return true;}
- if(appliedCutContains(seg,tc+vec3<f32>(0.0,0.0,d.z))){return true;}
- if(appliedCutContains(seg,tc-vec3<f32>(0.0,0.0,d.z))){return true;}
- return false;
-}
 fn rawSegmentIndexAt(tc0:vec3<f32>)->i32{
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let v=huAt(tc);
@@ -247,7 +235,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
   let x=((u.mprIndices.z+0.5)/max(u.dimsSlope.x,1.0)*2.0-1.0)*u.halfStep.x;
   let q=(x-u.camOrigin.x)/dir.x;if(q>=t&&q<=endT){sagittalT=q;}
  }
- var previousT=t;var lastIndex:i32=-1;var previousAppliedCut:i32=-1;var acc=vec4<f32>(0.0);
+ var previousT=t;var lastIndex:i32=-1;var acc=vec4<f32>(0.0);
  for(var iter:u32=0u;iter<4096u;iter=iter+1u){
   if(t>endT||acc.a>0.985){break;}
   let p=u.camOrigin.xyz+dir*t;
@@ -276,45 +264,28 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
   if(canSample&&!capDrawn){
    let tc0=texCoord(p);
    let rawIdx=rawSegmentIndexAt(tc0);
-   var appliedCutIdx:i32=-1;
-   if(rawIdx>=0&&appliedCutContains(u32(rawIdx),tc0)){appliedCutIdx=rawIdx;}
-   if(appliedCutIdx<0){
-    let midTc=texCoord(u.camOrigin.xyz+dir*(t+(nextT-t)*0.5));
-    let midRaw=rawSegmentIndexAt(midTc);
-    if(midRaw>=0&&appliedCutContains(u32(midRaw),midTc)){appliedCutIdx=midRaw;}
-   }
-   if(appliedCutIdx<0){
-    let lateTc=texCoord(u.camOrigin.xyz+dir*(t+(nextT-t)*0.85));
-    let lateRaw=rawSegmentIndexAt(lateTc);
-    if(lateRaw>=0&&appliedCutContains(u32(lateRaw),lateTc)){appliedCutIdx=lateRaw;}
-   }
-   var idx=segmentIndexAt(tc0);
-   if(appliedCutIdx>=0&&idx==appliedCutIdx){idx=-1;}
-   var appliedCapDrawn=false;
 
-   if(previousAppliedCut>=0&&idx==previousAppliedCut){
+   if(rawIdx>=0&&appliedCutContains(u32(rawIdx),tc0)){
     var cutLo=previousT;
     var cutHi=t;
     for(var cr:u32=0u;cr<6u;cr=cr+1u){
      let mid=(cutLo+cutHi)*0.5;
      let mtc=texCoord(u.camOrigin.xyz+dir*mid);
      let mraw=rawSegmentIndexAt(mtc);
-     let mcut=mraw==previousAppliedCut&&appliedCutContains(u32(previousAppliedCut),mtc);
-     if(mcut){cutLo=mid;}else{cutHi=mid;}
+     let inCut=mraw==rawIdx&&appliedCutContains(u32(rawIdx),mtc);
+     if(inCut){cutHi=mid;}else{cutLo=mid;}
     }
-    let cp=u.camOrigin.xyz+dir*cutHi;
-    let ctc=texCoord(cp);
-    let cseg=u32(previousAppliedCut);
-    let capColor=u.segments[cseg*2u+1u].rgb;
-    let capAlpha=max(clamp(u.segments[cseg*2u].z,0.03,1.0),0.98);
-    let capLit=capColor*0.46+vec3<f32>(0.018);
+    let cseg=u32(rawIdx);
+    let capColor=mix(u.segments[cseg*2u+1u].rgb,vec3<f32>(1.0),0.08);
+    let capAlpha=1.0;
+    let capLit=capColor*0.78+vec3<f32>(0.025);
     let capContribution=(1.0-acc.a)*capAlpha;
-    acc=vec4<f32>(acc.rgb+capLit*capContribution,acc.a+capContribution);
-    appliedCapDrawn=true;
-    lastIndex=idx;
+    acc=vec4<f32>(acc.rgb+capLit*capContribution,1.0);
+    break;
    }
 
-   if(!appliedCapDrawn&&idx!=lastIndex){
+   let idx=segmentIndexAt(tc0);
+   if(idx!=lastIndex){
     if(idx>=0){
      var lo=previousT;var hi=t;
      for(var r:u32=0u;r<5u;r=r+1u){
@@ -330,8 +301,6 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      var col=u.segments[u32(idx)*2u+1u].rgb;
      var alpha=clamp(a.z,0.03,1.0);
      var lit=col*diffuse+vec3<f32>(spec);
-     let isCutRim=appliedCutBoundary(u32(idx),tc);
-     if(isCutRim){lit=col*0.28;alpha=max(alpha,0.98);}
      if(isCutPreview){
       col=vec3<f32>(1.0,0.16,0.055);
       alpha=max(alpha,0.94);
@@ -341,8 +310,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
     }
     lastIndex=idx;
    }
-   previousAppliedCut=appliedCutIdx;
-  }else if(!canSample){lastIndex=-1;previousAppliedCut=-1;}
+  }else if(!canSample){lastIndex=-1;}
 
   for(var pi:u32=0u;pi<3u;pi=pi+1u){
    var pt=1e30;var which:i32=-1;
