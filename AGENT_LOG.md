@@ -38,6 +38,50 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — refactor/state-module (phase 2b)
+
+**Agent:** Claude (via claude.ai)
+**Task:** Priority #3, phase 2b — move shared mutable state out of app.js.
+
+### What changed
+- New `docs/state.js`: all 64 top-level `let`s of app.js as `export let x`,
+  each with a setter `setX(v){return x=v}` and, where needed,
+  `incX(prefix)` / `decX(prefix)` (`prefix?++x:x++`).
+- app.js: reads unchanged (ES module live bindings); the **230 write
+  sites** rewritten by `tools/state-codemod.mjs` (208 assignments, 22
+  `++`/`--`). Rules: `x=e`→`setX(e)`, `x op= e`→`setX(x op (e))`,
+  `x ||= e`→`(x||setX(e))`, `x++`→`incX(false)`, `++x`→`incX(true)`.
+- `tools/verify-state-codemod.mjs origin/main docs/app.js docs/app.js
+  docs/state.js` → `OK: 64 bindings moved; 230 write sites rewritten per
+  rule; all other code identical`. It walks the old and new syntax trees
+  in parallel (write sites located with eslint-scope, so shadowing locals
+  are excluded) and checks state.js initialisers + helper bodies.
+- Tests: `tests/tools/state-codemod.test.js` (sample with shadowing,
+  nested/compound/logical/update writes; helper value semantics; verifier
+  rejects 4 kinds of tampering). 106 passing.
+- Build 188 → 189.
+
+### Why this design
+- Imported bindings are read-only, so feature code that writes state could
+  not move out of app.js. Live bindings + setters keep ~1200 read sites
+  untouched and make the change mechanical and provable, instead of
+  rewriting every `volume` into `state.volume`.
+- Initialisers are all literals / `[]` / `new Uint32Array(256)`, so
+  evaluating them when state.js loads (before app.js's body) is safe.
+
+### Rules going forward
+- Write shared state **only via its setter**; ESLint `no-import-assign`
+  (in `npm run lint` / CI) rejects direct assignment to imported state.
+- New top-level mutable state belongs in `docs/state.js` with a setter.
+
+### Next
+- 2c: `docs/ui-shell.js` (template + `app.innerHTML` + DOM element consts).
+- 2d: feature modules via `tools/closure.mjs` + `extract-module.mjs`
+  (extract-module re-imports state bindings and setters automatically,
+  since they are now imports of app.js).
+
+---
+
 ## 2026-09-26 — refactor/split-app-js-phase2 (phase 2a)
 
 **Agent:** Claude (via claude.ai)
