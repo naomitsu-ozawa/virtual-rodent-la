@@ -1,0 +1,141 @@
+// Shared mutable application state, moved out of app.js by
+// tools/state-codemod.mjs. Read these bindings directly (imports are live);
+// write them only through the setters (imported bindings are read-only).
+
+export let currentLanguage='ja';
+export function setCurrentLanguage(v){return currentLanguage=v}
+export let precisionRangeDrag=null;
+export function setPrecisionRangeDrag(v){return precisionRangeDrag=v}
+export let volume=null;
+export function setVolume(v){return volume=v}
+export let sourceVolume=null;
+export function setSourceVolume(v){return sourceVolume=v}
+export let sceneState=null;
+export function setSceneState(v){return sceneState=v}
+export let activeId=null;
+export function setActiveId(v){return activeId=v}
+export let activeSeries=null;
+export function setActiveSeries(v){return activeSeries=v}
+export let volumeAnalysisMode=false;
+export function setVolumeAnalysisMode(v){return volumeAnalysisMode=v}
+export let volumeAnalysisBusy=false;
+export function setVolumeAnalysisBusy(v){return volumeAnalysisBusy=v}
+export let sourceRenderRevision=0;
+export function setSourceRenderRevision(v){return sourceRenderRevision=v}
+export function incSourceRenderRevision(prefix){return prefix?++sourceRenderRevision:sourceRenderRevision++}
+export let sectionViewOpen=false;
+export function setSectionViewOpen(v){return sectionViewOpen=v}
+export let sectionViewPlane=null;
+export function setSectionViewPlane(v){return sectionViewPlane=v}
+export let sectionViewReverse=false;
+export function setSectionViewReverse(v){return sectionViewReverse=v}
+export let sectionAutoPlane=null;
+export function setSectionAutoPlane(v){return sectionAutoPlane=v}
+export let sectionSliceImageVisible=true;
+export function setSectionSliceImageVisible(v){return sectionSliceImageVisible=v}
+export let sectionCapEnabled=true;
+export function setSectionCapEnabled(v){return sectionCapEnabled=v}
+export let sectionCapOpacity=.85;
+export function setSectionCapOpacity(v){return sectionCapOpacity=v}
+export let sectionCapHatch=true;
+export function setSectionCapHatch(v){return sectionCapHatch=v}
+export let mpr3DSurfaceOpacity=.64;
+export function setMpr3DSurfaceOpacity(v){return mpr3DSurfaceOpacity=v}
+export let mpr3DVolumeOpacity=.24;
+export function setMpr3DVolumeOpacity(v){return mpr3DVolumeOpacity=v}
+export let analysisRegions=[];
+export function setAnalysisRegions(v){return analysisRegions=v}
+export let nextAnalysisRegionId=1;
+export function setNextAnalysisRegionId(v){return nextAnalysisRegionId=v}
+export function incNextAnalysisRegionId(prefix){return prefix?++nextAnalysisRegionId:nextAnalysisRegionId++}
+export let nextAnalysisColorIndex=0;
+export function setNextAnalysisColorIndex(v){return nextAnalysisColorIndex=v}
+export function incNextAnalysisColorIndex(prefix){return prefix?++nextAnalysisColorIndex:nextAnalysisColorIndex++}
+export let analysisFocusedRegionId=null;
+export function setAnalysisFocusedRegionId(v){return analysisFocusedRegionId=v}
+export let analysisEditTool='select';
+export function setAnalysisEditTool(v){return analysisEditTool=v}
+export let analysisEditTargetKey=null;
+export function setAnalysisEditTargetKey(v){return analysisEditTargetKey=v}
+export let analysisEditTargetMode='auto';
+export function setAnalysisEditTargetMode(v){return analysisEditTargetMode=v}
+export let analysisCutStroke=null;
+export function setAnalysisCutStroke(v){return analysisCutStroke=v}
+export let analysisCutScreen=[];
+export function setAnalysisCutScreen(v){return analysisCutScreen=v}
+export let analysisPendingCut=null;
+export function setAnalysisPendingCut(v){return analysisPendingCut=v}
+export let analysisCutApplying=false;
+export function setAnalysisCutApplying(v){return analysisCutApplying=v}
+export let analysisEditPreparing=false;
+export function setAnalysisEditPreparing(v){return analysisEditPreparing=v}
+export let deferAutomatic3D=false;
+export function setDeferAutomatic3D(v){return deferAutomatic3D=v}
+export let threeDDirty=false;
+export function setThreeDDirty(v){return threeDDirty=v}
+export let threeDApplying=false;
+export function setThreeDApplying(v){return threeDApplying=v}
+export let threeDCancelRequested=false;
+export function setThreeDCancelRequested(v){return threeDCancelRequested=v}
+export let current3DVolume=null;
+export function setCurrent3DVolume(v){return current3DVolume=v}
+export let memoryGpuPreviewActive=false;
+export function setMemoryGpuPreviewActive(v){return memoryGpuPreviewActive=v}
+export let ctRangeMode='auto';
+export function setCtRangeMode(v){return ctRangeMode=v}
+export let ctRangeProfile=null;
+export function setCtRangeProfile(v){return ctRangeProfile=v}
+export let filterOrder=[];
+export function setFilterOrder(v){return filterOrder=v}
+export let filterRebuildTimer=null;
+export function setFilterRebuildTimer(v){return filterRebuildTimer=v}
+export let filterRebuildRevision=0;
+export function setFilterRebuildRevision(v){return filterRebuildRevision=v}
+export function incFilterRebuildRevision(prefix){return prefix?++filterRebuildRevision:filterRebuildRevision++}
+export let segmentRenderTimer=null;
+export function setSegmentRenderTimer(v){return segmentRenderTimer=v}
+export let threeRenderMode='surface';
+export function setThreeRenderMode(v){return threeRenderMode=v}
+export let cutControlPreviewRaf=0;
+export function setCutControlPreviewRaf(v){return cutControlPreviewRaf=v}
+export let smoothingRefreshTimer=null;
+export function setSmoothingRefreshTimer(v){return smoothingRefreshTimer=v}
+export let ipadGpuTargetSide=512;
+export function setIpadGpuTargetSide(v){return ipadGpuTargetSide=v}
+export let residentMprReadbackDisabled=false;
+export function setResidentMprReadbackDisabled(v){return residentMprReadbackDisabled=v}
+export let residentMprEpoch=0;
+export function setResidentMprEpoch(v){return residentMprEpoch=v}
+export function incResidentMprEpoch(prefix){return prefix?++residentMprEpoch:residentMprEpoch++}
+export let residentGpuUploadSeriesId=null;
+export function setResidentGpuUploadSeriesId(v){return residentGpuUploadSeriesId=v}
+export let dicomCodecModulePromise=null;
+export function setDicomCodecModulePromise(v){return dicomCodecModulePromise=v}
+export let gpuPrewarmScheduled=false;
+export function setGpuPrewarmScheduled(v){return gpuPrewarmScheduled=v}
+export let gpuPrewarmIndex=0;
+export function setGpuPrewarmIndex(v){return gpuPrewarmIndex=v}
+export function incGpuPrewarmIndex(prefix){return prefix?++gpuPrewarmIndex:gpuPrewarmIndex++}
+export let sourceOrthogonalPlaneCacheBytes=0;
+export function setSourceOrthogonalPlaneCacheBytes(v){return sourceOrthogonalPlaneCacheBytes=v}
+export let mpr3DWindowLutKey='';
+export function setMpr3DWindowLutKey(v){return mpr3DWindowLutKey=v}
+export let mpr3DWindowLutTable=new Uint32Array(256);
+export function setMpr3DWindowLutTable(v){return mpr3DWindowLutTable=v}
+export let nextSegmentMaskVolumeId=1;
+export function setNextSegmentMaskVolumeId(v){return nextSegmentMaskVolumeId=v}
+export function incNextSegmentMaskVolumeId(prefix){return prefix?++nextSegmentMaskVolumeId:nextSegmentMaskVolumeId++}
+export let sourceMprWarmupToken=0;
+export function setSourceMprWarmupToken(v){return sourceMprWarmupToken=v}
+export function incSourceMprWarmupToken(prefix){return prefix?++sourceMprWarmupToken:sourceMprWarmupToken++}
+export let sourceMprWarmupPlane=null;
+export function setSourceMprWarmupPlane(v){return sourceMprWarmupPlane=v}
+export let cutResultPreviewRevision=0;
+export function setCutResultPreviewRevision(v){return cutResultPreviewRevision=v}
+export function incCutResultPreviewRevision(prefix){return prefix?++cutResultPreviewRevision:cutResultPreviewRevision++}
+export let cutResultPreviewTimer=null;
+export function setCutResultPreviewTimer(v){return cutResultPreviewTimer=v}
+export let cutBvhModulePromise=null;
+export function setCutBvhModulePromise(v){return cutBvhModulePromise=v}
+export let cutRaycastMaterial=null;
+export function setCutRaycastMaterial(v){return cutRaycastMaterial=v}
