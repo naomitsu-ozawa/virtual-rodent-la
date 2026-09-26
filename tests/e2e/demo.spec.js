@@ -41,3 +41,25 @@ test('public mouse CT demo loads, decodes and becomes ready', async ({ page }) =
   await step('decode did not fail', async () => expect(await badge.textContent()).not.toMatch(/failed/i));
   await step('no uncaught errors', async () => expect(errors).toEqual([]));
 });
+
+test('adding a filter changes the 2D axial image', async ({ page }) => {
+  // CI has no GPU, so this exercises the CPU filter path; the GPU/full-
+  // resolution preview paths are guarded by tests/static/render-plane-calls.
+  test.setTimeout(300_000);
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#demo-button').click();
+  const badge = page.locator('.ready-badge').first();
+  await expect(badge).toContainText(/ready/i, { timeout: 240_000 });
+  const hash = () => page.evaluate(() => {
+    const c = document.querySelector('#axial-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let h = 0; for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i]) >>> 0; return h;
+  });
+  await page.waitForTimeout(1000);
+  const before = await hash();
+  await page.selectOption('#filter-add-select', 'gaussian');
+  await page.locator('#filter-add-button').click();
+  await expect.poll(hash, { timeout: 120_000, intervals: [500] }).not.toBe(before);
+  expect(errors).toEqual([]);
+});

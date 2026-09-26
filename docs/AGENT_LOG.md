@@ -38,6 +38,120 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — fix/filter-2d-preview
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner report: filter effect is not visible in 2D (also on 189).
+
+### Root cause (bug present since at least build 150)
+- `renderPlane(p, revision, idx)` returns immediately unless `revision`
+  equals `planeRenderRevision[p]`. `rebuildActiveFilters` called
+  `await renderPlane(previewPlane)` with no revision in both the in-memory
+  WebGPU preview path and the full-resolution (source-backed) path, so the
+  preview was never drawn — while the footer still said
+  "2D preview · WEBGPU COMPUTE · N stage(s)". The CPU path renders via its
+  own apply* functions and was unaffected (CI uses it, so CI never showed
+  the bug). Checked archive/previews: same call in builds 150–184.
+
+### What changed
+- Both calls now pass `++planeRenderRevision[previewPlane]` and the slider
+  index (same as `safeRenderPlane`), so the filtered main-view plane is
+  actually painted. On GPU failure the existing fallback to the CPU stack
+  now also becomes reachable.
+- `tests/static/render-plane-calls.test.js`: every `renderPlane(...)` call
+  in docs/*.js must pass 3 arguments (verified to fail on the old code).
+- `tests/e2e/demo.spec.js`: adding a Gaussian filter must change the axial
+  canvas (CPU path in CI).
+- Build 191 → 192.
+
+### Follow-up in the same PR: keep the GPU volume on filter changes (owner choice "A", step 1)
+- Owner report on the preview: pressing "add filter" makes the 3D volume
+  disappear. Pre-existing since <= build 172: `scheduleFilterRebuild`
+  called `deactivateMedicalVolume()` in volume mode, which also switches to
+  surface mode (no mesh built yet → empty 3D view). Reason: the GPU volume
+  renderer uploads the original DICOM pixel bytes (`packedRgSlice`, rg8unorm
+  texture keyed by series id) and **cannot display filtered data**;
+  `activateMedicalVolume` refused to start while filters were active.
+- Step 1 (this PR): filter changes no longer deactivate the volume; volume
+  mode may be entered while filters are active; a badge
+  (`#three-filter-badge`, i18n `volumeUnfiltered`) says the volume shows
+  the original CT; "3D rebuild" with active filters from volume mode
+  switches to surface first (same end result as before). Badge updated from
+  `set3DState` and `updateRenderModeControl`.
+- Step 2 (next PR): upload filtered volumes to the GPU volume renderer
+  (convert CT values back to stored 16-bit values, pack rg8, reduced/mobile
+  path and bricks too, texture keyed by series + filter signature).
+- Build 192 → 193.
+
+### Step 2 in the same PR: filters shown in the GPU volume (build 194)
+- Owner feedback on 193: wants filters in the GPU volume; filter changes
+  feel slow; 2D slice dragging is jerky with filters.
+- Key constraint found: `MedicalVolumeRenderer.support()` accepts only
+  **source-backed** series (decoded size > 256 MB, `dicom.js`), and uploads
+  raw DICOM pixel bytes into an rg8 "16-bit" texture decoded in the
+  shaders as `(lo + hi*256 - signedBias) * slope + intercept`. The owner's
+  volume-mode data is therefore source-backed; an in-memory filtered copy
+  (first idea) does not apply and would not fit on iPad.
+- Renderer (`medical-volume.js`):
+  - `packCtSlice(values, calibration)`: CT values → same rg8 encoding
+    (exact inverse of the shader decode; tests/unit/volume-pack.test.js).
+  - `ensure(v)`: if `v.filterSignature` + `v.sliceData(z)` are present,
+    upload those slices; same series + texture plan but different data
+    **rewrites the existing texture in place** (no second texture on iPad;
+    the image changes progressively). `dataSignature` is part of the cache
+    key ('partial' while rewriting). `v.isCancelled()` aborts uploads.
+- App (`app.js`):
+  - `gpuVolumeTarget()`: source volume + `filterSignature` + a slice
+    provider over `getFilteredSourceAxialBlock` (8-slice blocks), i.e. the
+    same GPU filters as the full-resolution 2D/3D paths, streamed.
+  - `refreshGpuVolumeData()`: runs when filter settings **settle**
+    (`scheduleFilterRebuild(0)`: add/remove/change events; not during
+    slider drags), after a 3D rebuild, and via `activateMedicalVolume`.
+    Token-based cancellation; duplicate requests for the same settings are
+    skipped. Removing all filters rewrites the original data back.
+  - Badge (`volumeUnfiltered`) now means "volume does not match current
+    filters yet" (pending / partial / removed).
+  - The step-1 "switch to surface on filtered 3D rebuild" is removed.
+  - `schedulePlaneRender`: per-slice filtered planes (memory GPU preview
+    or source-backed with filters) wait for a 90 ms pause during slider
+    drags instead of filtering every step.
+- Not verifiable in CI (no WebGPU). Device checks: filtered volume after
+  releasing a filter slider, progressive update + badge, removing filters
+  restores the original, 2D slice drags smoother with filters.
+- Build 193 → 194.
+
+### Owner decision on 194: explicit apply for the GPU volume (build 195)
+- "Automatic volume update on filter changes takes too long; apply
+  explicitly, and only 2D updates immediately."
+- Removed the automatic `refreshGpuVolumeData()` on settled filter changes
+  (and the `settled` parameter). The volume is rewritten only by
+  **"3D rebuild"** (`rebuildCurrent3D` records `gpuVolumeApplied =
+  {seriesId, signature}` and then refreshes the volume). Removing filters
+  is also applied by rebuild.
+- `gpuVolumeDataSignature()` = signature applied by the last rebuild of this
+  series if it still equals the current settings, else '' (original).
+  Entering volume mode uses it (applied filters, or the original CT).
+- Badge: shown while the volume texture differs from the current filter
+  settings; text `volumeFilterPending` ("not updated · press Rebuild 3D")
+  or `volumeFilterUpdating` during a rewrite. `volumeUnfiltered` removed.
+- 2D: immediate preview + 90 ms slice-drag debounce unchanged.
+
+### Owner report on 195: "Rebuild 3D builds meshes, not the volume" (build 196)
+- `rebuildCurrent3D` always built surface meshes (`render3D`) and only then
+  rewrote the volume. The meshes are created after `setThreeVolumeOverlay
+  (true)` hid the old ones, so they were drawn over the volume, and the
+  mesh build was most of the wait.
+- Now in volume mode (active GPU volume, source-backed series) "Rebuild 3D"
+  only records the applied filters and rewrites the volume texture
+  (`refreshGpuVolumeData`), then marks 3D current. `surfaceRebuildPending`
+  makes the switch back to surface mode rebuild the meshes; a normal
+  surface rebuild clears it. `cancel3DRebuild` also cancels a running
+  volume rewrite (token bump).
+
+### Open question for the owner
+- Only the main view plane is re-rendered with the preview (by design,
+  for speed); the other planes show the filter once they are re-rendered
+  (e.g. when scrolled). Whether all planes should refresh is a UX choice.
 ## 2026-09-26 — feat/lasso-region-select
 
 **Agent:** Claude (via claude.ai)

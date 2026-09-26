@@ -38,6 +38,20 @@ async function packedRgSlice(meta){
  return out;
 }
 
+// Pack one axial slice of CT values (e.g. a filtered slice) into the same rg8
+// 16-bit encoding as packedRgSlice, so the shaders decode it with the series
+// calibration unchanged: stored = round((ct - intercept) / slope) + bias.
+export function packCtSlice(values,calibration){
+ const n=values.length,out=new Uint8Array(n*2);
+ const slope=calibration.slope||1,intercept=calibration.intercept||0,bias=calibration.signed?32768:0;
+ for(let i=0;i<n;i++){
+  let w=Math.round((values[i]-intercept)/slope)+bias;
+  w=w<0?0:(w>65535?65535:w);
+  out[i*2]=w&255;out[i*2+1]=w>>>8;
+ }
+ return out;
+}
+
 export function volumeShader(){
  return `
 struct Uniforms{
@@ -646,11 +660,23 @@ export class MedicalVolumeRenderer{
  async ensure(v,{prepareBricks=true,previewSide=0,maxTextureBytes=0,targetInPlane=0}={}){
   const support=this.support(v,{maxTextureBytes,targetInPlane});if(!support.ok)throw new Error(support.reason);
   const s=v.series,plan=support.plan,[tw,th,td]=plan.dims,planSignature=plan.dims.join('x');
+  // v.filterSignature + v.sliceData(z) -> CT values: upload those (e.g. filtered
+  // slices) instead of the original DICOM pixels. Same series and texture plan
+  // but different data rewrites the existing texture in place (no second
+  // texture: GPU memory is tight on iPad), so the old image stays until replaced.
+  const dataSignature=v.filterSignature&&typeof v.sliceData==='function'?String(v.filterSignature):'';
+  let inPlace=false;
   if(this.seriesId===s.id&&this.texture&&this.planSignature===planSignature){
-   this.volume=v;if(prepareBricks)await this.ensureBricks();return;
+   if((this.dataSignature||'')===dataSignature){this.volume=v;if(prepareBricks)await this.ensureBricks();return;}
+   inPlace=true;
   }
-  this.resetData();this.volume=v;this.onStatus(plan.reduced?'WEBGPU MOBILE VOLUME UPLOAD':'WEBGPU VOLUME UPLOAD');
+  if(!inPlace)this.resetData();
+  this.volume=v;this.onStatus(plan.reduced?'WEBGPU MOBILE VOLUME UPLOAD':'WEBGPU VOLUME UPLOAD');
   const first=s.slices[0],signed=!!first.signed;let texture,popped=false;
+  // v.isCancelled(): lets the caller stop an upload superseded by a newer one
+  const cancelled=()=>{if(typeof v.isCancelled==='function'&&v.isCancelled())throw new Error('__SUPERSEDED__')};
+  const sliceBytes=dataSignature?(async z=>{cancelled();return packCtSlice(await v.sliceData(z),first)}):(z=>{cancelled();return packedRgSlice(s.slices[z])});
+  if(inPlace)this.dataSignature='partial';
   let preview=null,previewSourceZ=null,previewX=null,previewY=null;
   const previewMax=Math.max(0,Math.floor(previewSide||0));
   if(previewMax>0&&!plan.reduced){
@@ -666,7 +692,7 @@ export class MedicalVolumeRenderer{
   }
   this.device.pushErrorScope?.('validation');
   try{
-   texture=this.device.createTexture({label:plan.reduced?'VRL mobile reduced DICOM volume':'VRL DICOM volume',size:{width:tw,height:th,depthOrArrayLayers:td},dimension:'3d',format:'rg8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
+   texture=inPlace?this.texture:this.device.createTexture({label:plan.reduced?'VRL mobile reduced DICOM volume':'VRL DICOM volume',size:{width:tw,height:th,depthOrArrayLayers:td},dimension:'3d',format:'rg8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
    if(plan.reduced){
     const xMap=new Uint32Array(tw),yMap=new Uint32Array(th),zMap=new Uint32Array(td);
     for(let x=0;x<tw;x++)xMap[x]=tw<=1?0:Math.round(x*(s.columns-1)/(tw-1));
@@ -674,7 +700,7 @@ export class MedicalVolumeRenderer{
     for(let z=0;z<td;z++)zMap[z]=td<=1?0:Math.round(z*(s.slices.length-1)/(td-1));
     const rowBytes=tw*2,rowStride=Math.ceil(rowBytes/256)*256,reducedSlice=new Uint8Array(rowStride*th);
     for(let tz=0;tz<td;tz++){
-     const packed=await packedRgSlice(s.slices[zMap[tz]]);reducedSlice.fill(0);
+     const packed=await sliceBytes(zMap[tz]);reducedSlice.fill(0);
      for(let y=0;y<th;y++){
       const srcRow=yMap[y]*s.columns*2,dstRow=y*rowStride;
       for(let x=0;x<tw;x++){const so=srcRow+xMap[x]*2,doff=dstRow+x*2;reducedSlice[doff]=packed[so];reducedSlice[doff+1]=packed[so+1]}
@@ -684,7 +710,7 @@ export class MedicalVolumeRenderer{
     }
    }else{
     for(let z=0;z<s.slices.length;z++){
-     const packed=await packedRgSlice(s.slices[z]);
+     const packed=await sliceBytes(z);
      this.device.queue.writeTexture({texture,origin:{x:0,y:0,z}},packed,{bytesPerRow:s.columns*2,rowsPerImage:s.rows},{width:s.columns,height:s.rows,depthOrArrayLayers:1});
      if(preview&&previewSourceZ){
       const pz=previewSourceZ[z];
@@ -702,12 +728,12 @@ export class MedicalVolumeRenderer{
    const validation=await this.device.popErrorScope?.();popped=true;if(validation)throw new Error(validation.message);
   }catch(e){
    if(!popped){try{await this.device.popErrorScope?.()}catch{}}
-   texture?.destroy?.();throw e;
+   if(!inPlace)texture?.destroy?.();throw e;
   }
   const px=s.columns*s.spacingX,py=s.rows*s.spacingY,pz=s.slices.length*s.spacingZ,maxP=Math.max(px,py,pz,1),scale=3.3/maxP;
   this.halfExtents=[px*scale*.5,py*scale*.5,pz*scale*.5];
   const effX=px/tw,effY=py/th,effZ=pz/td;this.step=Math.max(1e-5,Math.min(effX,effY,effZ)*scale*.85);
-  this.calibration={slope:first.slope,intercept:first.intercept,signedBias:signed?32768:0};this.texture=texture;this.textureDims=[tw,th,td];this.reducedVolume=plan.reduced;this.textureBytes=plan.bytes;this.planSignature=planSignature;this.seriesId=s.id;this.bricksReady=false;this.previewVolume=preview;this.previewPlaneBuffers={coronal:null,sagittal:null};
+  this.calibration={slope:first.slope,intercept:first.intercept,signedBias:signed?32768:0};this.texture=texture;this.textureDims=[tw,th,td];this.reducedVolume=plan.reduced;this.textureBytes=plan.bytes;this.planSignature=planSignature;this.dataSignature=dataSignature;this.seriesId=s.id;this.bricksReady=false;this.previewVolume=preview;this.previewPlaneBuffers={coronal:null,sagittal:null};
   if(prepareBricks)await this.ensureBricks();else this.onStatus(plan.reduced?'WEBGPU MOBILE VOLUME RESIDENT':'WEBGPU VOLUME RESIDENT');
  }
  async ensureBricks(){
