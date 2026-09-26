@@ -102,8 +102,24 @@ drags in real time (a feature built in builds 124–127). Owner had filters on.
   before the panel constants exist (TDZ) → guarded by
   `mpr3DSlicePanelReady`. Lint/unit tests cannot catch this ordering; the
   E2E page-error checks do.
-- 2D update latency with filters (runner waits for the in-flight slice):
-  pending owner decision.
+- 2D update latency with filters: the runner waits for the in-flight
+  (already stale) slice, so up to two computations of delay.
+
+### Follow-up (build 214): owner choice "A, but use the caches"
+- While a filtered plane's slider moves, `paintInstantPlaneWhileSliding`
+  shows the best image available immediately: (1) the full-resolution
+  filtered slice from the 2D filter caches (`sourceFilterCacheGet` /
+  `memoryFilterPreviewGet`, key `signature|plane|index`); (2) the GPU
+  volume's CPU preview copy when the texture holds the current filters
+  (`gpuVolumeShowsCurrentFilters`, `paintResidentCachedMprPreview(p,idx,
+  true)`; not available with the reduced iPad plan, which has no preview
+  copy); (3) the low-res 3D preview cache (its signature includes the
+  filter stages, so it is filtered when built for them); (4) original data
+  (source MPR memory cache / unfiltered preview). The runner is used only
+  when nothing instant exists. The full-resolution filtered slice is
+  computed on release (change event → immediate render).
+- An instant image bumps `planeRenderRevision[p]`, so an older slice still
+  being filtered skips its paint instead of overwriting the newer image.
 
 ---
 
