@@ -87,6 +87,11 @@ test('project file round-trip restores filters and segments', async ({ page }) =
   await page.locator('#project-save').click();
   const file = await (await download).path();
   expect((await download).suggestedFilename()).toMatch(/\.vrlab$/);
+  // the project records whether the filters were applied to 3D (build 206+)
+  const { unzipSync, strFromU8 } = await import('fflate');
+  const saved = JSON.parse(strFromU8(unzipSync(new Uint8Array(await (await import('node:fs/promises')).readFile(file)))['project.json']));
+  expect(typeof saved.threeD?.filtersApplied).toBe('boolean');
+  expect(saved.filters.order.map(f => f.key)).toEqual(['gaussian']);
 
   // fresh session, same data, open the project
   await loadDemo();

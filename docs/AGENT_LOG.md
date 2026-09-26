@@ -38,6 +38,36 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — fix/project-restore-3d-filters
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner report on 205 (iPad, source-backed data, GPU volume):
+after opening a project + DICOM, the filters were restored in 2D but the GPU
+volume showed "not updated · press Rebuild 3D". Expected: the saved state
+(filters applied to 3D) is restored.
+
+### Cause
+- Since the explicit-apply change, the volume shows filters only after
+  "Rebuild 3D" (`gpuVolumeApplied`), and project files did not record
+  whether filters had been applied to 3D, so loading restored 2D only.
+
+### What changed
+- Projects save `threeD.filtersApplied` (current filters applied to the
+  GPU volume, or 3D not stale).
+- Loading: if applied (or the flag is missing — files saved before 206
+  count as applied when they contain filters) on a source-backed series,
+  set `gpuVolumeApplied` to the restored signature and set
+  `applyVolumeAfterFilterRebuild`; the source-backed filter rebuild consumes
+  it after it has settled (`revision===filterRebuildRevision`) and calls
+  `refreshGpuVolumeData()` — so the rewrite is not superseded by the
+  rebuilds the replay triggers. If the volume is activated later,
+  `activateMedicalVolume` uses the filtered target anyway. With the same
+  data/filters/plan the texture comes from the device cache.
+- E2E round-trip checks `threeD.filtersApplied` is written.
+- Build → 206.
+
+---
+
 ## 2026-09-26 — feat/mac-workspace-ui
 
 **Agent:** Claude (via claude.ai)
