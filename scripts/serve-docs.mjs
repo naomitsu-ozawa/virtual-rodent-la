@@ -1,12 +1,12 @@
 // Minimal static file server for docs/, mimicking GitHub Pages (no bundling,
 // no transforms). Used by Playwright and handy for local manual testing:
-//   node scripts/serve-docs.mjs [port]
+//   node scripts/serve-docs.mjs [port] [directory=docs]
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 
-const root = resolve('docs');
 const port = Number(process.argv[2] || process.env.PORT || 4173);
+const root = resolve(process.argv[3] || 'docs');
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -26,4 +26,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404).end('Not found');
   }
-}).listen(port, () => console.log(`Serving docs/ at http://localhost:${port}`));
+}).listen(port, () => console.log(`Serving ${root} at http://localhost:${port}`));

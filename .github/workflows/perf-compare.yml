@@ -1,0 +1,35 @@
+name: Perf compare (temporary diagnostic)
+
+# Temporary: compares slider responsiveness of main vs this PR. Results are
+# emitted as run annotations. Remove once the regression is understood.
+on:
+  pull_request:
+    paths: ['docs/**', 'scripts/perf-sliders.mjs', '.github/workflows/perf-compare.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Export main build
+        run: mkdir docs-main && git archive origin/main docs | tar -x -C docs-main --strip-components=1
+      - name: Measure
+        run: |
+          node scripts/serve-docs.mjs 4173 docs-main &
+          node scripts/serve-docs.mjs 4174 docs &
+          sleep 2
+          node scripts/perf-sliders.mjs http://localhost:4173/ http://localhost:4174/ | tee perf.txt
+      - name: Publish as annotations
+        if: always()
+        run: while IFS= read -r line; do echo "::notice title=perf::$line"; done < perf.txt
