@@ -14,7 +14,7 @@ export default defineConfig({
     ],
   },
   test: {
-    include: ['tests/static/**/*.test.js', 'tests/unit/**/*.test.js'],
+    include: ['tests/static/**/*.test.js', 'tests/unit/**/*.test.js', 'tests/tools/**/*.test.js'],
     environment: 'node',
   },
 });

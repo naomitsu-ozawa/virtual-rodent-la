@@ -54,6 +54,7 @@
 - `docs/mask-ops.js` — 閾値・モルフォロジー・穴埋めなどのマスク演算
 - `docs/run-length.js` — セグメントのラン長表現・集合演算・連結成分
 - `docs/mesh-geometry.js` — サーフェスメッシュ生成・STL書き出し
+- `docs/gpu-shaders.js` — 画像フィルター等のWebGPUコンピュートシェーダ (WGSL)
 - `docs/i18n.js` — 日本語/英語の表示文字列
 - `docs/utils.js` — 汎用ユーティリティ
 - `docs/style.css` — UIスタイル

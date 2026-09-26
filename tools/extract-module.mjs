@@ -81,17 +81,18 @@ if (missing.size) {
   const real = new Map();
   for (const n of want) {
     const { decl, stmt } = top.get(n);
-    walk.ancestor(decl || stmt, {
-      Identifier(node, _st, anc) {
-        if (!missing.has(node.name)) return;
+    // NB: acorn-walk reports assignment targets / patterns as 'VariablePattern',
+    // not 'Identifier' — both must be checked or writes to state are missed.
+    const visit = (node, _st, anc) => {
+        if (node.type !== 'Identifier' || !missing.has(node.name)) return;
         const parent = anc[anc.length - 2];
         if (parent?.type === 'MemberExpression' && parent.property === node && !parent.computed) return;
         if (parent?.type === 'Property' && parent.key === node && !parent.computed && !parent.shorthand) return;
         if (parent?.type === 'MethodDefinition' && parent.key === node) return;
         if (parent?.type === 'PropertyDefinition' && parent.key === node) return;
         (real.get(node.name) || real.set(node.name, new Set()).get(node.name)).add(n);
-      },
-    });
+    };
+    walk.ancestor(decl || stmt, { Identifier: visit, VariablePattern: visit });
   }
   if (real.size) fail('moved code depends on declarations that would stay behind:\n' +
     [...real].map(([dep, users]) => `  ${dep}  <- used by ${[...users].join(', ')}  (${top.get(dep).kind})`).join('\n'));
@@ -130,7 +131,8 @@ const lastImport = ast.body.filter(n => n.type === 'ImportDeclaration').at(-1);
 const tag = src.match(/\?v=([0-9]+-build[0-9.]+)/)?.[1];
 const spec = './' + basename(outPath) + (tag ? `?v=${tag}` : '');
 const importLine = `\nimport { ${[...want].sort().join(', ')} } from '${spec}';`;
-edits.push({ start: lastImport.end, end: lastImport.end, text: importLine });
+const at = lastImport ? lastImport.end : 0;
+edits.push({ start: at, end: at, text: lastImport ? importLine : importLine.trimStart() + '\n' });
 
 let out = src;
 for (const e of edits.sort((a, b) => b.start - a.start)) {
