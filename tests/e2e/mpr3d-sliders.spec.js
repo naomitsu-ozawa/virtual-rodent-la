@@ -20,13 +20,14 @@ test('3D plane slice sliders appear with the plane and drive the 2D slice', asyn
   await expect(page.locator('#mpr3d-slider-coronal')).toBeHidden();
   await expect(proxy).toHaveAttribute('max', await page.locator('#axial-slider').getAttribute('max'));
 
-  // moving the 3D slider moves the real axial slice
+  // moving the 3D slider moves the real axial slice — in the reverse direction
+  // (owner request): 3D value v <-> slice (max - v); synthetic series max = 11
   await proxy.evaluate(el => { el.value = '3'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
-  await expect(page.locator('#axial-slider')).toHaveValue('3');
-  await expect(page.locator('#axial-label')).toHaveText('4');
+  await expect(page.locator('#axial-slider')).toHaveValue('8');
+  await expect(page.locator('#axial-label')).toHaveText('9');
   // and follows the real slider
   await page.locator('#axial-slider').evaluate(el => { el.value = '7'; el.dispatchEvent(new Event('input', { bubbles: true })); });
-  await expect(proxy).toHaveValue('7');
+  await expect(proxy).toHaveValue('4');
 
   // plane opacity row drives the current mode's opacity setting (surface in CI)
   const opacity = page.locator('#mpr3d-opacity');

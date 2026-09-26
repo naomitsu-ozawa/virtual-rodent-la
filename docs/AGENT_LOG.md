@@ -121,6 +121,12 @@ drags in real time (a feature built in builds 124–127). Owner had filters on.
 - An instant image bumps `planeRenderRevision[p]`, so an older slice still
   being filtered skips its paint instead of overwriting the newer image.
 
+### Follow-up (build 215): reversed 3D slider direction
+- Owner: reverse the direction of all three 3D-panel slice sliders (2D
+  sliders unchanged). Implemented by value mapping (3D value v ↔ slice
+  max − v), not CSS `direction:rtl`, because the global precision-drag
+  handler maps pointer movement to value increases.
+
 ---
 
 ## 2026-09-26 — feat/project-save-share
