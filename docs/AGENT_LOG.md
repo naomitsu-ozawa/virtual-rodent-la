@@ -38,6 +38,30 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — feat/mac-workspace-ui
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner: "make the Mac UI the same as iPad; the iPad UI is easier".
+
+### What changed
+- New `useWorkspaceUi()` in app.js = `isIPadRuntime() || isDesktopMac()`,
+  with URL override `?ui=classic` (old desktop layout) / `?ui=workspace`
+  (force, used by CI). It now guards only the **layout** code:
+  `initIPadWorkspaceUi`, `requestIPadSettingsTab`, the workspace resize
+  refresh.
+- **Performance settings stay iPad-only** (`isIPadRuntime()`): GPU texture
+  plan (512/768 target side) and its selector, source slice/orthogonal cache
+  limits, volume-io memory limit. So Mac keeps full-size textures/caches.
+- CSS for the workspace UI is keyed on `html.vrl-ipad-ui` only (no
+  touch/pointer media queries), so it applies unchanged on Mac.
+- Smoke tests: `?ui=workspace` boots with toolbar + drawer; `?ui=classic`
+  and default Linux stay classic.
+- Names still say "iPad" (`initIPadWorkspaceUi`, `vrl-ipad-ui`, i18n
+  `ipad*`) — kept to avoid churn; they now mean "workspace UI".
+- Build → 203 (202 is used by the open PR #23 preview).
+
+---
+
 ## 2026-09-26 — fix/filter-2d-preview
 
 **Agent:** Claude (via claude.ai)

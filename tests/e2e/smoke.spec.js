@@ -48,3 +48,20 @@ test('language toggle switches between Japanese and English', async ({ page }) =
   await toggle.click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
 });
+
+// Workspace UI (iPad layout, also used on desktop Mac). CI runs on Linux, so
+// force it with ?ui=workspace; ?ui=classic must keep the old desktop layout.
+test('workspace UI boots with its toolbar and drawer', async ({ page }) => {
+  await page.goto('/?ui=workspace');
+  await expect(page.locator('html')).toHaveClass(/vrl-ipad-ui/);
+  await expect(page.locator('#ipad-workspace-toolbar')).toBeVisible();
+  await expect(page.locator('#demo-button')).toBeVisible();
+  await expect(page.locator('#open-folder')).toBeVisible();
+});
+
+test('classic UI can be forced and is the default on non-Apple desktops', async ({ page }) => {
+  await page.goto('/?ui=classic');
+  await expect(page.locator('html')).not.toHaveClass(/vrl-ipad-ui/);
+  await page.goto('/');
+  await expect(page.locator('html')).not.toHaveClass(/vrl-ipad-ui/); // CI: Linux
+});
