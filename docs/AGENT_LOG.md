@@ -38,6 +38,35 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — claude/dicom-viewer-handoff-eaqyyu
+
+**Agent:** Claude (Claude Code, handed over from the claude.ai chat)
+**Task:** Checkpoint at a natural pause after PR #30 (builds 211–215) was
+merged into `main`. No code changes.
+
+### State at this point
+- `main` = build 215 (`2026.09.26-215`). The MPR / 3D-plane work is
+  complete: real-time 3D plane follow during slice drags, 3D slice panel
+  (sliders reversed, opacity row), planes visible during camera moves,
+  instant 2D images while dragging filtered slices.
+- Details are in the `fix/mpr3d-live-follow` entry below.
+
+### Follow-up / open questions
+- Check on a real iPad: rotation performance with planes kept visible
+  (`mpr3DHideDuringCameraMoves=false`; set true to restore the old
+  behaviour).
+- With the reduced iPad GPU plan there is no CPU preview copy, so instant
+  images while dragging filtered slices fall back to the low-res preview or
+  the original data.
+- CI has no GPU: the filtered GPU paths are covered only by manual checks on
+  the Pages preview.
+- Next candidates (from `IMPLEMENTATION_PLAN.md`): finish splitting
+  `docs/app.js` (UI shell, feature modules), dual-threshold bone extraction,
+  3D connectivity cleanup, brush/eraser correction, moving heavy processing
+  off the main thread, compressed DICOM Transfer Syntax support.
+
+---
+
 ## 2026-09-26 — fix/mpr3d-live-follow
 
 **Agent:** Claude (via claude.ai)
