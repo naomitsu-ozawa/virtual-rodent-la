@@ -38,6 +38,97 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — fix/mpr3d-live-follow
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner report: (1) planes shown in the 3D view have no slice UI in
+3D-only layouts; (2) in split view, the 3D planes no longer follow slice
+drags in real time (a feature built in builds 124–127). Owner had filters on.
+
+### Cause of (2) — regression from build 194 (PR #21)
+- Compared with 184.10, all live-3D-MPR functions are identical; the only
+  difference in `schedulePlaneRender` was my 90 ms debounce for per-slice
+  filtered planes. The **axial** 3D plane copies the 2D axial canvas
+  (`refreshMpr3DPlaneTexture` at the end of `paintSourcePlane`), so while
+  the debounce held 2D rendering during a drag, the 3D axial plane froze.
+  (Coronal/sagittal use `pushCachedMpr3DPlane` during slides and were not
+  affected.)
+
+### What changed
+- `docs/latest-runner.js`: `latestOnlyRunner(task)` — never concurrent,
+  re-runs once with the latest state after each run, intermediate requests
+  dropped (unit-tested). `schedulePlaneRender` now uses one runner per plane
+  for per-slice filtered planes during drags (the revision is not bumped on
+  every step, so the in-flight render is not superseded). Real-time follow
+  again, without the GPU work pile-up that made drags jerky. Debounce removed.
+- 3D slice sliders: `#mpr3d-slice-controls` under the 3D overlay buttons,
+  one row per plane visible in 3D (`mpr3DVisibility`). They drive the real
+  plane sliders via input/change events and are kept in sync from
+  `schedulePlaneRender`, `syncMpr3DOverlayPresentation`,
+  `setMpr3DOverlayVisible` and series load. The global precision-drag and
+  slider fast-interaction logic apply to them automatically.
+- E2E `tests/e2e/mpr3d-sliders.spec.js` (in CI): slider appears with the
+  plane, drives the 2D slice, follows the 2D slider, hides with the plane.
+  CI cannot exercise the filtered GPU path (no WebGPU).
+- Build → 211.
+
+### Follow-up in the same PR (build 212): planes vanished in GPU volume mode
+- Owner: in GPU volume mode, the 3D plane images disappear while dragging
+  either slice slider (3D or 2D).
+- Cause — regression from build 191 (PR #20, slider fast interaction): in
+  volume mode the planes are drawn by the volume renderer from
+  `render(..., {indices, visible, ...})`; the render loop passes
+  `visible` = section-view planes only while `fastInteractionActive` (by
+  design for camera rotation). PR #20 turned fast interaction on for every
+  slider drag, so slice drags hid the planes. (Lesson: check every consumer
+  of a shared flag before reusing it.)
+- Fix: `setFastInteraction(active, keepOverlays)` records
+  `fastKeepOverlays`; the render loop hides planes only when
+  `fastInteractionActive && !fastKeepOverlays`. Camera moves unchanged.
+  Slice indices are passed to the renderer every frame, so planes follow
+  drags in real time again.
+
+### Follow-up (build 213): owner feedback on 212
+- Planes now visible while dragging sliders, but hidden while rotating:
+  that is the original 184.10 behaviour (render loop hides regular planes
+  during camera moves). Owner prefers them visible →
+  `mpr3DHideDuringCameraMoves=false` (set true to restore; watch rotation
+  performance on iPad).
+- Plane opacity slider was far away (the workspace UI moves
+  `.mpr-opacity-settings` into the drawer). Added an "Opacity" row to the
+  3D slice panel (`#mpr3d-opacity`) proxying `mprVolumeOpacity` in volume
+  mode or `mprSurfaceOpacity` otherwise; synced from
+  `updateMpr3DOpacityControls`. That function is also called at startup,
+  before the panel constants exist (TDZ) → guarded by
+  `mpr3DSlicePanelReady`. Lint/unit tests cannot catch this ordering; the
+  E2E page-error checks do.
+- 2D update latency with filters: the runner waits for the in-flight
+  (already stale) slice, so up to two computations of delay.
+
+### Follow-up (build 214): owner choice "A, but use the caches"
+- While a filtered plane's slider moves, `paintInstantPlaneWhileSliding`
+  shows the best image available immediately: (1) the full-resolution
+  filtered slice from the 2D filter caches (`sourceFilterCacheGet` /
+  `memoryFilterPreviewGet`, key `signature|plane|index`); (2) the GPU
+  volume's CPU preview copy when the texture holds the current filters
+  (`gpuVolumeShowsCurrentFilters`, `paintResidentCachedMprPreview(p,idx,
+  true)`; not available with the reduced iPad plan, which has no preview
+  copy); (3) the low-res 3D preview cache (its signature includes the
+  filter stages, so it is filtered when built for them); (4) original data
+  (source MPR memory cache / unfiltered preview). The runner is used only
+  when nothing instant exists. The full-resolution filtered slice is
+  computed on release (change event → immediate render).
+- An instant image bumps `planeRenderRevision[p]`, so an older slice still
+  being filtered skips its paint instead of overwriting the newer image.
+
+### Follow-up (build 215): reversed 3D slider direction
+- Owner: reverse the direction of all three 3D-panel slice sliders (2D
+  sliders unchanged). Implemented by value mapping (3D value v ↔ slice
+  max − v), not CSS `direction:rtl`, because the global precision-drag
+  handler maps pointer movement to value increases.
+
+---
+
 ## 2026-09-26 — feat/project-save-share
 
 **Agent:** Claude (via claude.ai)
