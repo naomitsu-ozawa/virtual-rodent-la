@@ -70,3 +70,18 @@ test('classic UI can be forced and is the default on non-Apple desktops', async 
   await page.goto('/');
   await expect(page.locator('html')).not.toHaveClass(/vrl-ipad-ui/); // CI: Linux
 });
+
+// iPadOS Safari may not reopen a cancelled picker on the same <input>; the
+// buttons now swap in a fresh input each time. Check every click opens a
+// chooser and the inputs are replaced, not duplicated.
+test('file pickers reopen after being cancelled', async ({ page }) => {
+  await page.goto('/');
+  for (const [button, input] of [['#open-folder', '#folder-input'], ['#project-open', '#project-input']]) {
+    for (let i = 0; i < 2; i++) {
+      const chooser = page.waitForEvent('filechooser');
+      await page.locator(button).click();
+      await chooser; // not answered = cancelled
+    }
+    await expect(page.locator(input)).toHaveCount(1);
+  }
+});
