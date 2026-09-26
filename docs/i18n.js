@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { currentLanguage } from './state.js?v=20260926-build202';
+import { currentLanguage } from './state.js?v=20260926-build204';
 export const I18N={
  ja:{
   subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
@@ -8,6 +8,7 @@ export const I18N={
   demo:'公開マウスCTデモ',openFolder:'DICOMフォルダを開く',
   dataset:'データセット',series:'DICOMシリーズ',selectData:'データを選択してください',
   selectDataHelp:'ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。',
+  volumeCacheClear:'キャッシュ削除',volumeCacheConfirm:'この端末に保存したGPUボリュームのキャッシュを削除しますか？',volumeCacheLoaded:'GPUボリューム: キャッシュから読み込みました',volumeCacheCleared:'GPUボリュームのキャッシュを削除しました',
   projectSave:'プロジェクト保存',projectOpen:'プロジェクトを開く',
   volumeFilterPending:'ボリュームはフィルター未反映 ·「3D再構築」で反映',
   volumeFilterUpdating:'ボリュームをフィルター設定に更新中…',
@@ -33,6 +34,7 @@ export const I18N={
   demo:'Public mouse CT demo',openFolder:'Open DICOM folder',
   dataset:'DATASET',series:'DICOM Series',selectData:'Select data',
   selectDataHelp:'Use a local folder or the approximately 20.8 MB public mouse PET/CT demo.',
+  volumeCacheClear:'Clear cache',volumeCacheConfirm:'Delete the GPU volume cache stored on this device?',volumeCacheLoaded:'GPU volume: loaded from cache',volumeCacheCleared:'GPU volume cache cleared',
   projectSave:'Save project',projectOpen:'Open project',
   volumeFilterPending:'Volume not updated to filters · press “Rebuild 3D”',
   volumeFilterUpdating:'Updating volume to current filters…',

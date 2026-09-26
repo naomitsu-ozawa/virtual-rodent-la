@@ -38,6 +38,48 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — feat/gpu-volume-cache (save plan, stage 2)
+
+**Agent:** Claude (via claude.ai)
+**Task:** Device-resolution cache of filtered GPU volume textures.
+Built on top of PR #23 (project files) — merge #23 first.
+
+### What changed
+- `docs/gpu-volume-cache.js` (IndexedDB; OPFS writable streams are not
+  reliably available on iPad Safari): stores **exactly the bytes uploaded to
+  the volume texture**, per texture slice, for filtered data. Stores:
+  `entries` {key, slices, bytesPerSlice, bytes, info, complete, created,
+  lastUsed} and `slices` [key, index] → Uint8Array. `cacheKey()` = SHA-256
+  of {format, dataset fingerprint, filter signature, texture plan, reduced}
+  — iPad 512 / 768 and Mac full size are separate entries. Entries become
+  visible only after `commit()` (interrupted uploads never hit). LRU
+  `prune(budget)` plus removal of stale partial entries.
+  `textureCacheHandle()` adapts it for the renderer; storage errors (quota,
+  eviction) disable the handle instead of failing the upload; a hit that
+  fails mid-read drops the entry.
+- `MedicalVolumeRenderer.ensure()`: for filtered data with
+  `v.textureCache(info)`, a hit uploads the stored slices as-is (no
+  filtering, packing or resampling; full and reduced paths); a miss stores
+  every uploaded slice and commits after the validation scope passes.
+  `lastCacheHit` is exposed. Unfiltered uploads never use the cache.
+- `app.js`: `gpuVolumeTarget()` adds `textureCache` for filtered targets;
+  budget = min(quota×0.3, 1.5 GB iPad / 4 GB other), ≥ 256 MB; prune before
+  writing; `navigator.storage.persist()` requested once. Footer shows
+  "loaded from cache" on hits. New 3D-panel chip "キャッシュ削除 · <size>"
+  (hidden without a WebGPU volume renderer).
+- Tests: cache module with fake-indexeddb (key, miss→commit→hit,
+  interrupted entry, incomplete commit, layout mismatch, quota error, LRU
+  prune) and **ensure() driven by a fake WebGPU device** (full and reduced
+  plans: a miss stores, a hit uploads identical bytes without calling the
+  slice provider; a different plan is a separate entry; the unfiltered path
+  never asks the cache).
+- Build → 204 (202: PR #23, 203: PR #24).
+- Process note: a scripted doc update aborted on an assertion and the
+  commit went out without it; fixed in a follow-up commit. Check scripted
+  edit steps succeeded before committing.
+
+---
+
 ## 2026-09-26 — feat/project-file (save plan, stage 1)
 
 **Agent:** Claude (via claude.ai)
