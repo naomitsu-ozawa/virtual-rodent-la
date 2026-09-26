@@ -59,6 +59,21 @@ no File System Access API). Owner chose option A: the reverse direction.
   gaussian restored, unsharp not. CI step now lists this file explicitly.
 - Build → 208.
 
+### Follow-up in the same PR (build 209): Safari saved projects as .zip
+- Owner: downloads arrive as zip, so the folder autoload did not find them.
+  With Blob type `application/zip`, Safari/iOS appends ".zip". Fixes:
+  - save with `application/octet-stream` so the name stays `*.vrlab`;
+  - `isProjectArchiveName()` also accepts `*.zip`; archives < 200 MB are
+    tried with `unpackProject`, non-project zips go back to DICOM parsing;
+  - extracted archives (iOS Files app): `projectFromEntries()` rebuilds a
+    project from `…/project.json` + `…/edits/*.bin` (webkitRelativePath);
+    those files are excluded from DICOM parsing;
+  - "プロジェクトを開く" accepts .zip too.
+- Tests: unit (names, extracted folder, invalid folder); E2E: .vrlab
+  (newest wins), `*.vrlab.zip`, extracted folder with an edit mask
+  (decoded before settings apply, so the restored filter proves it; one
+  series only → project files not parsed as DICOM).
+
 ---
 
 ## 2026-09-26 — fix/file-picker-reopen
