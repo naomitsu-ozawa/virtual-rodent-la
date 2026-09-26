@@ -23,6 +23,9 @@ test('app boots and renders the main UI', async ({ page }) => {
   // project file buttons: save needs loaded data, open is always available
   await expect(page.locator('#project-save')).toBeDisabled();
   await expect(page.locator('#project-open')).toBeEnabled();
+  // 3D edit lasso tool is present (disabled until a 3D segment exists)
+  await expect(page.locator('#analysis-lasso-select')).toBeAttached();
+  await expect(page.locator('#analysis-lasso-select')).toBeDisabled();
 });
 
 test('version badge shows the deployed build and no reload loop occurs', async ({ page }) => {
