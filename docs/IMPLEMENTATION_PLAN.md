@@ -65,6 +65,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Move heavy processing off the main UI thread where needed
 - [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module; next: UI shell, feature modules)
 - [ ] Add compressed DICOM Transfer Syntax support
+- [ ] VR viewer for Meta Quest 3 — see `docs/VR_PLAN.md` (volume-first, VR-specific WebGL2 renderer, IWER-based tests)
 
 ## Architecture rules
 
