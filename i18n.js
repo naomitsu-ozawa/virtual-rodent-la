@@ -1,5 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
-// Self-contained: depends only on the imports below (no module state).
+// Depends only on the imports below; never imports from app.js (no cycles).
+import { currentLanguage } from './state.js?v=20260926-build190';
 export const I18N={
  ja:{
   subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
@@ -46,3 +47,4 @@ export const I18N={
   demoCache:'Public demo: using cached data',demoDone:'Public demo: download complete. Saving to device cache'
  }
 };
+export const tr=key=>I18N[currentLanguage][key]??key;

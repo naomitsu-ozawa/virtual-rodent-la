@@ -1,7 +1,7 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
-// Self-contained: depends only on the imports below (no module state).
+// Depends only on the imports below; never imports from app.js (no cycles).
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { multi, safePair, num, safeTriple, numberOr } from './utils.js?v=20260926-build189';
+import { multi, safePair, num, safeTriple, numberOr, frameYield } from './utils.js?v=20260926-build190';
 export async function parseDicomHeader(file){
  const attempts=[Math.min(file.size,256*1024),Math.min(file.size,1024*1024)];
  let lastError=null;
@@ -81,4 +81,17 @@ export function encapsulatedFrameBytes(ds,element,ts,frameIndex=0){
  if(bot.length)return dicomParser.readEncapsulatedImageFrame(ds,element,frameIndex,bot);
  if(frames===1)return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,0,element.fragments.length);
  throw new Error('Unable to resolve compressed DICOM frame boundaries');
+}
+export async function parseFiles(files,onProgress){
+ const out=new Array(files.length),workers=navigator.maxTouchPoints>0?2:Math.min(4,Math.max(2,navigator.hardwareConcurrency||2));let cursor=0,done=0;
+ const work=async()=>{
+  while(true){
+   const i=cursor++;if(i>=files.length)return;const f=files[i];
+   try{const ds=await parseDicomHeader(f),meta=parsedSliceMeta(f,ds);out[i]=meta?expandParsedFrames(meta):null}catch{}
+   done++;onProgress?.(done,files.length);
+   if((done&31)===0)await frameYield();
+  }
+ };
+ await Promise.all(Array.from({length:Math.min(workers,files.length)},()=>work()));
+ return out.flatMap(item=>item||[]);
 }
