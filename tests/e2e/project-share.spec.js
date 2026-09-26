@@ -17,6 +17,8 @@ const stubShare = outcome => {
 async function loadSeries(page) {
   await page.goto('/');
   await page.locator('#folder-input').setInputFiles(dicomFolder());
+  // without a project in the folder the user picks the series from the list
+  await page.locator('#series-list .series-card').first().click({ timeout: 30_000 });
   await expect(page.locator('.ready-badge').first()).toContainText(/ready/i, { timeout: 60_000 });
   await expect(page.locator('#project-save')).toBeEnabled();
 }
