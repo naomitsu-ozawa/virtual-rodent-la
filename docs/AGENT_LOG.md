@@ -38,6 +38,51 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — fix/restore-build-184-10 (INCIDENT)
+
+**Agent:** Claude (via claude.ai)
+**Task:** Restore production to the owner's real latest build.
+
+### What went wrong
+- In `chore/cleanup-previews-promote-185` the agent promoted
+  `docs/preview-185` to production because it had the **highest folder
+  number**. The repo had been cloned with `--depth 1`, so history was not
+  checked. In fact `preview-185` stopped at 15:47 (2026-09-25 JST), while
+  the owner kept iterating `preview-184` as 184.1 … **184.10** until 17:02
+  (commit `a776076` "Mark preview 184.10", the tip of `main` at the time).
+- Result: production (and the PR #14 refactor, which was based on it) lost
+  184.1–184.10: 3D region selection, enclosed-structure / containment-based
+  region deletion fixes, GPU edit-mask alignment (texture space), analysis
+  spinner, live cut sliders, grouped cut-confirmation UI, split-view resize
+  fixes. 184.1 had already absorbed 185's "explicit volume result" work,
+  so 184.10 is a superset of 185 in behavior.
+- The owner noticed on the device preview.
+
+### What changed
+- `docs/{app.js,index.html,medical-volume.js,style.css,version.json}`
+  restored byte-for-byte from `archive/previews:docs/preview-184/`
+  (build 184, version `2026.09.25-184.10`), except `export` re-added to
+  `volumeTexturePlan` in medical-volume.js (unit-test hook, no behavior
+  change). 185-only CSS (`.analysis-result-*`) is gone; 184.10 does not
+  use it.
+- `tests/static/build-consistency.test.js` relaxed to the owner's real
+  conventions: APP_VERSION may end in `-<build>.<iteration>`; cache tags
+  are `?v=YYYYMMDD-build<build>` plus an optional free-form suffix
+  (e.g. `-groupedcut1`), and may differ per file. The strict version would
+  have rejected the owner's own verified build.
+
+### Lessons (rules for agents)
+- **Always `git fetch --unshallow` (or clone without `--depth`) before
+  making decisions from history.**
+- "Latest" = most recent commit / the tip of `main`'s `APP_VERSION`, never
+  the highest folder or build number. Check `git log -- <path>` dates.
+- When promoting or replacing deployed code, diff feature sets against the
+  current tip and ask the owner if anything disappears.
+- Tests encoding conventions must be derived from the owner's actual
+  practice, not assumed.
+
+---
+
 ## 2026-09-26 — ci/pages-previews
 
 **Agent:** Claude (via claude.ai)

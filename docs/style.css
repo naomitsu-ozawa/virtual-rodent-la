@@ -201,6 +201,7 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
   .processing-spinner{animation-duration:1.6s}
 }
 
+
 .three-busy{
   position:absolute;
   inset:0;
@@ -285,6 +286,8 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .analysis-actions button:disabled,.analysis-region-button:disabled,.analysis-editor-actions button:disabled{opacity:.4;cursor:default}
 .analysis-editor-actions{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding-top:2px;border-top:1px solid #28343a}
 .analysis-editor-actions button.is-active{border-color:#67b2d1;background:#17313d;color:#dff6ff}
+.analysis-cut-confirm{display:grid;grid-template-columns:1fr 1fr;gap:5px;flex:1 1 100%;width:100%}
+.analysis-cut-confirm button:first-child{border-color:#67b2d1;background:#17313d;color:#dff6ff}
 .analysis-cut-width{display:grid;grid-template-columns:auto auto;gap:2px 6px;align-items:center;min-width:150px;padding:3px 0;color:#afc3cb;font-size:9px}
 .analysis-cut-width input{grid-column:1 / -1;width:150px}
 .analysis-cut-width output{font-variant-numeric:tabular-nums;text-align:right;color:#e0edf1}
@@ -768,68 +771,4 @@ html.vrl-ipad-ui .selected-series-overlay{
 @media (orientation:portrait){
  html.vrl-ipad-ui .volume-analysis-panel{max-width:min(460px,88%)}
  html.vrl-ipad-ui #section-view-result .section-view-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-
-
-/* Build 185: make the active volume-analysis result explicit and readable. */
-.analysis-summary{
-  display:grid;
-  gap:7px;
-}
-.analysis-result-count{
-  font-size:11px;
-  color:#cfe0e7;
-}
-.analysis-result-card{
-  display:grid;
-  gap:7px;
-  padding:9px 10px;
-  border:1px solid #3a515c;
-  border-radius:9px;
-  background:#10171a;
-}
-.analysis-result-head{
-  display:flex;
-  align-items:center;
-  gap:7px;
-  min-width:0;
-}
-.analysis-result-head strong{
-  min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  font-size:11px;
-  color:#e9f5f8;
-}
-.analysis-result-primary{
-  display:flex;
-  align-items:baseline;
-  justify-content:space-between;
-  gap:10px;
-}
-.analysis-result-primary span{
-  font-size:10px;
-  color:#9db0b8;
-}
-.analysis-result-primary strong{
-  font-size:18px;
-  line-height:1;
-  color:#f1fbff;
-  font-variant-numeric:tabular-nums;
-  white-space:nowrap;
-}
-.analysis-result-meta{
-  font-size:10px;
-  line-height:1.35;
-  color:#9fb2ba;
-  overflow-wrap:anywhere;
-}
-html.vrl-ipad-ui #volume-analysis-result .analysis-summary{
-  pointer-events:auto;
-}
-html.vrl-ipad-ui #volume-analysis-result .analysis-region-info span{
-  white-space:normal!important;
-  overflow:visible!important;
-  text-overflow:clip!important;
 }
