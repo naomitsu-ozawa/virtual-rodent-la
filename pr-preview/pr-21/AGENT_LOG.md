@@ -83,6 +83,43 @@ has enough context to continue without re-deriving decisions from scratch.
   path and bricks too, texture keyed by series + filter signature).
 - Build 192 → 193.
 
+### Step 2 in the same PR: filters shown in the GPU volume (build 194)
+- Owner feedback on 193: wants filters in the GPU volume; filter changes
+  feel slow; 2D slice dragging is jerky with filters.
+- Key constraint found: `MedicalVolumeRenderer.support()` accepts only
+  **source-backed** series (decoded size > 256 MB, `dicom.js`), and uploads
+  raw DICOM pixel bytes into an rg8 "16-bit" texture decoded in the
+  shaders as `(lo + hi*256 - signedBias) * slope + intercept`. The owner's
+  volume-mode data is therefore source-backed; an in-memory filtered copy
+  (first idea) does not apply and would not fit on iPad.
+- Renderer (`medical-volume.js`):
+  - `packCtSlice(values, calibration)`: CT values → same rg8 encoding
+    (exact inverse of the shader decode; tests/unit/volume-pack.test.js).
+  - `ensure(v)`: if `v.filterSignature` + `v.sliceData(z)` are present,
+    upload those slices; same series + texture plan but different data
+    **rewrites the existing texture in place** (no second texture on iPad;
+    the image changes progressively). `dataSignature` is part of the cache
+    key ('partial' while rewriting). `v.isCancelled()` aborts uploads.
+- App (`app.js`):
+  - `gpuVolumeTarget()`: source volume + `filterSignature` + a slice
+    provider over `getFilteredSourceAxialBlock` (8-slice blocks), i.e. the
+    same GPU filters as the full-resolution 2D/3D paths, streamed.
+  - `refreshGpuVolumeData()`: runs when filter settings **settle**
+    (`scheduleFilterRebuild(0)`: add/remove/change events; not during
+    slider drags), after a 3D rebuild, and via `activateMedicalVolume`.
+    Token-based cancellation; duplicate requests for the same settings are
+    skipped. Removing all filters rewrites the original data back.
+  - Badge (`volumeUnfiltered`) now means "volume does not match current
+    filters yet" (pending / partial / removed).
+  - The step-1 "switch to surface on filtered 3D rebuild" is removed.
+  - `schedulePlaneRender`: per-slice filtered planes (memory GPU preview
+    or source-backed with filters) wait for a 90 ms pause during slider
+    drags instead of filtering every step.
+- Not verifiable in CI (no WebGPU). Device checks: filtered volume after
+  releasing a filter slider, progressive update + badge, removing filters
+  restores the original, 2D slice drags smoother with filters.
+- Build 193 → 194.
+
 ### Open question for the owner
 - Only the main view plane is re-rendered with the preview (by design,
   for speed); the other planes show the filter once they are re-rendered
