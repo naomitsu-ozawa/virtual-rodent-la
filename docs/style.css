@@ -774,3 +774,9 @@ html.vrl-ipad-ui .selected-series-overlay{
 }
 /* GPU volume shows unfiltered CT while filters are active (see updateVolumeFilterBadge) */
 .three-filter-badge{position:absolute;left:10px;bottom:10px;z-index:6;max-width:calc(100% - 20px);padding:5px 9px;border-radius:6px;background:rgba(214,146,26,.92);color:#1a1205;font-size:12px;font-weight:600;line-height:1.35;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+/* slice sliders for MPR planes shown in the 3D view (syncMpr3DSliceSliders) */
+.mpr3d-slice-controls{display:grid;gap:6px;min-width:230px;padding:7px 9px;border:1px solid #334047;border-radius:9px;background:rgba(12,16,18,.88)}
+.mpr3d-slice-controls.is-hidden,.mpr3d-slice-row.is-hidden{display:none}
+.mpr3d-slice-row{display:grid;grid-template-columns:62px 1fr 74px;gap:8px;align-items:center;font-size:12px}
+.mpr3d-slice-row input{width:100%}
+.mpr3d-slice-row output{text-align:right;font-variant-numeric:tabular-nums;opacity:.85}
