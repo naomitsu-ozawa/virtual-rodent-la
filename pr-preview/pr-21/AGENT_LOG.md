@@ -136,6 +136,18 @@ has enough context to continue without re-deriving decisions from scratch.
   or `volumeFilterUpdating` during a rewrite. `volumeUnfiltered` removed.
 - 2D: immediate preview + 90 ms slice-drag debounce unchanged.
 
+### Owner report on 195: "Rebuild 3D builds meshes, not the volume" (build 196)
+- `rebuildCurrent3D` always built surface meshes (`render3D`) and only then
+  rewrote the volume. The meshes are created after `setThreeVolumeOverlay
+  (true)` hid the old ones, so they were drawn over the volume, and the
+  mesh build was most of the wait.
+- Now in volume mode (active GPU volume, source-backed series) "Rebuild 3D"
+  only records the applied filters and rewrites the volume texture
+  (`refreshGpuVolumeData`), then marks 3D current. `surfaceRebuildPending`
+  makes the switch back to surface mode rebuild the meshes; a normal
+  surface rebuild clears it. `cancel3DRebuild` also cancels a running
+  volume rewrite (token bump).
+
 ### Open question for the owner
 - Only the main view plane is re-rendered with the preview (by design,
   for speed); the other planes show the filter once they are re-rendered
