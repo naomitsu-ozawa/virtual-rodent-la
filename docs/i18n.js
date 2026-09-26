@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { currentLanguage } from './state.js?v=20260926-build193';
+import { currentLanguage } from './state.js?v=20260926-build194';
 export const I18N={
  ja:{
   subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
@@ -8,7 +8,7 @@ export const I18N={
   demo:'公開マウスCTデモ',openFolder:'DICOMフォルダを開く',
   dataset:'データセット',series:'DICOMシリーズ',selectData:'データを選択してください',
   selectDataHelp:'ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。',
-  volumeUnfiltered:'元CT表示・フィルター未反映（3D再構築でサーフェスに反映）',
+  volumeUnfiltered:'ボリューム表示をフィルター設定に更新中…',
   display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',ctRange:'CT値操作範囲',autoRange:'Auto',fullRange:'Full',rebuild3D:'3D再構築',cancel3D:'再構築をキャンセル',cancelling3D:'キャンセル中…',threeCancelled:'3D再構築をキャンセルしました。以前の3Dを保持しています。',threeCurrent:'3Dは最新',threeStale:'3Dは再構築待ち',threeUpdating:'3D再構築中',mainView:'メインへ',
   segmentation:'セグメンテーション',segments:'組織セグメント',
   bone:'骨',soft:'軟部組織',fat:'脂肪',lung:'肺',min:'最小',max:'最大',opacity:'不透明度',segmentPreset:'セグメントプリセット',addSegment:'セグメントを追加',removeSegment:'削除',opening:'Opening',closing:'Closing',minComponent:'最小連結成分',holeFill:'Hole Filling',
@@ -31,7 +31,7 @@ export const I18N={
   demo:'Public mouse CT demo',openFolder:'Open DICOM folder',
   dataset:'DATASET',series:'DICOM Series',selectData:'Select data',
   selectDataHelp:'Use a local folder or the approximately 20.8 MB public mouse PET/CT demo.',
-  volumeUnfiltered:'Showing original CT · filters not applied (rebuild 3D for filtered surface)',
+  volumeUnfiltered:'Updating volume to current filters…',
   display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',ctRange:'CT value range',autoRange:'Auto',fullRange:'Full',rebuild3D:'Rebuild 3D',cancel3D:'Cancel rebuild',cancelling3D:'Cancelling…',threeCancelled:'3D rebuild cancelled. Previous 3D retained.',threeCurrent:'3D is current',threeStale:'3D rebuild pending',threeUpdating:'Rebuilding 3D',mainView:'Main',
   segmentation:'SEGMENTATION',segments:'Tissue segments',
   bone:'Bone',soft:'Soft tissue',fat:'Fat',lung:'Lung',min:'Min',max:'Max',opacity:'Opacity',segmentPreset:'Segment preset',addSegment:'Add segment',removeSegment:'Remove',opening:'Opening',closing:'Closing',minComponent:'Min Component',holeFill:'Hole Filling',
