@@ -68,6 +68,7 @@
 - `docs/style.css` — UIスタイル
 - `docs/DICOM_WEBGPU_SPEC.md` — 現在の設計・動作仕様
 - `docs/IMPLEMENTATION_PLAN.md` — 実装済み項目と今後の開発項目
+- `docs/VR_PLAN.md` — Meta Quest 3 向けVR対応の計画
 - `docs/AGENT_LOG.md` — AIエージェントによる作業記録
 - `docs/THIRD_PARTY_NOTICES.md` — 外部ライブラリ・公開データの情報
 - `tests/` — ユニットテスト (Vitest) とブラウザテスト (Playwright)

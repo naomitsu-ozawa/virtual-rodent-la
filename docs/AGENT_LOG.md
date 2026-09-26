@@ -38,6 +38,29 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — docs/vr-plan
+
+**Agent:** Claude (via claude.ai)
+**Task:** Write down the VR plan agreed with the owner (no code yet).
+
+### Summary (details in `docs/VR_PLAN.md`)
+- Target: Meta Quest 3 (Quest Browser); data opened directly on the Quest
+  (projects in the DICOM folder still auto-apply).
+- VR default view: **3D volume** (mesh building is heavy); owner allows a
+  **VR-specific renderer**.
+- Research (Sep 2026): WebXR–WebGPU binding on Quest is still experimental
+  (v146 behind a flag); WebGL2 WebXR is stable → build a WebGL2 ray-marching
+  volume renderer that mirrors the WGSL rules (window, segments, edits),
+  with reduced VR volumes (longest side 256/384/512), foveation and
+  adaptive quality.
+- Testing without a headset: Meta's IWER (npm `iwer`) in Playwright/CI;
+  frame-rate tuning waits for the device.
+- Phases: 1 viewer foundation → 2 fidelity + in-VR controls → 3 device
+  tuning / MR / Quest DICOM loading (zip fallback) → 4 optional WebGPU-XR.
+- Also listed in `IMPLEMENTATION_PLAN.md`.
+
+---
+
 ## 2026-09-26 — fix/mpr3d-live-follow
 
 **Agent:** Claude (via claude.ai)
