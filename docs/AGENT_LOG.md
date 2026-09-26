@@ -38,6 +38,29 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — feat/folder-project-autoload
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner wish: opening a project should also load its DICOM. Not
+possible in browsers (no access to files the user did not pick; Safari has
+no File System Access API). Owner chose option A: the reverse direction.
+
+### What changed
+- "DICOMフォルダを開く": `.vrlab` files in the picked folder are excluded
+  from DICOM parsing; the newest (by lastModified) becomes the pending
+  project; after `inspect`, the matching series (fingerprint) is selected
+  automatically and `selectSeries` applies the project when ready. Footer
+  says which project is applied (and "newest of N" when several). A project
+  that matches no series in the folder is reported, nothing is applied.
+- Save hint: "keep it in the DICOM folder to apply it automatically".
+- E2E `tests/e2e/folder-project.spec.js` (runs in CI with the smoke tests,
+  no download): synthetic 16×16×12 DICOM folder + a newer matching project
+  (gaussian) + an older non-matching one (unsharp) → series auto-selected,
+  gaussian restored, unsharp not. CI step now lists this file explicitly.
+- Build → 208.
+
+---
+
 ## 2026-09-26 — fix/file-picker-reopen
 
 **Agent:** Claude (via claude.ai)

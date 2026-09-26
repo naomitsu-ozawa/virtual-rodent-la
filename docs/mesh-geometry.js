@@ -1,7 +1,7 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { analysisRunRows, forEachUncoveredRun } from './run-length.js?v=20260926-build207';
+import { analysisRunRows, forEachUncoveredRun } from './run-length.js?v=20260926-build208';
 export function appendDecodedMaskSliceFaces(builder,v,mask,z,coords){
  const w=v.columns,h=v.rows,plane=w*h,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1],base=z*plane;
  const inside=(x,y,zz)=>x>=0&&y>=0&&zz>=0&&x<w&&y<h&&zz<v.slices&&mask[zz*plane+y*w+x]===1;
