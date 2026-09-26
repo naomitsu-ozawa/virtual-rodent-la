@@ -63,3 +63,39 @@ test('adding a filter changes the 2D axial image', async ({ page }) => {
   await expect.poll(hash, { timeout: 120_000, intervals: [500] }).not.toBe(before);
   expect(errors).toEqual([]);
 });
+
+test('project file round-trip restores filters and segments', async ({ page }) => {
+  test.setTimeout(420_000);
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  const loadDemo = async () => {
+    await page.goto('/');
+    await page.locator('#demo-button').click();
+    await expect(page.locator('.ready-badge').first()).toContainText(/ready/i, { timeout: 240_000 });
+    await expect(page.locator('#project-save')).toBeEnabled();
+  };
+  await loadDemo();
+  // settings to save
+  await page.selectOption('#filter-add-select', 'gaussian');
+  await page.locator('#filter-add-button').click();
+  const strength = page.locator('#gaussian-strength');
+  await strength.evaluate(el => { el.value = String(el.max); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+  const savedStrength = await strength.inputValue();
+  await page.selectOption('#segment-add-select', 'bone');
+  await page.locator('#segment-add-button').click();
+  const download = page.waitForEvent('download');
+  await page.locator('#project-save').click();
+  const file = await (await download).path();
+  expect((await download).suggestedFilename()).toMatch(/\.vrlab$/);
+
+  // fresh session, same data, open the project
+  await loadDemo();
+  await expect(page.locator('#filter-gaussian')).not.toBeChecked();
+  await page.locator('#project-input').setInputFiles(file);
+  // the footer confirmation is soon replaced by the filter rebuild status, so
+  // assert on the restored state itself
+  await expect(page.locator('#filter-gaussian')).toBeChecked({ timeout: 60_000 });
+  await expect(strength).toHaveValue(savedStrength);
+  await expect(page.locator('[data-segment="bone"]')).not.toHaveClass(/is-hidden/);
+  expect(errors).toEqual([]);
+});
