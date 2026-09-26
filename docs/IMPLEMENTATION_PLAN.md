@@ -63,8 +63,50 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Add morphology tools where they materially improve bone continuity
 - [ ] Add manual brush / eraser correction
 - [ ] Move heavy processing off the main UI thread where needed
-- [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module; next: UI shell, feature modules)
+- [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module, UI shell, GPU compute, volume I/O; next: feature modules — see "Refactoring backlog")
 - [ ] Add compressed DICOM Transfer Syntax support
+
+## Refactoring backlog
+
+Status as of build 215: `docs/app.js` is 4662 lines (5439 before the split
+began) with 378 top-level declarations and 90 top-level side-effect
+statements. Every move so far was mechanical and proven with
+`tools/verify-split.mjs`; keep that approach (`tools/closure.mjs` to size a
+cluster, `tools/extract-module.mjs` to move it, one script per PR under
+`tools/split-history/`).
+
+- [ ] Phase 2d part 2 — feature modules, extracted bottom-up (the
+      dependency graph is almost a DAG; the largest cycle is the 7-function
+      MPR-in-3D plane overlay):
+  - [ ] MPR rendering and caches (`schedulePlaneRender`,
+        `paintSourcePlane`, `ensureMpr3DPreviewCache`, instant-image path)
+  - [ ] MPR-in-3D overlay and 3D slice panel (move the 7-function cycle
+        together)
+  - [ ] Filter pipeline UI (`rebuildActiveFilters`, CPU filters such as
+        `applyNlm3D`)
+  - [ ] Segmentation UI and mesh building (`rebuildCurrent3D`,
+        `smoothIsosurfaceGeometry`)
+  - [ ] Analysis / edit / cut tools (`updateCutPreview`,
+        `cutRunsFromVoxelStroke`, `updateThreeEditUi`,
+        `renderAnalysisResults`)
+  - [ ] Project load/save glue (`applyProject`) and demo loading
+        (`loadDemo`)
+  - [ ] iPad / Mac workspace UI (`initIPadWorkspaceUi`)
+- [ ] Break up `start3D` (290 lines, the largest function) into scene
+      setup, renderer selection (WebGPU/WebGL) and render loop. This is a
+      real refactor, not a verbatim move: do it after its feature module is
+      extracted, in its own PR, and check it on a device via the PR preview.
+- [ ] Keep event wiring (the top-level side-effect statements) in `app.js`
+      as the composition root; only move a statement together with the
+      feature it wires up.
+- [ ] Add unit tests for each newly importable module (candidates from
+      `test/setup-infra`: DICOM series grouping, RescaleSlope/Intercept,
+      slice ordering, STL export geometry, filter kernels on tiny volumes).
+- [ ] Decide whether the root `index.html` (local dev) should use the same
+      build cache tags as `docs/index.html` (it currently has none).
+- [ ] Look into `state.js` grouping: the 64 flat `let`s + setters work, but
+      could later be grouped per feature once the feature modules exist
+      (optional, low priority).
 
 ## Architecture rules
 
