@@ -23,6 +23,9 @@ test('app boots and renders the main UI', async ({ page }) => {
   // project file buttons: save needs loaded data, open is always available
   await expect(page.locator('#project-save')).toBeDisabled();
   await expect(page.locator('#project-open')).toBeEnabled();
+  // 'original CT' badge exists but is hidden unless GPU volume + filters
+  await expect(page.locator('#three-filter-badge')).toBeAttached();
+  await expect(page.locator('#three-filter-badge')).toBeHidden();
   // 3D edit lasso tool is present (disabled until a 3D segment exists)
   await expect(page.locator('#analysis-lasso-select')).toBeAttached();
   await expect(page.locator('#analysis-lasso-select')).toBeDisabled();
