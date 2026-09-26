@@ -70,8 +70,9 @@ test('project file round-trip restores filters and segments', async ({ page }) =
   await loadDemo();
   await expect(page.locator('#filter-gaussian')).not.toBeChecked();
   await page.locator('#project-input').setInputFiles(file);
-  await expect(page.locator('#footer')).toContainText(/Project applied|プロジェクトを適用しました/, { timeout: 60_000 });
-  await expect(page.locator('#filter-gaussian')).toBeChecked();
+  // the footer confirmation is soon replaced by the filter rebuild status, so
+  // assert on the restored state itself
+  await expect(page.locator('#filter-gaussian')).toBeChecked({ timeout: 60_000 });
   await expect(strength).toHaveValue(savedStrength);
   await expect(page.locator('[data-segment="bone"]')).not.toHaveClass(/is-hidden/);
   expect(errors).toEqual([]);
