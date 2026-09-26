@@ -38,6 +38,63 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — refactor/split-app-js-phase2 (phase 2a)
+
+**Agent:** Claude (via claude.ai)
+**Task:** Priority #3, phase 2a — GPU shader module, tool fixes, state plan.
+
+### What changed
+- `gpuFilterShader(kind)` → `gpuFilterShader(kind, workgroupSize)`: the 20
+  `@workgroup_size(${gpuFilterRuntime.workgroupSize})` uses now take the
+  parameter; the single caller (`gpuFilterPipeline`) passes
+  `gpuFilterRuntime.workgroupSize` at the same moment → identical WGSL.
+  This is the only intentional code change (separate commit, `acf8293`).
+- Moved verbatim to `docs/gpu-shaders.js`: `gpuFilterShader`,
+  `normalizeVrlWgsl`, `GPU_PREWARM_KINDS`. app.js 5439 → 4972 lines.
+  verify-split vs `origin/main`: only the 2 functions above differ.
+- `medical-volume.js`: `export` added to `volumeShader`, `brickShader`,
+  `volumePickShader`, `mprPlaneShader` (test hooks, no behavior change).
+- `tests/unit/wgsl-shaders.test.js`: parses all 20 compute shader kinds
+  (19 prewarmed + `faceExtract`) and the 4 render shaders with
+  `wgsl_reflect` in Node. Catches WGSL syntax/structure errors in CI
+  (which has no GPU); does not replace device testing (no type checks).
+- Build 187 → 188.
+
+### Tool bug found and fixed (important)
+- acorn-walk reports assignment targets / patterns as `VariablePattern`,
+  not `Identifier`. `extract-module.mjs`'s false-positive filter and the new
+  `closure.mjs` only visited `Identifier`, so code that **only writes** a
+  top-level `let` could pass the dependency check. Fixed (visit both);
+  regression tests in `tests/tools/extract-module.test.js` (run in CI).
+- Impact on already-merged work: none. Phase-1 moved only pure code, and a
+  missed write would be an undeclared assignment, which the `no-undef`
+  lint (clean) would have reported.
+- New `tools/closure.mjs <file> <seeds…> [--list]`: computes how far a
+  cluster can move and which `let`s / DOM-element consts block it.
+
+### Findings for phase 2b/2c
+- 64 top-level `let`s, ~1459 references. Most are read far more than
+  written: `sceneState` 301 refs / 1 assignment, `volume` 255 / 17,
+  `sourceVolume` 108 / 2, `currentLanguage` 77 / 1.
+- DOM element consts (`status`, `footer`, `viewport`, …) are declared in
+  app.js lines ~236–242, right after `app.innerHTML = <template>` (line
+  ~43). The template has no external interpolations.
+
+### Plan (next PRs)
+- **2b state module**: move all `let`s to `docs/state.js` as
+  `export let x`, plus generated setters (`setX(v){return x=v}`, and
+  inc/dec helpers preserving postfix/prefix values). Reads stay unchanged
+  (ES module live bindings); only the ~250 write sites change, via an AST
+  codemod (not by hand). Verify: lint, tests, demo E2E, device preview.
+- **2c UI shell**: move `$`, the template + `app.innerHTML`, and the DOM
+  element consts to `docs/ui-shell.js` (evaluated before app.js's body, so
+  the DOM exists when other modules import the elements).
+- **2d features**: with state + UI importable, use `closure.mjs` /
+  `extract-module.mjs` to move feature areas (GPU compute runtime, MPR,
+  3D scene, segmentation UI, filters, analysis/edit tools).
+
+---
+
 ## 2026-09-26 — refactor/split-app-js-phase1 (redone on 184.10)
 
 **Agent:** Claude (via claude.ai)
