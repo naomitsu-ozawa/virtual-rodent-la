@@ -83,9 +83,9 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - `docs/app.js` is the canonical deployed entry point; it imports the other
   `docs/*.js` modules. Extracted modules must not import from `app.js`
   (no cycles) and must not hold UI/application state.
-- Every relative import carries the build tag (`?v=YYYYMMDD-buildN`).
-  Use `npm run bump-build` to change it; the build-consistency test
-  enforces that all markers agree.
+- Every relative import carries a cache tag of the current build
+  (`?v=YYYYMMDD-buildN`, optional suffix). `npm run bump-build [N]` updates
+  all markers at once; the build-consistency test enforces agreement.
 - Browser-first and local-data-first.
 - No mandatory DICOM upload.
 - Original calibrated CT values remain immutable.

@@ -1,7 +1,7 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { multi, safePair, num, safeTriple, numberOr } from './utils.js?v=20260925-build186';
+import { multi, safePair, num, safeTriple, numberOr } from './utils.js?v=20260926-build187';
 export async function parseDicomHeader(file){
  const attempts=[Math.min(file.size,256*1024),Math.min(file.size,1024*1024)];
  let lastError=null;

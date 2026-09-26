@@ -38,6 +38,113 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — refactor/split-app-js-phase1 (redone on 184.10)
+
+**Agent:** Claude (via claude.ai)
+**Task:** Priority #3, phase 1 — split `docs/app.js` into modules, starting
+with the parts that hold no application state.
+
+The first attempt was based on the mistakenly promoted build 185 (see the
+INCIDENT entry below). The branch was reset onto the restored 184.10 `main`
+and the split re-run with the same tools; the 185-based attempt is kept on
+local-only ref `old/phase1-on-185` (not needed).
+
+### What changed
+- New modules (code moved **verbatim**, only `export` added):
+  `docs/utils.js`, `docs/i18n.js`, `docs/dicom.js`, `docs/mask-ops.js`,
+  `docs/run-length.js`, `docs/mesh-geometry.js`. `docs/app.js`
+  6216 → 5439 lines; 92 top-level declarations moved (incl.
+  `componentsFromRunsAsync`, new in 184.x).
+- `tools/verify-split.mjs origin/main docs/app.js <all modules>` →
+  `OK: 768 top-level statements moved/kept verbatim` — i.e. everything
+  from 184.1–184.10 is present unchanged.
+- Build **184 (184.10) → 187**. 185 = abandoned preview, 186 = withdrawn
+  first version of this PR's preview; skipped to avoid browser-cache mixups.
+- Tooling (in `tools/`, dev-only, not deployed):
+  - `analyze-toplevel.mjs` — lists top-level declarations, which are
+    mutable and which are "pure". Heuristic; stateful consts such as
+    `filterState`, `segmentState`, `mprPaintCache` can be mis-reported.
+  - `extract-module.mjs` — moves named declarations to a new module and
+    inserts the import. Aborts if moved code depends on anything that stays
+    behind (no import cycles), if a name is `let`/`var`, or reassigned.
+  - `verify-split.mjs` — proves a split only moved code (ignores the
+    APP_VERSION/APP_BUILD values).
+  - `bump-build.mjs` (`npm run bump-build [N]`) — updates APP_VERSION /
+    APP_BUILD, version.json and every `?v=` tag (incl. free-form suffixes).
+- Guardrails: `eslint.config.js` (`npm run lint`, `no-undef` etc.), clean
+  on 184.10 before and after; in CI. Build-consistency test covers every
+  relative import in every module.
+- Tests: 62 passing (+1 todo). Unit tests for dicom (synthetic DICOM
+  writer in `tests/helpers/synthetic-dicom.js`), mask-ops, run-length,
+  mesh-geometry (binary STL), utils.
+- CI: public Zenodo demo E2E runs on every PR; Playwright `github`
+  reporter; actions bumped to v7.
+
+### Findings
+- `groupSeries` sorts slices by ImagePositionPatient z only and ignores
+  ImageOrientationPatient → non-axial acquisitions may be ordered wrongly
+  (`it.todo` in tests/unit/dicom.test.js; PLAN "slice ordering").
+- CI has no GPU (WebGL + CPU fallback). WebGPU paths are only verified on
+  the owner's device via the PR preview URL.
+- Agents without `Actions: Read` can read failures through check-run
+  annotations: `GET /repos/{repo}/check-runs/{job_id}/annotations`.
+
+### Follow-up (phase 2 plan)
+- `gpuFilterShader` (~465 lines of WGSL) depends on `gpuFilterRuntime`;
+  pass needed values as parameters, then move to `docs/gpu-shaders.js`.
+- Explicit state module for the ~63 reassigned `let`s (volume,
+  sourceVolume, sceneState, …) as properties of an exported object, per
+  feature area.
+- Then split by feature: MPR, 3D scene/renderer, segmentation UI, filter
+  pipeline, analysis/edit tools, UI construction.
+
+---
+
+## 2026-09-26 — fix/restore-build-184-10 (INCIDENT)
+
+**Agent:** Claude (via claude.ai)
+**Task:** Restore production to the owner's real latest build.
+
+### What went wrong
+- In `chore/cleanup-previews-promote-185` the agent promoted
+  `docs/preview-185` to production because it had the **highest folder
+  number**. The repo had been cloned with `--depth 1`, so history was not
+  checked. In fact `preview-185` stopped at 15:47 (2026-09-25 JST), while
+  the owner kept iterating `preview-184` as 184.1 … **184.10** until 17:02
+  (commit `a776076` "Mark preview 184.10", the tip of `main` at the time).
+- Result: production (and the PR #14 refactor, which was based on it) lost
+  184.1–184.10: 3D region selection, enclosed-structure / containment-based
+  region deletion fixes, GPU edit-mask alignment (texture space), analysis
+  spinner, live cut sliders, grouped cut-confirmation UI, split-view resize
+  fixes. 184.1 had already absorbed 185's "explicit volume result" work,
+  so 184.10 is a superset of 185 in behavior.
+- The owner noticed on the device preview.
+
+### What changed
+- `docs/{app.js,index.html,medical-volume.js,style.css,version.json}`
+  restored byte-for-byte from `archive/previews:docs/preview-184/`
+  (build 184, version `2026.09.25-184.10`), except `export` re-added to
+  `volumeTexturePlan` in medical-volume.js (unit-test hook, no behavior
+  change). 185-only CSS (`.analysis-result-*`) is gone; 184.10 does not
+  use it.
+- `tests/static/build-consistency.test.js` relaxed to the owner's real
+  conventions: APP_VERSION may end in `-<build>.<iteration>`; cache tags
+  are `?v=YYYYMMDD-build<build>` plus an optional free-form suffix
+  (e.g. `-groupedcut1`), and may differ per file. The strict version would
+  have rejected the owner's own verified build.
+
+### Lessons (rules for agents)
+- **Always `git fetch --unshallow` (or clone without `--depth`) before
+  making decisions from history.**
+- "Latest" = most recent commit / the tip of `main`'s `APP_VERSION`, never
+  the highest folder or build number. Check `git log -- <path>` dates.
+- When promoting or replacing deployed code, diff feature sets against the
+  current tip and ask the owner if anything disappears.
+- Tests encoding conventions must be derived from the owner's actual
+  practice, not assumed.
+
+---
+
 ## 2026-09-26 — ci/pages-previews
 
 **Agent:** Claude (via claude.ai)
@@ -73,87 +180,6 @@ preview folders to `main`.
   Harmless today; keep in mind if storage formats change.
 - `gh-pages` history grows with each deploy; it can be reset as an orphan
   branch occasionally without affecting `main`.
-## 2026-09-26 — refactor/split-app-js-phase1
-
-**Agent:** Claude (via claude.ai)
-**Task:** Priority #3, phase 1 — split `docs/app.js` into modules, starting
-with the parts that hold no application state.
-
-### What changed
-- New modules (code moved **verbatim**, only `export` added):
-  `docs/utils.js`, `docs/i18n.js`, `docs/dicom.js`, `docs/mask-ops.js`,
-  `docs/run-length.js`, `docs/mesh-geometry.js`. `docs/app.js`
-  6149 → 5386 lines. 91 top-level declarations moved.
-- Tooling (in `tools/`, dev-only, not deployed):
-  - `analyze-toplevel.mjs` — lists top-level declarations of a module, which
-    are mutable (`let`/reassigned) and which are "pure" (reference only
-    other pure decls). Heuristic; stateful consts such as `filterState`,
-    `segmentState`, `mprPaintCache` can be mis-reported as pure.
-  - `extract-module.mjs` — moves named declarations to a new module and
-    inserts the import. Aborts if the moved code depends on anything that
-    stays behind (prevents import cycles), if a name is `let`/`var`, or if
-    it is reassigned. Re-imports CDN/local bindings the moved code uses.
-  - `verify-split.mjs <rev> <orig> <files...>` — proves the split only
-    moved code: every top-level statement of the original appears
-    byte-for-byte exactly once across the new files. Result for this
-    branch: `OK: 764 top-level statements moved/kept verbatim`.
-  - `bump-build.mjs` (`npm run bump-build`) — updates APP_VERSION/APP_BUILD,
-    version.json and every `?v=...-buildN` query in docs/*.js + index.html.
-- Build bumped 185 → 186 (new module files; cache-busting).
-- Guardrails: `eslint.config.js` (`npm run lint`) with `no-undef` etc. on
-  docs/ — baseline before the split was clean, still clean after. Added to
-  CI. Build-consistency test now checks every relative import in every
-  module carries the current build tag and resolves to an existing file.
-- Tests: 62 passing (+1 todo). New unit tests for dicom (with a synthetic
-  DICOM writer in `tests/helpers/synthetic-dicom.js`), mask-ops,
-  run-length, mesh-geometry (binary STL layout), utils.
-- CI: public Zenodo demo E2E now runs on every PR (download → parse →
-  decode → series "ready"), as it is the only test covering the real
-  DICOM pipeline in a browser.
-
-### Why
-- Pure helpers first: zero behavior risk, and it immediately makes the
-  DICOM/segmentation/STL logic unit-testable, which protects phase 2.
-- `extract-module` + `verify-split` + `no-undef` lint together make the
-  mechanical part of the refactor verifiable without a human diffing
-  thousands of lines.
-
-### Findings
-- `groupSeries` (docs/dicom.js) sorts slices by ImagePositionPatient z only
-  and ignores ImageOrientationPatient → non-axial acquisitions may be
-  ordered wrongly. Recorded as `it.todo` in tests/unit/dicom.test.js;
-  matches the PLAN item "Improve slice ordering/orientation handling".
-
-### CI demo E2E findings
-- First demo runs failed only because the test looked for `.ready-badge`
-  inside `#series-list`; it lives in `#selected` (see `selectSeries`).
-  The pipeline itself worked: 82 series listed, largest auto-selected,
-  decoded (`CT range: -1000 to 3475 · Float32Array 799.50 KiB`), no page
-  errors. Fixed the selector; demo E2E now green (~10 s).
-- CI runners have no GPU: the app reports `Render WEBGL · Compute CPU
-  COMPUTE · WebGPU core adapter unavailable` and uses the CPU/WebGL
-  fallback. **WebGPU code paths are never exercised in CI** — changes
-  touching `medical-volume.js` or GPU compute must be checked manually on a
-  WebGPU device (the owner uses iPad/Mac).
-- Debugging tip for agents without `Actions: Read`: Playwright's `github`
-  reporter (enabled in CI) writes failures as check-run annotations, which
-  are readable via `GET /repos/{repo}/check-runs/{job_id}/annotations`
-  (job id = check-run id). The demo test puts UI state and console
-  warnings into its failure message for this reason.
-- actions/checkout, setup-node, upload-artifact bumped v4 → v7 (Node 20
-  deprecation warning).
-
-### Follow-up (phase 2 plan)
-- `gpuFilterShader` (~465 lines of WGSL) depends on `gpuFilterRuntime`
-  (device state) — pass the needed values (e.g. workgroup size) as
-  parameters, then move shaders to `docs/gpu-shaders.js`.
-- Introduce an explicit state module for the 63 reassigned `let`s
-  (volume, sourceVolume, sceneState, …). Imported bindings are read-only,
-  so state must become properties of an exported object (`state.volume`),
-  not bare exported `let`s. Do this per feature area, not all at once.
-- Then split by feature: MPR rendering, 3D scene/renderer, segmentation
-  UI, filters pipeline, analysis/edit tools, UI construction.
-- The demo E2E is the main safety net for phase 2 — keep it green.
 
 ---
 
