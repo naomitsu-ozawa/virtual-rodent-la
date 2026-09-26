@@ -67,6 +67,14 @@ while the owner tests other data.)
   stops at the first point outside/behind the camera (large bodies are
   rejected fast); polygon bbox pre-check; even-odd point-in-polygon.
 
+### Owner rule: return to "Navigate" after each 3D edit operation (build 198)
+- `returnToNavigate()` (tool → 'select', target key reset like cut apply)
+  is called after: region select (both success paths), lasso select when
+  something was selected, cut cancel, "Delete selected region" (success),
+  "Keep selected region". Cut apply already returned to Navigate.
+- Failures / empty results keep the tool active so the user can retry;
+  Undo/Redo do not change the tool.
+
 ### Notes
 - Build 191 → 197 (192–196 are used by the unmerged PR #21 preview).
 - Expect a merge conflict with PR #21 in app.js's ui-shell import line and
