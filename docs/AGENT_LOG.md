@@ -38,6 +38,39 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — fix/filter-2d-preview
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner report: filter effect is not visible in 2D (also on 189).
+
+### Root cause (bug present since at least build 150)
+- `renderPlane(p, revision, idx)` returns immediately unless `revision`
+  equals `planeRenderRevision[p]`. `rebuildActiveFilters` called
+  `await renderPlane(previewPlane)` with no revision in both the in-memory
+  WebGPU preview path and the full-resolution (source-backed) path, so the
+  preview was never drawn — while the footer still said
+  "2D preview · WEBGPU COMPUTE · N stage(s)". The CPU path renders via its
+  own apply* functions and was unaffected (CI uses it, so CI never showed
+  the bug). Checked archive/previews: same call in builds 150–184.
+
+### What changed
+- Both calls now pass `++planeRenderRevision[previewPlane]` and the slider
+  index (same as `safeRenderPlane`), so the filtered main-view plane is
+  actually painted. On GPU failure the existing fallback to the CPU stack
+  now also becomes reachable.
+- `tests/static/render-plane-calls.test.js`: every `renderPlane(...)` call
+  in docs/*.js must pass 3 arguments (verified to fail on the old code).
+- `tests/e2e/demo.spec.js`: adding a Gaussian filter must change the axial
+  canvas (CPU path in CI).
+- Build 191 → 192.
+
+### Open question for the owner
+- Only the main view plane is re-rendered with the preview (by design,
+  for speed); the other planes show the filter once they are re-rendered
+  (e.g. when scrolled). Whether all planes should refresh is a UX choice.
+
+---
+
 ## 2026-09-26 — feat/slider-fast-interaction
 
 **Agent:** Claude (via claude.ai)
