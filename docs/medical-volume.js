@@ -95,10 +95,21 @@ fn huAt(tc0:vec3<f32>)->f32{
  let raw=q.x+q.y*256.0-u.calibration.y;
  return raw*u.dimsSlope.w+u.calibration.x;
 }
+fn maskVoxelAt(tc0:vec3<f32>)->vec3<u32>{
+ let src=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let tex=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ if(all(src==tex)){return min(vec3<u32>(tc*vec3<f32>(src)),src-vec3<u32>(1u));}
+ let tp=min(vec3<u32>(tc*vec3<f32>(tex)),tex-vec3<u32>(1u));
+ let sx=u32(round(f32(tp.x)*f32(max(src.x-1u,1u))/f32(max(tex.x-1u,1u))));
+ let sy=u32(round(f32(tp.y)*f32(max(src.y-1u,1u))/f32(max(tex.y-1u,1u))));
+ let sz=u32(round(f32(tp.z)*f32(max(src.z-1u,1u))/f32(max(tex.z-1u,1u))));
+ return min(vec3<u32>(sx,sy,sz),src-vec3<u32>(1u));
+}
 fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
  let activeMask=editRows[0];if((activeMask&(1u<<seg))==0u){return true;}
  let keepMask=editRows[1];
- let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
  let rowCount=dims.y*dims.z;
@@ -117,7 +128,7 @@ fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
 }
 fn previewContains(seg:u32,tc0:vec3<f32>)->bool{
  let target=previewRows[0];if(target==0u||target!=seg+1u){return false;}
- let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
  let row=p.z*dims.y+p.y;
@@ -135,7 +146,7 @@ fn previewContains(seg:u32,tc0:vec3<f32>)->bool{
 fn appliedCutContains(seg:u32,tc0:vec3<f32>)->bool{
  let activeMask=appliedCutRows[0];
  if((activeMask&(1u<<seg))==0u){return false;}
- let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
  let rowCount=dims.y*dims.z;
@@ -153,7 +164,7 @@ fn appliedCutContains(seg:u32,tc0:vec3<f32>)->bool{
  return false;
 }
 fn appliedCutNormal(seg:u32,tc0:vec3<f32>)->vec3<f32>{
- let dims=max(u.dimsSlope.xyz,vec3<f32>(1.0));
+ let dims=max(u.textureDims.xyz,vec3<f32>(1.0));
  let d=vec3<f32>(1.0/dims.x,1.0/dims.y,1.0/dims.z);
  let gx=select(0.0,1.0,appliedCutContains(seg,tc0+vec3<f32>(d.x,0.0,0.0)))-select(0.0,1.0,appliedCutContains(seg,tc0-vec3<f32>(d.x,0.0,0.0)));
  let gy=select(0.0,1.0,appliedCutContains(seg,tc0+vec3<f32>(0.0,d.y,0.0)))-select(0.0,1.0,appliedCutContains(seg,tc0-vec3<f32>(0.0,d.y,0.0)));
@@ -402,10 +413,21 @@ fn huAt(tc0:vec3<f32>)->f32{
  let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
  return (q.x+q.y*256.0-u.calibration.y)*u.dimsSlope.w+u.calibration.x;
 }
+fn maskVoxelAt(tc0:vec3<f32>)->vec3<u32>{
+ let src=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let tex=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ if(all(src==tex)){return min(vec3<u32>(tc*vec3<f32>(src)),src-vec3<u32>(1u));}
+ let tp=min(vec3<u32>(tc*vec3<f32>(tex)),tex-vec3<u32>(1u));
+ let sx=u32(round(f32(tp.x)*f32(max(src.x-1u,1u))/f32(max(tex.x-1u,1u))));
+ let sy=u32(round(f32(tp.y)*f32(max(src.y-1u,1u))/f32(max(tex.y-1u,1u))));
+ let sz=u32(round(f32(tp.z)*f32(max(src.z-1u,1u))/f32(max(tex.z-1u,1u))));
+ return min(vec3<u32>(sx,sy,sz),src-vec3<u32>(1u));
+}
 fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
  let activeMask=editRows[0];if((activeMask&(1u<<seg))==0u){return true;}
  let keepMask=editRows[1];
- let dims=vec3<u32>(u32(u.dimsSlope.x),u32(u.dimsSlope.y),u32(u.dimsSlope.z));
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
  let rowCount=dims.y*dims.z;
@@ -454,9 +476,10 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
    var lo=previousT;var hi=t;
    for(var r:u32=0u;r<5u;r=r+1u){let mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(u.camOrigin.xyz+dir*mid),preferred)==idx){hi=mid;}else{lo=mid;}}
    let tc=clamp(texCoord(u.camOrigin.xyz+dir*hi),vec3<f32>(0.0),vec3<f32>(0.999999));
-   result[ob]=min(u32(tc.x*u.dimsSlope.x),u32(u.dimsSlope.x)-1u);
-   result[ob+1u]=min(u32(tc.y*u.dimsSlope.y),u32(u.dimsSlope.y)-1u);
-   result[ob+2u]=min(u32(tc.z*u.dimsSlope.z),u32(u.dimsSlope.z)-1u);
+   let sourceP=maskVoxelAt(tc);
+   result[ob]=sourceP.x;
+   result[ob+1u]=sourceP.y;
+   result[ob+2u]=sourceP.z;
    result[ob+3u]=u32(idx)+1u;return;
   }
   previousT=t;t+=step;
@@ -515,6 +538,77 @@ export function volumeTexturePlan(v,maxTextureBytes=0,maxTextureDim=Infinity,tar
   }
  }
  return{sourceDims:[sw,sh,sd],dims:[tw,th,td],sourceBytes,bytes:tw*th*td*2,reduced:tw!==sw||th!==sh||td!==sd};
+}
+
+
+function gpuRunRowMapToSlice(rows,w){
+ const rec=[];
+ for(const y of [...rows.keys()].sort((a,b)=>a-b)){
+  const raw=rows.get(y);if(!raw?.length)continue;
+  raw.sort((a,b)=>a[0]-b[0]);let x0=raw[0][0],x1=raw[0][1];
+  for(let i=1;i<raw.length;i++){
+   const a=raw[i][0],b=raw[i][1];
+   if(a<=x1+1)x1=Math.max(x1,b);else{rec.push(y,Math.max(0,x0),Math.min(w-1,x1));x0=a;x1=b}
+  }
+  rec.push(y,Math.max(0,x0),Math.min(w-1,x1));
+ }
+ return new Uint32Array(rec);
+}
+function gpuLowerBound(map,value){
+ let lo=0,hi=map.length;
+ while(lo<hi){const mid=(lo+hi)>>1;if(map[mid]<value)lo=mid+1;else hi=mid}
+ return lo;
+}
+function gpuUpperBound(map,value){
+ let lo=0,hi=map.length;
+ while(lo<hi){const mid=(lo+hi)>>1;if(map[mid]<=value)lo=mid+1;else hi=mid}
+ return lo;
+}
+function gpuDilateRuns(runs,w,h,d,radius=1){
+ if(radius<=0)return runs;
+ const rowsByZ=Array.from({length:d},()=>new Map());
+ for(let z=0;z<d;z++){
+  const rec=runs?.[z];if(!rec?.length)continue;
+  for(let i=0;i<rec.length;i+=3){
+   const y=rec[i],x0=Math.max(0,rec[i+1]-radius),x1=Math.min(w-1,rec[i+2]+radius);
+   for(let dz=-radius;dz<=radius;dz++){
+    const zz=z+dz;if(zz<0||zz>=d)continue;
+    const rows=rowsByZ[zz];
+    for(let dy=-radius;dy<=radius;dy++){
+     const yy=y+dy;if(yy<0||yy>=h)continue;
+     const arr=rows.get(yy)||[];arr.push([x0,x1]);rows.set(yy,arr);
+    }
+   }
+  }
+ }
+ return rowsByZ.map(rows=>gpuRunRowMapToSlice(rows,w));
+}
+function gpuRunsForTexture(runs,sourceDims,textureDims,{dilate=0}={}){
+ const [sw,sh,sd]=sourceDims,[tw,th,td]=textureDims;
+ if(!runs)return null;
+ if(sw===tw&&sh===th&&sd===td)return dilate?gpuDilateRuns(runs,tw,th,td,dilate):runs;
+ const xMap=new Uint32Array(tw),yMap=new Uint32Array(th),zMap=new Uint32Array(td);
+ for(let x=0;x<tw;x++)xMap[x]=tw<=1?0:Math.round(x*(sw-1)/(tw-1));
+ for(let y=0;y<th;y++)yMap[y]=th<=1?0:Math.round(y*(sh-1)/(th-1));
+ for(let z=0;z<td;z++)zMap[z]=td<=1?0:Math.round(z*(sd-1)/(td-1));
+ const out=new Array(td);
+ for(let tz=0;tz<td;tz++){
+  const rec=runs[zMap[tz]],srcRows=new Map(),dstRows=new Map();
+  if(rec?.length){
+   for(let i=0;i<rec.length;i+=3){const y=rec[i],arr=srcRows.get(y)||[];arr.push([rec[i+1],rec[i+2]]);srcRows.set(y,arr)}
+   for(let ty=0;ty<th;ty++){
+    const intervals=srcRows.get(yMap[ty]);if(!intervals?.length)continue;
+    const dst=[];
+    for(const [sx0,sx1] of intervals){
+     const tx0=gpuLowerBound(xMap,sx0),tx1=gpuUpperBound(xMap,sx1)-1;
+     if(tx0<=tx1&&tx0<tw&&tx1>=0)dst.push([Math.max(0,tx0),Math.min(tw-1,tx1)]);
+    }
+    if(dst.length)dstRows.set(ty,dst);
+   }
+  }
+  out[tz]=gpuRunRowMapToSlice(dstRows,tw);
+ }
+ return dilate?gpuDilateRuns(out,tw,th,td,dilate):out;
 }
 
 export class MedicalVolumeRenderer{
@@ -655,18 +749,17 @@ export class MedicalVolumeRenderer{
  setPreviewRuns(key,runs,segmentOrder,v){
   const seg=segmentOrder?.indexOf?.(key)??-1;
   if(!v||seg<0||!runs){this.clearPreviewRuns();return}
-  const w=v.columns,h=v.rows,d=v.slices;if(w>65535)throw new Error('GPU cut preview RLE requires width <= 65535');
+  const sourceDims=[v.columns,v.rows,v.slices],gridDims=this.textureDims.slice(),gridRuns=gpuRunsForTexture(runs,sourceDims,gridDims,{dilate:this.reducedVolume?1:0});
+  const [w,h,d]=gridDims;if(w>65535)throw new Error('GPU cut preview RLE requires width <= 65535');
   const rowCount=h*d;let total=0;
-  for(let z=0;z<d;z++)total+=(runs[z]?.length||0)/3;
+  for(let z=0;z<d;z++)total+=(gridRuns[z]?.length||0)/3;
   if(!total){this.clearPreviewRuns();return}
   const rows=new Uint32Array(2+rowCount),intervals=new Uint32Array(total);rows[0]=seg+1;let cursor=0,rowIndex=0;
   for(let z=0;z<d;z++){
-   const rec=runs[z]||null;let ri=0;
+   const rec=gridRuns[z]||null;let ri=0;
    for(let y=0;y<h;y++,rowIndex++){
     rows[1+rowIndex]=cursor;
-    while(rec&&ri<rec.length&&rec[ri]===y){
-     const x0=rec[ri+1],x1=rec[ri+2];intervals[cursor++]=((x1&65535)<<16)|(x0&65535);ri+=3;
-    }
+    while(rec&&ri<rec.length&&rec[ri]===y){const x0=rec[ri+1],x1=rec[ri+2];intervals[cursor++]=((x1&65535)<<16)|(x0&65535);ri+=3}
    }
   }
   rows[1+rowCount]=cursor;
@@ -676,7 +769,7 @@ export class MedicalVolumeRenderer{
   const intervalsBuffer=this.device.createBuffer({label:'VRL cut preview intervals',size:intervals.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(rowsBuffer,0,rows);this.device.queue.writeBuffer(intervalsBuffer,0,intervals);
   this.previewRowsBuffer?.destroy?.();this.previewIntervalsBuffer?.destroy?.();this.previewRowsBuffer=rowsBuffer;this.previewIntervalsBuffer=intervalsBuffer;
-  this.previewSignature=key+':'+cursor;this.rebuildBindGroup();
+  this.previewSignature=key+':'+gridDims.join('x')+':'+cursor;this.rebuildBindGroup();
  }
  clearAppliedCutRuns(){
   this.appliedCutRowsBuffer?.destroy?.();this.appliedCutIntervalsBuffer?.destroy?.();
@@ -689,39 +782,25 @@ export class MedicalVolumeRenderer{
  }
  setAppliedCutRuns(edits,segmentOrder,v){
   if(!v||!segmentOrder?.length){this.clearAppliedCutRuns();return}
-  const w=v.columns,h=v.rows,d=v.slices;
+  const sourceDims=[v.columns,v.rows,v.slices],gridDims=this.textureDims.slice(),[w,h,d]=gridDims;
   if(w>65535)throw new Error('GPU applied cut RLE requires width <= 65535');
-  const rowCount=h*d;
-  const descs=segmentOrder.slice(0,4).map(key=>edits?.[key]||null);
-  let activeMask=0;
-  let total=0;
-  for(let s=0;s<descs.length;s++){
-   const runs=descs[s]?.cutRuns;
-   if(!runs)continue;
-   let count=0;
+  const sourceDescs=segmentOrder.slice(0,4).map(key=>edits?.[key]||null);
+  const descs=sourceDescs.map(desc=>desc?.cutRuns?gpuRunsForTexture(desc.cutRuns,sourceDims,gridDims,{dilate:this.reducedVolume?1:0}):null);
+  const rowCount=h*d;let activeMask=0,total=0;
+  for(let si=0;si<descs.length;si++){
+   const runs=descs[si];if(!runs)continue;let count=0;
    for(let z=0;z<d;z++)count+=(runs[z]?.length||0)/3;
-   if(count){activeMask|=(1<<s);total+=count;}
+   if(count){activeMask|=(1<<si);total+=count}
   }
   if(!activeMask){this.clearAppliedCutRuns();return}
-  const offsets=new Uint32Array(1+4*(rowCount+1));
-  const intervals=new Uint32Array(Math.max(1,total));
-  offsets[0]=activeMask;
-  let cursor=0;
-  for(let s=0;s<4;s++){
-   const runs=descs[s]?.cutRuns||null;
-   const base=1+s*(rowCount+1);
-   let rowIndex=0;
+  const offsets=new Uint32Array(1+4*(rowCount+1)),intervals=new Uint32Array(Math.max(1,total));offsets[0]=activeMask;let cursor=0;
+  for(let si=0;si<4;si++){
+   const runs=descs[si]||null,base=1+si*(rowCount+1);let rowIndex=0;
    for(let z=0;z<d;z++){
-    const rec=runs?.[z]||null;
-    let ri=0;
+    const rec=runs?.[z]||null;let ri=0;
     for(let y=0;y<h;y++,rowIndex++){
      offsets[base+rowIndex]=cursor;
-     while(rec&&ri<rec.length&&rec[ri]===y){
-      const x0=rec[ri+1];
-      const x1=rec[ri+2];
-      intervals[cursor++]=((x1&65535)<<16)|(x0&65535);
-      ri+=3;
-     }
+     while(rec&&ri<rec.length&&rec[ri]===y){const x0=rec[ri+1],x1=rec[ri+2];intervals[cursor++]=((x1&65535)<<16)|(x0&65535);ri+=3}
     }
    }
    offsets[base+rowCount]=cursor;
@@ -730,25 +809,29 @@ export class MedicalVolumeRenderer{
   if(offsets.byteLength>maxBinding||intervals.byteLength>maxBinding)throw new Error('GPU applied cut RLE exceeds storage buffer limit');
   const rowsBuffer=this.device.createBuffer({label:'VRL applied cut row index',size:offsets.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   const intervalsBuffer=this.device.createBuffer({label:'VRL applied cut intervals',size:intervals.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
-  this.device.queue.writeBuffer(rowsBuffer,0,offsets);
-  this.device.queue.writeBuffer(intervalsBuffer,0,intervals);
-  this.appliedCutRowsBuffer?.destroy?.();this.appliedCutIntervalsBuffer?.destroy?.();
-  this.appliedCutRowsBuffer=rowsBuffer;
-  this.appliedCutIntervalsBuffer=intervalsBuffer;
-  this.appliedCutSignature=String(activeMask)+':'+String(cursor);
-  this.rebuildBindGroup();
+  this.device.queue.writeBuffer(rowsBuffer,0,offsets);this.device.queue.writeBuffer(intervalsBuffer,0,intervals);
+  this.appliedCutRowsBuffer?.destroy?.();this.appliedCutIntervalsBuffer?.destroy?.();this.appliedCutRowsBuffer=rowsBuffer;this.appliedCutIntervalsBuffer=intervalsBuffer;
+  this.appliedCutSignature=gridDims.join('x')+':'+String(activeMask)+':'+String(cursor);this.rebuildBindGroup();
  }
  setEditRuns(edits,segmentOrder,v){
   if(!v||!segmentOrder?.length){this.clearEditRuns();this.clearAppliedCutRuns();return}
   this.setAppliedCutRuns(edits,segmentOrder,v);
-  const w=v.columns,h=v.rows,d=v.slices;if(w>65535)throw new Error('GPU edit RLE requires width <= 65535');
-  const rowCount=h*d,descs=segmentOrder.slice(0,4).map(key=>edits?.[key]||null);
-  let activeMask=0,keepMask=0,total=0;
-  for(let s=0;s<descs.length;s++){const desc=descs[s];if(!desc)continue;activeMask|=(1<<s);if(desc.mode==='keep')keepMask|=(1<<s);for(let z=0;z<d;z++)total+=(desc.runs?.[z]?.length||0)/3}
+  const sourceDims=[v.columns,v.rows,v.slices],gridDims=this.textureDims.slice(),[w,h,d]=gridDims;
+  if(w>65535)throw new Error('GPU edit RLE requires width <= 65535');
+  const sourceDescs=segmentOrder.slice(0,4).map(key=>edits?.[key]||null);
+  const descs=sourceDescs.map(desc=>{
+   if(!desc?.runs)return null;
+   return{mode:desc.mode,runs:gpuRunsForTexture(desc.runs,sourceDims,gridDims,{dilate:this.reducedVolume&&desc.mode==='exclude'?1:0})};
+  });
+  const rowCount=h*d;let activeMask=0,keepMask=0,total=0;
+  for(let si=0;si<descs.length;si++){
+   const desc=descs[si];if(!desc)continue;activeMask|=(1<<si);if(desc.mode==='keep')keepMask|=(1<<si);
+   for(let z=0;z<d;z++)total+=(desc.runs?.[z]?.length||0)/3;
+  }
   if(!activeMask){this.clearEditRuns();return}
   const offsets=new Uint32Array(2+4*(rowCount+1)),intervals=new Uint32Array(Math.max(1,total));offsets[0]=activeMask;offsets[1]=keepMask;let cursor=0;
-  for(let s=0;s<4;s++){
-   const desc=descs[s],base=2+s*(rowCount+1);let rowIndex=0;
+  for(let si=0;si<4;si++){
+   const desc=descs[si],base=2+si*(rowCount+1);let rowIndex=0;
    for(let z=0;z<d;z++){
     const rec=desc?.runs?.[z]||null;let ri=0;
     for(let y=0;y<h;y++,rowIndex++){
@@ -763,7 +846,8 @@ export class MedicalVolumeRenderer{
   const rowsBuffer=this.device.createBuffer({label:'VRL edit row index',size:offsets.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   const intervalsBuffer=this.device.createBuffer({label:'VRL edit intervals',size:intervals.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(rowsBuffer,0,offsets);this.device.queue.writeBuffer(intervalsBuffer,0,intervals);
-  this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();this.editRowsBuffer=rowsBuffer;this.editIntervalsBuffer=intervalsBuffer;this.editSignature=String(activeMask)+':'+String(keepMask)+':'+String(cursor);this.rebuildBindGroup();
+  this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();this.editRowsBuffer=rowsBuffer;this.editIntervalsBuffer=intervalsBuffer;
+  this.editSignature=gridDims.join('x')+':'+String(activeMask)+':'+String(keepMask)+':'+String(cursor);this.rebuildBindGroup();
  }
  ensurePickCapacity(count){
   if(count<=this.pickCapacity&&this.pickBuffer&&this.pickOutput)return;
@@ -837,9 +921,10 @@ export class MedicalVolumeRenderer{
   this.interactive=next;this.interactionTier=nextTier;this.resize(true);
  }
  resize(force=false){
+  const hostW=this.host.clientWidth,hostH=this.host.clientHeight;if(hostW<8||hostH<8)return;
   const dpr=window.devicePixelRatio||1,touch=(navigator.maxTouchPoints||0)>0;
   const interactiveRatios=touch?[0.72,0.58,0.46]:[0.9,0.7,0.52];
-  const ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5),w=Math.max(1,Math.floor(this.host.clientWidth*ratio)),h=Math.max(1,Math.floor(this.host.clientHeight*ratio));
+  const ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5),w=Math.max(1,Math.floor(hostW*ratio)),h=Math.max(1,Math.floor(hostH*ratio));
   if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h}
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
