@@ -38,6 +38,68 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — refactor/split-app-js-phase1 (redone on 184.10)
+
+**Agent:** Claude (via claude.ai)
+**Task:** Priority #3, phase 1 — split `docs/app.js` into modules, starting
+with the parts that hold no application state.
+
+The first attempt was based on the mistakenly promoted build 185 (see the
+INCIDENT entry below). The branch was reset onto the restored 184.10 `main`
+and the split re-run with the same tools; the 185-based attempt is kept on
+local-only ref `old/phase1-on-185` (not needed).
+
+### What changed
+- New modules (code moved **verbatim**, only `export` added):
+  `docs/utils.js`, `docs/i18n.js`, `docs/dicom.js`, `docs/mask-ops.js`,
+  `docs/run-length.js`, `docs/mesh-geometry.js`. `docs/app.js`
+  6216 → 5439 lines; 92 top-level declarations moved (incl.
+  `componentsFromRunsAsync`, new in 184.x).
+- `tools/verify-split.mjs origin/main docs/app.js <all modules>` →
+  `OK: 768 top-level statements moved/kept verbatim` — i.e. everything
+  from 184.1–184.10 is present unchanged.
+- Build **184 (184.10) → 187**. 185 = abandoned preview, 186 = withdrawn
+  first version of this PR's preview; skipped to avoid browser-cache mixups.
+- Tooling (in `tools/`, dev-only, not deployed):
+  - `analyze-toplevel.mjs` — lists top-level declarations, which are
+    mutable and which are "pure". Heuristic; stateful consts such as
+    `filterState`, `segmentState`, `mprPaintCache` can be mis-reported.
+  - `extract-module.mjs` — moves named declarations to a new module and
+    inserts the import. Aborts if moved code depends on anything that stays
+    behind (no import cycles), if a name is `let`/`var`, or reassigned.
+  - `verify-split.mjs` — proves a split only moved code (ignores the
+    APP_VERSION/APP_BUILD values).
+  - `bump-build.mjs` (`npm run bump-build [N]`) — updates APP_VERSION /
+    APP_BUILD, version.json and every `?v=` tag (incl. free-form suffixes).
+- Guardrails: `eslint.config.js` (`npm run lint`, `no-undef` etc.), clean
+  on 184.10 before and after; in CI. Build-consistency test covers every
+  relative import in every module.
+- Tests: 62 passing (+1 todo). Unit tests for dicom (synthetic DICOM
+  writer in `tests/helpers/synthetic-dicom.js`), mask-ops, run-length,
+  mesh-geometry (binary STL), utils.
+- CI: public Zenodo demo E2E runs on every PR; Playwright `github`
+  reporter; actions bumped to v7.
+
+### Findings
+- `groupSeries` sorts slices by ImagePositionPatient z only and ignores
+  ImageOrientationPatient → non-axial acquisitions may be ordered wrongly
+  (`it.todo` in tests/unit/dicom.test.js; PLAN "slice ordering").
+- CI has no GPU (WebGL + CPU fallback). WebGPU paths are only verified on
+  the owner's device via the PR preview URL.
+- Agents without `Actions: Read` can read failures through check-run
+  annotations: `GET /repos/{repo}/check-runs/{job_id}/annotations`.
+
+### Follow-up (phase 2 plan)
+- `gpuFilterShader` (~465 lines of WGSL) depends on `gpuFilterRuntime`;
+  pass needed values as parameters, then move to `docs/gpu-shaders.js`.
+- Explicit state module for the ~63 reassigned `let`s (volume,
+  sourceVolume, sceneState, …) as properties of an exported object, per
+  feature area.
+- Then split by feature: MPR, 3D scene/renderer, segmentation UI, filter
+  pipeline, analysis/edit tools, UI construction.
+
+---
+
 ## 2026-09-26 — fix/restore-build-184-10 (INCIDENT)
 
 **Agent:** Claude (via claude.ai)

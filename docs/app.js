@@ -2,9 +2,15 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260925-build184-texturemask1';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260926-build187';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-const APP_VERSION='2026.09.25-184.10';const APP_BUILD='184';
+import { clampRangeValue, ctDigits, esc, fmt, formatCtValue, frameYield, hexRgb, isDesktopMac, isIPadRuntime, isIPhoneRuntime, multi, niceCtStep, num, numberOr, rangeNumber, rangePrecision, rangeStep, safePair, safeTriple, withTimeout } from './utils.js?v=20260926-build187';
+import { COMPRESSED_DICOM_TRANSFER_SYNTAXES, NATIVE_DICOM_TRANSFER_SYNTAXES, canDecodeToInt16, dicomImageFrameInfo, encapsulatedFrameBytes, expandParsedFrames, groupSeries, isNativeDicomTransferSyntax, parseDicomHeader, parsedSliceMeta, sourceRangeFromMetadata } from './dicom.js?v=20260926-build187';
+import { boxBlur3D, buildThresholdMask, compactFaceFlags, fillMaskHoles, morphMask, removeSmallMaskComponents, smoothMaskScalarField, thresholdSourceMask, valuesToFaceFlags, valuesToSegmentBits } from './mask-ops.js?v=20260926-build187';
+import { RunUnionFind, analysisRunRows, analysisRunSliceState, analysisRunsContain, analysisRunsOverlap, analysisRunsVoxelCount, complementRunArrays, componentAtVoxel, componentTouchesVolumeBoundary, componentsFromRuns, componentsFromRunsAsync, consumeGpuAnalysisRuns, forEachUncoveredRun, intersectRunArrays, intersectRunSlice, maskFromAnalysisRuns, maskToAnalysisRuns, mergeIntervals, morphSourceRunArrays, postprocessSourceRuns, rowIntervalsFromRuns, rowsToRunSlice, runArraysBinary, runsSliceToMask, sourceComponentSliceState, sourceResultToAnalysisRuns, sourceRunSlice, sourceRunSliceFromRanges, subtractRunArrays, subtractRunSlice, unionAnalysisRuns, unionOverlappingRuns, unionRunArrays, unionRunSlice } from './run-length.js?v=20260926-build187';
+import { Float32FaceBuilder, appendAnalysisRunBoundaryFaces, appendDecodedMaskSliceFaces, appendSourceFacesFromCompactTile, appendSourceSliceFaces, appendSourceSliceFacesFast, appendSourceSliceFacesFromBits, appendSourceSliceFacesFromFlags, eachGeometryTriangle, eachGeometryTriangleRange, geometryToBinaryStl, groupToBinaryStl, groupTriangleCount, indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates } from './mesh-geometry.js?v=20260926-build187';
+import { I18N } from './i18n.js?v=20260926-build187';
+const APP_VERSION='2026.09.26-187';const APP_BUILD='187';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -25,52 +31,6 @@ const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content
 const DEMO_SIZE=20800000;
 const app=document.querySelector('#app');
 let currentLanguage='ja';
-const I18N={
- ja:{
-  subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
-  gpuChecking:'WEBGPU 確認中',
-  demo:'公開マウスCTデモ',openFolder:'DICOMフォルダを開く',
-  dataset:'データセット',series:'DICOMシリーズ',selectData:'データを選択してください',
-  selectDataHelp:'ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。',
-  display:'表示',ctDisplay:'CT表示',windowCenter:'ウィンドウ中心',windowWidth:'ウィンドウ幅',ctRange:'CT値操作範囲',autoRange:'Auto',fullRange:'Full',rebuild3D:'3D再構築',cancel3D:'再構築をキャンセル',cancelling3D:'キャンセル中…',threeCancelled:'3D再構築をキャンセルしました。以前の3Dを保持しています。',threeCurrent:'3Dは最新',threeStale:'3Dは再構築待ち',threeUpdating:'3D再構築中',mainView:'メインへ',
-  segmentation:'セグメンテーション',segments:'組織セグメント',
-  bone:'骨',soft:'軟部組織',fat:'脂肪',lung:'肺',min:'最小',max:'最大',opacity:'不透明度',segmentPreset:'セグメントプリセット',addSegment:'セグメントを追加',removeSegment:'削除',opening:'Opening',closing:'Closing',minComponent:'最小連結成分',holeFill:'Hole Filling',
-  surfaceSmooth:'表面平滑化',strength:'強度',sigmoidCenter:'中心',filterThreshold:'検出閾値',iterations:'反復回数',passes:'Pass数',searchRadius:'探索半径',patchRadius:'パッチ半径',spatialSigma:'空間Sigma',intensitySigma:'強度Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'STL書き出し',volumeRender:'GPUボリューム',surfaceRender:'メッシュで確認',mprSurfaceOpacity:'断面不透明度（サーフェス）',mprVolumeOpacity:'断面不透明度（GPU）',volumeMode:'体積解析',volumeOff:'体積解析を終了',sliceAnalysis:'断面解析',sliceAnalysisOff:'断面解析を終了',sliceAnalysisHint:'3Dを切断する断面を選択してください',sectionReverse:'反転',sectionOff:'解除',sectionPosition:'断面位置',sectionSliceImage:'スライス画像を表示',sectionCap:'断面キャップ',sectionCapOpacity:'キャップ不透明度',sectionCapHatch:'ハッチング',volumeHint:'3D上の部品をクリックしてください',analysisRegions:'解析領域',mergeSelected:'選択を統合',clearRegions:'すべて解除',showRegion:'表示',hideRegion:'非表示',deleteRegion:'削除',mergedRegion:'統合領域',analysisRegion:'領域',mergeNeedsTwo:'2件以上の領域を選択してください',mergingRegions:'領域を統合中…',edit3D:'3D編集',editNavigate:'操作',selectEditRegion:'領域選択',cutRegion:'ペン切断',lineCutRegion:'直線切断',editTarget:'対象',editAuto:'自動',editReady:'操作を選択してください',editRegionHint:'3D上の領域をクリックすると連結領域を選択します。選択後「選択領域を削除」で削除できます。',editPenHint:'空間または3D上に曲線を描き、その曲線を起点とする切断面を指定します',editLineHint:'空間または3D上で直線を描き、その直線を起点とする平面切断を指定します',editAutoHint:'自動: 最初に触れたセグメントを編集対象にします',threeHelp:'3D操作',threeHelpMouse:'マウス / トラックパッド',threeHelpTouch:'タッチ',threeHelpQuick:'クイックビュー',threeHelpRotate:'左ドラッグ: 回転',threeHelpRoll:'Alt + 左ドラッグ: 平面回転',threeHelpPan:'Shift+左 / 右 / 中ドラッグ: 移動',threeHelpZoom:'ホイール: ズーム',threeHelpTouchRotate:'1本指: 回転',threeHelpTouchGesture:'2本指: 移動・ズーム・ひねり回転',threeHelpAxis:'X / Y / Z: 各軸の正面',threeHelpStep:'↶ / ↷: 15°ずつ平面回転',threeHelpPivot:'○ は現在の回転中心です',removeSelectedRegion:'選択領域を削除',keepSelectedRegion:'選択領域のみ残す',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'編集リセット',cutWidth:'切断厚さ',cutDepth:'切断深さ',cutYaw:'左右角度',cutPitch:'上下角度',cutOffset:'切断面位置',applyCut:'切断を適用',cancelCut:'キャンセル',cutPendingHint:'切断予定範囲を確認し、幅・深さ・角度を調整してから「切断を適用」を押してください',exportSelectedStl:'選択領域STL',selectRegion2D:'2D/3Dで領域を選択',resetFilters:'画像フィルターをリセット',
-  controls:'3D操作は3D画面右下の「？」から確認できます。断面画像: 左右スワイプ / マウスホイールでスライス移動',
-  seriesUnselected:'シリーズ未選択',selectSeries:'左の一覧からCTシリーズを選択してください。',
-  footer:'元のキャリブレーション済みCT値は保持されます。',
-  slices:'スライス',matrix:'マトリクス',voxel:'ボクセル',stored:'保存形式',
-  estimated:'推定展開サイズ',decoding:'CTボリュームを展開中…',ready:'CTボリューム準備完了',
-  demoLoading:'公開マウスPET/CTを取得中…',demoSize:'約20.8MBの公開データです。',
-  demoFailed:'公開デモを読み込めませんでした',dicomChecking:'DICOMを確認中…',
-  pixelDeferred:'Pixel Dataはまだ展開しません。',noSeries:'DICOMシリーズを検出できませんでした',
-  original:'元のキャリブレーション済みCT値',processingReset:'処理をリセットしました。元のキャリブレーション済みCT値を復元しました',
-  ipadSettings:'設定',ipadClose:'閉じる',ipadData:'データ',ipadDisplay:'表示・Seg',ipadEdit:'3D編集',ipadView3d:'3D',ipadView2d:'2D',ipadViewSplit:'分割',
-  demoCache:'公開デモ: キャッシュ済みデータを使用',demoDone:'公開デモ: ダウンロード完了。端末キャッシュへ保存中'
- },
- en:{
-  subtitle:'Browser-based DICOM CT viewer for mouse and laboratory-animal imaging',
-  gpuChecking:'WEBGPU CHECKING',
-  demo:'Public mouse CT demo',openFolder:'Open DICOM folder',
-  dataset:'DATASET',series:'DICOM Series',selectData:'Select data',
-  selectDataHelp:'Use a local folder or the approximately 20.8 MB public mouse PET/CT demo.',
-  display:'DISPLAY',ctDisplay:'CT display',windowCenter:'Window Center',windowWidth:'Window Width',ctRange:'CT value range',autoRange:'Auto',fullRange:'Full',rebuild3D:'Rebuild 3D',cancel3D:'Cancel rebuild',cancelling3D:'Cancelling…',threeCancelled:'3D rebuild cancelled. Previous 3D retained.',threeCurrent:'3D is current',threeStale:'3D rebuild pending',threeUpdating:'Rebuilding 3D',mainView:'Main',
-  segmentation:'SEGMENTATION',segments:'Tissue segments',
-  bone:'Bone',soft:'Soft tissue',fat:'Fat',lung:'Lung',min:'Min',max:'Max',opacity:'Opacity',segmentPreset:'Segment preset',addSegment:'Add segment',removeSegment:'Remove',opening:'Opening',closing:'Closing',minComponent:'Min Component',holeFill:'Hole Filling',
-  surfaceSmooth:'Surface Smooth',strength:'Strength',sigmoidCenter:'Center',filterThreshold:'Threshold',iterations:'Iterations',passes:'Passes',searchRadius:'Search Radius',patchRadius:'Patch Radius',spatialSigma:'Spatial Sigma',intensitySigma:'Intensity Sigma',weight:'Weight',radius:'Radius',amount:'Amount',exportStl:'Export STL',volumeRender:'GPU Volume',surfaceRender:'Review mesh',mprSurfaceOpacity:'MPR opacity (surface)',mprVolumeOpacity:'MPR opacity (GPU)',volumeMode:'Volume analysis',volumeOff:'Exit volume analysis',sliceAnalysis:'Section view',sliceAnalysisOff:'Exit section view',sliceAnalysisHint:'Choose a plane to cut the 3D model',sectionReverse:'Reverse',sectionOff:'Off',sectionPosition:'Section position',sectionSliceImage:'Show slice image',sectionCap:'Section cap',sectionCapOpacity:'Cap opacity',sectionCapHatch:'Hatching',volumeHint:'Click a 3D component',analysisRegions:'Analysis regions',mergeSelected:'Merge selected',clearRegions:'Clear all',showRegion:'Show',hideRegion:'Hide',deleteRegion:'Delete',mergedRegion:'Merged region',analysisRegion:'Region',mergeNeedsTwo:'Select at least two regions',mergingRegions:'Merging regions…',edit3D:'3D edit',editNavigate:'Navigate',selectEditRegion:'Select region',cutRegion:'Pen cut',lineCutRegion:'Line cut',editTarget:'Target',editAuto:'Auto',editReady:'Choose an edit tool',editRegionHint:'Click a connected region in the 3D view, then use Delete selected region to remove it.',editPenHint:'Draw a curve in space or on the 3D view to define the cutting surface',editLineHint:'Draw a line in space or on the 3D view to define a planar cut',editAutoHint:'Auto: the first touched segment becomes the edit target',threeHelp:'3D controls',threeHelpMouse:'Mouse / trackpad',threeHelpTouch:'Touch',threeHelpQuick:'Quick views',threeHelpRotate:'Left drag: rotate',threeHelpRoll:'Alt + left drag: roll',threeHelpPan:'Shift+left / right / middle drag: pan',threeHelpZoom:'Wheel: zoom',threeHelpTouchRotate:'One finger: rotate',threeHelpTouchGesture:'Two fingers: pan, zoom, twist-roll',threeHelpAxis:'X / Y / Z: face each axis',threeHelpStep:'↶ / ↷: roll by 15°',threeHelpPivot:'○ marks the current rotation center',removeSelectedRegion:'Delete selected region',keepSelectedRegion:'Keep selected region only',undoEdit:'Undo',redoEdit:'Redo',resetEdit:'Reset edits',cutWidth:'Cut thickness',cutDepth:'Cut depth',cutYaw:'Horizontal angle',cutPitch:'Vertical angle',cutOffset:'Cut plane position',applyCut:'Apply cut',cancelCut:'Cancel',cutPendingHint:'Review the planned cut, adjust width, depth and angles, then press Apply cut',exportSelectedStl:'Selected region STL',selectRegion2D:'Select a region in 2D or 3D',resetFilters:'Reset image filters',
-  controls:'Open “?” at the lower-right of the 3D view for controls. MPR: swipe left/right or use the mouse wheel',
-  seriesUnselected:'No Series selected',selectSeries:'Select a CT Series from the list on the left.',
-  footer:'Original calibrated CT values are preserved.',
-  slices:'Slices',matrix:'Matrix',voxel:'Voxel',stored:'Stored',
-  estimated:'Estimated decoded size',decoding:'Decoding CT volume…',ready:'CT volume ready',
-  demoLoading:'Loading public mouse PET/CT…',demoSize:'Approximately 20.8 MB of public data.',
-  demoFailed:'Could not load the public demo',dicomChecking:'Checking DICOM…',
-  pixelDeferred:'Pixel Data has not been expanded yet.',noSeries:'No DICOM Series detected',
-  original:'Original calibrated CT values',processingReset:'Processing reset. Original calibrated CT values restored.',
-  ipadSettings:'Settings',ipadClose:'Close',ipadData:'Data',ipadDisplay:'Display / Seg',ipadEdit:'3D edit',ipadView3d:'3D',ipadView2d:'2D',ipadViewSplit:'Split',
-  demoCache:'Public demo: using cached data',demoDone:'Public demo: download complete. Saving to device cache'
- }
-};
 const tr=key=>I18N[currentLanguage][key]??key;
 function applyLanguage(lang){
  currentLanguage=lang;
@@ -221,20 +181,6 @@ const $=s=>document.querySelector(s);
 // - wheel works on every range input
 // - pointer dragging is relative and intentionally slower than the browser default
 const RANGE_DRAG_MOUSE_GAIN=.48,RANGE_DRAG_TOUCH_GAIN=.36;
-const rangeNumber=(el,name,fallback)=>{const n=Number(el?.[name]);return Number.isFinite(n)?n:fallback};
-const rangeStep=el=>{
- const raw=el?.getAttribute?.('step'),n=raw&&raw!=='any'?Number(raw):1;
- return Number.isFinite(n)&&n>0?n:1;
-};
-const rangePrecision=step=>{
- const s=String(step);if(/e-/i.test(s)){const m=s.match(/e-(\d+)/i);return m?Math.min(8,+m[1]):6}
- const dot=s.indexOf('.');return dot<0?0:Math.min(8,s.length-dot-1);
-};
-const clampRangeValue=(el,value)=>{
- const min=rangeNumber(el,'min',0),max=rangeNumber(el,'max',100),step=rangeStep(el),precision=rangePrecision(step);
- const clamped=Math.max(min,Math.min(max,value)),snapped=min+Math.round((clamped-min)/step)*step;
- return Math.max(min,Math.min(max,Number(snapped.toFixed(precision))));
-};
 const setRangeValue=(el,value,commit=false)=>{
  const next=clampRangeValue(el,value);if(Number(el.value)===next)return false;
  el.value=String(next);el.dispatchEvent(new Event('input',{bubbles:true}));
@@ -1212,9 +1158,6 @@ async function loadDemo(){
  footer.textContent=fromCache?tr('demoCache'):tr('demoDone');
  return out;
 }
-function withTimeout(promise,ms,timeoutValue){
- return Promise.race([promise,new Promise(resolve=>setTimeout(()=>resolve(timeoutValue),ms))]);
-}
 async function updateDemoCacheBadge(){
  if(!('caches' in window))return;
  try{
@@ -1228,27 +1171,6 @@ async function inspect(files,auto){
  try{const slices=await parseFiles(files,(a,b)=>progress(a,b));const series=groupSeries(slices);if(!series.length){state.innerHTML='<strong>'+tr('noSeries')+'</strong>';return}state.classList.add('is-hidden');renderSeries(series);if(auto){const ct=series.find(s=>s.modality.toUpperCase()==='CT')||series[0];await selectSeries(ct)}}finally{busy(false);prog.classList.add('is-hidden')}
 }
 
-async function parseDicomHeader(file){
- const attempts=[Math.min(file.size,256*1024),Math.min(file.size,1024*1024)];
- let lastError=null;
- for(const size of [...new Set(attempts)]){
-  try{return dicomParser.parseDicom(new Uint8Array(await file.slice(0,size).arrayBuffer()),{untilTag:'x7fe00010'})}
-  catch(e){lastError=e}
- }
- try{return dicomParser.parseDicom(new Uint8Array(await file.arrayBuffer()),{untilTag:'x7fe00010'})}
- catch(e){throw lastError||e}
-}
-function parsedSliceMeta(f,ds){
- const seriesUid=ds.string('x0020000e')?.trim();if(!seriesUid)return null;
- const ps=multi(ds.string('x00280030'),2),pos=multi(ds.string('x00200032'),3);
- return{file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,bitsStored:ds.uint16('x00280101')||ds.uint16('x00280100')||16,highBit:ds.uint16('x00280102'),signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,photometricInterpretation:ds.string('x00280004')?.trim()||'MONOCHROME2',planarConfiguration:ds.uint16('x00280006')||0,numberOfFrames:Number(ds.string('x00280008')||1),pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),windowCenter:num(ds.string('x00281050')),windowWidth:num(ds.string('x00281051')),smallest:ds.uint16('x00280106'),largest:ds.uint16('x00280107'),pixelOffset:ds.elements.x7fe00010?.dataOffset??null,pixelLength:ds.elements.x7fe00010?.length??null,ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'};
-}
-function expandParsedFrames(meta){
- const frames=Math.max(1,meta.numberOfFrames||1);
- if(frames===1||!COMPRESSED_DICOM_TRANSFER_SYNTAXES.has(meta.ts))return[meta];
- const dz=meta.spacingBetween||meta.thickness||1,baseInstance=Number.isFinite(meta.instance)?meta.instance:0;
- return Array.from({length:frames},(_,frameIndex)=>({...meta,frameIndex,sortIndex:baseInstance+frameIndex/Math.max(frames,1),instance:baseInstance+frameIndex,pos:meta.pos?[meta.pos[0],meta.pos[1],meta.pos[2]+frameIndex*dz]:null}));
-}
 async function parseFiles(files,onProgress){
  const out=new Array(files.length),workers=navigator.maxTouchPoints>0?2:Math.min(4,Math.max(2,navigator.hardwareConcurrency||2));let cursor=0,done=0;
  const work=async()=>{
@@ -1263,45 +1185,6 @@ async function parseFiles(files,onProgress){
  return out.flatMap(item=>item||[]);
 }
 
-function canDecodeToInt16(slices){
- for(const meta of slices){
-  if(meta.bits!==8&&meta.bits!==16)return false;
-  if(!Number.isInteger(meta.slope)||!Number.isInteger(meta.intercept))return false;
-  const storedBits=meta.bitsStored||meta.bits,rawMin=meta.signed?-(2**(storedBits-1)):0,rawMax=meta.signed?(2**(storedBits-1)-1):(2**storedBits-1);
-  const x=rawMin*meta.slope+meta.intercept,y=rawMax*meta.slope+meta.intercept;
-  if(Math.min(x,y)<-32768||Math.max(x,y)>32767)return false;
- }
- return true;
-}
-function sourceRangeFromMetadata(slices){
- let min=Infinity,max=-Infinity;
- for(const meta of slices){
-  let rawMin=meta.smallest,rawMax=meta.largest;
-  if(rawMin==null||rawMax==null){
-   const storedBits=meta.bitsStored||meta.bits;
-   rawMin=meta.signed?-(2**(storedBits-1)):0;
-   rawMax=meta.signed?(2**(storedBits-1)-1):(2**storedBits-1);
-  }else if(meta.signed){
-   if(rawMin>32767)rawMin-=65536;
-   if(rawMax>32767)rawMax-=65536;
-  }
-  const x=rawMin*meta.slope+meta.intercept,y=rawMax*meta.slope+meta.intercept;
-  min=Math.min(min,x,y);max=Math.max(max,x,y);
- }
- return{min,max};
-}
-function groupSeries(slices){
- const m=new Map();
- for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}
- return[...m.entries()].map(([id,g])=>{
-  g.sort((a,b)=>((a.pos?.[2]??a.sortIndex??a.instance??0)-(b.pos?.[2]??b.sortIndex??b.instance??0)));
-  const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),compact=canDecodeToInt16(g),count=rows*columns*g.length,decodedBytes=count*(compact?2:4),sourceBacked=decodedBytes>256*1024*1024,range=sourceRangeFromMetadata(g);
-  let z=f.spacingBetween||f.thickness||1;
-  if(g.length>1&&g[0].pos&&g[1].pos)z=Math.abs(g[1].pos[2]-g[0].pos[2])||z;
-  const windowCenter=g.find(x=>Number.isFinite(x.windowCenter))?.windowCenter,windowWidth=g.find(x=>Number.isFinite(x.windowWidth)&&x.windowWidth>0)?.windowWidth;
-  return{id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes:decodedBytes,decodedBytes,compact,sourceBacked,min:range.min,max:range.max,windowCenter,windowWidth,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z};
- }).sort((a,b)=>b.slices.length-a.slices.length)
-}
 
 function renderSeries(series){list.replaceChildren();for(const s of series){const b=document.createElement('button');b.className='series-card';b.innerHTML='<div class="series-card-header"><div><span class="modality-badge">'+esc(s.modality)+'</span><strong>'+esc(s.description)+'</strong></div><strong class="memory-estimate">'+fmt(s.bytes)+'</strong></div><dl class="series-meta-grid"><div><dt>Slices</dt><dd>'+s.slices.length+'</dd></div><div><dt>Matrix</dt><dd>'+s.columns+' × '+s.rows+'</dd></div><div><dt>Voxel</dt><dd>'+s.spacingX.toFixed(4)+' × '+s.spacingY.toFixed(4)+' × '+s.spacingZ.toFixed(4)+' mm</dd></div><div><dt>Stored</dt><dd>'+s.bits+'-bit</dd></div></dl><p class="series-note">推定展開サイズ: '+fmt(s.decodedBytes)+' · '+(s.sourceBacked?'フル解像度・ストリーミング':(s.compact?'Int16':'Float32'))+'</p>';b.onclick=()=>selectSeries(s);b.dataset.id=s.id;list.appendChild(b)}}
 
@@ -1344,8 +1227,6 @@ async function selectSeries(s){
 function openSourceBackedVolume(s){
  return{data:null,mprData:null,mprPlaneBuffers:null,mprSagittalDisplayAll:null,mprSagittalDisplayBuffer:null,mprSagittalDisplayMin:null,mprSagittalDisplayMax:null,sourceBacked:true,series:s,columns:s.columns,rows:s.rows,slices:s.slices.length,spacing:[s.spacingX,s.spacingY,s.spacingZ],min:s.min,max:s.max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:'DICOM source'};
 }
-function isIPhoneRuntime(){return /iPhone|iPod/i.test(navigator.userAgent||'')}
-function isIPadRuntime(){return /iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||''))}
 function initIPadWorkspaceUi(){
  if(!isIPadRuntime())return;
  const shell=document.querySelector('.app-shell'),workspace=document.querySelector('.workspace'),sidebar=document.querySelector('.sidebar'),sidebarScroll=document.querySelector('.sidebar-scroll'),viewer=document.querySelector('#viewer-grid'),topbar=document.querySelector('.topbar');
@@ -1612,30 +1493,10 @@ function cachedSourceMprPlane(v,p,idx){
  for(let z=0;z<d;z++){const base=z*plane,dst=(d-1-z)*h;for(let y=0;y<h;y++)out[dst+y]=data[base+y*w+idx]}
  return out;
 }
-const NATIVE_DICOM_TRANSFER_SYNTAXES=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
-const COMPRESSED_DICOM_TRANSFER_SYNTAXES=new Set(['1.2.840.10008.1.2.5','1.2.840.10008.1.2.4.50','1.2.840.10008.1.2.4.51','1.2.840.10008.1.2.4.57','1.2.840.10008.1.2.4.70','1.2.840.10008.1.2.4.80','1.2.840.10008.1.2.4.81','1.2.840.10008.1.2.4.90','1.2.840.10008.1.2.4.91','1.2.840.10008.1.2.4.201','1.2.840.10008.1.2.4.202','1.2.840.10008.1.2.4.203']);
 let dicomCodecModulePromise=null;
-function isNativeDicomTransferSyntax(ts){return NATIVE_DICOM_TRANSFER_SYNTAXES.has(ts)}
 async function getDicomCodecModule(){
  if(!dicomCodecModulePromise)dicomCodecModulePromise=import('https://esm.sh/@cornerstonejs/dicom-image-loader@5.10.8?bundle').catch(e=>{dicomCodecModulePromise=null;throw e});
  return dicomCodecModulePromise;
-}
-function dicomImageFrameInfo(meta){
- const bits=meta.bitsStored||meta.bits,bytesPerPixel=meta.bits<=8?1:2;
- return{samplesPerPixel:meta.samples||1,photometricInterpretation:meta.photometricInterpretation||'MONOCHROME2',planarConfiguration:meta.planarConfiguration||0,rows:meta.rows,columns:meta.columns,bitsAllocated:meta.bits,bitsStored:bits,highBit:meta.highBit??bits-1,pixelRepresentation:meta.signed?1:0,smallestPixelValue:meta.smallest??(meta.signed?-(2**(bits-1)):0),largestPixelValue:meta.largest??(meta.signed?(2**(bits-1)-1):(2**bits-1)),bytesPerPixel,signed:!!meta.signed,componentsPerPixel:meta.samples||1};
-}
-function encapsulatedFrameBytes(ds,element,ts,frameIndex=0){
- if(!element?.encapsulatedPixelData||!element.fragments?.length)throw new Error('Encapsulated Pixel Data missing');
- const frames=Math.max(1,Number(ds.string('x00280008')||1));if(frameIndex<0||frameIndex>=frames)throw new Error('Compressed DICOM frame out of range: '+frameIndex+' / '+frames);
- if(ts==='1.2.840.10008.1.2.5')return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,frameIndex,1);
- let bot=element.basicOffsetTable||[];
- if(!bot.length&&frames>1){
-  if(typeof dicomParser.createJPEGBasicOffsetTable!=='function')throw new Error('Compressed multi-frame DICOM has no Basic Offset Table');
-  bot=dicomParser.createJPEGBasicOffsetTable(ds,element);
- }
- if(bot.length)return dicomParser.readEncapsulatedImageFrame(ds,element,frameIndex,bot);
- if(frames===1)return dicomParser.readEncapsulatedPixelDataFromFragments(ds,element,0,element.fragments.length);
- throw new Error('Unable to resolve compressed DICOM frame boundaries');
 }
 async function decodeCompressedDicomSlice(meta){
  if(!COMPRESSED_DICOM_TRANSFER_SYNTAXES.has(meta.ts))throw new Error('Unsupported compressed DICOM transfer syntax: '+meta.ts);
@@ -1735,10 +1596,6 @@ async function decode(s,onProgress){
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
 const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
-function isDesktopMac(){
- const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent||'';
- return /mac/i.test(platform)&&(navigator.maxTouchPoints||0)===0;
-}
 function gpuMeshBlockDepth(){
  if(navigator.maxTouchPoints>0)return 2;
  if(!isDesktopMac())return 4;
@@ -2938,11 +2795,6 @@ async function processSourceRegion(series,target,stages,key,revision,preferFullS
  const result=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return result;
 }
-function valuesToSegmentBits(values,segments){
- const out=new Uint32Array(values.length);
- for(let i=0;i<values.length;i++){const v=values[i];let bits=0;for(let s=0;s<segments.length&&s<4;s++)if(v>=segments[s].seg.min&&v<=segments[s].seg.max)bits|=(1<<s);out[i]=bits}
- return out;
-}
 async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -2961,31 +2813,6 @@ async function processSourceRegionMasks(series,target,stages,key,revision,segmen
  const values=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return valuesToSegmentBits(values,segments);
-}
-function valuesToFaceFlags(values,w,h,d,target,segments,box,series){
- const out=new Uint32Array(target.width*target.height*target.depth);let q=0;
- const local=(x,y,z)=>values[z*w*h+y*w+x],inside=(v,s)=>v>=segments[s].seg.min&&v<=segments[s].seg.max;
- for(let tz=0;tz<target.depth;tz++)for(let ty=0;ty<target.height;ty++)for(let tx=0;tx<target.width;tx++){
-  const x=target.x+tx,y=target.y+ty,z=target.z+tz,gx=box.x+x,gy=box.y+y,gz=box.z+z,center=local(x,y,z);let packed=0;
-  for(let s=0;s<segments.length&&s<4;s++){
-   if(!inside(center,s))continue;let faces=0;
-   if(gx===0||!inside(local(x-1,y,z),s))faces|=1;
-   if(gx+1>=series.columns||!inside(local(x+1,y,z),s))faces|=2;
-   if(gy===0||!inside(local(x,y-1,z),s))faces|=4;
-   if(gy+1>=series.rows||!inside(local(x,y+1,z),s))faces|=8;
-   if(gz===0||!inside(local(x,y,z-1),s))faces|=16;
-   if(gz+1>=series.slices.length||!inside(local(x,y,z+1),s))faces|=32;
-   packed|=faces<<(s*6);
-  }
-  out[q++]=packed;
- }
- return out;
-}
-function compactFaceFlags(flags){
- let count=0;for(let i=0;i<flags.length;i++)if(flags[i])count++;
- const items=new Uint32Array(count*2);let q=0;
- for(let i=0;i<flags.length;i++)if(flags[i]){items[q++]=i;items[q++]=flags[i]}
- return{compact:true,items};
 }
 async function processSourceRegionFaces(series,target,stages,key,revision,segments,gpuResident=true){
  const halo=Math.max(1,sourceFilterHalo(stages)),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
@@ -3413,23 +3240,6 @@ async function applyTvDenoising3D(baseVolume=volume){
  }catch(e){console.error(e);footer.textContent='TV error: '+String(e.message||e)}
  finally{setProcessingBusy(false)}
 }
-async function boxBlur3D(baseVolume,radius){
- const {columns:w,rows:h,slices:d}=baseVolume,n=w*h*d,src=baseVolume.data,r=Math.max(1,Math.round(radius));
- const out=new Float32Array(n);
- for(let z=0;z<d;z++){
-  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-   let sum=0,count=0;
-   for(let dz=-r;dz<=r;dz++){const zz=z+dz;if(zz<0||zz>=d)continue;
-    for(let dy=-r;dy<=r;dy++){const yy=y+dy;if(yy<0||yy>=h)continue;
-     for(let dx=-r;dx<=r;dx++){const xx=x+dx;if(xx<0||xx>=w)continue;sum+=src[zz*h*w+yy*w+xx];count++}
-    }
-   }
-   out[z*h*w+y*w+x]=sum/Math.max(1,count);
-  }
-  if((z&7)===0)await frameYield();
- }
- return out;
-}
 async function applyUnsharpMask3D(baseVolume=volume){
  if(!baseVolume)return;setProcessingBusy(true,'Unsharp Mask 3D');
  try{
@@ -3546,18 +3356,7 @@ function setProcessingBusy(busyState,label='Processing',lockControls=true){
  prog.classList.toggle('is-hidden',!busyState);
  if(busyState){bar.style.width='0%';progLabel.textContent=label}
 }
-const frameYield=()=>new Promise(resolve=>setTimeout(resolve,0));
 
-function niceCtStep(span){
- const target=Math.max(Math.abs(span)/700,1e-6),power=10**Math.floor(Math.log10(target)),scaled=target/power;
- const nice=scaled<=1?1:scaled<=2?2:scaled<=5?5:10;
- return nice*power;
-}
-function ctDigits(step){
- if(step>=1)return 0;
- return Math.min(4,Math.max(0,Math.ceil(-Math.log10(step))));
-}
-function formatCtValue(value,step=1){return Number(value).toFixed(ctDigits(+step||1))}
 function setCtSliderRange(el,min,max,step){
  if(!el)return;
  const value=+el.value,lo=Math.min(min,value),hi=Math.max(max,value);
@@ -3629,38 +3428,6 @@ function configureSegments(v){
   min.min=max.min=Math.floor(v.min);min.max=max.max=Math.ceil(v.max);min.value=cfg.min;max.value=cfg.max;opacity.value=cfg.opacity;opening.value=cfg.opening;closing.value=cfg.closing;minComponent.value=cfg.minComponent;holeFill.checked=cfg.holeFill;$('[data-seg-opening-out="'+key+'"]').value=cfg.opening;$('[data-seg-closing-out="'+key+'"]').value=cfg.closing;$('[data-seg-min-component-out="'+key+'"]').value=cfg.minComponent;cfg._maskCache=null;updateSegmentOutputs(key);
  }
  renderSegmentPresets();
-}
-function buildThresholdMask(v,seg){
- const mask=new Uint8Array(v.data.length);for(let i=0;i<v.data.length;i++){const x=v.data[i];if(x>=seg.min&&x<=seg.max)mask[i]=1}return mask;
-}
-function morphMask(mask,w,h,d,radius,dilate){
- let a=new Uint8Array(mask),b=new Uint8Array(mask.length),plane=w*h;
- for(let pass=0;pass<radius;pass++){
-  b.fill(0);
-  for(let z=0;z<d;z++)for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-   const i=z*plane+y*w+x;
-   if(dilate){
-    let on=a[i]===1;if(!on&&x>0)on=a[i-1]===1;if(!on&&x<w-1)on=a[i+1]===1;if(!on&&y>0)on=a[i-w]===1;if(!on&&y<h-1)on=a[i+w]===1;if(!on&&z>0)on=a[i-plane]===1;if(!on&&z<d-1)on=a[i+plane]===1;b[i]=on?1:0;
-   }else{
-    let on=a[i]===1;if(on&&(x===0||a[i-1]===0))on=false;if(on&&(x===w-1||a[i+1]===0))on=false;if(on&&(y===0||a[i-w]===0))on=false;if(on&&(y===h-1||a[i+w]===0))on=false;if(on&&(z===0||a[i-plane]===0))on=false;if(on&&(z===d-1||a[i+plane]===0))on=false;b[i]=on?1:0;
-   }
-  }
-  const t=a;a=b;b=t;
- }
- return a;
-}
-function fillMaskHoles(mask,w,h,d){
- const n=mask.length,plane=w*h,seen=new Uint8Array(n),stack=[];const push=i=>{if(i>=0&&i<n&&!mask[i]&&!seen[i]){seen[i]=1;stack.push(i)}};
- for(let z=0;z<d;z++)for(let y=0;y<h;y++){push(z*plane+y*w);push(z*plane+y*w+w-1)}
- for(let z=0;z<d;z++)for(let x=0;x<w;x++){push(z*plane+x);push(z*plane+(h-1)*w+x)}
- for(let y=0;y<h;y++)for(let x=0;x<w;x++){push(y*w+x);push((d-1)*plane+y*w+x)}
- while(stack.length){const i=stack.pop(),z=Math.floor(i/plane),rem=i-z*plane,y=Math.floor(rem/w),x=rem-y*w;if(x>0)push(i-1);if(x<w-1)push(i+1);if(y>0)push(i-w);if(y<h-1)push(i+w);if(z>0)push(i-plane);if(z<d-1)push(i+plane)}
- const out=new Uint8Array(mask);for(let i=0;i<n;i++)if(!mask[i]&&!seen[i])out[i]=1;return out;
-}
-function removeSmallMaskComponents(mask,w,h,d,minSize){
- if(minSize<=0)return mask;const out=new Uint8Array(mask),seen=new Uint8Array(mask.length),stack=[],plane=w*h;
- for(let seed=0;seed<out.length;seed++){if(!out[seed]||seen[seed])continue;const comp=[];stack.push(seed);seen[seed]=1;while(stack.length){const i=stack.pop();comp.push(i);const z=Math.floor(i/plane),rem=i-z*plane,y=Math.floor(rem/w),x=rem-y*w;const ns=[];if(x>0)ns.push(i-1);if(x<w-1)ns.push(i+1);if(y>0)ns.push(i-w);if(y<h-1)ns.push(i+w);if(z>0)ns.push(i-plane);if(z<d-1)ns.push(i+plane);for(const j of ns)if(out[j]&&!seen[j]){seen[j]=1;stack.push(j)}}if(comp.length<minSize)for(const i of comp)out[i]=0}
- return out;
 }
 const segmentMaskVolumeIds=new WeakMap();let nextSegmentMaskVolumeId=1;
 function segmentMaskVolumeId(v){
@@ -3844,7 +3611,6 @@ function updateMprCanvasPhysicalAspect(p){
  if(displayW>0&&displayH>0){canvas.style.width=displayW+'px';canvas.style.height=displayH+'px'}else{canvas.style.width='100%';canvas.style.height='100%'}
  canvas.style.maxWidth='100%';canvas.style.maxHeight='100%';
 }
-function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 
 const mprWheelFinalizeTimers={axial:null,coronal:null,sagittal:null};
 function installMprTouch(p){const c=planes[p];let id=null,startX=0,startY=0,start=0,moved=false;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;startY=e.clientY;start=+c.slider.value;moved=false;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const dx=e.clientX-startX,dy=e.clientY-startY;if(Math.hypot(dx,dy)>5)moved=true;if(volumeAnalysisMode&&!moved)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+dx/sens);c.slider.value=Math.max(0,Math.min(max,next));schedulePlaneRender(p)};const end=e=>{if(id!==e.pointerId)return;const wasClick=!moved&&e.type==='pointerup';if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null;if(moved)schedulePlaneRender(p,true);if(wasClick&&selectAnalysisRegionFromMpr(p,e))e.preventDefault()};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));schedulePlaneRender(p,false);clearTimeout(mprWheelFinalizeTimers[p]);mprWheelFinalizeTimers[p]=setTimeout(()=>schedulePlaneRender(p,true),48)},{passive:false})}
@@ -4276,57 +4042,6 @@ async function start3D(){
  const resize=()=>{const rect=viewport.getBoundingClientRect(),w=Math.round(rect.width),h=Math.round(rect.height);if(w<8||h<8)return;camera.aspect=w/h;camera.updateProjectionMatrix();updateAxisWidget();renderer.setPixelRatio(active3DPixelRatio);renderer.setSize(w,h,false);resizeEditOverlay(w,h);sceneState?.medicalVolume?.resize();request3DRender()};sceneState.resize=resize;new ResizeObserver(resize).observe(viewport);resize();
  renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;sceneState.needsRender=false;if(sceneState.obj){axisWidget.quaternion.copy(sceneState.obj.quaternion);if(sectionViewOpen&&sectionViewPlane)updateSectionClipPlaneWorld();if(sceneState.mprPlaneGroup){sceneState.mprPlaneGroup.visible=true;sceneState.mprPlaneGroup.position.copy(sceneState.obj.position);sceneState.mprPlaneGroup.quaternion.copy(sceneState.obj.quaternion);sceneState.mprPlaneGroup.scale.copy(sceneState.obj.scale)}}else if(sceneState.mprPlaneGroup)sceneState.mprPlaneGroup.visible=false;if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){const interactiveVisible=fastInteractionActive?[sectionViewOpen&&sectionViewPlane==='axial'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='coronal'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='sagittal'&&sectionSliceImageVisible?1:0]:[sectionViewOpen&&sectionViewPlane==='axial'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.axial?1:0),sectionViewOpen&&sectionViewPlane==='coronal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.coronal?1:0),sectionViewOpen&&sectionViewPlane==='sagittal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.sagittal?1:0)];sceneState.medicalVolume.render(camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,{indices:[+planes.axial.slider.value,+planes.coronal.slider.value,+planes.sagittal.slider.value],visible:interactiveVisible,opacity:mpr3DVolumeOpacity,windowCenter:+wc.value,windowWidth:+ww.value,section:{active:sectionViewOpen&&!!sectionViewPlane,plane:sectionViewPlane,index:sectionViewPlane?+planes[sectionViewPlane].slider.value:0,reverse:sectionViewReverse,capEnabled:sectionCapEnabled,capOpacity:sectionCapOpacity,hatch:sectionCapHatch}});renderer.render(scene,camera)}else renderer.render(scene,camera)});
 }
-class RunUnionFind{
- constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
- grow(){
-  const nextCap=this.parent.length*2,p=new Uint32Array(nextCap),s=new Uint32Array(nextCap);p.set(this.parent);s.set(this.size);this.parent=p;this.size=s;
- }
- add(weight){
-  if(this.count>=this.parent.length)this.grow();const id=this.count++;this.parent[id]=id;this.size[id]=weight;return id;
- }
- find(id){
-  let root=id;while(this.parent[root]!==root)root=this.parent[root];
-  while(this.parent[id]!==id){const next=this.parent[id];this.parent[id]=root;id=next}
-  return root;
- }
- union(a,b){
-  let ra=this.find(a),rb=this.find(b);if(ra===rb)return ra;
-  if(this.size[ra]<this.size[rb]){const t=ra;ra=rb;rb=t}
-  this.parent[rb]=ra;this.size[ra]+=this.size[rb];return ra;
- }
-}
-function unionOverlappingRuns(a,b,uf){
- let i=0,j=0;
- while(i<a.length&&j<b.length){
-  const ar=a[i],br=b[j];
-  if(ar[1]<br[0]){i++;continue}
-  if(br[1]<ar[0]){j++;continue}
-  uf.union(ar[2],br[2]);
-  if(ar[1]<=br[1])i++;else j++;
- }
-}
-function sourceRunSlice(mask,w,h,z,seed,uf,prevSliceRows){
- const records=[],rows=new Array(h);let prevRow=[];
- for(let y=0;y<h;y++){
-  const runs=[];let x=0,row=y*w;
-  while(x<w){
-   while(x<w&&!mask[row+x])x++;if(x>=w)break;
-   const x0=x;while(x+1<w&&mask[row+x+1])x++;const x1=x,label=uf.add(x1-x0+1),run=[x0,x1,label];runs.push(run);
-   if(Math.abs(z-seed.z)<=2&&Math.abs(y-seed.y)<=2){
-    const dx=seed.x<x0?x0-seed.x:seed.x>x1?seed.x-x1:0;
-    if(dx<=2){
-     const dist2=dx*dx+(y-seed.y)*(y-seed.y)+(z-seed.z)*(z-seed.z);
-     if(dist2<seed.bestDist2){seed.bestDist2=dist2;seed.label=label}
-    }
-   }
-   records.push(y,x0,x1,label);x++;
-  }
-  unionOverlappingRuns(runs,prevRow,uf);
-  unionOverlappingRuns(runs,prevSliceRows?.[y]||[],uf);
-  rows[y]=runs;prevRow=runs;
- }
- return{rows,records:new Uint32Array(records)};
-}
 async function sourceSegmentMaskBlock(v,key,seg,zStart,depth,analysisRevision){
  const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart);
  if(stages.length){
@@ -4346,36 +4061,6 @@ async function sourceSegmentMaskBlock(v,key,seg,zStart,depth,analysisRevision){
   const state=(await decodeSourceSegmentMasks(series.slices[zStart+z],[{key,seg}])).get(key);masks.push(state.mask);
  }
  return masks;
-}
-function sourceRunSliceFromRanges(rowRanges,w,h,z,seed,uf,prevSliceRows){
- const records=[],rows=new Array(h);let prevRow=[];
- for(let y=0;y<h;y++){
-  const raw=rowRanges.get(y)||[];raw.sort((a,b)=>a[0]-b[0]);const merged=[];
-  for(const pair of raw){if(!merged.length||pair[0]>merged[merged.length-1][1]+1)merged.push([pair[0],pair[1]]);else merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],pair[1])}
-  const runs=[];
-  for(const [x0,x1] of merged){
-   const label=uf.add(x1-x0+1),run=[x0,x1,label];runs.push(run);
-   if(Math.abs(z-seed.z)<=2&&Math.abs(y-seed.y)<=2){
-    const dx=seed.x<x0?x0-seed.x:seed.x>x1?seed.x-x1:0,dist2=dx*dx+(y-seed.y)*(y-seed.y)+(z-seed.z)*(z-seed.z);
-    if(dx<=2&&dist2<seed.bestDist2){seed.bestDist2=dist2;seed.label=label}
-   }
-   records.push(y,x0,x1,label);
-  }
-  unionOverlappingRuns(runs,prevRow,uf);unionOverlappingRuns(runs,prevSliceRows?.[y]||[],uf);rows[y]=runs;prevRow=runs;
- }
- return{rows,records:new Uint32Array(records)};
-}
-function consumeGpuAnalysisRuns(items,zStart,depth,w,h,seed,uf,prevRows,sliceRuns){
- const bySlice=Array.from({length:depth},()=>new Map());
- for(let i=0;i<items.length;i+=4){
-  const lz=items[i],y=items[i+1],x0=items[i+2],x1=items[i+3];if(lz>=depth||y>=h)continue;
-  const map=bySlice[lz],arr=map.get(y)||[];arr.push([x0,x1]);map.set(y,arr);
- }
- let rows=prevRows;
- for(let local=0;local<depth;local++){
-  const z=zStart+local,result=sourceRunSliceFromRanges(bySlice[local],w,h,z,seed,uf,rows);sliceRuns[z]=result.records;rows=result.rows;
- }
- return rows;
 }
 function sourceAnalysisBlockDepth(w,h){
  const preferred=navigator.maxTouchPoints>0?4:16,maxGroups=65535,workgroupSize=256,plane=Math.max(1,w*h),safe=Math.max(1,Math.floor(maxGroups*workgroupSize/plane));
@@ -4443,16 +4128,6 @@ async function connectedComponentVolumeSource(v,key,seg,x0,y0,z0){
  if(gpuUsed&&!hadCpuPath)setGpuComputeBackend(sourceFilterStages().length?'WEBGPU ANALYSIS FILTER+RLE · CPU CONNECTIVITY':'WEBGPU ANALYSIS RLE · CPU CONNECTIVITY');
  else if(gpuUsed&&hadCpuPath)setGpuComputeBackend('GPU+CPU ANALYSIS',gpuFilterRuntime.lastError||'Some analysis blocks used the exact CPU path');
  return{voxels,mm3,root,uf,sliceRuns};
-}
-function sourceComponentSliceState(records,w,h,root,uf){
- const mask=new Uint8Array(w*h),blocks=[],blockSize=16384;let block=new Uint32Array(blockSize),used=0;
- const push=i=>{if(used===block.length){blocks.push(block);block=new Uint32Array(blockSize);used=0}block[used++]=i};
- if(records)for(let r=0;r<records.length;r+=4){
-  const y=records[r],x0=records[r+1],x1=records[r+2],label=records[r+3];if(uf.find(label)!==root)continue;
-  const start=y*w+x0;mask.fill(1,start,start+(x1-x0+1));for(let x=x0;x<=x1;x++)push(y*w+x);
- }
- if(used)blocks.push(block.subarray(0,used));
- return{mask,blocks};
 }
 async function showSourceAnalysisHighlight(v,result,key){
  clearAnalysisHighlight();if(!sceneState?.obj)return;
@@ -4623,127 +4298,6 @@ function createAnalysisMaterial(color=0x00d8ff){
   polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:!surfaceSmoothingActive()
  });
 }
-function appendDecodedMaskSliceFaces(builder,v,mask,z,coords){
- const w=v.columns,h=v.rows,plane=w*h,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1],base=z*plane;
- const inside=(x,y,zz)=>x>=0&&y>=0&&zz>=0&&x<w&&y<h&&zz<v.slices&&mask[zz*plane+y*w+x]===1;
- for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-  const i=base+y*w+x;if(!mask[i])continue;
-  const x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1];
-  if(!inside(x-1,y,z))builder.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
-  if(!inside(x+1,y,z))builder.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
-  if(!inside(x,y-1,z))builder.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
-  if(!inside(x,y+1,z))builder.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
-  if(!inside(x,y,z-1))builder.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
-  if(!inside(x,y,z+1))builder.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
- }
-}
-function maskToAnalysisRuns(mask,w,h,d){
- const slices=new Array(d);
- for(let z=0;z<d;z++){
-  const rec=[];const base=z*w*h;
-  for(let y=0;y<h;y++){
-   let x=0,row=base+y*w;
-   while(x<w){
-    while(x<w&&!mask[row+x])x++;if(x>=w)break;
-    const x0=x;while(x+1<w&&mask[row+x+1])x++;rec.push(y,x0,x);x++;
-   }
-  }
-  slices[z]=new Uint32Array(rec);
- }
- return slices;
-}
-function sourceResultToAnalysisRuns(result,d){
- const slices=new Array(d);
- for(let z=0;z<d;z++){
-  const src=result.sliceRuns[z],rec=[];
-  if(src)for(let i=0;i<src.length;i+=4){
-   const y=src[i],x0=src[i+1],x1=src[i+2],label=src[i+3];
-   if(result.uf.find(label)===result.root)rec.push(y,x0,x1);
-  }
-  slices[z]=new Uint32Array(rec);
- }
- return slices;
-}
-function analysisRunsVoxelCount(runsBySlice){
- let count=0;for(const rec of runsBySlice||[])if(rec)for(let i=0;i<rec.length;i+=3)count+=rec[i+2]-rec[i+1]+1;return count;
-}
-function analysisRunsContain(runsBySlice,x,y,z){
- const rec=runsBySlice?.[z];if(!rec)return false;
- for(let i=0;i<rec.length;i+=3){if(rec[i]!==y)continue;if(x>=rec[i+1]&&x<=rec[i+2])return true}
- return false;
-}
-function analysisRunsOverlap(a,b){
- const d=Math.min(a?.length||0,b?.length||0);
- for(let z=0;z<d;z++){
-  const ar=a[z],br=b[z];if(!ar?.length||!br?.length)continue;
-  let i=0,j=0;
-  while(i<ar.length&&j<br.length){
-   const ay=ar[i],by=br[j];
-   if(ay<by){i+=3;continue}if(by<ay){j+=3;continue}
-   const a0=ar[i+1],a1=ar[i+2],b0=br[j+1],b1=br[j+2];
-   if(a1<b0){i+=3;continue}if(b1<a0){j+=3;continue}return true;
-  }
- }
- return false;
-}
-function unionAnalysisRuns(regions,d){
- const out=new Array(d);
- for(let z=0;z<d;z++){
-  const byRow=new Map();
-  for(const region of regions){
-   const rec=region.runsBySlice[z];if(!rec)continue;
-   for(let i=0;i<rec.length;i+=3){
-    const y=rec[i],arr=byRow.get(y)||[];arr.push([rec[i+1],rec[i+2]]);byRow.set(y,arr);
-   }
-  }
-  const merged=[];
-  for(const y of [...byRow.keys()].sort((a,b)=>a-b)){
-   const intervals=byRow.get(y).sort((a,b)=>a[0]-b[0]);let [s,e]=intervals[0];
-   for(let i=1;i<intervals.length;i++){
-    const [ns,ne]=intervals[i];
-    if(ns<=e+1)e=Math.max(e,ne);else{merged.push(y,s,e);s=ns;e=ne}
-   }
-   merged.push(y,s,e);
-  }
-  out[z]=new Uint32Array(merged);
- }
- return out;
-}
-function rowIntervalsFromRuns(rec){
- const rows=new Map();if(!rec)return rows;
- for(let i=0;i<rec.length;i+=3){const y=rec[i],arr=rows.get(y)||[];arr.push([rec[i+1],rec[i+2]]);rows.set(y,arr)}
- for(const arr of rows.values())arr.sort((a,b)=>a[0]-b[0]);
- return rows;
-}
-function mergeIntervals(intervals){
- if(!intervals?.length)return[];
- const sorted=intervals.slice().sort((a,b)=>a[0]-b[0]),out=[];let [s,e]=sorted[0];
- for(let i=1;i<sorted.length;i++){const [ns,ne]=sorted[i];if(ns<=e+1)e=Math.max(e,ne);else{out.push([s,e]);s=ns;e=ne}}
- out.push([s,e]);return out;
-}
-function rowsToRunSlice(rows){
- const rec=[];for(const y of [...rows.keys()].sort((a,b)=>a-b))for(const [x0,x1] of mergeIntervals(rows.get(y)))if(x1>=x0)rec.push(y,x0,x1);
- return new Uint32Array(rec);
-}
-function unionRunSlice(a,b){
- const rows=rowIntervalsFromRuns(a);for(const [y,arr] of rowIntervalsFromRuns(b)){const dst=rows.get(y)||[];dst.push(...arr);rows.set(y,dst)}return rowsToRunSlice(rows);
-}
-function intersectRunSlice(a,b){
- const ar=rowIntervalsFromRuns(a),br=rowIntervalsFromRuns(b),out=new Map();
- for(const [y,aa] of ar){const bb=br.get(y);if(!bb)continue;const rr=[];let i=0,j=0;while(i<aa.length&&j<bb.length){const lo=Math.max(aa[i][0],bb[j][0]),hi=Math.min(aa[i][1],bb[j][1]);if(lo<=hi)rr.push([lo,hi]);if(aa[i][1]<bb[j][1])i++;else j++}if(rr.length)out.set(y,rr)}
- return rowsToRunSlice(out);
-}
-function subtractRunSlice(a,b){
- const ar=rowIntervalsFromRuns(a),br=rowIntervalsFromRuns(b),out=new Map();
- for(const [y,aa] of ar){const bb=br.get(y)||[],rr=[];for(const [a0,a1] of aa){let cursor=a0;for(const [b0,b1] of bb){if(b1<cursor)continue;if(b0>a1)break;if(b0>cursor)rr.push([cursor,Math.min(a1,b0-1)]);cursor=Math.max(cursor,b1+1);if(cursor>a1)break}if(cursor<=a1)rr.push([cursor,a1])}if(rr.length)out.set(y,rr)}
- return rowsToRunSlice(out);
-}
-function runArraysBinary(a,b,d,op){
- const out=new Array(d);for(let z=0;z<d;z++)out[z]=op(a?.[z],b?.[z]);return out;
-}
-function unionRunArrays(a,b,d){return runArraysBinary(a,b,d,unionRunSlice)}
-function intersectRunArrays(a,b,d){return runArraysBinary(a,b,d,intersectRunSlice)}
-function subtractRunArrays(a,b,d){return runArraysBinary(a,b,d,subtractRunSlice)}
 function segmentEditActive(key){const s=segmentEditState[key];return !!(s?.keepRuns||s?.excludeRuns)}
 function segmentBaseSignature(key,v){
  const s=segmentState[key];return [activeId,key,s.min,s.max,s.opening,s.closing,s.minComponent,s.holeFill,filterRebuildRevision,sourceFilterRuntime.revision,v?.columns,v?.rows,v?.slices].join('|');
@@ -4760,61 +4314,6 @@ function thresholdRunsFromMemory(v,seg){
  const w=v.columns,h=v.rows,d=v.slices,out=new Array(d),plane=w*h;
  if(segmentNeedsGlobalMask(seg))return maskToAnalysisRuns(getProcessedSegmentMask(v,seg),w,h,d);
  for(let z=0;z<d;z++){const rec=[],base=z*plane;for(let y=0;y<h;y++){let x=0,row=base+y*w;while(x<w){while(x<w&&(v.data[row+x]<seg.min||v.data[row+x]>seg.max))x++;if(x>=w)break;const x0=x;while(x+1<w&&v.data[row+x+1]>=seg.min&&v.data[row+x+1]<=seg.max)x++;rec.push(y,x0,x);x++}}out[z]=new Uint32Array(rec)}
- return out;
-}
-function runsSliceToMask(rec,w,h){
- const mask=new Uint8Array(w*h);if(!rec)return mask;
- for(let i=0;i<rec.length;i+=3){const y=rec[i],x0=rec[i+1],x1=rec[i+2],row=y*w;mask.fill(1,row+x0,row+x1+1)}
- return mask;
-}
-function complementRunArrays(runs,w,h,d){
- const out=new Array(d);
- for(let z=0;z<d;z++){
-  const rows=rowIntervalsFromRuns(runs[z]),rec=[];
-  for(let y=0;y<h;y++){
-   const rr=rows.get(y)||[];let x=0;
-   for(const [x0,x1] of rr){if(x<x0)rec.push(y,x,x0-1);x=Math.max(x,x1+1)}
-   if(x<w)rec.push(y,x,w-1);
-  }
-  out[z]=new Uint32Array(rec);
- }
- return out;
-}
-function componentTouchesVolumeBoundary(comp,w,h,d){
- for(let z=0;z<d;z++){
-  const rec=comp.runsBySlice[z];if(!rec?.length)continue;
-  if(z===0||z===d-1)return true;
-  for(let i=0;i<rec.length;i+=3){const y=rec[i],x0=rec[i+1],x1=rec[i+2];if(y===0||y===h-1||x0===0||x1===w-1)return true}
- }
- return false;
-}
-async function morphSourceRunArrays(runs,w,h,d,opening,closing){
- if(!opening&&!closing)return runs;
- const out=new Array(d),blockDepth=navigator.maxTouchPoints>0?4:12,halo=2*(opening+closing),plane=w*h;
- for(let z0=0;z0<d;z0+=blockDepth){
-  const core=Math.min(blockDepth,d-z0),a=Math.max(0,z0-halo),b=Math.min(d,z0+core+halo),localD=b-a,mask=new Uint8Array(localD*plane);
-  for(let z=a;z<b;z++)mask.set(runsSliceToMask(runs[z],w,h),(z-a)*plane);
-  let processed=mask;
-  if(opening>0){processed=morphMask(processed,w,h,localD,opening,false);processed=morphMask(processed,w,h,localD,opening,true)}
-  if(closing>0){processed=morphMask(processed,w,h,localD,closing,true);processed=morphMask(processed,w,h,localD,closing,false)}
-  for(let z=0;z<core;z++){const local=z0+z-a,slice=processed.subarray(local*plane,(local+1)*plane);out[z0+z]=maskToAnalysisRuns(slice,w,h,1)[0]}
-  await frameYield();
- }
- return out;
-}
-async function postprocessSourceRuns(runs,v,seg){
- const w=v.columns,h=v.rows,d=v.slices;
- let out=await morphSourceRunArrays(runs,w,h,d,seg.opening,seg.closing);
- if(seg.holeFill){
-  const background=complementRunArrays(out,w,h,d),holes=componentsFromRuns(background,w,h,d).filter(comp=>!componentTouchesVolumeBoundary(comp,w,h,d));
-  if(holes.length){const holeRuns=unionAnalysisRuns(holes,d);out=unionRunArrays(out,holeRuns,d)}
-  await frameYield();
- }
- if(seg.minComponent>0){
-  const keep=componentsFromRuns(out,w,h,d).filter(comp=>comp.voxels>=seg.minComponent);
-  out=keep.length?unionAnalysisRuns(keep,d):Array.from({length:d},()=>new Uint32Array(0));
-  await frameYield();
- }
  return out;
 }
 async function sourceRunsForSegment(v,key,seg){
@@ -4904,30 +4403,6 @@ async function refreshEditedSegmentSurface(key,v=current3DVolume||volume,expecte
 }
 async function restoreEditedSegmentSurfaces(v=current3DVolume||volume){
  for(const key of SEGMENT_PRESET_ORDER)if(segmentUsesRunSurface(key,v))await refreshEditedSegmentSurface(key,v);
-}
-function componentsFromRuns(runs,w,h,d){
- const uf=new RunUnionFind(),labeled=new Array(d),seed={x:-999999,y:-999999,z:-999999,label:null,bestDist2:Infinity};let prevRows=null;
- for(let z=0;z<d;z++){const map=rowIntervalsFromRuns(runs[z]),res=sourceRunSliceFromRanges(map,w,h,z,seed,uf,prevRows);labeled[z]=res.records;prevRows=res.rows}
- const groups=new Map();
- for(let z=0;z<d;z++){const rec=labeled[z];for(let i=0;i<rec.length;i+=4){const root=uf.find(rec[i+3]);let g=groups.get(root);if(!g){g={root,runsBySlice:Array.from({length:d},()=>[])};groups.set(root,g)}g.runsBySlice[z].push(rec[i],rec[i+1],rec[i+2])}}
- return [...groups.values()].map(g=>{g.runsBySlice=g.runsBySlice.map(a=>new Uint32Array(a));g.voxels=uf.size[uf.find(g.root)];return g}).sort((a,b)=>b.voxels-a.voxels);
-}
-async function componentsFromRunsAsync(runs,w,h,d,onProgress=null){
- const uf=new RunUnionFind(),labeled=new Array(d),seed={x:-999999,y:-999999,z:-999999,label:null,bestDist2:Infinity};let prevRows=null;
- for(let z=0;z<d;z++){
-  const map=rowIntervalsFromRuns(runs[z]),res=sourceRunSliceFromRanges(map,w,h,z,seed,uf,prevRows);labeled[z]=res.records;prevRows=res.rows;
-  if((z&15)===0){onProgress?.('label',z+1,d);await frameYield()}
- }
- const groups=new Map();
- for(let z=0;z<d;z++){
-  const rec=labeled[z];for(let i=0;i<rec.length;i+=4){const root=uf.find(rec[i+3]);let g=groups.get(root);if(!g){g={root,runsBySlice:Array.from({length:d},()=>[])};groups.set(root,g)}g.runsBySlice[z].push(rec[i],rec[i+1],rec[i+2])}
-  if((z&31)===0){onProgress?.('collect',z+1,d);await frameYield()}
- }
- onProgress?.('collect',d,d);
- return [...groups.values()].map(g=>{g.runsBySlice=g.runsBySlice.map(a=>new Uint32Array(a));g.voxels=uf.size[uf.find(g.root)];return g}).sort((a,b)=>b.voxels-a.voxels);
-}
-function componentAtVoxel(runs,w,h,d,x,y,z){
- const comps=componentsFromRuns(runs,w,h,d);return comps.find(comp=>analysisRunsContain(comp.runsBySlice,x,y,z))||null;
 }
 async function rebuildEditedAnalysisForSegment(key,referenceRegions=null){
  const v=current3DVolume||volume;if(!v)return;
@@ -5357,50 +4832,9 @@ function updateAnalysisEditorControls(){
  if(analysisExportSelected)analysisExportSelected.disabled=!region;
  updateThreeEditUi();
 }
-function analysisRunSliceState(records,w,h){
- const mask=new Uint8Array(w*h),blocks=[],blockSize=16384;let block=new Uint32Array(blockSize),used=0;
- const push=i=>{if(used===block.length){blocks.push(block);block=new Uint32Array(blockSize);used=0}block[used++]=i};
- if(records)for(let r=0;r<records.length;r+=3){
-  const y=records[r],x0=records[r+1],x1=records[r+2],start=y*w+x0;mask.fill(1,start,start+x1-x0+1);
-  for(let x=x0;x<=x1;x++)push(y*w+x);
- }
- if(used)blocks.push(block.subarray(0,used));return{mask,blocks};
-}
 function ensureAnalysisRoot(){
  if(sceneState?.analysisMesh?.parent===sceneState?.obj)return sceneState.analysisMesh;
  const root=new THREE.Group();root.name='analysis_regions';sceneState.analysisMesh=root;sceneState?.obj?.add(root);return root;
-}
-function analysisRunRows(records){
- const rows=new Map();
- if(records)for(let i=0;i<records.length;i+=3){const y=records[i],arr=rows.get(y)||[];arr.push(records[i+1],records[i+2]);rows.set(y,arr)}
- return rows;
-}
-function forEachUncoveredRun(x0,x1,cover,fn){
- let cursor=x0;
- if(cover)for(let i=0;i<cover.length;i+=2){
-  const a=cover[i],b=cover[i+1];if(b<cursor)continue;if(a>x1)break;
-  if(a>cursor)fn(cursor,Math.min(x1,a-1));cursor=Math.max(cursor,b+1);if(cursor>x1)return;
- }
- if(cursor<=x1)fn(cursor,x1);
-}
-function appendAnalysisRunBoundaryFaces(builder,records,prevRecords,nextRecords,coords,z,cutRecords=null,cutPrevRecords=null,cutNextRecords=null,pinnedKeys=null){
- const {xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1],rows=analysisRunRows(records),prev=analysisRunRows(prevRecords),next=analysisRunRows(nextRecords),cut=analysisRunRows(cutRecords),cutPrev=analysisRunRows(cutPrevRecords),cutNext=analysisRunRows(cutNextRecords);
- const has=(map,x,y)=>{const a=map.get(y);if(!a)return false;for(let i=0;i<a.length;i+=2)if(x>=a[i]&&x<=a[i+1])return true;return false};
- const key=v=>Math.fround(v[0])+','+Math.fround(v[1])+','+Math.fround(v[2]);
- const quad=(a,b,c,d,pin=false)=>{builder.push(...a,...b,...c,...a,...c,...d);if(pin&&pinnedKeys){pinnedKeys.add(key(a));pinnedKeys.add(key(b));pinnedKeys.add(key(c));pinnedKeys.add(key(d))}};
- for(const [y,intervals] of rows){
-  const y0=ys[y],y1=ys[y+1],up=rows.get(y-1),down=rows.get(y+1),front=prev.get(y),back=next.get(y);
-  for(let r=0;r<intervals.length;r+=2){
-   const x0=intervals[r],x1=intervals[r+1],lx=xs[x0],rx=xs[x1+1];
-   quad([lx,y0,z0],[lx,y0,z1],[lx,y1,z1],[lx,y1,z0],has(cut,x0-1,y));
-   quad([rx,y0,z0],[rx,y1,z0],[rx,y1,z1],[rx,y0,z1],has(cut,x1+1,y));
-   const emit=(a,b,face)=>{for(let x=a;x<=b;x++){const xa=xs[x],xb=xs[x+1];face(x,xa,xb)}};
-   forEachUncoveredRun(x0,x1,up,(a,b)=>emit(a,b,(x,xa,xb)=>quad([xa,y0,z0],[xb,y0,z0],[xb,y0,z1],[xa,y0,z1],has(cut,x,y-1))));
-   forEachUncoveredRun(x0,x1,down,(a,b)=>emit(a,b,(x,xa,xb)=>quad([xa,y1,z0],[xa,y1,z1],[xb,y1,z1],[xb,y1,z0],has(cut,x,y+1))));
-   forEachUncoveredRun(x0,x1,front,(a,b)=>emit(a,b,(x,xa,xb)=>quad([xa,y0,z0],[xa,y1,z0],[xb,y1,z0],[xb,y0,z0],has(cutPrev,x,y))));
-   forEachUncoveredRun(x0,x1,back,(a,b)=>emit(a,b,(x,xa,xb)=>quad([xa,y0,z1],[xb,y0,z1],[xb,y1,z1],[xa,y1,z1],has(cutNext,x,y))));
-  }
- }
 }
 async function buildAnalysisRunsGroup(v,runsBySlice,key,id,color){
  const d=v.slices,coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),group=new THREE.Group(),builder=new Float32FaceBuilder(),floatLimit=(navigator.maxTouchPoints>0?4:8)*1024*1024;
@@ -5508,95 +4942,11 @@ function buildMaskSurface(v,mask,key){
  flush(v.slices-1);return group.children.length?group:null;
 }
 
-function appendSourceSliceFaces(positions,series,z,prev,curr,next){
- const w=series.columns,h=series.rows,d=series.slices.length,sx=series.spacingX,sy=series.spacingY,sz=series.spacingZ,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
- const at=(m,x,y)=>m&&x>=0&&y>=0&&x<w&&y<h&&m[y*w+x]===1;
- const quad=(a,b,c,dv)=>positions.push(...a,...b,...c,...a,...c,...dv);
- for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-  if(!curr[y*w+x])continue;
-  const x0=(x*sx-px/2)*scale,x1=((x+1)*sx-px/2)*scale,y0=-(y*sy-py/2)*scale,y1=-((y+1)*sy-py/2)*scale,z0=(z*sz-pz/2)*scale,z1=((z+1)*sz-pz/2)*scale;
-  if(!at(curr,x-1,y))quad([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0]);
-  if(!at(curr,x+1,y))quad([x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1]);
-  if(!at(curr,x,y-1))quad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]);
-  if(!at(curr,x,y+1))quad([x0,y1,z0],[x0,y1,z1],[x1,y1,z1],[x1,y1,z0]);
-  if(!at(prev,x,y))quad([x0,y0,z0],[x0,y1,z0],[x1,y1,z0],[x1,y0,z0]);
-  if(!at(next,x,y))quad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]);
- }
-}
-class Float32FaceBuilder{
- constructor(initial=131072){this.data=new Float32Array(initial);this.length=0;this.hasGpuMesh=false;this.hasCpuMesh=false;this.allGpuSmoothed=true}
- ensure(extra){
-  const need=this.length+extra;if(need<=this.data.length)return;
-  let size=this.data.length;while(size<need)size*=2;
-  const next=new Float32Array(size);next.set(this.data.subarray(0,this.length));this.data=next;
- }
- appendArray(values){
-  if(!values?.length)return;this.ensure(values.length);this.data.set(values,this.length);this.length+=values.length;
- }
- push(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r){
-  this.ensure(18);const x=this.data,q0=this.length;
-  x[q0]=a;x[q0+1]=b;x[q0+2]=c;x[q0+3]=d;x[q0+4]=e;x[q0+5]=f;
-  x[q0+6]=g;x[q0+7]=h;x[q0+8]=i;x[q0+9]=j;x[q0+10]=k;x[q0+11]=l;
-  x[q0+12]=m;x[q0+13]=n;x[q0+14]=o;x[q0+15]=p;x[q0+16]=q;x[q0+17]=r;
-  this.length=q0+18;
- }
- take(){
-  if(!this.length)return null;
-  const out=this.data.subarray(0,this.length);
-  const nextSize=Math.max(131072,Math.min(this.data.length,1048576));
-  this.data=new Float32Array(nextSize);this.length=0;this.hasGpuMesh=false;this.hasCpuMesh=false;this.allGpuSmoothed=true;return out;
- }
-}
 function surfaceSmoothingActive(){
  return !!surfaceSmoothEnabled?.checked&&Number(surfaceSmoothStrength?.value)>0;
 }
 function strongSurfaceSmoothingActive(){return surfaceSmoothingActive()&&Number(surfaceSmoothStrength?.value)>3;}
-function indexedGeometryFromTrianglePositions(positions){
- const vertexRefs=Math.floor((positions?.length||0)/3);
- if(!vertexRefs)return new THREE.BufferGeometry();
- let tableSize=1;while(tableSize<vertexRefs*2)tableSize*=2;
- const table=new Uint32Array(tableSize),mask=tableSize-1,srcBits=new Uint32Array(positions.buffer,positions.byteOffset,positions.length);
- const unique=new Float32Array(positions.length),uniqueBits=new Uint32Array(unique.buffer),indices=new Uint32Array(vertexRefs);
- let uniqueCount=0;
- const normZero=v=>v===0x80000000?0:v;
- const hash3=(x,y,z)=>{let h=Math.imul((x^(x>>>16))>>>0,0x45d9f3b);h=(h^Math.imul((y^(y>>>16))>>>0,0x27d4eb2d))>>>0;h=(h^Math.imul((z^(z>>>16))>>>0,0x165667b1))>>>0;return(h^(h>>>16))>>>0};
- for(let v=0;v<vertexRefs;v++){
-  const o=v*3,xb=normZero(srcBits[o]),yb=normZero(srcBits[o+1]),zb=normZero(srcBits[o+2]);let slot=hash3(xb,yb,zb)&mask,id=-1;
-  while(table[slot]){
-   const candidate=table[slot]-1,u=candidate*3;
-   if(normZero(uniqueBits[u])===xb&&normZero(uniqueBits[u+1])===yb&&normZero(uniqueBits[u+2])===zb){id=candidate;break}
-   slot=(slot+1)&mask;
-  }
-  if(id<0){id=uniqueCount++;const u=id*3;unique[u]=positions[o];unique[u+1]=positions[o+1];unique[u+2]=positions[o+2];table[slot]=id+1}
-  indices[v]=id;
- }
- const geometry=new THREE.BufferGeometry();
- geometry.setAttribute('position',new THREE.BufferAttribute(unique.slice(0,uniqueCount*3),3));
- geometry.setIndex(new THREE.BufferAttribute(indices,1));
- return geometry;
-}
 
-async function smoothMaskScalarField(mask,w,h,d,strength){
- const fw=w+2,fh=h+2,fd=d+2,plane=fw*fh,n=plane*fd;
- let a=new Float32Array(n),b=new Float32Array(n);
- for(let z=0;z<d;z++)for(let y=0;y<h;y++){
-  const src=z*w*h+y*w,dst=(z+1)*plane+(y+1)*fw+1;
-  for(let x=0;x<w;x++)a[dst+x]=mask[src+x]?1:0;
- }
- const rounds=Math.max(1,Math.min(8,Math.round(.5+Math.max(0,strength)*1.15))),alpha=.48;
- for(let round=0;round<rounds;round++){
-  b.fill(0);
-  for(let z=1;z<fd-1;z++)for(let y=1;y<fh-1;y++){
-   const row=z*plane+y*fw;
-   for(let x=1;x<fw-1;x++){
-    const i=row+x,avg=(a[i-1]+a[i+1]+a[i-fw]+a[i+fw]+a[i-plane]+a[i+plane])/6;
-    b[i]=a[i]*(1-alpha)+avg*alpha;
-   }
-  }
-  const t=a;a=b;b=t;if((round&1)===1)await frameYield();
- }
- return{data:a,fw,fh,fd};
-}
 async function smoothIsosurfaceGeometry(v,mask,strength){
  const w=v.columns,h=v.rows,d=v.slices;if(!mask||mask.length!==w*h*d)return null;
  const {data,fw,fh,fd}=await smoothMaskScalarField(mask,w,h,d,strength),plane=fw*fh,[sx,sy,sz]=v.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),iso=.5;
@@ -5646,11 +4996,6 @@ async function smoothIsosurfaceGeometry(v,mask,strength){
  if(!indices.length)return null;
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);
  taubinSmoothGeometry(geometry,Math.max(0,strength));geometry.computeVertexNormals();geometry.computeBoundingSphere();return geometry;
-}
-function maskFromAnalysisRuns(v,runs){
- const out=new Uint8Array(v.columns*v.rows*v.slices),w=v.columns,h=v.rows;
- for(let z=0;z<v.slices;z++){const a=runs?.[z];if(!a)continue;for(let i=0;i<a.length;i+=3){const y=a[i],x0=a[i+1],x1=a[i+2],base=z*w*h+y*w;out.fill(1,base+x0,base+x1+1)}}
- return out;
 }
 async function buildSmoothIsoMesh(v,mask,seg,key,editSurface=false){
  const geometry=await smoothIsosurfaceGeometry(v,mask,+surfaceSmoothStrength.value);if(!geometry)return null;
@@ -5718,11 +5063,6 @@ function consolidateSegmentForStrongSmoothing(group,key,strength){
  for(const mesh of meshes){mesh.parent?.remove(mesh);dispose(mesh)}
  group.add(merged);return merged;
 }
-function thresholdSourceMask(data,seg){
- const mask=new Uint8Array(data.length);
- for(let i=0;i<data.length;i++)if(data[i]>=seg.min&&data[i]<=seg.max)mask[i]=1;
- return mask;
-}
 async function decodeSourceSegmentMasks(meta,segments){
  if(!isNativeDicomTransferSyntax(meta.ts)){
   const values=await getCachedSourceSlice(meta),n=meta.rows*meta.columns,blockSize=16384,states=new Map(segments.map(({key,seg})=>[key,{mask:new Uint8Array(n),blocks:[],block:new Uint32Array(blockSize),used:0,min:seg.min,max:seg.max}]));
@@ -5761,22 +5101,6 @@ async function decodeSourceSegmentMasks(meta,segments){
  }
  return states;
 }
-function makeVolume3DCoordinates(v){
- const w=v.columns,h=v.rows,d=v.slices,[sx,sy,sz]=v.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
- const xs=new Float64Array(w+1),ys=new Float64Array(h+1),zs=new Float64Array(d+1);
- for(let x=0;x<=w;x++)xs[x]=(x*sx-px/2)*scale;
- for(let y=0;y<=h;y++)ys[y]=-(y*sy-py/2)*scale;
- for(let z=0;z<=d;z++)zs[z]=(z*sz-pz/2)*scale;
- return{xs,ys,zs,scale};
-}
-function makeSource3DCoordinates(series){
- const w=series.columns,h=series.rows,d=series.slices.length,sx=series.spacingX,sy=series.spacingY,sz=series.spacingZ,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
- const xs=new Float64Array(w+1),ys=new Float64Array(h+1),zs=new Float64Array(d+1);
- for(let x=0;x<=w;x++)xs[x]=(x*sx-px/2)*scale;
- for(let y=0;y<=h;y++)ys[y]=-(y*sy-py/2)*scale;
- for(let z=0;z<=d;z++)zs[z]=(z*sz-pz/2)*scale;
- return{xs,ys,zs,scale};
-}
 function appendGpuMeshTile(positionsByKey,normalsByKey,tile,active){
  let faceOffset=0;
  for(let s=0;s<active.length&&s<4;s++){
@@ -5799,66 +5123,6 @@ function addGpuResidentTileMesh(group,tile,active,materialParamsByKey,displaySca
  const mesh=new THREE.Mesh(geometry,materials);mesh.name=name;mesh.userData.segmentRanges=ranges;mesh.userData.displayScale=displayScale;mesh.userData.gpuResident=true;mesh.userData.gpuPositionReady=false;mesh.userData.gpuCompletion=tile.completion||null;
  if(ranges.length===1)mesh.userData.segmentKey=ranges[0].key;
  group.add(mesh);return true;
-}
-function appendSourceFacesFromCompactTile(positionsByKey,series,tile,active,coords){
- const {xs,ys,zs}=coords,plane=tile.width*tile.height,items=tile.items;
- for(let q=0;q<items.length;q+=2){
-  const i=items[q],packed=items[q+1],tz=Math.floor(i/plane),rem=i-tz*plane,ty=Math.floor(rem/tile.width),tx=rem-ty*tile.width;
-  const x=tile.x+tx,y=tile.y+ty,z=tile.z+tz,x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1],z0=zs[z],z1=zs[z+1];
-  for(let s=0;s<active.length&&s<4;s++){
-   const faces=(packed>>>(s*6))&63;if(!faces)continue;const positions=positionsByKey.get(active[s].key);if(!positions)continue;positions.hasCpuMesh=true;
-   if(faces&1)positions.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
-   if(faces&2)positions.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
-   if(faces&4)positions.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
-   if(faces&8)positions.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
-   if(faces&16)positions.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
-   if(faces&32)positions.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
-  }
- }
-}
-function appendSourceSliceFacesFromFlags(positionsByKey,series,z,flags,active,coords){
- const w=series.columns,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1];
- for(let i=0;i<flags.length;i++){
-  const packed=flags[i];if(!packed)continue;const y=Math.floor(i/w),x=i-y*w,x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1];
-  for(let s=0;s<active.length&&s<4;s++){
-   const faces=(packed>>>(s*6))&63;if(!faces)continue;const positions=positionsByKey.get(active[s].key);if(!positions)continue;
-   if(faces&1)positions.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
-   if(faces&2)positions.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
-   if(faces&4)positions.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
-   if(faces&8)positions.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
-   if(faces&16)positions.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
-   if(faces&32)positions.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
-  }
- }
-}
-function appendSourceSliceFacesFromBits(positionsByKey,series,z,prevBits,currBits,nextBits,active,coords){
- const w=series.columns,h=series.rows,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1];
- for(let i=0;i<currBits.length;i++){
-  const bits=currBits[i];if(!bits)continue;
-  const y=Math.floor(i/w),x=i-y*w,x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1];
-  for(let s=0;s<active.length&&s<4;s++){
-   const bit=1<<s;if(!(bits&bit))continue;
-   const positions=positionsByKey.get(active[s].key);if(!positions)continue;
-   if(x===0||!(currBits[i-1]&bit))positions.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
-   if(x===w-1||!(currBits[i+1]&bit))positions.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
-   if(y===0||!(currBits[i-w]&bit))positions.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
-   if(y===h-1||!(currBits[i+w]&bit))positions.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
-   if(!prevBits||!(prevBits[i]&bit))positions.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
-   if(!nextBits||!(nextBits[i]&bit))positions.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
-  }
- }
-}
-function appendSourceSliceFacesFast(positions,series,z,prev,curr,next,coords){
- const w=series.columns,h=series.rows,m=curr.mask,{xs,ys,zs}=coords,z0=zs[z],z1=zs[z+1],pm=prev?.mask,nm=next?.mask;
- for(const block of curr.blocks)for(let bi=0;bi<block.length;bi++){
-  const i=block[bi],y=Math.floor(i/w),x=i-y*w,x0=xs[x],x1=xs[x+1],y0=ys[y],y1=ys[y+1];
-  if(x===0||!m[i-1])positions.push(x0,y0,z0,x0,y0,z1,x0,y1,z1,x0,y0,z0,x0,y1,z1,x0,y1,z0);
-  if(x===w-1||!m[i+1])positions.push(x1,y0,z0,x1,y1,z0,x1,y1,z1,x1,y0,z0,x1,y1,z1,x1,y0,z1);
-  if(y===0||!m[i-w])positions.push(x0,y0,z0,x1,y0,z0,x1,y0,z1,x0,y0,z0,x1,y0,z1,x0,y0,z1);
-  if(y===h-1||!m[i+w])positions.push(x0,y1,z0,x0,y1,z1,x1,y1,z1,x0,y1,z0,x1,y1,z1,x1,y1,z0);
-  if(!pm||!pm[i])positions.push(x0,y0,z0,x0,y1,z0,x1,y1,z0,x0,y0,z0,x1,y1,z0,x1,y0,z0);
-  if(!nm||!nm[i])positions.push(x0,y0,z1,x1,y0,z1,x1,y1,z1,x0,y0,z1,x1,y1,z1,x0,y1,z1);
- }
 }
 async function render3DSourceBacked(v){
  if(!sceneState||!v.series)return;
@@ -6083,19 +5347,6 @@ function cutRaycastTargets(){
  const targets=[];for(const mesh of cutRaycastSourceMeshes()){const proxy=segmentCutRaycastProxy(mesh);if(proxy)targets.push(proxy)}
  return targets;
 }
-function eachGeometryTriangleRange(geometry,start,count,callback){
- const pos=geometry?.getAttribute?.('position');if(!pos)return;
- const index=geometry.index,total=index?index.count:pos.count,first=Math.max(0,start||0),end=Math.min(total,count==null?total:first+Math.max(0,count));
- const a=new THREE.Vector3(),b=new THREE.Vector3(),cc=new THREE.Vector3();
- for(let i=first;i+2<end;i+=3){
-  const ia=index?index.getX(i):i,ib=index?index.getX(i+1):i+1,ic=index?index.getX(i+2):i+2;
-  a.fromBufferAttribute(pos,ia);b.fromBufferAttribute(pos,ib);cc.fromBufferAttribute(pos,ic);callback(a,b,cc);
- }
-}
-function eachGeometryTriangle(geometry,callback){
- const pos=geometry?.getAttribute?.('position');if(!pos)return;
- eachGeometryTriangleRange(geometry,0,geometry.index?geometry.index.count:pos.count,callback);
-}
 function currentSegmentMeshes(key){
  const meshes=[];sceneState?.obj?.traverse?.(o=>{if(o.isMesh&&o.geometry&&meshSegmentRanges(o,key).length)meshes.push(o)});return meshes;
 }
@@ -6110,15 +5361,6 @@ function currentSegmentVolumeMm3(key){
 }
 function currentSegmentTriangleCount(key){
  let count=0;for(const mesh of currentSegmentMeshes(key))for(const range of meshSegmentRanges(mesh,key))count+=Math.floor(range.count/3);return count;
-}
-function groupTriangleCount(group){
- let count=0;group?.traverse?.(o=>{if(o.isMesh&&o.geometry){const pos=o.geometry.getAttribute('position');count+=o.geometry.index?Math.floor(o.geometry.index.count/3):Math.floor((pos?.count||0)/3)}});return count;
-}
-function groupToBinaryStl(group,name='region',inverseScale=1){
- const triCount=groupTriangleCount(group);if(!triCount)return null;const buffer=new ArrayBuffer(84+triCount*50),view=new DataView(buffer),header=new TextEncoder().encode('Virtual Rodent Lab '+name);new Uint8Array(buffer,0,Math.min(80,header.length)).set(header.slice(0,80));view.setUint32(80,triCount,true);
- const ab=new THREE.Vector3(),ac=new THREE.Vector3(),n=new THREE.Vector3();let off=84;
- group.traverse(o=>{if(!o.isMesh||!o.geometry)return;eachGeometryTriangle(o.geometry,(aa,bb,cc)=>{const a=aa.clone().multiplyScalar(inverseScale),b=bb.clone().multiplyScalar(inverseScale),c=cc.clone().multiplyScalar(inverseScale);ab.subVectors(b,a);ac.subVectors(c,a);n.crossVectors(ab,ac).normalize();for(const v of [n,a,b,c]){view.setFloat32(off,v.x,true);view.setFloat32(off+4,v.y,true);view.setFloat32(off+8,v.z,true);off+=12}view.setUint16(off,0,true);off+=2})});
- return new Blob([buffer],{type:'model/stl'});
 }
 function downloadBlob(blob,filename){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();const url=a.href;a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 async function exportFocusedAnalysisRegionStl(){
@@ -6151,23 +5393,6 @@ async function exportSegmentStl(key){
  }
  if(!blob){footer.textContent='STL: segment is empty';return}
  const names={bone:'bone',soft:'soft-tissue',fat:'fat',lung:'lung'},filename='virtual-rodent-'+(names[key]||key)+'.stl';downloadBlob(blob,filename);footer.textContent=(currentLanguage==='ja'?'STLを書き出しました: ':'STL exported: ')+filename;
-}
-function geometryToBinaryStl(geometry,name='segment'){
- const pos=geometry.getAttribute('position'),index=geometry.index;
- if(!pos||!index)throw new Error('Indexed geometry required for STL export');
- const triCount=Math.floor(index.count/3),buffer=new ArrayBuffer(84+triCount*50),view=new DataView(buffer);
- const header=new TextEncoder().encode('Virtual Rodent Lab '+name);new Uint8Array(buffer,0,Math.min(80,header.length)).set(header.slice(0,80));
- view.setUint32(80,triCount,true);
- const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3(),ab=new THREE.Vector3(),ac=new THREE.Vector3(),n=new THREE.Vector3();
- let off=84;
- for(let t=0;t<triCount;t++){
-  const ia=index.getX(t*3),ib=index.getX(t*3+1),ic=index.getX(t*3+2);
-  a.fromBufferAttribute(pos,ia);b.fromBufferAttribute(pos,ib);c.fromBufferAttribute(pos,ic);
-  ab.subVectors(b,a);ac.subVectors(c,a);n.crossVectors(ab,ac).normalize();
-  for(const v of [n,a,b,c]){view.setFloat32(off,v.x,true);view.setFloat32(off+4,v.y,true);view.setFloat32(off+8,v.z,true);off+=12}
-  view.setUint16(off,0,true);off+=2;
- }
- return new Blob([buffer],{type:'model/stl'});
 }
 function taubinSmoothGeometry(geometry,strength,pinned=null){
  const pos=geometry.getAttribute('position');
@@ -6210,7 +5435,5 @@ function dispose(o){o.traverse(c=>{const release=()=>{c.geometry?.dispose?.();if
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
 function byteProgress(a,b,label){bar.style.width=Math.min(100,Math.round(a/b*100))+'%';progLabel.textContent=label+' '+fmt(a)+' / '+fmt(b)}
-function fmt(n){if(!n)return'0 B';const u=['B','KiB','MiB','GiB'];const i=Math.min(Math.floor(Math.log(n)/Math.log(1024)),u.length-1);return(n/1024**i).toFixed(i?2:0)+' '+u[i]}
-function num(v){const n=Number(v);return Number.isFinite(n)?n:null}function numberOr(v,f){const n=Number(v);return Number.isFinite(n)?n:f}function multi(v,n){if(!v)return null;const a=v.split('\\').map(Number);return a.length>=n&&a.every(Number.isFinite)?a.slice(0,n):null}function safePair(a){return[a[0],a[1]]}function safeTriple(a){return[a[0],a[1],a[2]]}function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 void ensureLatestDeployedBuild();
 start3D().catch(e=>{console.error(e);status.textContent='3D RENDERER ERROR';status.className='status status-error';threeLabel.textContent='MPR ONLY';footer.textContent='3D初期化に失敗しました。DICOM/MPRは利用できます: '+String(e.message||e)});
