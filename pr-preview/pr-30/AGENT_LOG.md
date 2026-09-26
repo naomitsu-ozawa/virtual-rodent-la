@@ -88,6 +88,23 @@ drags in real time (a feature built in builds 124–127). Owner had filters on.
   Slice indices are passed to the renderer every frame, so planes follow
   drags in real time again.
 
+### Follow-up (build 213): owner feedback on 212
+- Planes now visible while dragging sliders, but hidden while rotating:
+  that is the original 184.10 behaviour (render loop hides regular planes
+  during camera moves). Owner prefers them visible →
+  `mpr3DHideDuringCameraMoves=false` (set true to restore; watch rotation
+  performance on iPad).
+- Plane opacity slider was far away (the workspace UI moves
+  `.mpr-opacity-settings` into the drawer). Added an "Opacity" row to the
+  3D slice panel (`#mpr3d-opacity`) proxying `mprVolumeOpacity` in volume
+  mode or `mprSurfaceOpacity` otherwise; synced from
+  `updateMpr3DOpacityControls`. That function is also called at startup,
+  before the panel constants exist (TDZ) → guarded by
+  `mpr3DSlicePanelReady`. Lint/unit tests cannot catch this ordering; the
+  E2E page-error checks do.
+- 2D update latency with filters (runner waits for the in-flight slice):
+  pending owner decision.
+
 ---
 
 ## 2026-09-26 — feat/project-save-share
