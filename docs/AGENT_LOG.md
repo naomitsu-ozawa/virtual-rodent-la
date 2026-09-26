@@ -38,6 +38,52 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — feat/lasso-region-select
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner request: in 3D edit, select everything enclosed by a pen
+loop, to delete small noise in bulk. (PR #21 — filter work — is on hold
+while the owner tests other data.)
+
+### Behavior (owner choice: only pieces COMPLETELY inside the loop)
+- New tool button "囲んで選択 / Lasso select" next to "領域選択"
+  (`#analysis-lasso-select`, tool state `analysisEditTool==='lasso'`).
+- Drawing reuses the pen-cut stroke capture (`analysisCutScreen`,
+  `appendCutScreenPoints`), drawn as a closed, lightly filled loop.
+- On release, `selectRegionsInLasso`: for each target segment (the edit
+  target, or all active+enabled segments in auto mode) take
+  `getFinalSegmentRuns`, split with `componentsFromRunsAsync`, keep
+  components whose voxels all project inside the loop, merge them into
+  **one analysis region per segment** (`unionRunArrays`, `merged:true`),
+  so the existing "Delete selected region" removes them together.
+- Screen-space loop → selects through depth (hidden noise included).
+  Pieces crossing the loop (main structure) are never selected.
+
+### Geometry (`docs/lasso.js`, unit-tested)
+- `makeVoxelProjector`: voxel → canvas px, using the same voxel placement
+  as `makeVolume3DCoordinates` / `surfaceSegmentPointerVoxel`; test checks
+  equality with three.js `Vector3.project`.
+- `componentFullyInside`: tests run ends plus every 4th voxel along runs,
+  stops at the first point outside/behind the camera (large bodies are
+  rejected fast); polygon bbox pre-check; even-odd point-in-polygon.
+
+### Owner rule: return to "Navigate" after each 3D edit operation (build 198)
+- `returnToNavigate()` (tool → 'select', target key reset like cut apply)
+  is called after: region select (both success paths), lasso select when
+  something was selected, cut cancel, "Delete selected region" (success),
+  "Keep selected region". Cut apply already returned to Navigate.
+- Failures / empty results keep the tool active so the user can retry;
+  Undo/Redo do not change the tool.
+
+### Notes
+- Build 191 → 197 (192–196 are used by the unmerged PR #21 preview).
+- Expect a merge conflict with PR #21 in app.js's ui-shell import line and
+  i18n.js (both add names/keys); resolve by keeping both.
+- WebGPU volume mode uses the same `sceneState.obj` transform as the region
+  tool; verify on device in both surface and volume modes.
+
+---
+
 ## 2026-09-26 — feat/slider-fast-interaction
 
 **Agent:** Claude (via claude.ai)

@@ -20,6 +20,9 @@ test('app boots and renders the main UI', async ({ page }) => {
   await expect(page.locator('#demo-button')).toBeVisible();
   await expect(page.locator('#open-folder')).toBeVisible();
   await expect(page.locator('#gpu-status')).toBeVisible();
+  // 3D edit lasso tool is present (disabled until a 3D segment exists)
+  await expect(page.locator('#analysis-lasso-select')).toBeAttached();
+  await expect(page.locator('#analysis-lasso-select')).toBeDisabled();
 });
 
 test('version badge shows the deployed build and no reload loop occurs', async ({ page }) => {
