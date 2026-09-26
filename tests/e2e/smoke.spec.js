@@ -20,6 +20,11 @@ test('app boots and renders the main UI', async ({ page }) => {
   await expect(page.locator('#demo-button')).toBeVisible();
   await expect(page.locator('#open-folder')).toBeVisible();
   await expect(page.locator('#gpu-status')).toBeVisible();
+  // project file buttons: save needs loaded data, open is always available
+  await expect(page.locator('#project-save')).toBeDisabled();
+  await expect(page.locator('#project-open')).toBeEnabled();
+  // GPU volume cache chip only appears with a WebGPU volume renderer (none in CI)
+  await expect(page.locator('#volume-cache-clear')).toBeHidden();
   // 'original CT' badge exists but is hidden unless GPU volume + filters
   await expect(page.locator('#three-filter-badge')).toBeAttached();
   await expect(page.locator('#three-filter-badge')).toBeHidden();
