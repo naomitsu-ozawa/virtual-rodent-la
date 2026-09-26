@@ -20,6 +20,9 @@ test('app boots and renders the main UI', async ({ page }) => {
   await expect(page.locator('#demo-button')).toBeVisible();
   await expect(page.locator('#open-folder')).toBeVisible();
   await expect(page.locator('#gpu-status')).toBeVisible();
+  // 'original CT' badge exists but is hidden unless GPU volume + filters
+  await expect(page.locator('#three-filter-badge')).toBeAttached();
+  await expect(page.locator('#three-filter-badge')).toBeHidden();
 });
 
 test('version badge shows the deployed build and no reload loop occurs', async ({ page }) => {
