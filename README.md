@@ -48,11 +48,21 @@
 ## リポジトリ構成
 
 - `docs/index.html` — GitHub Pagesのエントリーポイント
-- `docs/app.js` — 現行DICOMビューワー本体
+- `docs/app.js` — DICOMビューワー本体（UI・状態管理・描画の統括）
+- `docs/medical-volume.js` — WebGPUボリュームレンダリング
+- `docs/dicom.js` — DICOMヘッダ解析・シリーズのグループ化
+- `docs/mask-ops.js` — 閾値・モルフォロジー・穴埋めなどのマスク演算
+- `docs/run-length.js` — セグメントのラン長表現・集合演算・連結成分
+- `docs/mesh-geometry.js` — サーフェスメッシュ生成・STL書き出し
+- `docs/i18n.js` — 日本語/英語の表示文字列
+- `docs/utils.js` — 汎用ユーティリティ
 - `docs/style.css` — UIスタイル
 - `docs/DICOM_WEBGPU_SPEC.md` — 現在の設計・動作仕様
 - `docs/IMPLEMENTATION_PLAN.md` — 実装済み項目と今後の開発項目
+- `docs/AGENT_LOG.md` — AIエージェントによる作業記録
 - `docs/THIRD_PARTY_NOTICES.md` — 外部ライブラリ・公開データの情報
+- `tests/` — ユニットテスト (Vitest) とブラウザテスト (Playwright)
+- `tools/` — 開発用ツール（ビルド番号更新・モジュール分割補助）
 - `index.html` — ローカル開発用エントリーポイント
 
 旧Digimouse / MouseMapper関連の実験コードや生成データは、現在のDICOMビューワーには含めていません。
@@ -86,7 +96,10 @@ npm test              # 構文・ビルド番号整合性チェック + ユニ�
 npx playwright install chromium
 npm run test:e2e      # ブラウザ起動スモークテスト (Playwright)
 npm run test:e2e:demo # 公開デモ(約20.8MB)の読み込みテスト
+npm run lint          # 未定義参照などの検出 (ESLint)
 ```
+
+デプロイ用のビルド番号は `npm run bump-build` で全ファイル一括更新します（`docs/app.js`・`docs/version.json`・各モジュールのキャッシュ対策クエリ）。
 
 GitHub Actions (`.github/workflows/ci.yml`) で push / PR ごとに自動実行されます。AIエージェントによる作業記録は `docs/AGENT_LOG.md` を参照してください。
 
