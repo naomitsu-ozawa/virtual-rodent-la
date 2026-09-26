@@ -72,6 +72,22 @@ drags in real time (a feature built in builds 124–127). Owner had filters on.
   CI cannot exercise the filtered GPU path (no WebGPU).
 - Build → 211.
 
+### Follow-up in the same PR (build 212): planes vanished in GPU volume mode
+- Owner: in GPU volume mode, the 3D plane images disappear while dragging
+  either slice slider (3D or 2D).
+- Cause — regression from build 191 (PR #20, slider fast interaction): in
+  volume mode the planes are drawn by the volume renderer from
+  `render(..., {indices, visible, ...})`; the render loop passes
+  `visible` = section-view planes only while `fastInteractionActive` (by
+  design for camera rotation). PR #20 turned fast interaction on for every
+  slider drag, so slice drags hid the planes. (Lesson: check every consumer
+  of a shared flag before reusing it.)
+- Fix: `setFastInteraction(active, keepOverlays)` records
+  `fastKeepOverlays`; the render loop hides planes only when
+  `fastInteractionActive && !fastKeepOverlays`. Camera moves unchanged.
+  Slice indices are passed to the renderer every frame, so planes follow
+  drags in real time again.
+
 ---
 
 ## 2026-09-26 — feat/project-save-share
