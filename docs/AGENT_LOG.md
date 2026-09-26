@@ -38,6 +38,31 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — feat/project-save-share
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner: can "Save project" write straight into the DICOM folder?
+Not automatically: the folder opened via `<input webkitdirectory>` is
+read-only and Safari (iPad/Mac) lacks the File System Access API. Owner chose
+option A: save through the share sheet.
+
+### What changed
+- `deliverProjectFile(bytes, name)`: on iPad/iPhone, if
+  `navigator.canShare({files})`, call `navigator.share` so "Save to Files"
+  can target the DICOM folder (the Files app remembers the last folder).
+  Share must run inside the click's user activation, so nothing is awaited
+  before it (`saveProject` builds the zip synchronously). AbortError →
+  "cancelled", nothing saved; other errors → download fallback. Mac and
+  other platforms keep downloading (Mac's share sheet has no folder target).
+- Footer messages for shared / cancelled / downloaded.
+- E2E `tests/e2e/project-share.spec.js` (in CI): iPad UA + stubbed share →
+  share gets a `.vrlab`, no download; cancel → nothing saved; Linux →
+  download. `tests/helpers/dicom-folder.js` now shared with
+  folder-project.spec.js.
+- Build → 210.
+
+---
+
 ## 2026-09-26 — feat/folder-project-autoload
 
 **Agent:** Claude (via claude.ai)
