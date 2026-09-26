@@ -2,17 +2,21 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260926-build189';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260926-build190';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-import { clampRangeValue, ctDigits, esc, fmt, formatCtValue, frameYield, hexRgb, isDesktopMac, isIPadRuntime, isIPhoneRuntime, multi, niceCtStep, num, numberOr, rangeNumber, rangePrecision, rangeStep, safePair, safeTriple, withTimeout } from './utils.js?v=20260926-build189';
-import { COMPRESSED_DICOM_TRANSFER_SYNTAXES, NATIVE_DICOM_TRANSFER_SYNTAXES, canDecodeToInt16, dicomImageFrameInfo, encapsulatedFrameBytes, expandParsedFrames, groupSeries, isNativeDicomTransferSyntax, parseDicomHeader, parsedSliceMeta, sourceRangeFromMetadata } from './dicom.js?v=20260926-build189';
-import { boxBlur3D, buildThresholdMask, compactFaceFlags, fillMaskHoles, morphMask, removeSmallMaskComponents, smoothMaskScalarField, thresholdSourceMask, valuesToFaceFlags, valuesToSegmentBits } from './mask-ops.js?v=20260926-build189';
-import { RunUnionFind, analysisRunRows, analysisRunSliceState, analysisRunsContain, analysisRunsOverlap, analysisRunsVoxelCount, complementRunArrays, componentAtVoxel, componentTouchesVolumeBoundary, componentsFromRuns, componentsFromRunsAsync, consumeGpuAnalysisRuns, forEachUncoveredRun, intersectRunArrays, intersectRunSlice, maskFromAnalysisRuns, maskToAnalysisRuns, mergeIntervals, morphSourceRunArrays, postprocessSourceRuns, rowIntervalsFromRuns, rowsToRunSlice, runArraysBinary, runsSliceToMask, sourceComponentSliceState, sourceResultToAnalysisRuns, sourceRunSlice, sourceRunSliceFromRanges, subtractRunArrays, subtractRunSlice, unionAnalysisRuns, unionOverlappingRuns, unionRunArrays, unionRunSlice } from './run-length.js?v=20260926-build189';
-import { Float32FaceBuilder, appendAnalysisRunBoundaryFaces, appendDecodedMaskSliceFaces, appendSourceFacesFromCompactTile, appendSourceSliceFaces, appendSourceSliceFacesFast, appendSourceSliceFacesFromBits, appendSourceSliceFacesFromFlags, eachGeometryTriangle, eachGeometryTriangleRange, geometryToBinaryStl, groupToBinaryStl, groupTriangleCount, indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates } from './mesh-geometry.js?v=20260926-build189';
-import { I18N } from './i18n.js?v=20260926-build189';
-import { GPU_PREWARM_KINDS, gpuFilterShader, normalizeVrlWgsl } from './gpu-shaders.js?v=20260926-build189';
-import { activeId, activeSeries, analysisCutApplying, analysisCutScreen, analysisCutStroke, analysisEditPreparing, analysisEditTargetKey, analysisEditTargetMode, analysisEditTool, analysisFocusedRegionId, analysisPendingCut, analysisRegions, ctRangeMode, ctRangeProfile, current3DVolume, currentLanguage, cutBvhModulePromise, cutControlPreviewRaf, cutRaycastMaterial, cutResultPreviewRevision, cutResultPreviewTimer, deferAutomatic3D, dicomCodecModulePromise, filterOrder, filterRebuildRevision, filterRebuildTimer, gpuPrewarmIndex, gpuPrewarmScheduled, incCutResultPreviewRevision, incFilterRebuildRevision, incGpuPrewarmIndex, incNextAnalysisColorIndex, incNextAnalysisRegionId, incNextSegmentMaskVolumeId, incResidentMprEpoch, incSourceMprWarmupToken, incSourceRenderRevision, ipadGpuTargetSide, memoryGpuPreviewActive, mpr3DSurfaceOpacity, mpr3DVolumeOpacity, mpr3DWindowLutKey, mpr3DWindowLutTable, nextAnalysisColorIndex, nextAnalysisRegionId, nextSegmentMaskVolumeId, precisionRangeDrag, residentGpuUploadSeriesId, residentMprEpoch, residentMprReadbackDisabled, sceneState, sectionAutoPlane, sectionCapEnabled, sectionCapHatch, sectionCapOpacity, sectionSliceImageVisible, sectionViewOpen, sectionViewPlane, sectionViewReverse, segmentRenderTimer, setActiveId, setActiveSeries, setAnalysisCutApplying, setAnalysisCutScreen, setAnalysisCutStroke, setAnalysisEditPreparing, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisEditTool, setAnalysisFocusedRegionId, setAnalysisPendingCut, setAnalysisRegions, setCtRangeMode, setCtRangeProfile, setCurrent3DVolume, setCurrentLanguage, setCutBvhModulePromise, setCutControlPreviewRaf, setCutRaycastMaterial, setCutResultPreviewRevision, setCutResultPreviewTimer, setDeferAutomatic3D, setDicomCodecModulePromise, setFilterOrder, setFilterRebuildRevision, setFilterRebuildTimer, setGpuPrewarmIndex, setGpuPrewarmScheduled, setIpadGpuTargetSide, setMemoryGpuPreviewActive, setMpr3DSurfaceOpacity, setMpr3DVolumeOpacity, setMpr3DWindowLutKey, setMpr3DWindowLutTable, setNextAnalysisColorIndex, setNextAnalysisRegionId, setNextSegmentMaskVolumeId, setPrecisionRangeDrag, setResidentGpuUploadSeriesId, setResidentMprEpoch, setResidentMprReadbackDisabled, setSceneState, setSectionAutoPlane, setSectionCapEnabled, setSectionCapHatch, setSectionCapOpacity, setSectionSliceImageVisible, setSectionViewOpen, setSectionViewPlane, setSectionViewReverse, setSegmentRenderTimer, setSmoothingRefreshTimer, setSourceMprWarmupPlane, setSourceMprWarmupToken, setSourceOrthogonalPlaneCacheBytes, setSourceRenderRevision, setSourceVolume, setThreeDApplying, setThreeDCancelRequested, setThreeDDirty, setThreeRenderMode, setVolume, setVolumeAnalysisBusy, setVolumeAnalysisMode, smoothingRefreshTimer, sourceMprWarmupPlane, sourceMprWarmupToken, sourceOrthogonalPlaneCacheBytes, sourceRenderRevision, sourceVolume, threeDApplying, threeDCancelRequested, threeDDirty, threeRenderMode, volume, volumeAnalysisBusy, volumeAnalysisMode } from './state.js?v=20260926-build189';
-const APP_VERSION='2026.09.26-189';const APP_BUILD='189';
+import { clampRangeValue, ctDigits, esc, fmt, formatCtValue, frameYield, hexRgb, isDesktopMac, isIPadRuntime, isIPhoneRuntime, multi, niceCtStep, num, numberOr, rangeNumber, rangePrecision, rangeStep, safePair, safeTriple, withTimeout } from './utils.js?v=20260926-build190';
+import { COMPRESSED_DICOM_TRANSFER_SYNTAXES, NATIVE_DICOM_TRANSFER_SYNTAXES, canDecodeToInt16, dicomImageFrameInfo, encapsulatedFrameBytes, expandParsedFrames, groupSeries, isNativeDicomTransferSyntax, parseDicomHeader, parseFiles, parsedSliceMeta, sourceRangeFromMetadata } from './dicom.js?v=20260926-build190';
+import { boxBlur3D, buildThresholdMask, compactFaceFlags, fillMaskHoles, morphMask, removeSmallMaskComponents, smoothMaskScalarField, thresholdSourceMask, valuesToFaceFlags, valuesToSegmentBits } from './mask-ops.js?v=20260926-build190';
+import { RunUnionFind, analysisRunRows, analysisRunSliceState, analysisRunsContain, analysisRunsOverlap, analysisRunsVoxelCount, complementRunArrays, componentAtVoxel, componentTouchesVolumeBoundary, componentsFromRuns, componentsFromRunsAsync, consumeGpuAnalysisRuns, forEachUncoveredRun, intersectRunArrays, intersectRunSlice, maskFromAnalysisRuns, maskToAnalysisRuns, mergeIntervals, morphSourceRunArrays, postprocessSourceRuns, rowIntervalsFromRuns, rowsToRunSlice, runArraysBinary, runsSliceToMask, sourceComponentSliceState, sourceResultToAnalysisRuns, sourceRunSlice, sourceRunSliceFromRanges, subtractRunArrays, subtractRunSlice, unionAnalysisRuns, unionOverlappingRuns, unionRunArrays, unionRunSlice } from './run-length.js?v=20260926-build190';
+import { Float32FaceBuilder, appendAnalysisRunBoundaryFaces, appendDecodedMaskSliceFaces, appendSourceFacesFromCompactTile, appendSourceSliceFaces, appendSourceSliceFacesFast, appendSourceSliceFacesFromBits, appendSourceSliceFacesFromFlags, eachGeometryTriangle, eachGeometryTriangleRange, geometryToBinaryStl, groupToBinaryStl, groupTriangleCount, indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates } from './mesh-geometry.js?v=20260926-build190';
+import { I18N, tr } from './i18n.js?v=20260926-build190';
+import { GPU_PREWARM_KINDS, gpuFilterShader, normalizeVrlWgsl } from './gpu-shaders.js?v=20260926-build190';
+import { activeId, activeSeries, analysisCutApplying, analysisCutScreen, analysisCutStroke, analysisEditPreparing, analysisEditTargetKey, analysisEditTargetMode, analysisEditTool, analysisFocusedRegionId, analysisPendingCut, analysisRegions, ctRangeMode, ctRangeProfile, current3DVolume, currentLanguage, cutBvhModulePromise, cutControlPreviewRaf, cutRaycastMaterial, cutResultPreviewRevision, cutResultPreviewTimer, deferAutomatic3D, dicomCodecModulePromise, filterOrder, filterRebuildRevision, filterRebuildTimer, gpuPrewarmIndex, gpuPrewarmScheduled, incCutResultPreviewRevision, incFilterRebuildRevision, incGpuPrewarmIndex, incNextAnalysisColorIndex, incNextAnalysisRegionId, incNextSegmentMaskVolumeId, incResidentMprEpoch, incSourceMprWarmupToken, incSourceRenderRevision, ipadGpuTargetSide, memoryGpuPreviewActive, mpr3DSurfaceOpacity, mpr3DVolumeOpacity, mpr3DWindowLutKey, mpr3DWindowLutTable, nextAnalysisColorIndex, nextAnalysisRegionId, nextSegmentMaskVolumeId, precisionRangeDrag, residentGpuUploadSeriesId, residentMprEpoch, residentMprReadbackDisabled, sceneState, sectionAutoPlane, sectionCapEnabled, sectionCapHatch, sectionCapOpacity, sectionSliceImageVisible, sectionViewOpen, sectionViewPlane, sectionViewReverse, segmentRenderTimer, setActiveId, setActiveSeries, setAnalysisCutApplying, setAnalysisCutScreen, setAnalysisCutStroke, setAnalysisEditPreparing, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisEditTool, setAnalysisFocusedRegionId, setAnalysisPendingCut, setAnalysisRegions, setCtRangeMode, setCtRangeProfile, setCurrent3DVolume, setCurrentLanguage, setCutBvhModulePromise, setCutControlPreviewRaf, setCutRaycastMaterial, setCutResultPreviewRevision, setCutResultPreviewTimer, setDeferAutomatic3D, setDicomCodecModulePromise, setFilterOrder, setFilterRebuildRevision, setFilterRebuildTimer, setGpuPrewarmIndex, setGpuPrewarmScheduled, setIpadGpuTargetSide, setMemoryGpuPreviewActive, setMpr3DSurfaceOpacity, setMpr3DVolumeOpacity, setMpr3DWindowLutKey, setMpr3DWindowLutTable, setNextAnalysisColorIndex, setNextAnalysisRegionId, setNextSegmentMaskVolumeId, setPrecisionRangeDrag, setResidentGpuUploadSeriesId, setResidentMprEpoch, setResidentMprReadbackDisabled, setSceneState, setSectionAutoPlane, setSectionCapEnabled, setSectionCapHatch, setSectionCapOpacity, setSectionSliceImageVisible, setSectionViewOpen, setSectionViewPlane, setSectionViewReverse, setSegmentRenderTimer, setSmoothingRefreshTimer, setSourceMprWarmupPlane, setSourceMprWarmupToken, setSourceOrthogonalPlaneCacheBytes, setSourceRenderRevision, setSourceVolume, setThreeDApplying, setThreeDCancelRequested, setThreeDDirty, setThreeRenderMode, setVolume, setVolumeAnalysisBusy, setVolumeAnalysisMode, smoothingRefreshTimer, sourceMprWarmupPlane, sourceMprWarmupToken, sourceOrthogonalPlaneCacheBytes, sourceRenderRevision, sourceVolume, threeDApplying, threeDCancelRequested, threeDDirty, threeRenderMode, volume, volumeAnalysisBusy, volumeAnalysisMode } from './state.js?v=20260926-build190';
+import { $, analysisClearButton, analysisCutApply, analysisCutButton, analysisCutCancel, analysisCutConfirm, analysisCutDepth, analysisCutDepthValue, analysisCutOffset, analysisCutOffsetValue, analysisCutPitch, analysisCutPitchValue, analysisCutWidth, analysisCutWidthValue, analysisCutYaw, analysisCutYawValue, analysisEditRemoveSelected, analysisEditTargetSelect, analysisExportSelected, analysisKeepSelected, analysisLineCutButton, analysisMergeButton, analysisNavigateButton, analysisRedo, analysisRegionList, analysisRemoveSelected, analysisResetEdit, analysisSelectRegionButton, analysisSummary, analysisUndo, anisotropicBtn, anisotropicIterations, anisotropicIterationsValue, anisotropicStrength, anisotropicStrengthValue, app, appVersionBadge, bar, bilateralBtn, bilateralIntensity, bilateralIntensityValue, bilateralPasses, bilateralPassesValue, bilateralSpatial, bilateralSpatialValue, bilateralStrength, bilateralStrengthValue, ctRangeAuto, ctRangeFull, demoBtn, filter3DState, filterAddButton, filterAddSelect, filterControlList, filterRebuild3D, folderBtn, folderInput, footer, gaussianBtn, gaussianStrength, gaussianStrengthValue, ipadGpuQuality, ipadGpuQualityControl, languageToggle, list, mainViewSlot, mprSurfaceOpacity, mprSurfaceOpacityValue, mprVolumeOpacity, mprVolumeOpacityValue, nlmBtn, nlmPatchRadius, nlmPatchRadiusValue, nlmSearchRadius, nlmSearchRadiusValue, nlmStrength, nlmStrengthValue, planes, processingOverlay, processingOverlayLabel, prog, progLabel, renderModeToggle, resetFilterBtn, sectionCapEnabledControl, sectionCapHatchControl, sectionCapOpacityControl, sectionCapOpacityValue, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionViewReadout, sectionViewResult, sectionViewToggle, segmentAddButton, segmentAddSelect, segmentControls, selected, sigmoidBtn, sigmoidCenter, sigmoidCenterValue, sigmoidStrength, sigmoidStrengthValue, smoothingType, spatialPasses, spatialPassesValue, spikeHoleBtn, spikeHoleStrength, spikeHoleStrengthValue, spikeHoleThreshold, spikeHoleThresholdValue, state, status, subViewSlots, surfaceSmoothEnabled, surfaceSmoothStrength, surfaceSmoothValue, threeBusy, threeBusyCancel, threeBusyLabel, threeEditHelp, threeEditOverlay, threeEditStatus, threeLabel, tvBtn, tvIterations, tvIterationsValue, tvWeight, tvWeightValue, unsharpAmount, unsharpAmountValue, unsharpBtn, unsharpRadius, unsharpRadiusValue, unsharpThreshold, unsharpThresholdValue, viewport, volumeAnalysisResult, volumeAnalysisToggle, wc, wcVal, ww, wwVal } from './ui-shell.js?v=20260926-build190';
+import { strongSurfaceSmoothingActive, surfaceSmoothingActive } from './settings.js?v=20260926-build190';
+import { GPU_FILTER_KEYS, acquireGpuWorkBuffer, adoptRendererGpuDevice, clearGpuBufferPool, createGpuResidentFloat3Attribute, destroyGpuResidentAttribute, ensureGpuFilterDevice, finishGpuResidentTemps, gpuAdapterLabel, gpuBufferBucketSize, gpuComputeWorkgroupSize, gpuDeviceMode, gpuDeviceRequestDescriptor, gpuFilterPipeline, gpuFilterRuntime, gpuPoolLimit, gpuSmallBuffer, gpuStagesSupported, gpuValidationScope, installGpuErrorListener, releaseGpuWorkBuffer, requestVrlGpuAdapter, requestVrlGpuDevice, runGpuSourceFilters, setGpuComputeBackend, updateGpuStatus, verifyGpuComputeDevice, verifyGpuPipelineSet } from './gpu-compute.js?v=20260926-build190';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane, decode, decodeCompressedDicomSlice, decodeSourceSlice, getDicomCodecModule, prepareSourceMprCache, readSourceColumn, readSourceRow, readSourceRows, sourceMprCacheLimit, sourceMprDecodeConcurrency, sourceSliceCache } from './volume-io.js?v=20260926-build190';
+const APP_VERSION='2026.09.26-190';const APP_BUILD='190';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -31,8 +35,6 @@ async function ensureLatestDeployedBuild(){
 
 const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 const DEMO_SIZE=20800000;
-const app=document.querySelector('#app');
-const tr=key=>I18N[currentLanguage][key]??key;
 function applyLanguage(lang){
  setCurrentLanguage(lang);
  document.documentElement.lang=lang;
@@ -40,143 +42,7 @@ function applyLanguage(lang){
  document.querySelectorAll('[data-i18n]').forEach(el=>{const key=el.dataset.i18n;if(key)el.textContent=tr(key)});
  const toggle=document.querySelector('#language-toggle');if(toggle)toggle.textContent=lang==='ja'?'English':'日本語';
 }
-app.innerHTML=`
-<main class="app-shell"><div id="processing-overlay" class="processing-overlay is-hidden" role="status" aria-live="polite" aria-busy="true"><div class="processing-spinner" aria-hidden="true"></div><strong id="processing-overlay-label">処理中…</strong></div>
-<header class="topbar"><div><p class="eyebrow">SMALL-ANIMAL CT / WEBGPU</p><h1>Virtual Rodent Lab</h1><p class="subtitle" data-i18n="subtitle">マウス・実験動物画像のためのブラウザDICOM CTビューワー</p></div><div class="topbar-actions"><button id="language-toggle" class="secondary-button" type="button">English</button><div id="gpu-status" class="status status-checking" data-i18n="gpuChecking">WEBGPU 確認中</div><button id="demo-button" class="secondary-button" data-i18n="demo">公開マウスCTデモ</button><button id="open-folder" class="primary-button" data-i18n="openFolder">DICOMフォルダを開く</button><input id="folder-input" class="visually-hidden" type="file" webkitdirectory multiple></div></header>
-<section class="workspace"><aside class="sidebar"><div class="sidebar-scroll"><section class="panel"><div class="panel-heading"><div><p class="panel-kicker" data-i18n="dataset">データセット</p><h2 data-i18n="series">DICOMシリーズ</h2></div></div><div id="scan-state" class="empty-state"><strong data-i18n="selectData">データを選択してください</strong><span data-i18n="selectDataHelp">ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。</span></div><div id="scan-progress" class="progress-wrap is-hidden"><div class="progress-track"><div id="scan-progress-bar" class="progress-bar"></div></div><span id="scan-progress-label">0 / 0</span></div><div id="series-list" class="series-list"></div></section>
-<section class="panel compact-panel"><div class="panel-heading"><div><p class="panel-kicker" data-i18n="display">表示</p><h2 data-i18n="ctDisplay">CT表示</h2></div></div><div class="ct-range-mode"><span data-i18n="ctRange">CT値操作範囲</span><div class="ct-range-buttons"><button id="ct-range-auto" class="range-mode-button is-active" type="button" data-i18n="autoRange" disabled>Auto</button><button id="ct-range-full" class="range-mode-button" type="button" data-i18n="fullRange" disabled>Full</button></div></div><label class="range-row"><span data-i18n="windowCenter">ウィンドウ中心</span><output id="wc-val">—</output><input id="wc" type="range" min="-2000" max="4000" value="500" disabled></label><label class="range-row"><span data-i18n="windowWidth">ウィンドウ幅</span><output id="ww-val">—</output><input id="ww" type="range" min="1" max="8000" value="3000" disabled></label><div class="panel-heading segment-heading"><div><p class="panel-kicker" data-i18n="segmentation">セグメンテーション</p><h2 data-i18n="segments">組織セグメント</h2></div></div><div class="segment-add-row">
-  <label class="segment-preset-label"><span data-i18n="segmentPreset">セグメントプリセット</span>
-    <select id="segment-add-select" class="filter-select" disabled>
-      <option value="bone" data-i18n="bone">骨</option>
-      <option value="soft" data-i18n="soft">軟部組織</option>
-      <option value="fat" data-i18n="fat">脂肪</option>
-      <option value="lung" data-i18n="lung">肺</option>
-    </select>
-  </label>
-  <button id="segment-add-button" class="tool-chip" type="button" data-i18n="addSegment" disabled>セグメントを追加</button>
-</div>
-<div id="segment-controls" class="segment-controls"><div class="segment-card is-hidden" data-segment="bone">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="bone" checked disabled><strong data-i18n="bone">骨</strong></label><input class="segment-color" data-seg-color="bone" type="color" value="#f3f0e8" disabled></div>
-<label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="bone">—</output><input data-seg-min="bone" type="range" min="0" max="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="bone">—</output><input data-seg-max="bone" type="range" min="0" max="1" value="1" disabled></label>
-<label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="bone">0.85</output><input data-seg-opacity="bone" type="range" min="0" max="1" step="0.05" value="0.85" disabled></label>
-<div class="segment-postprocess">
-<label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="bone">0</output><input data-seg-opening="bone" type="range" min="0" max="3" step="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="closing">Closing</span><output data-seg-closing-out="bone">0</output><input data-seg-closing="bone" type="range" min="0" max="3" step="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="minComponent">最小連結成分</span><output data-seg-min-component-out="bone">0</output><input data-seg-min-component="bone" type="range" min="0" max="5000" step="50" value="0" disabled></label>
-<label class="surface-smooth-toggle"><input data-seg-hole-fill="bone" type="checkbox" disabled><strong data-i18n="holeFill">Hole Filling</strong></label>
-</div>
-<button class="segment-export-stl" data-seg-export="bone" data-i18n="exportStl" disabled>STL書き出し</button>
-<button class="segment-remove-button" data-seg-remove="bone" data-i18n="removeSegment" disabled>削除</button>
-</div><div class="segment-card is-hidden" data-segment="soft">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="soft"  disabled><strong data-i18n="soft">軟部組織</strong></label><input class="segment-color" data-seg-color="soft" type="color" value="#d97f7f" disabled></div>
-<label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="soft">—</output><input data-seg-min="soft" type="range" min="0" max="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="soft">—</output><input data-seg-max="soft" type="range" min="0" max="1" value="1" disabled></label>
-<label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="soft">0.28</output><input data-seg-opacity="soft" type="range" min="0" max="1" step="0.05" value="0.28" disabled></label>
-<div class="segment-postprocess">
-<label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="soft">0</output><input data-seg-opening="soft" type="range" min="0" max="3" step="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="closing">Closing</span><output data-seg-closing-out="soft">0</output><input data-seg-closing="soft" type="range" min="0" max="3" step="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="minComponent">最小連結成分</span><output data-seg-min-component-out="soft">0</output><input data-seg-min-component="soft" type="range" min="0" max="5000" step="50" value="0" disabled></label>
-<label class="surface-smooth-toggle"><input data-seg-hole-fill="soft" type="checkbox" disabled><strong data-i18n="holeFill">Hole Filling</strong></label>
-</div>
-<button class="segment-export-stl" data-seg-export="soft" data-i18n="exportStl" disabled>STL書き出し</button>
-<button class="segment-remove-button" data-seg-remove="soft" data-i18n="removeSegment" disabled>削除</button>
-</div><div class="segment-card is-hidden" data-segment="fat">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="fat"  disabled><strong data-i18n="fat">脂肪</strong></label><input class="segment-color" data-seg-color="fat" type="color" value="#e7c85d" disabled></div>
-<label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="fat">—</output><input data-seg-min="fat" type="range" min="0" max="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="fat">—</output><input data-seg-max="fat" type="range" min="0" max="1" value="1" disabled></label>
-<label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="fat">0.35</output><input data-seg-opacity="fat" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
-<div class="segment-postprocess">
-<label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="fat">0</output><input data-seg-opening="fat" type="range" min="0" max="3" step="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="closing">Closing</span><output data-seg-closing-out="fat">0</output><input data-seg-closing="fat" type="range" min="0" max="3" step="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="minComponent">最小連結成分</span><output data-seg-min-component-out="fat">0</output><input data-seg-min-component="fat" type="range" min="0" max="5000" step="50" value="0" disabled></label>
-<label class="surface-smooth-toggle"><input data-seg-hole-fill="fat" type="checkbox" disabled><strong data-i18n="holeFill">Hole Filling</strong></label>
-</div>
-<button class="segment-export-stl" data-seg-export="fat" data-i18n="exportStl" disabled>STL書き出し</button>
-<button class="segment-remove-button" data-seg-remove="fat" data-i18n="removeSegment" disabled>削除</button>
-</div><div class="segment-card is-hidden" data-segment="lung">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="lung" disabled><strong data-i18n="lung">肺</strong></label><input class="segment-color" data-seg-color="lung" type="color" value="#6fb8d6" disabled></div>
-<label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="lung">—</output><input data-seg-min="lung" type="range" min="0" max="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="lung">—</output><input data-seg-max="lung" type="range" min="0" max="1" value="1" disabled></label>
-<label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="lung">0.35</output><input data-seg-opacity="lung" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
-<div class="segment-postprocess">
-<label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="lung">0</output><input data-seg-opening="lung" type="range" min="0" max="3" step="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="closing">Closing</span><output data-seg-closing-out="lung">0</output><input data-seg-closing="lung" type="range" min="0" max="3" step="1" value="0" disabled></label>
-<label class="segment-range"><span data-i18n="minComponent">最小連結成分</span><output data-seg-min-component-out="lung">0</output><input data-seg-min-component="lung" type="range" min="0" max="5000" step="50" value="0" disabled></label>
-<label class="surface-smooth-toggle"><input data-seg-hole-fill="lung" type="checkbox" disabled><strong data-i18n="holeFill">Hole Filling</strong></label>
-</div>
-<button class="segment-export-stl" data-seg-export="lung" data-i18n="exportStl" disabled>STL書き出し</button>
-<button class="segment-remove-button" data-seg-remove="lung" data-i18n="removeSegment" disabled>削除</button>
-</div></div><div class="surface-smooth-card">
-  <label class="surface-smooth-toggle"><input id="surface-smooth-enabled" type="checkbox" checked disabled><strong data-i18n="surfaceSmooth">表面平滑化</strong></label>
-  <label class="segment-range"><span data-i18n="strength">強度</span><output id="surface-smooth-value">0.60</output><input id="surface-smooth-strength" type="range" min="0" max="6" step="0.05" value="0.60" disabled></label>
-</div>
-<div class="filter-add-row">
-  <select id="filter-add-select" class="filter-select">
-    <option value="spikeHole">Spike / Hole</option>
-    <option value="nlm">Fast NLM 3D</option>
-    <option value="anisotropic">Anisotropic Diffusion</option>
-    <option value="gaussian">Spatial Filter 3D</option>
-    <option value="sigmoid">Sigmoid</option>
-    <option value="bilateral">Bilateral 3D</option>
-    <option value="tv">TV Denoising 3D</option>
-    <option value="unsharp">Unsharp Mask 3D</option>
-  </select>
-  <button id="filter-add-button" class="tool-chip" type="button">フィルターを追加</button>
-</div>
-<div class="filter-3d-commit"><button id="filter-rebuild-3d" class="tool-chip filter-rebuild-3d" type="button" data-i18n="rebuild3D" disabled>3D再構築</button><span id="filter-3d-state" class="filter-3d-state is-current" data-i18n="threeCurrent">3Dは最新</span></div>
-<div class="filter-control-list">
-  <div class="filter-control-card is-hidden" data-filter-key="spikeHole" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-spike-hole" type="checkbox" disabled><strong>Spike / Hole</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
-    <label class="segment-range"><span data-i18n="strength">強度</span><output id="spike-hole-strength-value">0.50</output><input id="spike-hole-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
-    <label class="segment-range"><span data-i18n="filterThreshold">検出閾値</span><output id="spike-hole-threshold-value">0.075</output><input id="spike-hole-threshold" type="range" min="0.01" max="0.15" step="0.005" value="0.075" disabled></label>
-  </div>
-  <div class="filter-control-card is-hidden" data-filter-key="nlm" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-nlm" type="checkbox" disabled><strong>Fast NLM 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
-    <label class="segment-range"><span data-i18n="strength">強度</span><output id="nlm-strength-value">0.45</output><input id="nlm-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
-    <label class="segment-range"><span data-i18n="searchRadius">探索半径</span><output id="nlm-search-radius-value">1</output><input id="nlm-search-radius" type="range" min="1" max="2" step="1" value="1" disabled></label>
-    <label class="segment-range"><span data-i18n="patchRadius">パッチ半径</span><output id="nlm-patch-radius-value">1</output><input id="nlm-patch-radius" type="range" min="0" max="2" step="1" value="1" disabled></label>
-  </div>
-  <div class="filter-control-card is-hidden" data-filter-key="anisotropic" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-anisotropic" type="checkbox" disabled><strong>Anisotropic Diffusion</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
-    <label class="segment-range"><span data-i18n="strength">強度</span><output id="anisotropic-strength-value">0.45</output><input id="anisotropic-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
-    <label class="segment-range"><span data-i18n="iterations">反復回数</span><output id="anisotropic-iterations-value">4</output><input id="anisotropic-iterations" type="range" min="1" max="12" step="1" value="4" disabled></label>
-  </div>
-  <div class="filter-control-card is-hidden" data-filter-key="gaussian" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-gaussian" type="checkbox" disabled><strong>Spatial Filter 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span><select id="filter-smoothing-type" class="filter-select" disabled><option value="gaussian">Gaussian 3D</option><option value="median">Median 3D</option></select></div>
-    <label class="segment-range"><span data-i18n="strength">強度</span><output id="gaussian-strength-value">0.40</output><input id="gaussian-strength" type="range" min="0" max="1" step="0.05" value="0.40" disabled></label>
-    <label class="segment-range"><span data-i18n="passes">Pass数</span><output id="spatial-passes-value">2</output><input id="spatial-passes" type="range" min="1" max="6" step="1" value="2" disabled></label>
-  </div>
-  <div class="filter-control-card is-hidden" data-filter-key="sigmoid" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-sigmoid" type="checkbox" disabled><strong>Sigmoid</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
-    <label class="segment-range"><span data-i18n="strength">強度</span><output id="sigmoid-strength-value">0.50</output><input id="sigmoid-strength" type="range" min="0" max="1" step="0.05" value="0.50" disabled></label>
-    <label class="segment-range"><span data-i18n="sigmoidCenter">中心</span><output id="sigmoid-center-value">—</output><input id="sigmoid-center" type="range" min="0" max="1" step="1" value="0" disabled></label>
-  </div>
 
-  <div class="filter-control-card is-hidden" data-filter-key="bilateral" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-bilateral" type="checkbox" disabled><strong>Bilateral 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
-    <label class="segment-range"><span data-i18n="strength">強度</span><output id="bilateral-strength-value">0.45</output><input id="bilateral-strength" type="range" min="0" max="1" step="0.05" value="0.45" disabled></label>
-    <label class="segment-range"><span data-i18n="spatialSigma">空間Sigma</span><output id="bilateral-spatial-value">1.20</output><input id="bilateral-spatial" type="range" min="0.5" max="2.5" step="0.1" value="1.2" disabled></label>
-    <label class="segment-range"><span data-i18n="intensitySigma">強度Sigma</span><output id="bilateral-intensity-value">0.08</output><input id="bilateral-intensity" type="range" min="0.01" max="0.25" step="0.01" value="0.08" disabled></label>
-    <label class="segment-range"><span data-i18n="passes">Pass数</span><output id="bilateral-passes-value">1</output><input id="bilateral-passes" type="range" min="1" max="3" step="1" value="1" disabled></label>
-  </div>
-  <div class="filter-control-card is-hidden" data-filter-key="tv" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-tv" type="checkbox" disabled><strong>TV Denoising 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
-    <label class="segment-range"><span data-i18n="weight">Weight</span><output id="tv-weight-value">0.12</output><input id="tv-weight" type="range" min="0.01" max="0.30" step="0.01" value="0.12" disabled></label>
-    <label class="segment-range"><span data-i18n="iterations">反復回数</span><output id="tv-iterations-value">8</output><input id="tv-iterations" type="range" min="1" max="20" step="1" value="8" disabled></label>
-  </div>
-  <div class="filter-control-card is-hidden" data-filter-key="unsharp" draggable="true">
-    <div class="filter-control-head"><label class="filter-enable-label"><input class="filter-internal-toggle" id="filter-unsharp" type="checkbox" disabled><strong>Unsharp Mask 3D</strong></label><span class="filter-reorder-controls"><button type="button" class="filter-order-button" data-filter-move="up" aria-label="Move filter up">↑</button><button type="button" class="filter-order-button" data-filter-move="down" aria-label="Move filter down">↓</button><span class="filter-drag-handle" title="Drag to reorder">⋮⋮</span><button type="button" class="filter-remove-button" data-filter-remove aria-label="Remove filter">×</button></span></div>
-    <label class="segment-range"><span data-i18n="radius">Radius</span><output id="unsharp-radius-value">1</output><input id="unsharp-radius" type="range" min="1" max="3" step="1" value="1" disabled></label>
-    <label class="segment-range"><span data-i18n="amount">Amount</span><output id="unsharp-amount-value">0.80</output><input id="unsharp-amount" type="range" min="0" max="2" step="0.05" value="0.80" disabled></label>
-    <label class="segment-range"><span data-i18n="filterThreshold">検出閾値</span><output id="unsharp-threshold-value">0.02</output><input id="unsharp-threshold" type="range" min="0" max="0.20" step="0.01" value="0.02" disabled></label>
-  </div>
-  <button id="filter-reset" class="tool-chip filter-reset" data-i18n="resetFilters" disabled>画像フィルターをリセット</button>
-</div><p class="hint" data-i18n="controls">3D操作は3D画面右下の「？」から確認できます。断面画像: 左右スワイプ / マウスホイールでスライス移動</p></section></div></aside>
-<section class="viewer-grid" id="viewer-grid"><section id="main-view-slot" class="view-slot view-slot-main"><article class="viewport-card view-card view-card-3d" data-view-key="3d"><div class="viewport-label view-toolbar"><strong>3D</strong><span id="three-label">WebGPU</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="3d" data-i18n="mainView">メインへ</button></div><div class="volume-analysis-panel"><button id="render-mode-toggle" class="tool-chip" data-i18n="volumeRender" disabled>GPUボリューム</button><label id="ipad-gpu-quality-control" class="tool-chip is-hidden" style="display:none;align-items:center;gap:6px"><span>iPad GPU</span><select id="ipad-gpu-quality" aria-label="iPad GPU volume resolution"><option value="512">512</option><option value="768">768</option></select></label><button id="volume-analysis-toggle" class="tool-chip" data-i18n="volumeMode" disabled>体積解析</button><button id="section-view-toggle" class="tool-chip" data-i18n="sliceAnalysis" disabled>断面解析</button><div id="section-view-result" class="volume-analysis-result is-hidden"><strong data-i18n="sliceAnalysis">断面解析</strong><div class="section-view-actions"><button type="button" data-section-view="axial">Axial</button><button type="button" data-section-view="coronal">Coronal</button><button type="button" data-section-view="sagittal">Sagittal</button><button id="section-reverse" type="button" data-i18n="sectionReverse">反転</button><button type="button" data-section-view="off" data-i18n="sectionOff">解除</button></div><label class="section-position-control"><span data-i18n="sectionPosition">断面位置</span><output id="section-position-value">—</output><input id="section-position" type="range" min="0" max="0" value="0" disabled></label><div class="section-cap-settings" style="display:grid;gap:6px;padding:7px 0"><label style="display:flex;align-items:center;gap:7px"><input id="section-slice-image" type="checkbox" checked><span data-i18n="sectionSliceImage">スライス画像を表示</span></label><label style="display:flex;align-items:center;gap:7px"><input id="section-cap-enabled" type="checkbox" checked><span data-i18n="sectionCap">断面キャップ</span></label><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center"><span data-i18n="sectionCapOpacity">キャップ不透明度</span><output id="section-cap-opacity-value">85%</output><input id="section-cap-opacity" type="range" min="0" max="100" step="1" value="85" style="grid-column:1/-1;width:100%"></label><label style="display:flex;align-items:center;gap:7px"><input id="section-cap-hatch" type="checkbox" checked><span data-i18n="sectionCapHatch">ハッチング</span></label></div><span id="section-view-readout" data-i18n="sliceAnalysisHint">3Dを切断する断面を選択してください</span></div><div class="three-overlay-controls" aria-label="3D overlays"><button type="button" class="tool-chip is-active" data-3d-overlay="axes">XYZ</button><button type="button" class="tool-chip" data-3d-overlay="axial">Axial</button><button type="button" class="tool-chip" data-3d-overlay="coronal">Coronal</button><button type="button" class="tool-chip" data-3d-overlay="sagittal">Sagittal</button></div><div class="mpr-opacity-settings" style="display:grid;gap:6px;min-width:230px;padding:7px 9px;border:1px solid #334047;border-radius:9px;background:rgba(12,16,18,.88)"><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;font-size:10px;color:#afc3cb"><span data-i18n="mprSurfaceOpacity">断面不透明度（サーフェス）</span><output id="mpr-surface-opacity-value" style="color:#e0edf1;font-variant-numeric:tabular-nums">64%</output><input id="mpr-surface-opacity" type="range" min="0" max="100" step="1" value="64" style="grid-column:1/-1;width:100%"></label><label style="display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;font-size:10px;color:#afc3cb"><span data-i18n="mprVolumeOpacity">断面不透明度（GPU）</span><output id="mpr-volume-opacity-value" style="color:#e0edf1;font-variant-numeric:tabular-nums">24%</output><input id="mpr-volume-opacity" type="range" min="0" max="100" step="1" value="24" style="grid-column:1/-1;width:100%"></label></div><details class="three-edit-panel"><summary class="three-edit-panel-head"><strong data-i18n="edit3D">3D編集</strong><span id="three-edit-status" class="three-edit-status" data-i18n="editReady">操作を選択してください</span></summary><div class="analysis-editor-actions"><button id="analysis-navigate" type="button" class="is-active" data-i18n="editNavigate">操作</button><button id="analysis-select-region" type="button" disabled data-i18n="selectEditRegion">領域選択</button><button id="analysis-cut" type="button" disabled data-i18n="cutRegion">ペン切断</button><button id="analysis-line-cut" type="button" disabled data-i18n="lineCutRegion">直線切断</button><div class="analysis-cut-confirm is-hidden"><button id="analysis-cut-apply" type="button" disabled data-i18n="applyCut">切断を適用</button><button id="analysis-cut-cancel" type="button" disabled data-i18n="cancelCut">キャンセル</button></div><label class="three-edit-target"><span data-i18n="editTarget">対象</span><select id="analysis-edit-target"><option value="auto" data-i18n="editAuto">自動</option><option value="bone">Bone</option><option value="soft">Soft</option><option value="fat">Fat</option><option value="lung">Lung</option></select></label><button id="analysis-undo" type="button" disabled data-i18n="undoEdit">Undo</button><button id="analysis-redo" type="button" disabled data-i18n="redoEdit">Redo</button><button id="analysis-edit-remove-selected" type="button" disabled data-i18n="removeSelectedRegion">選択領域を削除</button><button id="analysis-reset-edit" type="button" disabled data-i18n="resetEdit">編集リセット</button><label class="analysis-cut-width"><span data-i18n="cutWidth">切断幅</span><output id="analysis-cut-width-value">0.80 mm</output><input id="analysis-cut-width" type="range" min="0" max="5" step="0.05" value="0.8"></label><label class="analysis-cut-width"><span data-i18n="cutDepth">切断深さ</span><output id="analysis-cut-depth-value">5.0 mm</output><input id="analysis-cut-depth" type="range" min="0.1" max="100" step="0.1" value="5"></label><label class="analysis-cut-width"><span data-i18n="cutYaw">左右角度</span><output id="analysis-cut-yaw-value">0.0°</output><input id="analysis-cut-yaw" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutPitch">上下角度</span><output id="analysis-cut-pitch-value">0.0°</output><input id="analysis-cut-pitch" type="range" min="-90" max="90" step="0.25" value="0"></label><label class="analysis-cut-width"><span data-i18n="cutOffset">切断面位置</span><output id="analysis-cut-offset-value">0.0 mm</output><input id="analysis-cut-offset" type="range" min="-100" max="100" step="0.1" value="0"></label></div><div id="three-edit-help" class="three-edit-help" data-i18n="editAutoHint">自動: 最初に触れたセグメントを編集対象にします</div></details><div id="volume-analysis-result" class="volume-analysis-result is-hidden"><div id="analysis-summary" class="analysis-summary"></div><div class="analysis-actions"><button id="analysis-merge" type="button" disabled data-i18n="mergeSelected">選択を統合</button><button id="analysis-clear" type="button" disabled data-i18n="clearRegions">すべて解除</button><button id="analysis-remove-selected" type="button" disabled data-i18n="removeSelectedRegion">選択領域を削除</button><button id="analysis-keep-selected" type="button" disabled data-i18n="keepSelectedRegion">選択領域のみ残す</button><button id="analysis-export-selected" type="button" disabled data-i18n="exportSelectedStl">選択領域STL</button></div><div id="analysis-region-list" class="analysis-region-list"></div></div></div><div id="viewport-3d" class="viewport viewport-3d"></div><canvas id="three-edit-overlay" class="three-edit-overlay" aria-hidden="true"></canvas><div id="three-busy" class="three-busy is-hidden" role="status" aria-live="polite"><div class="three-busy-spinner" aria-hidden="true"></div><strong id="three-busy-label">3D構築中…</strong><button id="three-busy-cancel" class="three-busy-cancel" type="button" data-i18n="cancel3D">再構築をキャンセル</button></div><div id="selected" class="selected-series-overlay"><strong data-i18n="seriesUnselected">シリーズ未選択</strong><span data-i18n="selectSeries">左の一覧からCTシリーズを選択してください。</span></div></article></section><section id="sub-view-slots" class="mpr-column">${['axial','coronal','sagittal'].map(p=>`<section class="view-slot view-slot-sub"><article class="viewport-card view-card view-card-mpr" data-view-key="${p}"><div class="viewport-label view-toolbar"><strong>${p[0].toUpperCase()+p.slice(1)}</strong><span id="${p}-label">—</span><span class="view-drag-handle" data-view-drag-handle aria-label="Drag to swap">⋮⋮</span><button class="view-main-button" type="button" data-view-main="${p}" data-i18n="mainView">メインへ</button></div><canvas id="${p}-canvas" class="mpr-canvas"></canvas><input id="${p}-slider" class="slice-slider" type="range" min="0" max="0" value="0" disabled></article></section>`).join('')}</section></section></section>
-<div id="app-version-badge" class="app-version-badge" aria-label="Application version"></div><footer><span id="footer" data-i18n="footer">元のキャリブレーション済みCT値は保持されます。</span><a href="https://github.com/naomitsu-ozawa/virtual-rodent-la" target="_blank" rel="noopener">Source / License</a></footer></main>`;
-
-const $=s=>document.querySelector(s);
 
 // Unified range controls:
 // - wheel works on every range input
@@ -232,13 +98,8 @@ const finishPrecisionRangeDrag=e=>{
 document.addEventListener('pointerup',finishPrecisionRangeDrag,{capture:true});
 document.addEventListener('pointercancel',finishPrecisionRangeDrag,{capture:true});
 
-const appVersionBadge=$('#app-version-badge');
-const viewport=$('#viewport-3d'),status=$('#gpu-status'),demoBtn=$('#demo-button'),folderBtn=$('#open-folder'),folderInput=$('#folder-input'),state=$('#scan-state'),prog=$('#scan-progress'),bar=$('#scan-progress-bar'),progLabel=$('#scan-progress-label'),list=$('#series-list'),selected=$('#selected'),footer=$('#footer'),threeLabel=$('#three-label'),wc=$('#wc'),ww=$('#ww'),wcVal=$('#wc-val'),wwVal=$('#ww-val'),gaussianBtn=$('#filter-gaussian'),smoothingType=$('#filter-smoothing-type'),spikeHoleBtn=$('#filter-spike-hole'),resetFilterBtn=$('#filter-reset'),nlmBtn=$('#filter-nlm'),anisotropicBtn=$('#filter-anisotropic'),sigmoidBtn=$('#filter-sigmoid'),gaussianStrength=$('#gaussian-strength'),gaussianStrengthValue=$('#gaussian-strength-value'),spatialPasses=$('#spatial-passes'),spatialPassesValue=$('#spatial-passes-value'),spikeHoleStrength=$('#spike-hole-strength'),spikeHoleStrengthValue=$('#spike-hole-strength-value'),spikeHoleThreshold=$('#spike-hole-threshold'),spikeHoleThresholdValue=$('#spike-hole-threshold-value'),nlmStrength=$('#nlm-strength'),nlmStrengthValue=$('#nlm-strength-value'),nlmSearchRadius=$('#nlm-search-radius'),nlmSearchRadiusValue=$('#nlm-search-radius-value'),nlmPatchRadius=$('#nlm-patch-radius'),nlmPatchRadiusValue=$('#nlm-patch-radius-value'),anisotropicStrength=$('#anisotropic-strength'),anisotropicStrengthValue=$('#anisotropic-strength-value'),anisotropicIterations=$('#anisotropic-iterations'),anisotropicIterationsValue=$('#anisotropic-iterations-value'),sigmoidStrength=$('#sigmoid-strength'),sigmoidStrengthValue=$('#sigmoid-strength-value'),sigmoidCenter=$('#sigmoid-center'),sigmoidCenterValue=$('#sigmoid-center-value'),bilateralBtn=$('#filter-bilateral'),bilateralStrength=$('#bilateral-strength'),bilateralStrengthValue=$('#bilateral-strength-value'),bilateralSpatial=$('#bilateral-spatial'),bilateralSpatialValue=$('#bilateral-spatial-value'),bilateralIntensity=$('#bilateral-intensity'),bilateralIntensityValue=$('#bilateral-intensity-value'),bilateralPasses=$('#bilateral-passes'),bilateralPassesValue=$('#bilateral-passes-value'),tvBtn=$('#filter-tv'),tvWeight=$('#tv-weight'),tvWeightValue=$('#tv-weight-value'),tvIterations=$('#tv-iterations'),tvIterationsValue=$('#tv-iterations-value'),unsharpBtn=$('#filter-unsharp'),unsharpRadius=$('#unsharp-radius'),unsharpRadiusValue=$('#unsharp-radius-value'),unsharpAmount=$('#unsharp-amount'),unsharpAmountValue=$('#unsharp-amount-value'),unsharpThreshold=$('#unsharp-threshold'),unsharpThresholdValue=$('#unsharp-threshold-value'),surfaceSmoothEnabled=$('#surface-smooth-enabled'),surfaceSmoothStrength=$('#surface-smooth-strength'),surfaceSmoothValue=$('#surface-smooth-value'),volumeAnalysisToggle=$('#volume-analysis-toggle'),volumeAnalysisResult=$('#volume-analysis-result'),sectionViewToggle=$('#section-view-toggle'),sectionViewResult=$('#section-view-result'),sectionViewReadout=$('#section-view-readout'),sectionPosition=$('#section-position'),sectionPositionValue=$('#section-position-value'),sectionReverse=$('#section-reverse'),sectionSliceImageControl=$('#section-slice-image'),sectionCapEnabledControl=$('#section-cap-enabled'),sectionCapOpacityControl=$('#section-cap-opacity'),sectionCapOpacityValue=$('#section-cap-opacity-value'),sectionCapHatchControl=$('#section-cap-hatch'),analysisSummary=$('#analysis-summary'),analysisMergeButton=$('#analysis-merge'),analysisClearButton=$('#analysis-clear'),analysisRegionList=$('#analysis-region-list'),filterControlList=$('.filter-control-list'),filterAddSelect=$('#filter-add-select'),filterAddButton=$('#filter-add-button'),segmentAddSelect=$('#segment-add-select'),segmentAddButton=$('#segment-add-button'),segmentControls=$('#segment-controls');
-const planes=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,{canvas:$('#'+p+'-canvas'),slider:$('#'+p+'-slider'),label:$('#'+p+'-label')}]))
-const languageToggle=$('#language-toggle'),processingOverlay=$('#processing-overlay'),processingOverlayLabel=$('#processing-overlay-label'),threeBusy=$('#three-busy'),threeBusyLabel=$('#three-busy-label'),threeBusyCancel=$('#three-busy-cancel'),ctRangeAuto=$('#ct-range-auto'),ctRangeFull=$('#ct-range-full'),filterRebuild3D=$('#filter-rebuild-3d'),filter3DState=$('#filter-3d-state'),renderModeToggle=$('#render-mode-toggle'),ipadGpuQualityControl=$('#ipad-gpu-quality-control'),ipadGpuQuality=$('#ipad-gpu-quality'),mprSurfaceOpacity=$('#mpr-surface-opacity'),mprSurfaceOpacityValue=$('#mpr-surface-opacity-value'),mprVolumeOpacity=$('#mpr-volume-opacity'),mprVolumeOpacityValue=$('#mpr-volume-opacity-value'),mainViewSlot=$('#main-view-slot'),subViewSlots=$('#sub-view-slots');
 const mprResizeObserver=typeof ResizeObserver!=='undefined'?new ResizeObserver(()=>{if(volume)for(const p of Object.keys(planes))updateMprCanvasPhysicalAspect(p)}):null;
 for(const p of Object.keys(planes))if(planes[p].canvas?.parentElement)mprResizeObserver?.observe(planes[p].canvas.parentElement);
-const analysisNavigateButton=$('#analysis-navigate'),analysisSelectRegionButton=$('#analysis-select-region'),analysisCutButton=$('#analysis-cut'),analysisLineCutButton=$('#analysis-line-cut'),analysisEditTargetSelect=$('#analysis-edit-target'),threeEditStatus=$('#three-edit-status'),threeEditHelp=$('#three-edit-help'),threeEditOverlay=$('#three-edit-overlay'),analysisEditRemoveSelected=$('#analysis-edit-remove-selected'),analysisRemoveSelected=$('#analysis-remove-selected'),analysisKeepSelected=$('#analysis-keep-selected'),analysisUndo=$('#analysis-undo'),analysisRedo=$('#analysis-redo'),analysisResetEdit=$('#analysis-reset-edit'),analysisExportSelected=$('#analysis-export-selected'),analysisCutWidth=$('#analysis-cut-width'),analysisCutWidthValue=$('#analysis-cut-width-value'),analysisCutDepth=$('#analysis-cut-depth'),analysisCutDepthValue=$('#analysis-cut-depth-value'),analysisCutYaw=$('#analysis-cut-yaw'),analysisCutYawValue=$('#analysis-cut-yaw-value'),analysisCutPitch=$('#analysis-cut-pitch'),analysisCutPitchValue=$('#analysis-cut-pitch-value'),analysisCutOffset=$('#analysis-cut-offset'),analysisCutOffsetValue=$('#analysis-cut-offset-value'),analysisCutApply=$('#analysis-cut-apply'),analysisCutCancel=$('#analysis-cut-cancel'),analysisCutConfirm=$('.analysis-cut-confirm');
 languageToggle.onclick=()=>{applyLanguage(currentLanguage==='ja'?'en':'ja');renderAnalysisResults();updateSectionViewUi();updateThreeEditUi();updateGpuStatus();updateRenderModeControl()};
 applyLanguage('ja');;
 if(appVersionBadge)appVersionBadge.textContent='Virtual Rodent Lab · v'+APP_VERSION+' · build '+APP_BUILD;
@@ -1157,19 +1018,6 @@ async function inspect(files,auto){
  try{const slices=await parseFiles(files,(a,b)=>progress(a,b));const series=groupSeries(slices);if(!series.length){state.innerHTML='<strong>'+tr('noSeries')+'</strong>';return}state.classList.add('is-hidden');renderSeries(series);if(auto){const ct=series.find(s=>s.modality.toUpperCase()==='CT')||series[0];await selectSeries(ct)}}finally{busy(false);prog.classList.add('is-hidden')}
 }
 
-async function parseFiles(files,onProgress){
- const out=new Array(files.length),workers=navigator.maxTouchPoints>0?2:Math.min(4,Math.max(2,navigator.hardwareConcurrency||2));let cursor=0,done=0;
- const work=async()=>{
-  while(true){
-   const i=cursor++;if(i>=files.length)return;const f=files[i];
-   try{const ds=await parseDicomHeader(f),meta=parsedSliceMeta(f,ds);out[i]=meta?expandParsedFrames(meta):null}catch{}
-   done++;onProgress?.(done,files.length);
-   if((done&31)===0)await frameYield();
-  }
- };
- await Promise.all(Array.from({length:Math.min(workers,files.length)},()=>work()));
- return out.flatMap(item=>item||[]);
-}
 
 
 function renderSeries(series){list.replaceChildren();for(const s of series){const b=document.createElement('button');b.className='series-card';b.innerHTML='<div class="series-card-header"><div><span class="modality-badge">'+esc(s.modality)+'</span><strong>'+esc(s.description)+'</strong></div><strong class="memory-estimate">'+fmt(s.bytes)+'</strong></div><dl class="series-meta-grid"><div><dt>Slices</dt><dd>'+s.slices.length+'</dd></div><div><dt>Matrix</dt><dd>'+s.columns+' × '+s.rows+'</dd></div><div><dt>Voxel</dt><dd>'+s.spacingX.toFixed(4)+' × '+s.spacingY.toFixed(4)+' × '+s.spacingZ.toFixed(4)+' mm</dd></div><div><dt>Stored</dt><dd>'+s.bits+'-bit</dd></div></dl><p class="series-note">推定展開サイズ: '+fmt(s.decodedBytes)+' · '+(s.sourceBacked?'フル解像度・ストリーミング':(s.compact?'Int16':'Float32'))+'</p>';b.onclick=()=>selectSeries(s);b.dataset.id=s.id;list.appendChild(b)}}
@@ -1304,11 +1152,6 @@ function initIPadWorkspaceUi(){
  window.addEventListener('resize',()=>{if(isIPadRuntime())refreshLayout()},{passive:true});
  setDrawerTab('data');setMprPlane('axial');setViewMode('3d');applyLanguage(currentLanguage);
 }
-function sourceMprCacheLimit(){
- if(isIPhoneRuntime())return 512*1024*1024;
- if(isIPadRuntime())return 1536*1024*1024;
- return Number.MAX_SAFE_INTEGER;
-}
 function residentGpuVolumeBytes(v){return (v?.columns||0)*(v?.rows||0)*(v?.slices||0)*2}
 function gpuVolumePlanOptions(){
  if(isIPadRuntime())return{maxTextureBytes:0,targetInPlane:ipadGpuTargetSide};
@@ -1406,179 +1249,9 @@ function readResidentGpuMprPlane(p,idx,series,{maxSide=0}={}){
   })();
  });
 }
-function sourceMprDecodeConcurrency(){
- const hc=Math.max(2,Number(navigator.hardwareConcurrency)||4);
- return navigator.maxTouchPoints>0?Math.max(2,Math.min(4,hc-1)):Math.max(4,Math.min(8,hc-1));
-}
-async function prepareSourceMprCache(v,onProgress){
- const s=v?.series;if(!s)return false;
- const Ctor=s.compact?Int16Array:Float32Array,w=s.columns,h=s.rows,d=s.slices.length,plane=w*h,count=plane*d,volumeBytes=count*Ctor.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
- if(volumeBytes>limit)return false;
- let data,coronalAll=null,sagittalAll=null;
- try{
-  data=new Ctor(count);
-  if(isDesktopMac()||volumeBytes*2<=limit)sagittalAll=new Ctor(count);
-  if(volumeBytes*3<=limit)coronalAll=new Ctor(count);
- }catch{
-  try{
-   data=data||new Ctor(count);
-   sagittalAll=null;coronalAll=null;
-  }catch{return false}
- }
- let next=0,completed=0,min=Infinity,max=-Infinity;
- const decodeOne=async z=>{
-  const slice=await decodeSourceSlice(s.slices[z]),base=z*plane,corZ=d-1-z;
-  let localMin=Infinity,localMax=-Infinity;
-  for(let y=0;y<h;y++){
-   const srcRow=y*w,baseRow=base+srcRow;
-   for(let x=0;x<w;x++){
-    const value=s.compact?slice[srcRow+x]:Number(slice[srcRow+x]);
-    data[baseRow+x]=value;if(value<localMin)localMin=value;if(value>localMax)localMax=value;
-    if(coronalAll)coronalAll[(y*d+corZ)*w+x]=value;
-    if(sagittalAll)sagittalAll[(x*d+corZ)*h+y]=value;
-   }
-  }
-  if(localMin<min)min=localMin;if(localMax>max)max=localMax;
-  completed++;onProgress?.(completed,d);
- };
- const runner=async()=>{
-  while(true){
-   const z=next++;if(z>=d)return;
-   await decodeOne(z);
-   if((completed&3)===0)await frameYield();
-  }
- };
- const concurrency=Math.min(d,sourceMprDecodeConcurrency());
- await Promise.all(Array.from({length:concurrency},()=>runner()));
- v.mprData=data;v.mprCtor=Ctor;v.mprCoronalAll=coronalAll;v.mprSagittalAll=sagittalAll;
- v.mprPlaneBuffers={coronal:coronalAll?null:new Ctor(w*d),sagittal:sagittalAll?null:new Ctor(h*d)};
- if(Number.isFinite(min))v.min=min;if(Number.isFinite(max))v.max=max;
- return true;
-}
-function cachedSagittalDisplayPlane(v,idx){
- const data=v?.mprSagittalDisplayAll,h=v?.rows||0,d=v?.slices||0;if(!data||idx<0||idx>=v.columns)return null;
- const n=h*d,off=idx*n,src=data.subarray(off,off+n),out=v.mprSagittalDisplayBuffer?.length===n?v.mprSagittalDisplayBuffer:(v.mprSagittalDisplayBuffer=new Float32Array(n)),min=v.mprSagittalDisplayMin,max=v.mprSagittalDisplayMax,scale=(max-min)/65535;
- for(let i=0;i<n;i++)out[i]=min+src[i]*scale;
- return out;
-}
-function cachedSourceMprPlane(v,p,idx){
- const w=v?.columns||0,h=v?.rows||0,d=v?.slices||0;
- if(p==='sagittal'&&v?.mprSagittalAll)return v.mprSagittalAll.subarray(idx*d*h,(idx+1)*d*h);
- const data=v?.mprData;if(!data)return null;
- const Ctor=v.mprCtor||data.constructor,plane=w*h;
- if(p==='axial')return data.subarray(idx*plane,(idx+1)*plane);
- if(p==='coronal'){
-  if(v.mprCoronalAll)return v.mprCoronalAll.subarray(idx*d*w,(idx+1)*d*w);
-  const out=v.mprPlaneBuffers?.coronal||new Ctor(w*d);
-  for(let z=0;z<d;z++){const src=z*plane+idx*w,dst=(d-1-z)*w;out.set(data.subarray(src,src+w),dst)}
-  return out;
- }
- const out=v.mprPlaneBuffers?.sagittal||new Ctor(h*d);
- for(let z=0;z<d;z++){const base=z*plane,dst=(d-1-z)*h;for(let y=0;y<h;y++)out[dst+y]=data[base+y*w+idx]}
- return out;
-}
-async function getDicomCodecModule(){
- if(!dicomCodecModulePromise)setDicomCodecModulePromise(import('https://esm.sh/@cornerstonejs/dicom-image-loader@5.10.8?bundle').catch(e=>{setDicomCodecModulePromise(null);throw e}));
- return dicomCodecModulePromise;
-}
-async function decodeCompressedDicomSlice(meta){
- if(!COMPRESSED_DICOM_TRANSFER_SYNTAXES.has(meta.ts))throw new Error('Unsupported compressed DICOM transfer syntax: '+meta.ts);
- if((meta.samples||1)!==1)throw new Error('Compressed color DICOM is outside the CT viewer scope');
- const bytes=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(bytes),element=ds.elements.x7fe00010,pixelData=encapsulatedFrameBytes(ds,element,meta.ts,meta.frameIndex||0),frame=dicomImageFrameInfo(meta),module=await getDicomCodecModule(),decoders=module.decoders;
- let decoded;
- if(meta.ts==='1.2.840.10008.1.2.5')decoded=await decoders.RLE(frame,pixelData);
- else if(meta.ts==='1.2.840.10008.1.2.4.50')decoded=await decoders.JPEGBaseline8Bit(pixelData,frame);
- else if(meta.ts==='1.2.840.10008.1.2.4.51')decoded=await decoders.JPEGBaseline12Bit(frame,pixelData);
- else if(meta.ts==='1.2.840.10008.1.2.4.57'||meta.ts==='1.2.840.10008.1.2.4.70')decoded=await decoders.JPEGLossless(frame,pixelData);
- else if(meta.ts==='1.2.840.10008.1.2.4.80'||meta.ts==='1.2.840.10008.1.2.4.81')decoded=await decoders.JPEGLS(pixelData,frame);
- else if(meta.ts==='1.2.840.10008.1.2.4.90'||meta.ts==='1.2.840.10008.1.2.4.91')decoded=await decoders.JPEG2000(pixelData,frame);
- else decoded=await decoders.HTJ2K(pixelData,frame);
- const stored=decoded?.pixelData;if(!stored||stored.length<meta.rows*meta.columns)throw new Error('Compressed DICOM decoder returned incomplete pixel data');
- const n=meta.rows*meta.columns,out=new Float32Array(n);for(let i=0;i<n;i++)out[i]=Number(stored[i])*meta.slope+meta.intercept;
- return out;
-}
-async function decodeSourceSlice(meta){
- if(!isNativeDicomTransferSyntax(meta.ts))return decodeCompressedDicomSlice(meta);
- const bpp=meta.bits===8?1:meta.bits===16?2:0;
- if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
- let bytes,offset=meta.pixelOffset;
- if(offset!=null){
-  bytes=new Uint8Array(await meta.file.slice(offset,offset+meta.rows*meta.columns*bpp).arrayBuffer());
-  offset=0;
- }else{
-  const all=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(all),el=ds.elements.x7fe00010;
-  if(!el)throw new Error('Pixel Data missing');bytes=all;offset=el.dataOffset;
- }
- const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=meta.rows*meta.columns,out=new Float32Array(n);
- for(let i=0;i<n;i++){
-  let raw;
-  if(meta.bits===8){raw=bytes[offset+i];if(meta.signed&&raw>127)raw-=256}
-  else raw=meta.signed?view.getInt16(offset+i*2,little):view.getUint16(offset+i*2,little);
-  out[i]=raw*meta.slope+meta.intercept;
- }
- return out;
-}
-async function readSourceRow(meta,row){
- const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
- if(!isNativeDicomTransferSyntax(meta.ts)||meta.pixelOffset==null){const full=await decodeSourceSlice(meta);return full.slice(row*meta.columns,(row+1)*meta.columns)}
- const start=meta.pixelOffset+row*meta.columns*bpp,end=start+meta.columns*bpp,bytes=new Uint8Array(await meta.file.slice(start,end).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer),out=new Float32Array(meta.columns);
- for(let x=0;x<meta.columns;x++){let raw;if(meta.bits===8){raw=bytes[x];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(x*2,little):view.getUint16(x*2,little);out[x]=raw*meta.slope+meta.intercept}
- return out;
-}
-async function readSourceRows(meta,rowStart,rowCount){
- const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
- const count=Math.max(0,Math.min(rowCount,meta.rows-rowStart));if(!count)return new Float32Array();
- if(!isNativeDicomTransferSyntax(meta.ts)||meta.pixelOffset==null){const full=await decodeSourceSlice(meta);return full.slice(rowStart*meta.columns,(rowStart+count)*meta.columns)}
- const start=meta.pixelOffset+rowStart*meta.columns*bpp,end=start+count*meta.columns*bpp,bytes=new Uint8Array(await meta.file.slice(start,end).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer),out=new Float32Array(count*meta.columns);
- for(let i=0;i<out.length;i++){let raw;if(meta.bits===8){raw=bytes[i];if(meta.signed&&raw>127)raw-=256}else raw=meta.signed?view.getInt16(i*2,little):view.getUint16(i*2,little);out[i]=raw*meta.slope+meta.intercept}
- return out;
-}
-async function readSourceColumn(meta,column){
- const hit=sourceSliceCache.map.get(meta);
- if(hit){
-  sourceSliceCache.map.delete(meta);sourceSliceCache.map.set(meta,hit);
-  const out=new Float32Array(meta.rows);for(let y=0;y<meta.rows;y++)out[y]=hit[y*meta.columns+column];return out;
- }
- const bpp=meta.bits===8?1:meta.bits===16?2:0;if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
- if(!isNativeDicomTransferSyntax(meta.ts)||meta.pixelOffset==null){const full=await decodeSourceSlice(meta),out=new Float32Array(meta.rows);for(let y=0;y<meta.rows;y++)out[y]=full[y*meta.columns+column];return out}
- const bytes=new Uint8Array(await meta.file.slice(meta.pixelOffset,meta.pixelOffset+meta.rows*meta.columns*bpp).arrayBuffer()),little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),out=new Float32Array(meta.rows);
- for(let y=0;y<meta.rows;y++){
-  const off=(y*meta.columns+column)*bpp;let raw;
-  if(meta.bits===8){raw=bytes[off];if(meta.signed&&raw>127)raw-=256}
-  else raw=meta.signed?view.getInt16(off,little):view.getUint16(off,little);
-  out[y]=raw*meta.slope+meta.intercept;
- }
- return out;
-}
-async function decode(s,onProgress){
- const Ctor=s.compact?Int16Array:Float32Array,w=s.columns,h=s.rows,d=s.slices.length,plane=w*h,count=plane*d,bytesNeeded=count*Ctor.BYTES_PER_ELEMENT,limit=sourceMprCacheLimit();
- let data,coronalAll=null,sagittalAll=null;
- try{
-  data=new Ctor(count);
-  if(bytesNeeded*3<=limit){coronalAll=new Ctor(count);sagittalAll=new Ctor(count)}
- }catch(e){throw new Error('Volume memory allocation failed: '+fmt(bytesNeeded)+' ('+Ctor.name+')')}
- let next=0,completed=0,min=Infinity,max=-Infinity;
- const decodeOne=async z=>{
-  const slice=await decodeSourceSlice(s.slices[z]),base=z*plane,corZ=d-1-z;let localMin=Infinity,localMax=-Infinity;
-  for(let y=0;y<h;y++){
-   const srcRow=y*w,baseRow=base+srcRow;
-   for(let x=0;x<w;x++){
-    const value=s.compact?slice[srcRow+x]:Number(slice[srcRow+x]);
-    data[baseRow+x]=value;if(value<localMin)localMin=value;if(value>localMax)localMax=value;
-    if(coronalAll)coronalAll[(y*d+corZ)*w+x]=value;
-    if(sagittalAll)sagittalAll[(x*d+corZ)*h+y]=value;
-   }
-  }
-  if(localMin<min)min=localMin;if(localMax>max)max=localMax;completed++;onProgress?.(completed,d);
- };
- const runner=async()=>{while(true){const z=next++;if(z>=d)return;await decodeOne(z);if((completed&3)===0)await frameYield()}};
- const concurrency=Math.min(d,sourceMprDecodeConcurrency());await Promise.all(Array.from({length:concurrency},()=>runner()));
- return{data,mprData:data,mprCtor:Ctor,mprCoronalAll:coronalAll,mprSagittalAll:sagittalAll,mprPlaneBuffers:{coronal:coronalAll?null:new Ctor(w*d),sagittal:sagittalAll?null:new Ctor(h*d)},columns:w,rows:h,slices:d,spacing:[s.spacingX,s.spacingY,s.spacingZ],min,max,windowCenter:s.windowCenter,windowWidth:s.windowWidth,storage:Ctor.name,sourceBacked:false};
-}
 
 
 /* Full-resolution source-backed filters: exact local processing in bounded tiles. */
-const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 function gpuMeshBlockDepth(){
  if(navigator.maxTouchPoints>0)return 2;
  if(!isDesktopMac())return 4;
@@ -1597,193 +1270,9 @@ function shouldUseGpuResidentSurface(w,h,d,tx,ty,blockDepth,segmentCount){
  const estimatedDraws=tilesPerBlock*blocks*Math.max(1,segmentCount||1);
  return estimatedDraws<=budget;
 }
-function gpuAdapterLabel(adapter){
- try{
-  const info=adapter?.info;if(!info)return'';
-  return [...new Set([info.vendor,info.architecture,info.device,info.description].filter(Boolean).map(v=>String(v).trim()).filter(Boolean))].join(' ');
- }catch{return''}
-}
-function gpuDeviceMode(device){return device?.features?.has?.('core-features-and-limits')?'CORE':'COMPAT'}
-function gpuComputeWorkgroupSize(device=gpuFilterRuntime.device){
- const a=Number(device?.limits?.maxComputeInvocationsPerWorkgroup)||128,b=Number(device?.limits?.maxComputeWorkgroupSizeX)||a;
- const cap=Math.max(1,Math.min(256,a,b));return cap>=256?256:cap>=128?128:cap>=64?64:Math.max(1,cap);
-}
-function gpuDeviceRequestDescriptor(adapter){
- const requiredFeatures=[];if(adapter?.features?.has?.('core-features-and-limits'))requiredFeatures.push('core-features-and-limits');
- const requiredLimits={};
- if((adapter?.limits?.maxComputeInvocationsPerWorkgroup||0)>=256)requiredLimits.maxComputeInvocationsPerWorkgroup=256;
- if((adapter?.limits?.maxComputeWorkgroupSizeX||0)>=256)requiredLimits.maxComputeWorkgroupSizeX=256;
- const maxBufferSize=Number(adapter?.limits?.maxBufferSize)||0;if(maxBufferSize>0)requiredLimits.maxBufferSize=maxBufferSize;
- const maxStorageBufferBindingSize=Number(adapter?.limits?.maxStorageBufferBindingSize)||0;if(maxStorageBufferBindingSize>0)requiredLimits.maxStorageBufferBindingSize=maxStorageBufferBindingSize;
- return{requiredFeatures,requiredLimits};
-}
-async function requestVrlGpuAdapter(){
- let adapter=null;
- try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'core'})}catch{}
- if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'})}catch{}
- if(!adapter)try{adapter=await navigator.gpu.requestAdapter()}catch{}
- return adapter;
-}
-async function requestVrlGpuDevice(){
- const adapter=await requestVrlGpuAdapter();if(!adapter)throw new Error('WebGPU core adapter unavailable');
- const device=await adapter.requestDevice(gpuDeviceRequestDescriptor(adapter));
- return{adapter,device};
-}
-function updateGpuStatus(){
- if(!status)return;
- const render=sceneState?.backend||'INIT';
- const compute=gpuFilterRuntime.lastBackend||(gpuFilterRuntime.device?'WEBGPU READY':'CPU');
- const adapter=gpuFilterRuntime.adapterLabel?(' · '+gpuFilterRuntime.adapterLabel):'';
- const failure=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError.slice(0,96)):'';
- status.removeAttribute('data-i18n');
- status.textContent='Render '+render+' · Compute '+compute+failure+adapter;
- const computeGpu=compute.startsWith('WEBGPU'),gpuActive=render==='WEBGPU'||computeGpu;
- status.className=gpuActive?'status status-ok':'status status-warning';
- status.title=gpuFilterRuntime.lastError||'';
-}
-function setGpuComputeBackend(label,error=''){
- gpuFilterRuntime.lastBackend=label;
- if(error)gpuFilterRuntime.lastError=String(error);
- else if(label.startsWith('WEBGPU'))gpuFilterRuntime.lastError='';
- updateGpuStatus();
-}
-function installGpuErrorListener(device){
- if(!device||device.__vrlErrorListenerInstalled)return;
- try{
-  device.__vrlErrorListenerInstalled=true;
-  device.addEventListener?.('uncapturederror',event=>{
-   const message=String(event?.error?.message||event?.message||'uncaptured WebGPU error'),kind=gpuFilterRuntime.lastShaderKind?(' ['+gpuFilterRuntime.lastShaderKind+']'):'';
-   gpuFilterRuntime.lastError='uncaptured'+kind+': '+message;
-   setGpuComputeBackend('WEBGPU GPU FAIL',gpuFilterRuntime.lastError);
-   console.error('Virtual Rodent Lab WebGPU error:',event?.error||event);
-  });
- }catch{}
-}
 function gpuCapacityError(error){
  const m=String(error?.message||error||'').toLowerCase();
  return m.includes('__gpu_smooth_capacity__')||m.includes('out of memory')||m.includes('allocation')||m.includes('buffer limit')||m.includes('binding size')||m.includes('maxstoragebufferbindingsize')||m.includes('maxbuffersize');
-}
-async function gpuValidationScope(device,label,fn){
- if(!device?.pushErrorScope||!device?.popErrorScope)return fn();
- let popped=false;device.pushErrorScope('validation');
- try{
-  const result=await fn(),validation=await device.popErrorScope();popped=true;
-  if(validation)throw new Error(label+': '+validation.message);
-  return result;
- }catch(e){
-  if(!popped){
-   try{const validation=await device.popErrorScope();popped=true;if(validation&&!String(e?.message||e).includes(validation.message))throw new Error(label+': '+validation.message+' | '+String(e?.message||e))}catch(scopeError){if(scopeError!==e)throw scopeError}
-  }
-  throw e;
- }
-}
-const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','anisotropic','tv','bilateral','nlm']);
-function gpuStagesSupported(stages){
- return stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
-}
-function gpuPoolLimit(){return navigator.maxTouchPoints>0?64*1024*1024:(isDesktopMac()?256:192)*1024*1024}
-function gpuBufferBucketSize(bytes){
- let size=4096;while(size<bytes)size*=2;return size;
-}
-function acquireGpuWorkBuffer(device,bytes){
- const size=gpuBufferBucketSize(bytes),bucket=gpuFilterRuntime.bufferPool.get(size);
- if(bucket?.length){const buffer=bucket.pop();gpuFilterRuntime.bufferPoolBytes-=size;return{buffer,size}}
- return{buffer:device.createBuffer({size,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST}),size};
-}
-function releaseGpuWorkBuffer(buffer,size){
- if(!buffer||gpuFilterRuntime.sharedRendererDevice&&gpuFilterRuntime.device?.lost===undefined){try{buffer?.destroy?.()}catch{};return}
- const limit=gpuPoolLimit();
- if(size>limit/2||gpuFilterRuntime.bufferPoolBytes+size>limit){try{buffer.destroy()}catch{};return}
- let bucket=gpuFilterRuntime.bufferPool.get(size);if(!bucket){bucket=[];gpuFilterRuntime.bufferPool.set(size,bucket)}
- if(bucket.length>=2){try{buffer.destroy()}catch{};return}
- bucket.push(buffer);gpuFilterRuntime.bufferPoolBytes+=size;
-}
-function clearGpuBufferPool(){
- for(const bucket of gpuFilterRuntime.bufferPool.values())for(const buffer of bucket){try{buffer.destroy()}catch{}}
- gpuFilterRuntime.bufferPool.clear();gpuFilterRuntime.bufferPoolBytes=0;
-}
-async function verifyGpuComputeDevice(device){
- if(!device)return false;const wg=gpuComputeWorkgroupSize(device);gpuFilterRuntime.workgroupSize=wg;
- const out=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),read=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
- try{
-  const code=`struct TestBuffer {
- data : array<u32, 1>
-}
-@group(0) @binding(0) var<storage, read_write> testBuffer : TestBuffer;
-@compute @workgroup_size(${wg})
-fn main(@builtin(local_invocation_index) localIndex : u32) {
- if (localIndex == 0u) {
-  testBuffer.data[0] = 7u;
- }
-}`;
-  const module=device.createShaderModule({label:'VRL compute self-test',code});
-  if(typeof module.getCompilationInfo==='function'){const info=await module.getCompilationInfo(),errors=(info.messages||[]).filter(m=>m.type==='error');if(errors.length)throw new Error('self-test WGSL: '+errors.map(m=>m.message).join(' | '))}
-  const pipeline=await gpuValidationScope(device,'compute self-test pipeline',async()=>device.createComputePipelineAsync?await device.createComputePipelineAsync({layout:'auto',compute:{module,entryPoint:'main'}}):device.createComputePipeline({layout:'auto',compute:{module,entryPoint:'main'}}));
-  const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:out}}]}),encoder=device.createCommandEncoder({label:'VRL compute self-test'}),pass=encoder.beginComputePass();
-  pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(1);pass.end();encoder.copyBufferToBuffer(out,0,read,0,4);device.queue.submit([encoder.finish()]);
-  await read.mapAsync(GPUMapMode.READ);const value=new Uint32Array(read.getMappedRange().slice(0))[0];read.unmap();
-  if(value!==7)throw new Error('compute self-test readback mismatch: '+value);
-  return true;
- }finally{try{out.destroy()}catch{}try{read.destroy()}catch{}}
-}
-function adoptRendererGpuDevice(renderer,adapter=null,explicitDevice=null){
- const device=explicitDevice||renderer?.backend?.device;
- if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
- clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);installGpuErrorListener(device);
- try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);setGpuComputeBackend('GPU DEVICE LOST','WebGPU device lost')}})}catch{}
- void verifyGpuComputeDevice(device).then(async ok=>{if(gpuFilterRuntime.device===device&&ok){await verifyGpuPipelineSet();if(gpuFilterRuntime.device===device)setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' FULL VERIFIED · WG'+gpuFilterRuntime.workgroupSize)}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='verify ['+(gpuFilterRuntime.lastShaderKind||'self-test')+']: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
- updateGpuStatus();return true;
-}
-async function ensureGpuFilterDevice(){
- if(!('gpu' in navigator)){gpuFilterRuntime.disabled=true;setGpuComputeBackend('CPU · WebGPU unavailable','navigator.gpu is unavailable');return null}
- gpuFilterRuntime.disabled=false;
- if(gpuFilterRuntime.device)return gpuFilterRuntime.device;
- // Safari/iPad can refuse a second adapter request even while the Three.js WebGPU
- // renderer already owns a valid GPUDevice. Reuse that renderer device first.
- const rendererDevice=sceneState?.renderer?.backend?.device;
- if(rendererDevice&&typeof rendererDevice.createBuffer==='function'){
-  adoptRendererGpuDevice(sceneState.renderer,gpuFilterRuntime.adapter,rendererDevice);
-  if(gpuFilterRuntime.device)return gpuFilterRuntime.device;
- }
- if(gpuFilterRuntime.initPromise)return gpuFilterRuntime.initPromise;
- const now=performance.now();if(gpuFilterRuntime.retryAfter>now)return null;
- gpuFilterRuntime.initPromise=(async()=>{
-  gpuFilterRuntime.initAttempts++;setGpuComputeBackend('WEBGPU CHECKING');
-  try{
-   const {adapter,device}=await requestVrlGpuDevice();
-   gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);installGpuErrorListener(device);setGpuComputeBackend('WEBGPU CHECKING');
-   device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',info?.message||'WebGPU device lost')}});
-   try{await verifyGpuComputeDevice(device);await verifyGpuPipelineSet();setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' FULL VERIFIED · WG'+gpuFilterRuntime.workgroupSize)}catch(testError){gpuFilterRuntime.lastError='verify ['+(gpuFilterRuntime.lastShaderKind||'self-test')+']: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
-   return device;
-  }catch(e){
-   gpuFilterRuntime.device=null;gpuFilterRuntime.adapter=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.retryAfter=performance.now()+5000;
-   setGpuComputeBackend('CPU COMPUTE · GPU ERROR',e?.message||e);
-   console.warn('WebGPU compute unavailable for this attempt; exact CPU compute path active. GPU will be retried.',e);
-   return null;
-  }finally{gpuFilterRuntime.initPromise=null}
- })();
- return gpuFilterRuntime.initPromise;
-}
-async function gpuFilterPipeline(kind){
- const device=await ensureGpuFilterDevice();if(!device)return null;
- if(gpuFilterRuntime.pipelines.has(kind))return gpuFilterRuntime.pipelines.get(kind);
- gpuFilterRuntime.lastShaderKind=kind;
- const source=normalizeVrlWgsl(gpuFilterShader(kind,gpuFilterRuntime.workgroupSize)),module=device.createShaderModule({code:source,label:'VRL '+kind+' compute'});
- if(typeof module.getCompilationInfo==='function'){
-  const info=await module.getCompilationInfo(),errors=(info.messages||[]).filter(m=>m.type==='error');
-  if(errors.length)throw new Error('WGSL '+kind+': '+errors.map(m=>m.message).join(' | '));
- }
- const desc={layout:'auto',compute:{module,entryPoint:'main'},label:'VRL '+kind};
- const pipeline=await gpuValidationScope(device,'pipeline '+kind,async()=>device.createComputePipelineAsync?await device.createComputePipelineAsync(desc):device.createComputePipeline(desc));
- gpuFilterRuntime.pipelines.set(kind,pipeline);return pipeline;
-}
-async function verifyGpuPipelineSet(){
- for(const kind of GPU_PREWARM_KINDS){
-  gpuFilterRuntime.lastShaderKind=kind;
-  await gpuFilterPipeline(kind);
- }
- gpuFilterRuntime.lastShaderKind='';
- return true;
 }
 function scheduleGpuPrewarm(){
  if(gpuPrewarmScheduled||gpuFilterRuntime.disabled||gpuPrewarmIndex>=GPU_PREWARM_KINDS.length)return;
@@ -1798,213 +1287,8 @@ function scheduleGpuPrewarm(){
  if('requestIdleCallback' in window)requestIdleCallback(()=>void run(),{timeout:2500});
  else setTimeout(()=>void run(),180);
 }
-function gpuSmallBuffer(device,data){
- const buffer=device.createBuffer({size:Math.max(32,Math.ceil(data.byteLength/4)*4),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
- device.queue.writeBuffer(buffer,0,data);return buffer;
-}
-function createGpuResidentFloat3Attribute(device,vertexCount,label){
- const renderer=sceneState?.renderer,backend=renderer?.backend;
- if(sceneState?.backend!=='WEBGPU'||backend?.device!==device||typeof backend.set!=='function')return null;
- try{
-  const attribute=new THREE.Float32BufferAttribute(new Float32Array(vertexCount*3),3);attribute.name=label;
-  const buffer=device.createBuffer({label,size:Math.max(4,attribute.array.byteLength),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
-  backend.set(attribute,{buffer});return{attribute,buffer};
- }catch(e){console.warn('GPU-resident attribute allocation failed.',e);return null}
-}
-function destroyGpuResidentAttribute(entry){
- if(!entry)return;
- const backend=sceneState?.renderer?.backend;
- try{if(backend?.get(entry.attribute)?.buffer===entry.buffer&&typeof backend.destroyAttribute==='function')backend.destroyAttribute(entry.attribute);else entry.buffer?.destroy?.()}catch{try{entry.buffer?.destroy?.()}catch{}}
-}
-function finishGpuResidentTemps(device,cleanup){
- let completion;
- try{completion=device.queue.onSubmittedWorkDone()}catch{cleanup();return Promise.resolve()}
- completion.then(cleanup,cleanup);return completion;
-}
-async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=null,faceContext=null){
- const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
- const bytes=data.byteLength,n=data.length;
- if(bytes>device.limits.maxStorageBufferBindingSize)return null;
- const aw=acquireGpuWorkBuffer(device,bytes),bw=acquireGpuWorkBuffer(device,bytes),a=aw.buffer,b=bw.buffer;device.queue.writeBuffer(a,0,data);
- const small=[];let encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
- const dispatch=async(kind,extraU32=[],paramsF32=[])=>{
-  const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
-  const meta=new Uint32Array(8);meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=n;for(let i=0;i<extraU32.length&&i<4;i++)meta[4+i]=extraU32[i]>>>0;
-  const params=new Float32Array(8);for(let i=0;i<paramsF32.length&&i<8;i++)params[i]=paramsF32[i];
-  const mb=gpuSmallBuffer(device,meta),pb=gpuSmallBuffer(device,params);small.push(mb,pb);
-  const bind=pipeline.getBindGroupLayout(0);
-  const group=device.createBindGroup({layout:bind,entries:[
-   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}}
-  ]});
-  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
-  const t=current;current=next;next=t;
- };
- for(const stage of stages){
-  const p=stage.params;
-  if(stage.key==='gaussian'){
-   if(p.mode==='median'){
-    for(let round=0;round<Math.max(1,Math.round(p.passes));round++)await dispatch('median',[],[p.strength]);
-   }else{
-    for(let round=0;round<Math.max(1,Math.round(p.passes));round++)for(let axis=0;axis<3;axis++)await dispatch('gaussian',[axis],[p.strength]);
-   }
-  }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[minv,maxv,p.strength,p.center]);
-  else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[minv,maxv,p.strength,p.threshold]);
-  else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[minv,maxv,p.strength]);
-  else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[minv,maxv,p.weight]);
-  else if(stage.key==='unsharp')await dispatch('unsharp',[Math.max(1,Math.round(p.radius))],[minv,maxv,p.amount,p.threshold]);
-  else if(stage.key==='bilateral'){
-   const radius=Math.max(1,Math.min(3,Math.ceil(p.spatialSigma*1.5)));
-   for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.intensitySigma]);
-  }else if(stage.key==='nlm')await dispatch('nlm',[Math.max(1,Math.round(p.searchRadius)),Math.max(0,Math.round(p.patchRadius))],[minv,maxv,p.strength]);
-  else return null;
- }
- if(segments?.length&&faceContext?.analysisRuns){
-  const targetCount=target.width*target.height*target.depth,meta=new Uint32Array(12);
-  meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=target.x;meta[4]=target.y;meta[5]=target.z;meta[6]=target.width;meta[7]=target.height;meta[8]=target.depth;meta[9]=targetCount;
-  const thresholds=new Float32Array([segments[0].seg.min,segments[0].seg.max,0,0]),mb=gpuSmallBuffer(device,meta),tb=gpuSmallBuffer(device,thresholds),counter=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});small.push(mb,tb);device.queue.writeBuffer(counter,0,new Uint32Array([0]));
-  const countPipeline=await gpuFilterPipeline('analysisRunCount'),countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
-   {binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
-  ]});
-  const countPass=encoder.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);countPass.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));countPass.end();
-  const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});encoder.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([encoder.finish()]);
-  await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
-  if(!runCount){releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();for(const buf of small)buf.destroy();setGpuComputeBackend('WEBGPU ANALYSIS RLE');return{analysisRuns:true,items:new Uint32Array(0),count:0}}
-  const recordBytes=runCount*16,maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
-  if(recordBytes>maxOut){releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();for(const buf of small)buf.destroy();throw new Error('GPU analysis run output exceeds device buffer limit')}
-  const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
-  const writePipeline=await gpuFilterPipeline('analysisRunWrite'),writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries:[
-   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
-  ]}),writeEncoder=device.createCommandEncoder({label:'VRL analysis RLE'});
-  const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);writePass.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
-  await readback.mapAsync(GPUMapMode.READ);const items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();
-  releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();records.destroy();readback.destroy();for(const buf of small)buf.destroy();setGpuComputeBackend('WEBGPU ANALYSIS RLE');return{analysisRuns:true,items,count:runCount};
- }
- if(segments?.length&&faceContext?.mesh){
-  const targetCount=target.width*target.height*target.depth,meta=new Uint32Array(24);
-  meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=target.x;meta[4]=target.y;meta[5]=target.z;meta[6]=target.width;meta[7]=target.height;meta[8]=target.depth;meta[9]=targetCount;meta[10]=Math.min(segments.length,4);
-  meta[11]=faceContext.boxX;meta[12]=faceContext.boxY;meta[13]=faceContext.boxZ;meta[14]=faceContext.globalW;meta[15]=faceContext.globalH;meta[16]=faceContext.globalD;
-  const thresholds=new Float32Array(8);for(let i=0;i<meta[10];i++){thresholds[i*2]=segments[i].seg.min;thresholds[i*2+1]=segments[i].seg.max}
-  const mb=gpuSmallBuffer(device,meta),tb=gpuSmallBuffer(device,thresholds);small.push(mb,tb);
-  const counters=device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(counters,0,new Uint32Array(4));
-  const countPipeline=await gpuFilterPipeline('meshCount'),countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
-   {binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}}
-  ]});
-  const cp=encoder.beginComputePass();cp.setPipeline(countPipeline);cp.setBindGroup(0,countGroup);cp.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));cp.end();
-  const countRead=device.createBuffer({size:16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});encoder.copyBufferToBuffer(counters,0,countRead,0,16);device.queue.submit([encoder.finish()]);
-  await countRead.mapAsync(GPUMapMode.READ);const counts=new Uint32Array(countRead.getMappedRange().slice(0));countRead.unmap();countRead.destroy();
-  const totalFaces=counts[0]+counts[1]+counts[2]+counts[3],vertexBytes=totalFaces*18*4,maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
-  if(totalFaces===0){
-   releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();setGpuComputeBackend('WEBGPU FILTER+MESH');return{mesh:true,vertices:new Float32Array(0),counts};
-  }
-  if(vertexBytes<=maxOut){
-   let offset=0;for(let i=0;i<4;i++){meta[17+i]=offset;offset+=counts[i]}device.queue.writeBuffer(mb,0,meta);device.queue.writeBuffer(counters,0,new Uint32Array(4));
-   const vertexCount=totalFaces*6,gpuSmooth=surfaceSmoothingActive()&&!strongSurfaceSmoothingActive(),smoothStrength=gpuSmooth?Number(surfaceSmoothStrength.value):0;
-   const allowGpuResident=faceContext?.gpuResident!==false;
-   let residentPosition=allowGpuResident?createGpuResidentFloat3Attribute(device,vertexCount,'VRL GPU resident position'):null,residentNormal=allowGpuResident&&gpuSmooth?createGpuResidentFloat3Attribute(device,vertexCount,'VRL GPU resident normal'):null;
-   let gpuResident=allowGpuResident&&!!residentPosition&&(!gpuSmooth||!!residentNormal);
-   if(!gpuResident){destroyGpuResidentAttribute(residentPosition);destroyGpuResidentAttribute(residentNormal);residentPosition=residentNormal=null}
-   const output=gpuResident?residentPosition.buffer:device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
-   const normalOutput=gpuSmooth?(gpuResident?residentNormal.buffer:device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC})):null;
-   const sx=faceContext.spacingX,sy=faceContext.spacingY,sz=faceContext.spacingZ,px=faceContext.globalW*sx,py=faceContext.globalH*sy,pz=faceContext.globalD*sz,scale=3.3/Math.max(px,py,pz,1);
-   const gb=gpuSmallBuffer(device,new Float32Array([sx,sy,sz,scale,px,py,pz,0]));small.push(gb);
-   let cornerA=null,cornerB=null,cornerCurrent=null;
-   if(gpuSmooth){
-    const cornerCount=(target.width+1)*(target.height+1)*(target.depth+1)*meta[10],cornerBytes=cornerCount*16;
-    if(cornerBytes>maxOut){
-     if(gpuResident){destroyGpuResidentAttribute(residentPosition);destroyGpuResidentAttribute(residentNormal)}else{output.destroy();normalOutput?.destroy()}
-     releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();throw new Error('__GPU_SMOOTH_CAPACITY__')
-    }
-    cornerA=device.createBuffer({size:Math.max(16,cornerBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
-    cornerB=device.createBuffer({size:Math.max(16,cornerBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
-    const initPipeline=await gpuFilterPipeline('meshCornerInit'),initGroup=device.createBindGroup({layout:initPipeline.getBindGroupLayout(0),entries:[
-     {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:cornerA}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:5,resource:{buffer:gb}}
-    ]});
-    await gpuValidationScope(device,'mesh corner init',async()=>{const initEncoder=device.createCommandEncoder({label:'VRL GPU corner init'}),pass=initEncoder.beginComputePass();pass.setPipeline(initPipeline);pass.setBindGroup(0,initGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/gpuFilterRuntime.workgroupSize));pass.end();device.queue.submit([initEncoder.finish()])});
-    const baseStrength=Math.min(smoothStrength,1),lambda=.34*baseStrength,mu=-.36*baseStrength,iterations=Math.max(1,Math.round(smoothStrength<=1?2+smoothStrength*4:smoothStrength<=3?6+(smoothStrength-1)*18:42+(smoothStrength-3)*24));
-    const smoothPipeline=await gpuFilterPipeline('meshCornerSmooth'),pbLambda=gpuSmallBuffer(device,new Float32Array([lambda,0,0,0])),pbMu=gpuSmallBuffer(device,new Float32Array([mu,0,0,0]));small.push(pbLambda,pbMu);let srcCorner=cornerA,dstCorner=cornerB;
-    for(let k=0;k<iterations;k++)for(const pbSmooth of [pbLambda,pbMu]){
-     const smoothGroup=device.createBindGroup({layout:smoothPipeline.getBindGroupLayout(0),entries:[
-      {binding:0,resource:{buffer:srcCorner}},{binding:1,resource:{buffer:dstCorner}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pbSmooth}}
-     ]});
-     await gpuValidationScope(device,'mesh smooth pass',async()=>{const smoothEncoder=device.createCommandEncoder({label:'VRL GPU smooth pass'}),pass=smoothEncoder.beginComputePass();pass.setPipeline(smoothPipeline);pass.setBindGroup(0,smoothGroup);pass.dispatchWorkgroups(Math.ceil(cornerCount/gpuFilterRuntime.workgroupSize));pass.end();device.queue.submit([smoothEncoder.finish()])});
-     const t=srcCorner;srcCorner=dstCorner;dstCorner=t;
-    }
-    cornerCurrent=srcCorner;
-   }
-   const writeEncoder=device.createCommandEncoder({label:gpuSmooth?'VRL GPU mesh write smooth':'VRL GPU mesh vertices'});
-   const writeKind=gpuSmooth?'meshWriteSmooth':'meshWrite',writePipeline=await gpuFilterPipeline(writeKind),entries=[
-    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:output}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counters}}
-   ];
-   entries.push({binding:5,resource:{buffer:gpuSmooth?cornerCurrent:gb}});if(gpuSmooth)entries.push({binding:6,resource:{buffer:normalOutput}});
-   const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries}),wp=writeEncoder.beginComputePass();wp.setPipeline(writePipeline);wp.setBindGroup(0,writeGroup);wp.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));wp.end();
-   if(gpuResident){
-    device.queue.submit([writeEncoder.finish()]);
-    const cleanup=()=>{cornerA?.destroy();cornerB?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy()};
-    const completion=finishGpuResidentTemps(device,cleanup);
-    setGpuComputeBackend(gpuSmooth?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');
-    return{mesh:true,gpuResident:true,positionAttribute:residentPosition.attribute,normalAttribute:residentNormal?.attribute||null,counts,gpuSmoothed:gpuSmooth,completion};
-   }
-   const readback=device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),normalReadback=gpuSmooth?device.createBuffer({size:vertexBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}):null;writeEncoder.copyBufferToBuffer(output,0,readback,0,vertexBytes);if(gpuSmooth)writeEncoder.copyBufferToBuffer(normalOutput,0,normalReadback,0,vertexBytes);device.queue.submit([writeEncoder.finish()]);
-   await readback.mapAsync(GPUMapMode.READ);const vertices=new Float32Array(readback.getMappedRange().slice(0));readback.unmap();let normals=null;if(gpuSmooth){await normalReadback.mapAsync(GPUMapMode.READ);normals=new Float32Array(normalReadback.getMappedRange().slice(0));normalReadback.unmap()}
-   output.destroy();normalOutput?.destroy();readback.destroy();normalReadback?.destroy();cornerA?.destroy();cornerB?.destroy();releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counters.destroy();for(const buf of small)buf.destroy();
-   setGpuComputeBackend(gpuSmooth?'WEBGPU FILTER+MESH+SMOOTH':'WEBGPU FILTER+MESH');return{mesh:true,vertices,normals,counts,gpuSmoothed:gpuSmooth};
-  }
-  counters.destroy();
-  encoder=device.createCommandEncoder({label:'VRL compact face extraction'});
-  // Oversized vertex output falls through to compact-face extraction using the already filtered GPU buffer.
- }
- const targetCount=target.width*target.height*target.depth,compactFaces=!!(segments?.length&&faceContext),targetBytes=targetCount*(compactFaces?8:4);
- const targetBuffer=device.createBuffer({size:Math.max(4,targetBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
- const extractMeta=new Uint32Array(20);extractMeta[0]=w;extractMeta[1]=h;extractMeta[2]=d;extractMeta[3]=target.x;extractMeta[4]=target.y;extractMeta[5]=target.z;extractMeta[6]=target.width;extractMeta[7]=target.height;extractMeta[8]=target.depth;extractMeta[9]=targetCount;
- let extractPipeline,extractGroup,counter=null,counterReadback=null;
- const emb=gpuSmallBuffer(device,extractMeta);small.push(emb);
- if(segments?.length){
-  extractMeta[10]=Math.min(segments.length,4);
-  if(faceContext){
-   extractMeta[11]=faceContext.boxX;extractMeta[12]=faceContext.boxY;extractMeta[13]=faceContext.boxZ;
-   extractMeta[14]=faceContext.globalW;extractMeta[15]=faceContext.globalH;extractMeta[16]=faceContext.globalD;
-  }
-  device.queue.writeBuffer(emb,0,extractMeta);
-  const thresholdValues=new Float32Array(8);
-  for(let i=0;i<Math.min(segments.length,4);i++){thresholdValues[i*2]=segments[i].seg.min;thresholdValues[i*2+1]=segments[i].seg.max}
-  const tb=gpuSmallBuffer(device,thresholdValues);small.push(tb);
-  extractPipeline=await gpuFilterPipeline(compactFaces?'faceCompact':'maskExtract');
-  const entries=[{binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:targetBuffer}},{binding:2,resource:{buffer:emb}},{binding:3,resource:{buffer:tb}}];
-  if(compactFaces){
-   counter=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
-   device.queue.writeBuffer(counter,0,new Uint32Array([0]));
-   entries.push({binding:4,resource:{buffer:counter}});
-  }
-  extractGroup=device.createBindGroup({layout:extractPipeline.getBindGroupLayout(0),entries});
- }else{
-  extractPipeline=await gpuFilterPipeline('extract');
-  extractGroup=device.createBindGroup({layout:extractPipeline.getBindGroupLayout(0),entries:[
-   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:targetBuffer}},{binding:2,resource:{buffer:emb}}
-  ]});
- }
- const ep=encoder.beginComputePass();ep.setPipeline(extractPipeline);ep.setBindGroup(0,extractGroup);ep.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));ep.end();
- if(compactFaces){
-  counterReadback=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
-  encoder.copyBufferToBuffer(counter,0,counterReadback,0,4);device.queue.submit([encoder.finish()]);
-  await counterReadback.mapAsync(GPUMapMode.READ);const count=Math.min(targetCount,new Uint32Array(counterReadback.getMappedRange().slice(0))[0]);counterReadback.unmap();
-  let items=new Uint32Array(0);
-  if(count){
-   const itemBytes=count*8,readback=device.createBuffer({size:itemBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),copyEncoder=device.createCommandEncoder({label:'VRL compact face readback'});
-   copyEncoder.copyBufferToBuffer(targetBuffer,0,readback,0,itemBytes);device.queue.submit([copyEncoder.finish()]);
-   await readback.mapAsync(GPUMapMode.READ);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();readback.destroy();
-  }
-  releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);targetBuffer.destroy();counter.destroy();counterReadback.destroy();for(const buf of small)buf.destroy();
-  setGpuComputeBackend('WEBGPU FILTER+COMPACT FACES');return{compact:true,items};
- }
- const readback=device.createBuffer({size:targetBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
- encoder.copyBufferToBuffer(targetBuffer,0,readback,0,targetBytes);device.queue.submit([encoder.finish()]);
- await readback.mapAsync(GPUMapMode.READ);
- const copy=readback.getMappedRange().slice(0),result=segments?.length?new Uint32Array(copy):new Float32Array(copy);readback.unmap();
- releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
- setGpuComputeBackend(segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE');return result;
-}
 
-const sourceSliceCache={map:new Map(),bytes:0},sourceOrthogonalPlaneCache=new Map(),sourceOrthogonalPlanePending=new Map();
+const sourceOrthogonalPlaneCache=new Map(),sourceOrthogonalPlanePending=new Map();
 const mpr3DPreviewCache={token:0,signature:'',buildingSignature:'',building:false,min:0,max:1,planes:{axial:null,coronal:null,sagittal:null},dims:{axial:null,coronal:null,sagittal:null}};
 function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024}
 function sourceOrthogonalCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?256*1024*1024:512*1024*1024}
@@ -4453,10 +3737,6 @@ function buildMaskSurface(v,mask,key){
  flush(v.slices-1);return group.children.length?group:null;
 }
 
-function surfaceSmoothingActive(){
- return !!surfaceSmoothEnabled?.checked&&Number(surfaceSmoothStrength?.value)>0;
-}
-function strongSurfaceSmoothingActive(){return surfaceSmoothingActive()&&Number(surfaceSmoothStrength?.value)>3;}
 
 async function smoothIsosurfaceGeometry(v,mask,strength){
  const w=v.columns,h=v.rows,d=v.slices;if(!mask||mask.length!==w*h*d)return null;

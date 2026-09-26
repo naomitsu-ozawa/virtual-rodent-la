@@ -2,7 +2,8 @@
 // the original file (from a git revision) appears byte-for-byte in exactly one
 // of the current files, and nothing else was added besides imports/exports.
 //
-//   node tools/verify-split.mjs <git-rev> <original-path> <current files...>
+//   node tools/verify-split.mjs <git-rev> <original-path[,more-paths]> <current files...>
+//   (list every file that existed at <git-rev> and is involved, comma-separated)
 //   e.g. node tools/verify-split.mjs main docs/app.js docs/app.js docs/utils.js
 import * as acorn from 'acorn';
 import { execFileSync } from 'node:child_process';
@@ -23,7 +24,7 @@ const decls = src => {
 // Build markers are expected to change (npm run bump-build); compare without them.
 const normalize = d => d.replace(/^(const APP_(?:VERSION|BUILD))='[^']*'$/, "$1='<build>'");
 const count = arr => arr.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map());
-const before = count(decls(execFileSync('git', ['show', `${rev}:${origPath}`], { encoding: 'utf8', maxBuffer: 1 << 28 })).filter(d => !d.startsWith('IMPORT ')).map(normalize));
+const before = count(origPath.split(',').flatMap(p => decls(execFileSync('git', ['show', `${rev}:${p}`], { encoding: 'utf8', maxBuffer: 1 << 28 }))).filter(d => !d.startsWith('IMPORT ')).map(normalize));
 const after = count(files.flatMap(f => decls(readFileSync(f, 'utf8'))).filter(d => !d.startsWith('IMPORT ')).map(normalize));
 let bad = 0;
 for (const [d, c] of before) if ((after.get(d) || 0) !== c) { bad++; console.log(`MISSING/DUPLICATED (${after.get(d) || 0}/${c}):`, d.slice(0, 120)); }

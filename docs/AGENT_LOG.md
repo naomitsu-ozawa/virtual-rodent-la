@@ -38,6 +38,57 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — refactor/ui-shell (phase 2c + 2d part 1)
+
+**Agent:** Claude (via claude.ai)
+**Task:** UI shell module, first feature modules.
+
+### What changed (all verbatim moves)
+- `docs/ui-shell.js`: `app`, the `app.innerHTML=<template>` statement, `$`,
+  all 141 DOM element consts and `planes`. It runs when imported, i.e.
+  before app.js's body; the template was already app.js's first side
+  effect, so ordering relative to other side effects is unchanged.
+- `docs/gpu-compute.js` (28 decls): WebGPU device/adapter management,
+  buffer pool, pipeline cache, `runGpuSourceFilters`, GPU status text.
+- `docs/volume-io.js` (13 decls): pixel decode (native + compressed via
+  the lazily imported codec), source slice cache, row/column reads, MPR
+  cache preparation.
+- `docs/settings.js`: surface-smoothing setting readers (were pulled in by
+  the GPU cluster but are UI settings).
+- Appended: `parseFiles` → `dicom.js`, `tr` → `i18n.js`.
+- app.js 4949 → 4229 lines. `verify-split HEAD docs/app.js,docs/dicom.js,
+  docs/i18n.js <all files>` → OK, 621 statements verbatim.
+- Exact commands: `tools/split-history/phase2c-2d-part1.sh`.
+- Build 189 → 190.
+
+### Tool changes
+- `extract-module.mjs`: `@line:N` moves a top-level expression statement
+  verbatim (refuses if any side-effect statement precedes it);
+  `--append` adds to an existing module, merging imports (no duplicates,
+  no self-imports) and extending the existing import in the source.
+  Generated header no longer claims "no module state".
+- `verify-split.mjs`: originals may be a comma-separated list (needed when
+  appending to modules that already existed at the base revision).
+- `closure.mjs`: `--list` flag parsing fixed.
+- Tests for all of the above in `tests/tools/`.
+
+### Findings
+- The top-level dependency graph is almost a DAG: 369 SCCs for 382
+  declarations; largest cycle is 7 functions (MPR-in-3D plane overlay).
+  So feature modules can be extracted bottom-up without import cycles.
+- Mistake during this session: resetting only some files mid-way left
+  app.js and modules inconsistent; resolved by resetting docs/ fully and
+  re-running the recorded script. Lesson: reset the whole working set, and
+  delete untracked outputs (extract-module refuses to overwrite them).
+
+### Next (2d part 2)
+- Remaining feature areas in app.js: MPR rendering/caches, 3D scene
+  (`start3D` is a single 278-line function), segmentation UI + mesh
+  building, filter pipeline UI, analysis/edit/cut tools, iPad workspace
+  UI, event wiring (83 top-level side-effect statements stay in app.js).
+
+---
+
 ## 2026-09-26 — refactor/state-module (phase 2b)
 
 **Agent:** Claude (via claude.ai)
