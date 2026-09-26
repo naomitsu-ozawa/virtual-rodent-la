@@ -81,6 +81,24 @@ has enough context to continue without re-deriving decisions from scratch.
   re-running the recorded script. Lesson: reset the whole working set, and
   delete untracked outputs (extract-module refuses to overwrite them).
 
+### Owner report during review: "some sliders are heavy" (surface smoothing, 3D edit)
+- Cause found by the owner: the 3D view was in **GPU volume rendering**
+  mode; every slider change re-renders the volume at full resolution.
+  189 is also heavy in volume mode ("relatively lighter").
+- Side-by-side measurements of main (189) vs this PR (190) in CI, with a
+  temporary workflow (removed before merge): Chromium and WebKit (JSC, as
+  on iPad), demo loaded, all visible sliders — synchronous handler cost
+  < 1 ms in both, frame-bound input timing and drag steps equal within
+  noise (x0.84–x1.05, one noisy x1.44 on 2.2→3.2 ms). No JS-side slowdown
+  from the module split. GPU rendering cannot be measured in CI (no GPU);
+  GPU code is identical, so the perceived difference is most likely
+  device variance (thermal/GPU state/test order).
+- Notes: GitHub caps annotations at 10 per step (later lines are lost);
+  `performance.now()` in WebKit is coarse (sub-ms handlers read as 0).
+  `scripts/serve-docs.mjs` now accepts a directory argument (kept).
+- Follow-up PR: use the existing fast-interaction (reduced resolution)
+  mode while range sliders are dragged in volume mode.
+
 ### Next (2d part 2)
 - Remaining feature areas in app.js: MPR rendering/caches, 3D scene
   (`start3D` is a single 278-line function), segmentation UI + mesh
