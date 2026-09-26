@@ -56,6 +56,10 @@
 - `docs/mesh-geometry.js` — サーフェスメッシュ生成・STL書き出し
 - `docs/gpu-shaders.js` — 画像フィルター等のWebGPUコンピュートシェーダ (WGSL)
 - `docs/state.js` — アプリ全体の共有状態（読み取りは直接、書き込みはセッター経由）
+- `docs/ui-shell.js` — 画面のHTML骨格と各UI要素への参照
+- `docs/gpu-compute.js` — WebGPUデバイス管理・バッファ管理・GPUフィルター実行
+- `docs/volume-io.js` — DICOMピクセルデコード・ソーススライスの読み込みとキャッシュ
+- `docs/settings.js` — UI設定値の読み取り
 - `docs/i18n.js` — 日本語/英語の表示文字列
 - `docs/utils.js` — 汎用ユーティリティ
 - `docs/style.css` — UIスタイル

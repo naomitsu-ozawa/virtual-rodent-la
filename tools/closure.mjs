@@ -9,7 +9,7 @@ import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
 import { readFileSync } from 'node:fs';
 
-const [path, ...seeds] = process.argv.slice(2);
+const [path, ...seeds] = process.argv.slice(2).filter(a => !a.startsWith('--'));
 const src = readFileSync(path, 'utf8');
 const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module' });
 const top = new Map();

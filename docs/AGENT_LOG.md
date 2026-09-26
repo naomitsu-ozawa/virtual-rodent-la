@@ -38,6 +38,75 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — refactor/ui-shell (phase 2c + 2d part 1)
+
+**Agent:** Claude (via claude.ai)
+**Task:** UI shell module, first feature modules.
+
+### What changed (all verbatim moves)
+- `docs/ui-shell.js`: `app`, the `app.innerHTML=<template>` statement, `$`,
+  all 141 DOM element consts and `planes`. It runs when imported, i.e.
+  before app.js's body; the template was already app.js's first side
+  effect, so ordering relative to other side effects is unchanged.
+- `docs/gpu-compute.js` (28 decls): WebGPU device/adapter management,
+  buffer pool, pipeline cache, `runGpuSourceFilters`, GPU status text.
+- `docs/volume-io.js` (13 decls): pixel decode (native + compressed via
+  the lazily imported codec), source slice cache, row/column reads, MPR
+  cache preparation.
+- `docs/settings.js`: surface-smoothing setting readers (were pulled in by
+  the GPU cluster but are UI settings).
+- Appended: `parseFiles` → `dicom.js`, `tr` → `i18n.js`.
+- app.js 4949 → 4229 lines. `verify-split HEAD docs/app.js,docs/dicom.js,
+  docs/i18n.js <all files>` → OK, 621 statements verbatim.
+- Exact commands: `tools/split-history/phase2c-2d-part1.sh`.
+- Build 189 → 190.
+
+### Tool changes
+- `extract-module.mjs`: `@line:N` moves a top-level expression statement
+  verbatim (refuses if any side-effect statement precedes it);
+  `--append` adds to an existing module, merging imports (no duplicates,
+  no self-imports) and extending the existing import in the source.
+  Generated header no longer claims "no module state".
+- `verify-split.mjs`: originals may be a comma-separated list (needed when
+  appending to modules that already existed at the base revision).
+- `closure.mjs`: `--list` flag parsing fixed.
+- Tests for all of the above in `tests/tools/`.
+
+### Findings
+- The top-level dependency graph is almost a DAG: 369 SCCs for 382
+  declarations; largest cycle is 7 functions (MPR-in-3D plane overlay).
+  So feature modules can be extracted bottom-up without import cycles.
+- Mistake during this session: resetting only some files mid-way left
+  app.js and modules inconsistent; resolved by resetting docs/ fully and
+  re-running the recorded script. Lesson: reset the whole working set, and
+  delete untracked outputs (extract-module refuses to overwrite them).
+
+### Owner report during review: "some sliders are heavy" (surface smoothing, 3D edit)
+- Cause found by the owner: the 3D view was in **GPU volume rendering**
+  mode; every slider change re-renders the volume at full resolution.
+  189 is also heavy in volume mode ("relatively lighter").
+- Side-by-side measurements of main (189) vs this PR (190) in CI, with a
+  temporary workflow (removed before merge): Chromium and WebKit (JSC, as
+  on iPad), demo loaded, all visible sliders — synchronous handler cost
+  < 1 ms in both, frame-bound input timing and drag steps equal within
+  noise (x0.84–x1.05, one noisy x1.44 on 2.2→3.2 ms). No JS-side slowdown
+  from the module split. GPU rendering cannot be measured in CI (no GPU);
+  GPU code is identical, so the perceived difference is most likely
+  device variance (thermal/GPU state/test order).
+- Notes: GitHub caps annotations at 10 per step (later lines are lost);
+  `performance.now()` in WebKit is coarse (sub-ms handlers read as 0).
+  `scripts/serve-docs.mjs` now accepts a directory argument (kept).
+- Follow-up PR: use the existing fast-interaction (reduced resolution)
+  mode while range sliders are dragged in volume mode.
+
+### Next (2d part 2)
+- Remaining feature areas in app.js: MPR rendering/caches, 3D scene
+  (`start3D` is a single 278-line function), segmentation UI + mesh
+  building, filter pipeline UI, analysis/edit/cut tools, iPad workspace
+  UI, event wiring (83 top-level side-effect statements stay in app.js).
+
+---
+
 ## 2026-09-26 — refactor/state-module (phase 2b)
 
 **Agent:** Claude (via claude.ai)
