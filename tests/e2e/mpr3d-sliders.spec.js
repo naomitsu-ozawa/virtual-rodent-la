@@ -28,7 +28,14 @@ test('3D plane slice sliders appear with the plane and drive the 2D slice', asyn
   await page.locator('#axial-slider').evaluate(el => { el.value = '7'; el.dispatchEvent(new Event('input', { bubbles: true })); });
   await expect(proxy).toHaveValue('7');
 
+  // plane opacity row drives the current mode's opacity setting (surface in CI)
+  const opacity = page.locator('#mpr3d-opacity');
+  await expect(opacity).toBeVisible();
+  await opacity.evaluate(el => { el.value = '30'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await expect(page.locator('#mpr-surface-opacity')).toHaveValue('30');
+
   await page.locator('[data-3d-overlay="axial"]').click(); // hide the plane again
   await expect(proxy).toBeHidden();
+  await expect(opacity).toBeHidden();
   expect(errors).toEqual([]);
 });
