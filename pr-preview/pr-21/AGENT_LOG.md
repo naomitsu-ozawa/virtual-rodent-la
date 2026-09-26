@@ -120,6 +120,22 @@ has enough context to continue without re-deriving decisions from scratch.
   restores the original, 2D slice drags smoother with filters.
 - Build 193 → 194.
 
+### Owner decision on 194: explicit apply for the GPU volume (build 195)
+- "Automatic volume update on filter changes takes too long; apply
+  explicitly, and only 2D updates immediately."
+- Removed the automatic `refreshGpuVolumeData()` on settled filter changes
+  (and the `settled` parameter). The volume is rewritten only by
+  **"3D rebuild"** (`rebuildCurrent3D` records `gpuVolumeApplied =
+  {seriesId, signature}` and then refreshes the volume). Removing filters
+  is also applied by rebuild.
+- `gpuVolumeDataSignature()` = signature applied by the last rebuild of this
+  series if it still equals the current settings, else '' (original).
+  Entering volume mode uses it (applied filters, or the original CT).
+- Badge: shown while the volume texture differs from the current filter
+  settings; text `volumeFilterPending` ("not updated · press Rebuild 3D")
+  or `volumeFilterUpdating` during a rewrite. `volumeUnfiltered` removed.
+- 2D: immediate preview + 90 ms slice-drag debounce unchanged.
+
 ### Open question for the owner
 - Only the main view plane is re-rendered with the preview (by design,
   for speed); the other planes show the filter once they are re-rendered
