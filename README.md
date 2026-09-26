@@ -61,6 +61,7 @@
 - `docs/volume-io.js` — DICOMピクセルデコード・ソーススライスの読み込みとキャッシュ
 - `docs/settings.js` — UI設定値の読み取り
 - `docs/project-file.js` — プロジェクトファイル（.vrlab）の保存形式
+- `docs/gpu-volume-cache.js` — フィルター済みGPUボリュームの端末内キャッシュ（IndexedDB）
 - `docs/lasso.js` — 3D編集の囲み選択（画面投影・内外判定）
 - `docs/i18n.js` — 日本語/英語の表示文字列
 - `docs/utils.js` — 汎用ユーティリティ
