@@ -38,6 +38,26 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — fix/file-picker-reopen
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner report (iPad): after cancelling the DICOM-folder or project
+file picker, the picker does not open again.
+
+### What changed
+- Known iPadOS Safari behaviour: a picker opened via `input.click()` on a
+  hidden file input may not reopen on the same element after cancel.
+  `openFilePicker(name)` now replaces the input with a fresh clone
+  (`cloneNode(false)`: same id/attributes, `onchange` copied) before each
+  open; handlers read `e.target`. `filePickers` holds the current elements
+  (the imported DOM refs cannot be reassigned).
+- Smoke test: each button opens a chooser on every click, and the inputs
+  are replaced rather than duplicated. (CI Chromium cannot reproduce the
+  iPad bug itself.)
+- Build → 207.
+
+---
+
 ## 2026-09-26 — fix/project-restore-3d-filters
 
 **Agent:** Claude (via claude.ai)
