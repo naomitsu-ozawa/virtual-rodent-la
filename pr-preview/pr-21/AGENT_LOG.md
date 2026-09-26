@@ -64,6 +64,25 @@ has enough context to continue without re-deriving decisions from scratch.
   canvas (CPU path in CI).
 - Build 191 → 192.
 
+### Follow-up in the same PR: keep the GPU volume on filter changes (owner choice "A", step 1)
+- Owner report on the preview: pressing "add filter" makes the 3D volume
+  disappear. Pre-existing since <= build 172: `scheduleFilterRebuild`
+  called `deactivateMedicalVolume()` in volume mode, which also switches to
+  surface mode (no mesh built yet → empty 3D view). Reason: the GPU volume
+  renderer uploads the original DICOM pixel bytes (`packedRgSlice`, rg8unorm
+  texture keyed by series id) and **cannot display filtered data**;
+  `activateMedicalVolume` refused to start while filters were active.
+- Step 1 (this PR): filter changes no longer deactivate the volume; volume
+  mode may be entered while filters are active; a badge
+  (`#three-filter-badge`, i18n `volumeUnfiltered`) says the volume shows
+  the original CT; "3D rebuild" with active filters from volume mode
+  switches to surface first (same end result as before). Badge updated from
+  `set3DState` and `updateRenderModeControl`.
+- Step 2 (next PR): upload filtered volumes to the GPU volume renderer
+  (convert CT values back to stored 16-bit values, pack rg8, reduced/mobile
+  path and bricks too, texture keyed by series + filter signature).
+- Build 192 → 193.
+
 ### Open question for the owner
 - Only the main view plane is re-rendered with the preview (by design,
   for speed); the other planes show the filter once they are re-rendered
