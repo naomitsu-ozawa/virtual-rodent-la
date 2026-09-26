@@ -677,6 +677,16 @@ export class MedicalVolumeRenderer{
   const cancelled=()=>{if(typeof v.isCancelled==='function'&&v.isCancelled())throw new Error('__SUPERSEDED__')};
   const sliceBytes=dataSignature?(async z=>{cancelled();return packCtSlice(await v.sliceData(z),first)}):(z=>{cancelled();return packedRgSlice(s.slices[z])});
   if(inPlace)this.dataSignature='partial';
+  // v.textureCache(info) -> handle (see gpu-volume-cache.js): on a hit the
+  // stored texture slices are uploaded as-is (no filtering, packing or
+  // resampling); on a miss every uploaded slice is stored and committed at
+  // the end. Cache problems never fail the upload.
+  const reducedRowStride=Math.ceil(tw*2/256)*256;
+  let cache=null;
+  if(dataSignature&&typeof v.textureCache==='function'){
+   try{cache=await v.textureCache({planSignature,reduced:!!plan.reduced,slices:plan.reduced?td:s.slices.length,bytesPerSlice:plan.reduced?reducedRowStride*th:s.columns*2*s.rows})}catch{cache=null}
+  }
+  this.lastCacheHit=!!cache?.hit;
   let preview=null,previewSourceZ=null,previewX=null,previewY=null;
   const previewMax=Math.max(0,Math.floor(previewSide||0));
   if(previewMax>0&&!plan.reduced){
@@ -700,17 +710,24 @@ export class MedicalVolumeRenderer{
     for(let z=0;z<td;z++)zMap[z]=td<=1?0:Math.round(z*(s.slices.length-1)/(td-1));
     const rowBytes=tw*2,rowStride=Math.ceil(rowBytes/256)*256,reducedSlice=new Uint8Array(rowStride*th);
     for(let tz=0;tz<td;tz++){
-     const packed=await sliceBytes(zMap[tz]);reducedSlice.fill(0);
-     for(let y=0;y<th;y++){
-      const srcRow=yMap[y]*s.columns*2,dstRow=y*rowStride;
-      for(let x=0;x<tw;x++){const so=srcRow+xMap[x]*2,doff=dstRow+x*2;reducedSlice[doff]=packed[so];reducedSlice[doff+1]=packed[so+1]}
+     let upload=reducedSlice;
+     if(cache?.hit){cancelled();upload=await cache.read(tz)}
+     else{
+      const packed=await sliceBytes(zMap[tz]);reducedSlice.fill(0);
+      for(let y=0;y<th;y++){
+       const srcRow=yMap[y]*s.columns*2,dstRow=y*rowStride;
+       for(let x=0;x<tw;x++){const so=srcRow+xMap[x]*2,doff=dstRow+x*2;reducedSlice[doff]=packed[so];reducedSlice[doff+1]=packed[so+1]}
+      }
+      if(cache)await cache.write(tz,reducedSlice.slice());
      }
-     this.device.queue.writeTexture({texture,origin:{x:0,y:0,z:tz}},reducedSlice,{bytesPerRow:rowStride,rowsPerImage:th},{width:tw,height:th,depthOrArrayLayers:1});
+     this.device.queue.writeTexture({texture,origin:{x:0,y:0,z:tz}},upload,{bytesPerRow:rowStride,rowsPerImage:th},{width:tw,height:th,depthOrArrayLayers:1});
      if((tz&15)===15||tz===td-1){this.onProgress(tz+1,td);try{await this.device.queue.onSubmittedWorkDone()}catch{}await new Promise(requestAnimationFrame)}
     }
    }else{
     for(let z=0;z<s.slices.length;z++){
-     const packed=await sliceBytes(z);
+     let packed;
+     if(cache?.hit){cancelled();packed=await cache.read(z)}
+     else{packed=await sliceBytes(z);if(cache)await cache.write(z,packed)}
      this.device.queue.writeTexture({texture,origin:{x:0,y:0,z}},packed,{bytesPerRow:s.columns*2,rowsPerImage:s.rows},{width:s.columns,height:s.rows,depthOrArrayLayers:1});
      if(preview&&previewSourceZ){
       const pz=previewSourceZ[z];
@@ -726,8 +743,10 @@ export class MedicalVolumeRenderer{
     }
    }
    const validation=await this.device.popErrorScope?.();popped=true;if(validation)throw new Error(validation.message);
+   if(cache&&!cache.hit)await cache.commit();
   }catch(e){
    if(!popped){try{await this.device.popErrorScope?.()}catch{}}
+   try{await cache?.abort?.()}catch{}
    if(!inPlace)texture?.destroy?.();throw e;
   }
   const px=s.columns*s.spacingX,py=s.rows*s.spacingY,pz=s.slices.length*s.spacingZ,maxP=Math.max(px,py,pz,1),scale=3.3/maxP;
