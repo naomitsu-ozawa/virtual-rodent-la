@@ -42,10 +42,34 @@ async function measure(url) {
     }
     out[id] = { dispatchMs, dragMs };
   }
+  // 3D path: add a bone segment, rebuild 3D, then time surface-smoothing changes
+  // until the 3D state returns to "current".
+  const threeD = {};
+  try {
+    await page.selectOption('#segment-add-select', 'bone').catch(() => {});
+    await page.locator('#segment-add-button').click({ timeout: 5000 }).catch(() => {});
+    const waitCurrent = async (ms) => page.waitForFunction(() => document.querySelector('#filter-3d-state')?.classList.contains('is-current') && !document.querySelector('#three-busy:not(.is-hidden)'), null, { timeout: ms });
+    const t0 = Date.now();
+    if (await page.locator('#filter-rebuild-3d').isEnabled().catch(() => false)) await page.locator('#filter-rebuild-3d').click();
+    await page.waitForTimeout(300); await waitCurrent(240_000);
+    threeD.rebuildMs = Date.now() - t0;
+    await page.evaluate(() => { const c = document.querySelector('#surface-smooth-enabled'); if (c && !c.checked) { c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); } });
+    const times = [];
+    for (const v of [2, 5, 3]) {
+      const s0 = Date.now();
+      await page.evaluate(v => { const el = document.querySelector('#surface-smooth-strength'); el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, v);
+      await page.waitForTimeout(200);
+      if (await page.locator('#filter-rebuild-3d').isEnabled().catch(() => false) && await page.locator('#filter-3d-state.is-stale').count()) await page.locator('#filter-rebuild-3d').click();
+      await waitCurrent(240_000);
+      times.push(Date.now() - s0);
+    }
+    threeD.smoothMs = times;
+    threeD.state = await page.locator('#filter-3d-state').textContent();
+  } catch (e) { threeD.error = String(e.message || e).slice(0, 200); }
   const footer = await page.locator('#footer').textContent();
   const gpu = await page.locator('#gpu-status').textContent();
   await page.close();
-  return { out, errors, footer, gpu };
+  return { out, errors, footer, gpu, threeD };
 }
 
 const results = [];
@@ -53,7 +77,7 @@ for (const u of urls) results.push(await measure(u));
 await browser.close();
 const ids = [...new Set(results.flatMap(r => Object.keys(r.out)))];
 const lines = [`builds: ${urls.join(' vs ')}`];
-results.forEach((r, i) => lines.push(`[${i}] gpu="${r.gpu?.trim().slice(0, 90)}" errors=${r.errors.length}`));
+results.forEach((r, i) => lines.push(`[${i}] gpu="${r.gpu?.trim().slice(0, 90)}" errors=${r.errors.length} 3D=${JSON.stringify(r.threeD)}`));
 const rows = ids.map(id => {
   const a = results[0].out[id] || {}, b = results[1]?.out[id] || {};
   return { id, a, b, ratio: (b.dispatchMs || 0) / Math.max(0.5, a.dispatchMs || 0), dragRatio: (b.dragMs || 0) / Math.max(0.5, a.dragMs || 0) };
