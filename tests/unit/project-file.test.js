@@ -47,3 +47,33 @@ describe('project zip', () => {
     expect(() => unpackProject(zipSync({ 'project.json': strToU8(JSON.stringify({ format: 'virtual-rodent-lab-project', version: PROJECT_VERSION + 1 })) }))).toThrow(/newer/);
   });
 });
+
+describe('project files saved or unpacked by other apps', () => {
+  it('recognises .vrlab and Safari-renamed .zip archives', async () => {
+    const { isProjectArchiveName } = await import('../../docs/project-file.js');
+    expect(isProjectArchiveName('mouse_2026-09-26.vrlab')).toBe(true);
+    expect(isProjectArchiveName('mouse_2026-09-26.vrlab.zip')).toBe(true);
+    expect(isProjectArchiveName('mouse.zip')).toBe(true);
+    expect(isProjectArchiveName('slice001.dcm')).toBe(false);
+  });
+
+  it('rebuilds a project from an extracted folder (iOS Files app)', async () => {
+    const { projectFromEntries } = await import('../../docs/project-file.js');
+    const bin = encodeRuns([runs(1, 2, 3), null, null], 3);
+    const json = strToU8(JSON.stringify({ format: 'virtual-rodent-lab-project', version: 1, dataset: datasetFingerprint(series), edits: { bone: { exclude: 'edits/bone-exclude.bin' } } }));
+    const { project, files } = projectFromEntries([
+      { path: 'DICOM/mouse.vrlab/project.json', bytes: json },
+      { path: 'DICOM/mouse.vrlab/edits/bone-exclude.bin', bytes: bin },
+      { path: 'DICOM/slice001.dcm', bytes: new Uint8Array(4) },
+    ]);
+    expect(project.edits.bone.exclude).toBe('edits/bone-exclude.bin');
+    expect([...decodeRuns(files['edits/bone-exclude.bin'], dims)[0]]).toEqual([1, 2, 3]);
+    expect(files['slice001.dcm']).toBeUndefined();
+  });
+
+  it('rejects folders without a valid project.json', async () => {
+    const { projectFromEntries } = await import('../../docs/project-file.js');
+    expect(() => projectFromEntries([{ path: 'a/x.bin', bytes: new Uint8Array(1) }])).toThrow(/project.json/);
+    expect(() => projectFromEntries([{ path: 'a/project.json', bytes: strToU8('{"format":"x","version":1}') }])).toThrow(/Virtual Rodent Lab/);
+  });
+});

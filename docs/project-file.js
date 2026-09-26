@@ -76,6 +76,25 @@ export function packProject(project,binaries={}){
 export function unpackProject(bytes){
  let files;
  try{files=unzipSync(bytes instanceof Uint8Array?bytes:new Uint8Array(bytes))}catch{throw new Error('Not a project file (zip expected)')}
+ return readProjectFiles(files);
+}
+
+// Names that may hold a project: .vrlab, and .zip because Safari/iOS can
+// append ".zip" to downloads (e.g. "name.vrlab.zip").
+export function isProjectArchiveName(name){return /\.(vrlab|zip)$/i.test(name||'')}
+
+// A project whose zip was extracted (e.g. by tapping it in the iOS Files app):
+// entries [{path, bytes}] containing .../project.json and .../edits/*.bin.
+// Paths are relative to any folder; files next to project.json are used.
+export function projectFromEntries(entries){
+ const json=entries.find(e=>/(^|\/)project\.json$/.test(e.path));
+ if(!json)throw new Error('Not a project folder (project.json missing)');
+ const base=json.path.slice(0,json.path.length-'project.json'.length),files={};
+ for(const e of entries)if(e.path.startsWith(base))files[e.path.slice(base.length)]=e.bytes;
+ return readProjectFiles(files);
+}
+
+function readProjectFiles(files){
  if(!files['project.json'])throw new Error('Not a project file (project.json missing)');
  let project;
  try{project=JSON.parse(strFromU8(files['project.json']))}catch{throw new Error('Broken project.json')}
