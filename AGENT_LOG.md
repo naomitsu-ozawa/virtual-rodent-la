@@ -38,6 +38,44 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — feat/folder-project-autoload
+
+**Agent:** Claude (via claude.ai)
+**Task:** Owner wish: opening a project should also load its DICOM. Not
+possible in browsers (no access to files the user did not pick; Safari has
+no File System Access API). Owner chose option A: the reverse direction.
+
+### What changed
+- "DICOMフォルダを開く": `.vrlab` files in the picked folder are excluded
+  from DICOM parsing; the newest (by lastModified) becomes the pending
+  project; after `inspect`, the matching series (fingerprint) is selected
+  automatically and `selectSeries` applies the project when ready. Footer
+  says which project is applied (and "newest of N" when several). A project
+  that matches no series in the folder is reported, nothing is applied.
+- Save hint: "keep it in the DICOM folder to apply it automatically".
+- E2E `tests/e2e/folder-project.spec.js` (runs in CI with the smoke tests,
+  no download): synthetic 16×16×12 DICOM folder + a newer matching project
+  (gaussian) + an older non-matching one (unsharp) → series auto-selected,
+  gaussian restored, unsharp not. CI step now lists this file explicitly.
+- Build → 208.
+
+### Follow-up in the same PR (build 209): Safari saved projects as .zip
+- Owner: downloads arrive as zip, so the folder autoload did not find them.
+  With Blob type `application/zip`, Safari/iOS appends ".zip". Fixes:
+  - save with `application/octet-stream` so the name stays `*.vrlab`;
+  - `isProjectArchiveName()` also accepts `*.zip`; archives < 200 MB are
+    tried with `unpackProject`, non-project zips go back to DICOM parsing;
+  - extracted archives (iOS Files app): `projectFromEntries()` rebuilds a
+    project from `…/project.json` + `…/edits/*.bin` (webkitRelativePath);
+    those files are excluded from DICOM parsing;
+  - "プロジェクトを開く" accepts .zip too.
+- Tests: unit (names, extracted folder, invalid folder); E2E: .vrlab
+  (newest wins), `*.vrlab.zip`, extracted folder with an edit mask
+  (decoded before settings apply, so the restored filter proves it; one
+  series only → project files not parsed as DICOM).
+
+---
+
 ## 2026-09-26 — fix/file-picker-reopen
 
 **Agent:** Claude (via claude.ai)
