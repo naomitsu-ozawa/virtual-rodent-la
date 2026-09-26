@@ -78,7 +78,7 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
 - [ ] Phase 2d part 2 — feature modules, extracted bottom-up (the
       dependency graph is almost a DAG; the largest cycle is the 7-function
       MPR-in-3D plane overlay):
-  - [ ] MPR rendering and caches (`schedulePlaneRender`,
+  - [ ] MPR rendering and caches (step 1 done: `source-filters.js`, `mpr-orthogonal.js`; next `schedulePlaneRender`,
         `paintSourcePlane`, `ensureMpr3DPreviewCache`, instant-image path)
   - [ ] MPR-in-3D overlay and 3D slice panel (move the 7-function cycle
         together)
