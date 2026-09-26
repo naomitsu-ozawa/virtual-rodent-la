@@ -63,7 +63,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Add morphology tools where they materially improve bone continuity
 - [ ] Add manual brush / eraser correction
 - [ ] Move heavy processing off the main UI thread where needed
-- [ ] Split `docs/app.js` into modules (phase 1 done: pure helpers extracted; phase 2: GPU shaders/runtime, state, UI)
+- [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module; next: UI shell, feature modules)
 - [ ] Add compressed DICOM Transfer Syntax support
 
 ## Architecture rules
@@ -83,6 +83,8 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - `docs/app.js` is the canonical deployed entry point; it imports the other
   `docs/*.js` modules. Extracted modules must not import from `app.js`
   (no cycles) and must not hold UI/application state.
+- Shared mutable state lives in `docs/state.js` (`export let x` + setter
+  `setX`). Read it directly; write it only through the setter.
 - Every relative import carries a cache tag of the current build
   (`?v=YYYYMMDD-buildN`, optional suffix). `npm run bump-build [N]` updates
   all markers at once; the build-consistency test enforces agreement.
