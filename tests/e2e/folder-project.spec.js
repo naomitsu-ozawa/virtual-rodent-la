@@ -1,9 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from 'node:fs';
+import { mkdirSync, writeFileSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { zipSync, strToU8 } from 'fflate';
-import { makeCtSlice } from '../helpers/synthetic-dicom.js';
+import { dicomFolder, syntheticDataset } from '../helpers/dicom-folder.js';
 
 // Opening a DICOM folder that contains a project applies the newest project
 // automatically: the matching series is selected and its settings restored.
@@ -11,17 +10,8 @@ import { makeCtSlice } from '../helpers/synthetic-dicom.js';
 // Safari/iOS may save the download as "*.vrlab.zip", and the Files app may
 // extract it into a folder (project.json + edits/) — all three must work.
 const FORMAT = { format: 'virtual-rodent-lab-project', version: 1 };
-const dataset = { seriesUid: '1.2.3.4', columns: 16, rows: 16, slices: 12, spacing: [0.1, 0.1, 0.2] };
+const dataset = syntheticDataset;
 const vrlab = (project, extra = {}) => zipSync({ 'project.json': strToU8(JSON.stringify({ ...FORMAT, ...project })), ...extra });
-
-function dicomFolder() {
-  const dir = mkdtempSync(join(tmpdir(), 'vrl-folder-'));
-  for (let z = 0; z < 12; z++) {
-    const pixels = new Int16Array(16 * 16).map((_, i) => ((i + z) % 7) * 200);
-    writeFileSync(join(dir, `slice${String(z).padStart(3, '0')}.dcm`), makeCtSlice({ rows: 16, columns: 16, pixelSpacing: [0.1, 0.1], position: [0, 0, z * 0.2], instance: z + 1, pixels }));
-  }
-  return dir;
-}
 
 async function openFolder(page, dir) {
   const errors = [];
