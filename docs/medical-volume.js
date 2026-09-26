@@ -38,7 +38,7 @@ async function packedRgSlice(meta){
  return out;
 }
 
-function volumeShader(){
+export function volumeShader(){
  return `
 struct Uniforms{
  camOrigin:vec4<f32>,
@@ -367,7 +367,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
 }`;
 }
 
-function brickShader(){
+export function brickShader(){
  return `
 @group(0) @binding(0) var volumeTex:texture_3d<f32>;
 @group(0) @binding(1) var<storage,read> meta:array<u32>;
@@ -388,7 +388,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 }`;
 }
 
-function volumePickShader(){
+export function volumePickShader(){
  return `
 struct Uniforms{
  camOrigin:vec4<f32>,camRightTan:vec4<f32>,camUpAspect:vec4<f32>,camForward:vec4<f32>,
@@ -487,7 +487,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 }`;
 }
 
-function mprPlaneShader(){
+export function mprPlaneShader(){
  return `
 struct MprParams{
  dims:vec4<u32>,
