@@ -38,6 +38,38 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — feat/slider-fast-interaction
+
+**Agent:** Claude (via claude.ai)
+**Task:** Keep sliders responsive while the 3D view uses GPU volume rendering.
+
+### What changed (behavior change, small)
+- `start3D`: `setFastInteraction(active, keepOverlays=false)` — new optional
+  flag skips `setHeavyOverlayInteraction` (which hides the analysis mesh
+  and the cut-result preview during camera moves). Exposed as
+  `sceneState.setFastInteraction`.
+- New `sliderFastInteraction` + `beginSliderFastInteraction()` /
+  `endSliderFastInteraction(delay)` next to the global range handlers:
+  - pointer drag: begins on the first real movement (not on tap), ends
+    120 ms after release;
+  - wheel on a slider: begins per tick, ends 220 ms after the last tick.
+  - Only when `threeRenderMode==='volume'` and the GPU volume renderer is
+    active; mesh mode unchanged. Applies to every range input (all of them
+    can trigger 3D re-renders, e.g. MPR planes shown in 3D).
+- Effect: same reduced pixel ratio / volume render resolution as camera
+  rotation (touch: 0.75/0.60/0.48 by distance tier), full resolution
+  restored after the slider is released. Overlays stay visible so live cut
+  sliders still show the result.
+- Build 190 → 191.
+
+### Verification
+- lint + 119 tests; CI demo E2E. CI cannot exercise WebGPU volume
+  rendering → owner verifies on device: drag surface smoothing / cut
+  sliders in volume mode (should be light, slightly blurrier while
+  dragging, sharp after release; cut preview visible while dragging).
+
+---
+
 ## 2026-09-26 — refactor/ui-shell (phase 2c + 2d part 1)
 
 **Agent:** Claude (via claude.ai)
