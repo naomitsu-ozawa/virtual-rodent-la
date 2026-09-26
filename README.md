@@ -60,6 +60,7 @@
 - `docs/gpu-compute.js` — WebGPUデバイス管理・バッファ管理・GPUフィルター実行
 - `docs/volume-io.js` — DICOMピクセルデコード・ソーススライスの読み込みとキャッシュ
 - `docs/settings.js` — UI設定値の読み取り
+- `docs/lasso.js` — 3D編集の囲み選択（画面投影・内外判定）
 - `docs/i18n.js` — 日本語/英語の表示文字列
 - `docs/utils.js` — 汎用ユーティリティ
 - `docs/style.css` — UIスタイル
