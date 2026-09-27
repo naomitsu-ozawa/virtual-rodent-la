@@ -1,21 +1,21 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { sceneState, deferAutomatic3D, threeDCancelRequested, currentLanguage, analysisEditTool, threeRenderMode, current3DVolume, volume, incSourceRenderRevision, sourceRenderRevision, sectionViewOpen, sectionViewPlane, sourceVolume } from './state.js?v=20260927-build232';
-import { mark3DStale, request3DRender, set3DBusy, mark3DCurrent } from './scene3d.js?v=20260927-build232';
-import { threeLabel, footer, surfaceSmoothStrength } from './ui-shell.js?v=20260927-build232';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build232';
-import { frameYield, isDesktopMac } from './utils.js?v=20260927-build232';
-import { gpuFilterRuntime, setGpuComputeBackend, ensureGpuFilterDevice, runGpuSourceFilters, gpuStagesSupported } from './gpu-compute.js?v=20260927-build232';
-import { setProcessingBusy } from './busy.js?v=20260927-build232';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentEditActive, segmentState, segmentNeedsGlobalMask, sourceMprMemoryView } from './segments.js?v=20260927-build232';
-import { dispose, buildEditableRunsGroup, geometryFromSourcePositions, consolidateSegmentForStrongSmoothing } from './surface-mesh.js?v=20260927-build232';
-import { renderAll } from './mpr-render.js?v=20260927-build232';
-import { getFinalSegmentRuns, thresholdRunsFromMemory, decodeSourceSegmentMasks } from './segment-runs.js?v=20260927-build232';
+import { sceneState, deferAutomatic3D, threeDCancelRequested, currentLanguage, analysisEditTool, threeRenderMode, current3DVolume, volume, incSourceRenderRevision, sourceRenderRevision, sectionViewOpen, sectionViewPlane, sourceVolume } from './state.js?v=20260927-build233';
+import { mark3DStale, request3DRender, set3DBusy, mark3DCurrent } from './scene3d.js?v=20260927-build233';
+import { threeLabel, footer, surfaceSmoothStrength } from './ui-shell.js?v=20260927-build233';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build233';
+import { frameYield, isDesktopMac } from './utils.js?v=20260927-build233';
+import { gpuFilterRuntime, setGpuComputeBackend, ensureGpuFilterDevice, runGpuSourceFilters, gpuStagesSupported } from './gpu-compute.js?v=20260927-build233';
+import { setProcessingBusy } from './busy.js?v=20260927-build233';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentEditActive, segmentState, segmentNeedsGlobalMask, sourceMprMemoryView } from './segments.js?v=20260927-build233';
+import { dispose, buildEditableRunsGroup, geometryFromSourcePositions, consolidateSegmentForStrongSmoothing } from './surface-mesh.js?v=20260927-build233';
+import { renderAll } from './mpr-render.js?v=20260927-build233';
+import { getFinalSegmentRuns, thresholdRunsFromMemory, decodeSourceSegmentMasks } from './segment-runs.js?v=20260927-build233';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { updateSectionClipPlaneWorld } from './section-view.js?v=20260927-build232';
-import { makeVolume3DCoordinates, Float32FaceBuilder, appendSourceFacesFromCompactTile, makeSource3DCoordinates, appendSourceSliceFacesFast } from './mesh-geometry.js?v=20260927-build232';
-import { fitSourceTile, readMemoryRegion, sourceFilterStages, sourceFilterRuntime, sourceFilterHalo, readSourceRegion, runSourceFilterWorker } from './source-filters.js?v=20260927-build232';
-import { compactFaceFlags, valuesToFaceFlags } from './mask-ops.js?v=20260927-build232';
+import { updateSectionClipPlaneWorld } from './section-view.js?v=20260927-build233';
+import { makeVolume3DCoordinates, Float32FaceBuilder, appendSourceFacesFromCompactTile, makeSource3DCoordinates, appendSourceSliceFacesFast } from './mesh-geometry.js?v=20260927-build233';
+import { fitSourceTile, readMemoryRegion, sourceFilterStages, sourceFilterRuntime, sourceFilterHalo, readSourceRegion, runSourceFilterWorker } from './source-filters.js?v=20260927-build233';
+import { compactFaceFlags, valuesToFaceFlags } from './mask-ops.js?v=20260927-build233';
 export function applySectionClippingMaterials(root=sceneState?.obj){
  if(!root||!sceneState)return;
  const active=sectionViewOpen&&!!sectionViewPlane&&sceneState.backend!=='WEBGPU';

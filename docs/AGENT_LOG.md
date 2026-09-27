@@ -38,6 +38,36 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 3, build 233)
+
+**Agent:** Claude (Claude Code)
+**Task:** 3D rebuild flow and filter UI. Verbatim moves.
+
+### What changed
+- `docs/analysis-results.js` (7): analysis result list UI, region focus /
+  removal / naming, registry reset after a rebuild.
+- `docs/gpu-volume-data.js` (13): GPU volume data refresh, texture cache
+  (IndexedDB) state and control, edit descriptors, filtered slice provider.
+- `docs/rebuild-3d.js` (11): `rebuildCurrent3D`, the CPU-filtered volume for
+  3D (`buildCpuFilteredVolumeFor3D`), `CPU_FILTERS` / `applyCpuFilter`
+  (landed here because the 3D path uses them first; the filter UI imports
+  them), `mark3DUpdating`, `surfaceRebuildPending`.
+- `docs/filter-pipeline.js` (18): `rebuildActiveFilters`, filter order /
+  add / remove / move / drag reorder, control sync, live filter state,
+  source filter invalidation.
+- app.js 2492 → 2054 lines. `verify-split HEAD docs/app.js docs/app.js
+  docs/analysis-results.js docs/gpu-volume-data.js docs/rebuild-3d.js
+  docs/filter-pipeline.js` → OK, 299 statements verbatim. Non-primitive
+  consts moved: literal initialisers or closures only.
+- Exact commands: `tools/split-history/phase2d-part3-step3.sh`.
+- Build 232 → 233.
+
+### Next
+- Remaining in app.js: `start3D` (closure now 32 decls), project
+  load/save + demo, workspace UI, event wiring.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 2, build 232)
 
 **Agent:** Claude (Claude Code)
