@@ -38,6 +38,44 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (CPU filter kernels, build 230)
+
+**Agent:** Claude (Claude Code)
+**Task:** First step of the "filter pipeline" feature area: the CPU 3D
+filter stack (fallback when WebGPU compute is not used).
+
+### Why not a verbatim move
+- Each `apply*` function (Gaussian, Median, Spike/Hole, NLM, Anisotropic,
+  Bilateral, TV, Unsharp, Sigmoid) ended with `renderAll(); render3D(volume)`,
+  so its dependency closure was ~72 declarations / ~1170 lines (3D build,
+  edit tools). They were split into pure kernels + one UI wrapper instead.
+
+### What changed
+- New `docs/cpu-filters.js`: `cpuGaussian3D`, `cpuMedian3D`, `cpuSpikeHole`,
+  `cpuNlm3D`, `cpuAnisotropicDiffusion`, `cpuBilateral3D`,
+  `cpuTvDenoising3D`, `cpuUnsharpMask3D`, `cpuSigmoid` —
+  `(v, params, onProgress) → {data, ...stats}`. The loop bodies were copied
+  by script from the old functions; only the slider reads became `params.*`.
+  Verified voxel-identical against the old functions (taken from git HEAD,
+  run with the same slider values on a random 9×8×7 volume with a spike).
+- `app.js`: `CPU_FILTERS` table (label, error prefix, parameter read,
+  footer text) + `applyCpuFilter(key, base)` (busy state, run, setVolume,
+  renderAll, render3D, footer). The two duplicated 9-branch dispatch chains
+  (`buildCpuFilteredVolumeFor3D`, `rebuildActiveFilters`) became one call.
+  Only visible difference: the Gaussian footer shows the strength read at
+  the start instead of re-reading the slider at the end.
+- Tests: `tests/unit/cpu-filters.test.js` (constant volume invariant, spike
+  removal, identity at strength 0, sigmoid range/order, progress, stats).
+- app.js 3859 → 3621 lines. Build 229 → 230.
+
+### Next
+- The filter UI/pipeline (`rebuildActiveFilters`, order/add/remove, live
+  filter state) has a 112-declaration closure through the 3D build and edit
+  tools; it needs the segmentation/mesh-building area split first, or a
+  similar "pure part + thin wrapper" approach.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 2, step 3, build 222)
 
 **Agent:** Claude (Claude Code)
