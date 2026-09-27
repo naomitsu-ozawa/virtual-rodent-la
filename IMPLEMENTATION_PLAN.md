@@ -200,7 +200,8 @@ As built (build 242, `thin-suppress.js`, unit-tested):
 - **Device checks are expensive** (large data, a reload resets everything). Trace the whole
   code path before asking for one, and when the cause is unknown, ship
   one diagnostics build instead of guessed fixes. Run `npm run boot-check` (offline
-  startup check) before every push; the CI browser tests do not catch a non-starting app.
+  startup check) before every push; CI's smoke test catches it too, but only after the push,
+  and a run cancelled by a newer push says nothing, so read the check result, not the notification.
 
 - See `docs/AGENT_LOG.md` for a running record of AI-agent work sessions;
   read it before starting new work and append to it when finishing.

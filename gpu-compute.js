@@ -1,11 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build267';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build271';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build267';
-import { isDesktopMac } from './utils.js?v=20260927-build267';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build267';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build267';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build271';
+import { isDesktopMac, frameYield } from './utils.js?v=20260927-build271';
+import { runsSliceToMask } from './run-length.js?v=20260927-build271';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build271';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build271';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -171,6 +172,11 @@ export async function ensureGpuFilterDevice(){
  return gpuFilterRuntime.initPromise;
 }
 const GPU_MAX_GROUPS=65535;
+// step-time accumulator for ?debug status lines (segment-runs.js resets and reads it)
+export const gpuStepTimes=new Map(),gpuRunInfo={};
+// ?debug: wait for the GPU after the filter and distance passes to time them separately
+const GPU_TIMING_DEBUG=typeof location!=='undefined'&&/[?&]debug(\b|=|&|$)/.test(location.search);
+export function addGpuStepTime(name,ms){gpuStepTimes.set(name,(gpuStepTimes.get(name)||0)+ms)}
 export function gpuDispatch1D(pass,groups){pass.dispatchWorkgroups(Math.min(groups,GPU_MAX_GROUPS),Math.max(1,Math.ceil(groups/GPU_MAX_GROUPS)))}
 export async function gpuFilterPipeline(kind){
  const device=await ensureGpuFilterDevice();if(!device)return null;
@@ -223,16 +229,16 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
  const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
  const bytes=data.byteLength,n=data.length;
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
- const aw=acquireGpuWorkBuffer(device,bytes),bw=acquireGpuWorkBuffer(device,bytes),a=aw.buffer,b=bw.buffer;device.queue.writeBuffer(a,0,data);
+ const aw=acquireGpuWorkBuffer(device,bytes),bw=acquireGpuWorkBuffer(device,bytes),a=aw.buffer,b=bw.buffer;const tUp=performance.now();device.queue.writeBuffer(a,0,data);addGpuStepTime('upload',performance.now()-tUp);
  const small=[];let encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
- const dispatch=async(kind,extraU32=[],paramsF32=[])=>{
+ const dispatch=async(kind,extraU32=[],paramsF32=[],extraEntries=[])=>{
   const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
   const meta=new Uint32Array(8);meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=n;for(let i=0;i<extraU32.length&&i<4;i++)meta[4+i]=extraU32[i]>>>0;
   const params=new Float32Array(8);for(let i=0;i<paramsF32.length&&i<8;i++)params[i]=paramsF32[i];
   const mb=gpuSmallBuffer(device,meta),pb=gpuSmallBuffer(device,params);small.push(mb,pb);
   const bind=pipeline.getBindGroupLayout(0);
   const group=device.createBindGroup({layout:bind,entries:[
-   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}}
+   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}},...extraEntries
   ]});
   const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);gpuDispatch1D(pass,Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
   const t=current;current=next;next=t;
@@ -249,7 +255,16 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[minv,maxv,p.strength,p.threshold]);
   else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[minv,maxv,p.strength]);
   else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[minv,maxv,p.weight]);
-  else if(stage.key==='unsharp')await dispatch('unsharp',[Math.max(1,Math.round(p.radius))],[minv,maxv,p.amount,p.threshold]);
+  else if(stage.key==='unsharp'){
+   // separable: x and y box means, then z mean fused with the sharpening (see gpu-shaders.js)
+   const r=Math.max(1,Math.round(p.radius)),orig=current,xw=acquireGpuWorkBuffer(device,bytes),extra=xw.buffer;
+   await dispatch('boxMean',[0,r],[]);                     // orig -> next (now current)
+   const xMean=current;current=xMean;next=extra;await dispatch('boxMean',[1,r],[]); // xMean -> extra (now current)
+   const xyMean=current;next=xMean;                         // write into the x-mean buffer
+   await dispatch('unsharpCombine',[0,r],[minv,maxv,p.amount,p.threshold],[{binding:4,resource:{buffer:orig}}]);
+   // now current = result (old xMean buffer); keep orig as the spare, drop the extra buffer
+   next=orig;const spare=xyMean;small.push({destroy:()=>releaseGpuWorkBuffer(spare,xw.size)});
+  }
   else if(stage.key==='bilateral'){
    const radius=Math.max(1,Math.min(3,Math.ceil(p.spatialSigma*1.5)));
    for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.intensitySigma]);
@@ -265,11 +280,21 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   const mb=gpuSmallBuffer(device,meta),counter=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});small.push(mb);
   const countPipeline=await gpuFilterPipeline('analysisRunCount'),writePipeline=await gpuFilterPipeline('analysisRunWrite'),groups=Math.ceil(targetCount/gpuFilterRuntime.workgroupSize);
   const maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
+  if(GPU_TIMING_DEBUG){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('gpu filters',performance.now()-t);encoder=device.createCommandEncoder({label:'VRL analysis after filters'})}
   const itemsList=[];let enc=encoder;
   // optional distance-to-air field (airLayers): the segments are then ranges of
   // squared distance, read from the field instead of the CT values
   const airl=faceContext.airLayers;
-  if(airl)for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,airl.n[axis]],[airl.min,airl.max,airl.spacing[axis]]);
+  if(airl)for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,airl.n[axis],0],[airl.min,airl.max,airl.spacing[axis]]);
+  // opening by a ball (thin-region removal B) on a 0/1 mask: erosion distance
+  // (mode 1), then distance to the eroded core (mode 2); segment[0] then reads
+  // the kept voxels as [0, r²]
+  const open=faceContext.openBall;
+  if(open){
+   for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,open.n[axis],1],[0,1,open.spacing[axis],open.r2]);
+   for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,open.n[axis],2],[0,1,open.spacing[axis],open.r2]);
+  }
+  if(GPU_TIMING_DEBUG&&(airl||open)){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('gpu distance',performance.now()-t);encoder=device.createCommandEncoder({label:'VRL analysis after distance'});enc=encoder}
   const firstSrc=current;
   // distance layers: one class RLE pass for all layers instead of a count/write
   // round trip per layer (the ranges are consecutive: layer k = (max[k-1], max[k]])
@@ -281,20 +306,21 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     const cg=device.createBindGroup({layout:cp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}]});
     const pass=enc.beginComputePass();pass.setPipeline(cp);pass.setBindGroup(0,cg);gpuDispatch1D(pass,groups);pass.end();
     const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
-    await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
+    const tGpu=performance.now();await countRead.mapAsync(GPUMapMode.READ);addGpuStepTime('gpu compute',performance.now()-tGpu);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
     let items=new Uint32Array(0);
     if(runCount){
      const recordBytes=runCount*16;if(recordBytes>maxOut)throw new Error('GPU analysis run output exceeds device buffer limit');
      const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
      const wg=device.createBindGroup({layout:wp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}]}),we=device.createCommandEncoder({label:'VRL class RLE'});
      const p2=we.beginComputePass();p2.setPipeline(wp);p2.setBindGroup(0,wg);gpuDispatch1D(p2,groups);p2.end();we.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([we.finish()]);
-     await readback.mapAsync(GPUMapMode.READ);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();records.destroy();readback.destroy();
+     const tRb=performance.now();await readback.mapAsync(GPUMapMode.READ);addGpuStepTime('readback',performance.now()-tRb);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();records.destroy();readback.destroy();
     }
     // split by class; the first word goes back to the local slice index
+    const tSplit=performance.now();
     const counts=new Uint32Array(K);for(let i=0;i<items.length;i+=4)counts[(items[i]>>>16)-1]++;
     const itemsList=[...counts].map(n=>new Uint32Array(n*4)),fill=new Uint32Array(K);
     for(let i=0;i<items.length;i+=4){const c=(items[i]>>>16)-1,o=fill[c]++*4,dst=itemsList[c];dst[o]=items[i]&65535;dst[o+1]=items[i+1];dst[o+2]=items[i+2];dst[o+3]=items[i+3]}
-    setGpuComputeBackend('WEBGPU ANALYSIS RLE');
+    addGpuStepTime('split',performance.now()-tSplit);setGpuComputeBackend('WEBGPU ANALYSIS RLE');
     return{analysisRuns:true,items:itemsList[0],itemsList,count:itemsList[0].length/4};
    }finally{
     if(enc)device.queue.submit([enc.finish()]);
@@ -311,7 +337,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     ]});
     const countPass=enc.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);gpuDispatch1D(countPass,groups);countPass.end();
     const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
-    await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
+    const tGpu=performance.now();await countRead.mapAsync(GPUMapMode.READ);addGpuStepTime('gpu compute',performance.now()-tGpu);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
     if(!runCount){itemsList.push(new Uint32Array(0));continue}
     const recordBytes=runCount*16;if(recordBytes>maxOut)throw new Error('GPU analysis run output exceeds device buffer limit');
     const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
@@ -319,7 +345,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
      {binding:0,resource:{buffer:src}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
     ]}),writeEncoder=device.createCommandEncoder({label:'VRL analysis RLE'});
     const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);gpuDispatch1D(writePass,groups);writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
-    await readback.mapAsync(GPUMapMode.READ);itemsList.push(new Uint32Array(readback.getMappedRange().slice(0)));readback.unmap();records.destroy();readback.destroy();
+    const tRb=performance.now();await readback.mapAsync(GPUMapMode.READ);addGpuStepTime('readback',performance.now()-tRb);itemsList.push(new Uint32Array(readback.getMappedRange().slice(0)));readback.unmap();records.destroy();readback.destroy();
    }
   }finally{
    if(enc)device.queue.submit([enc.finish()]);
@@ -451,4 +477,31 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
  const copy=readback.getMappedRange().slice(0),result=segments?.length?new Uint32Array(copy):new Float32Array(copy);readback.unmap();
  releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
  setGpuComputeBackend(segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE');return result;
+}
+
+// Thin-region removal B on the GPU: opening of per-slice runs by a ball of
+// diameter thicknessMm (erode, then dilate back within the segment), block-wise
+// along z. Returns per-slice runs sorted by row, or null when WebGPU is unavailable.
+export async function gpuOpenRuns(runs,w,h,d,spacing,thicknessMm,onProgress=null,alive=()=>true){
+ const device=await ensureGpuFilterDevice();if(!device)return null;
+ const sp=spacing.map(Number),r=thicknessMm/2,r2=r*r,n=sp.map(s=>Math.floor(r/s+1e-9)),halo=2*n[2]+1,plane=w*h;
+ const limit=Number(device.limits?.maxStorageBufferBindingSize)||134217728,core=Math.max(1,Math.min(32,Math.floor(limit/(plane*4))-2*halo-1));
+ const out=new Array(d),seg=[{key:'open',seg:{min:0,max:r2*(1+1e-5)}}];
+ for(let z0=0;z0<d;z0+=core){
+  if(!alive())throw new Error('__SUPERSEDED__');
+  const depth=Math.min(core,d-z0),za=Math.max(0,z0-halo),zb=Math.min(d,z0+depth+halo),mask=new Float32Array(plane*(zb-za));
+  const tMask=performance.now();for(let z=za;z<zb;z++){const m=runsSliceToMask(runs[z],w,h),base=(z-za)*plane;for(let i=0;i<plane;i++)if(m[i])mask[base+i]=1}addGpuStepTime('open mask',performance.now()-tMask);
+  const target={x:0,y:0,z:z0-za,width:w,height:h,depth};
+  const result=await runGpuSourceFilters(mask,w,h,zb-za,0,1,[],target,seg,{analysisRuns:true,openBall:{r2,n,spacing:sp}});
+  if(!result?.analysisRuns)return null;
+  const per=Array.from({length:depth},()=>[]),items=result.items;
+  for(let i=0;i<items.length;i+=4){const lz=items[i];if(lz<depth)per[lz].push(items[i+1],items[i+2],items[i+3])}
+  for(let z=0;z<depth;z++){
+   const flat=per[z],k=flat.length/3,order=Array.from({length:k},(_,i)=>i).sort((a,b)=>(flat[a*3]-flat[b*3])||(flat[a*3+1]-flat[b*3+1])),rec=new Uint32Array(flat.length);
+   for(let i=0;i<k;i++){const j=order[i]*3;rec[i*3]=flat[j];rec[i*3+1]=flat[j+1];rec[i*3+2]=flat[j+2]}
+   out[z0+z]=rec;
+  }
+  onProgress?.(Math.min(d,z0+depth),d);await frameYield();
+ }
+ return out;
 }

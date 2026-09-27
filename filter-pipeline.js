@@ -1,17 +1,17 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20260927-build267';
-import { volume, filterRebuildTimer, sourceVolume, setFilterRebuildTimer, incFilterRebuildRevision, setVolume, filterRebuildRevision, filterOrder, setDeferAutomatic3D, setMemoryGpuPreviewActive, incSourceRenderRevision } from './state.js?v=20260927-build267';
-import { clearMemoryFilterPreviewCache, applyCpuFilter } from './rebuild-3d.js?v=20260927-build267';
-import { scheduleSourceMprWarmup, renderPlane, renderAll } from './mpr-render.js?v=20260927-build267';
-import { setProcessingBusy } from './busy.js?v=20260927-build267';
-import { planes, footer, gaussianStrength, spatialPasses, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, resetFilterBtn, mainViewSlot, filterControlList, filterAddButton, filterAddSelect } from './ui-shell.js?v=20260927-build267';
-import { planeRenderRevision, sourceFilterStages, filterState, sourceFilterRuntime } from './source-filters.js?v=20260927-build267';
-import { gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build267';
-import { tr } from './i18n.js?v=20260927-build267';
-import { refreshGpuVolumeData } from './gpu-volume-data.js?v=20260927-build267';
-import { render3D } from './surface-build.js?v=20260927-build267';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260927-build267';
+import { mark3DStale } from './three-state.js?v=20260927-build271';
+import { volume, filterRebuildTimer, sourceVolume, setFilterRebuildTimer, incFilterRebuildRevision, setVolume, filterRebuildRevision, filterOrder, setDeferAutomatic3D, setMemoryGpuPreviewActive, incSourceRenderRevision } from './state.js?v=20260927-build271';
+import { clearMemoryFilterPreviewCache, applyCpuFilter } from './rebuild-3d.js?v=20260927-build271';
+import { scheduleSourceMprWarmup, renderPlane, renderAll } from './mpr-render.js?v=20260927-build271';
+import { setProcessingBusy } from './busy.js?v=20260927-build271';
+import { planes, footer, gaussianStrength, spatialPasses, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, resetFilterBtn, mainViewSlot, filterControlList, filterAddButton, filterAddSelect } from './ui-shell.js?v=20260927-build271';
+import { planeRenderRevision, sourceFilterStages, filterState, sourceFilterRuntime } from './source-filters.js?v=20260927-build271';
+import { gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build271';
+import { tr } from './i18n.js?v=20260927-build271';
+import { refreshGpuVolumeData } from './gpu-volume-data.js?v=20260927-build271';
+import { render3D } from './surface-build.js?v=20260927-build271';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260927-build271';
 export const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid','bilateral','tv','unsharp'];
 export const liveFilterState={timer:null,base:null,key:null};
 export function beginLiveFilter(key){
