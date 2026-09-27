@@ -38,6 +38,46 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (break up start3D, build 240)
+
+**Agent:** Claude (Claude Code)
+**Task:** Break up `start3D` (291 lines).
+
+### Approach
+- `start3D`'s pointer handlers, wheel/pinch camera control, fast-interaction
+  quality and the render loop share mutable locals (`distance`, `pointers`,
+  `fastInteractionActive`, `wheelQualityTimer`, …); they stay in start3D.
+- Statement ranges that use none of those locals were wrapped in factories
+  in the new `docs/scene-view.js`, **verbatim**; each factory takes the
+  start3D locals the statements used (`camera`, `renderer`) as parameters
+  of the same name and returns what start3D uses afterwards:
+  - `makeAxisWidget(camera)` → `{axisWidget, updateAxisWidget}`
+  - `create3DRenderer()` → `{renderer, backend}` (WebGPU, WebGL fallback)
+  - `makeViewOverlays(renderer)` → pivot indicator, `makeViewButton`,
+    show/hide pivot (plus the help button/panel)
+  - `makeViewRotation(camera)` → view-centre pivot rotations
+  - `makeCutTools(renderer, camera)` → cut stroke screen handling, surface
+    projection and sample collection, section-plane dragging
+- Helpers they needed from app.js moved first: `sectionLocalStep`,
+  `sectionLocalPlane` → section-view.js, `renderSectionPlaneLive` →
+  mpr-render.js, `cutPointerVoxel` → analysis-ops.js.
+- Verified against the build-239 app.js: all 55 moved statements appear
+  verbatim in scene-view.js and the other 57 start3D statements verbatim in
+  app.js (`tools/split-history/start3d-split-verify.mjs`; the transform is
+  `start3d-split-apply.mjs`).
+- start3D 291 → 112 lines; app.js 1017 → 822. Build 239 → 240.
+
+### Notes
+- Behaviour change risk: the factories run at the same point in start3D as
+  the statements did, so creation order is unchanged. Needs a device check
+  (renderer init, view buttons, help panel, axis widget, cut pen/line,
+  lasso, section drag).
+- scene-view.js imports three.js from the CDN, so it cannot be unit-tested
+  in Node; `resampleCutScreenCurve` would be a candidate if moved to a pure
+  module.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (untangle import cycles, build 239)
 
 **Agent:** Claude (Claude Code)
