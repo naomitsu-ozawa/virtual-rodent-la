@@ -62,7 +62,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Add size-limited hole filling and small-object removal
 - [ ] Add morphology tools where they materially improve bone continuity
 - [ ] Add manual brush / eraser correction
-- [x] Thin-region suppression for segments (build 242; see
+- [x] Thin-region suppression for segments (builds 242-243; see
       "Thin-region suppression" below; check on a device)
 - [ ] Move heavy processing off the main UI thread where needed
 - [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module, UI shell, GPU compute, volume I/O; next: feature modules — see "Refactoring backlog")
@@ -162,9 +162,13 @@ As built (build 242, `thin-suppress.js`, unit-tested):
   axial slice from the border, so enclosed air (lung, trachea, gut gas) is
   not treated as outside and fat next to it is kept. Non-HU data: A has no
   effect.
-- CPU, block-wise (z blocks and 256² xy tiles, halo from the radii), with an
-  exact separable Euclidean distance transform using the voxel spacing. Not on
-  the GPU yet. Source-backed volumes run it on the segment runs. The body runs
+- CPU, block-wise (z blocks and 256² xy tiles, halo from the radii). Build
+  243 replaced the distance transforms with exact ball stamping around
+  boundary voxels, about 4× faster; the EDT is kept as the test reference.
+  A stale computation stops when the settings change (build 242 kept running
+  every earlier pass after each slider release; the likely cause of the
+  first on-device crash). Thickness is capped at 8 voxels. Not on the GPU yet;
+  about 50 ms per 1024² slice for A on a desktop CPU (noisy synthetic data). Source-backed volumes run it on the segment runs. The body runs
   are an extra pass, memoized and stored in the run cache.
 - Default is off, including for fat. On large in-memory volumes the processed
   mask is a synchronous whole-volume pass (same as the existing Opening), so

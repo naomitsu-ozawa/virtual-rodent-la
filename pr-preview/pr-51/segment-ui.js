@@ -1,15 +1,15 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20260927-build242';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20260927-build242';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20260927-build242';
-import { dispose } from './surface-mesh.js?v=20260927-build242';
-import { request3DRender } from './scene3d.js?v=20260927-build242';
-import { renderAnalysisResults } from './analysis-results.js?v=20260927-build242';
-import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260927-build242';
-import { niceCtStep, formatCtValue } from './utils.js?v=20260927-build242';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260927-build242';
-import { renderAll } from './mpr-render.js?v=20260927-build242';
+import { mark3DStale } from './three-state.js?v=20260927-build243';
+import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20260927-build243';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20260927-build243';
+import { dispose } from './surface-mesh.js?v=20260927-build243';
+import { request3DRender } from './scene3d.js?v=20260927-build243';
+import { renderAnalysisResults } from './analysis-results.js?v=20260927-build243';
+import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260927-build243';
+import { niceCtStep, formatCtValue } from './utils.js?v=20260927-build243';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260927-build243';
+import { renderAll } from './mpr-render.js?v=20260927-build243';
 export function renderSegmentPresets(){
  const active=new Set(SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active));
  for(const key of SEGMENT_PRESET_ORDER){
@@ -91,7 +91,7 @@ export function updateSegmentOutputs(key){
 }
 // Thin-region sliders hold mm; the step is one in-plane source voxel and the
 // output shows the voxel equivalent (see IMPLEMENTATION_PLAN).
-export const THIN_SLIDERS=[['surface-mm','surfaceMm',8],['thickness-mm','thicknessMm',16]];
+export const THIN_SLIDERS=[['surface-mm','surfaceMm',8],['thickness-mm','thicknessMm',8]];
 export function thinVoxelMm(v=volume){const s=v?.spacing||[1,1,1];return Math.max(1e-6,Math.min(+s[0]||1,+s[1]||1))}
 export function formatMmVoxels(mm){
  mm=+mm||0;if(mm<=0)return '0';

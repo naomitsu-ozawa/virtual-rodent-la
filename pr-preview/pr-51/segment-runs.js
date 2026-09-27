@@ -1,19 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build242';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build242';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build242';
-import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build242';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build242';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build242';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build242';
-import { state } from './ui-shell.js?v=20260927-build242';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build243';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build243';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build243';
+import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build243';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build243';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build243';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build243';
+import { state } from './ui-shell.js?v=20260927-build243';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build242';
-import { frameYield } from './utils.js?v=20260927-build242';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build242';
-import { setProcessingBusy } from './busy.js?v=20260927-build242';
-import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build242';
+import { maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build243';
+import { frameYield } from './utils.js?v=20260927-build243';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build243';
+import { setProcessingBusy } from './busy.js?v=20260927-build243';
+import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build243';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -104,7 +104,7 @@ export function thresholdRunsFromMemory(v,seg){
  for(let z=0;z<d;z++){const rec=[],base=z*plane;for(let y=0;y<h;y++){let x=0,row=base+y*w;while(x<w){while(x<w&&(v.data[row+x]<seg.min||v.data[row+x]>seg.max))x++;if(x>=w)break;const x0=x;while(x+1<w&&v.data[row+x+1]>=seg.min&&v.data[row+x+1]<=seg.max)x++;rec.push(y,x0,x);x++}}out[z]=new Uint32Array(rec)}
  return out;
 }
-export async function sourceRunsForSegment(v,key,seg,onProgress=null){
+export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>true){
  if(segmentNeedsGlobalMask(seg)&&v.mprData){
   const memoryView=sourceMprMemoryView(v);
   return thresholdRunsFromMemory(memoryView,seg);
@@ -112,6 +112,7 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null){
  const d=v.slices,w=v.columns,h=v.rows,out=Array.from({length:d},()=>new Uint32Array(0)),revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
  onProgress?.(0,d);
  for(let z0=0;z0<d;z0+=blockDepth){
+  if(!alive())throw new Error('__SUPERSEDED__');
   let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision)}catch(e){console.warn('Edit base GPU RLE failed; using exact CPU RLE path.',e)}
   if(gpu){
    const per=Array.from({length:gpu.coreDepth},()=>[]);
@@ -126,7 +127,8 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null){
  }
  if(!segmentNeedsGlobalMask(seg))return out;
  const bodyRuns=(+seg.surfaceMm||0)>0?await sourceBodyRuns(v,onProgress):null;
- return postprocessSourceRuns(out,v,seg,bodyRuns);
+ if(!alive())throw new Error('__SUPERSEDED__');
+ return postprocessSourceRuns(out,v,seg,bodyRuns,alive,onProgress);
 }
 // Body mask runs (voxels at or above BODY_MIN_HU, filters applied) for the
 // surface exclusion; one per data/filter state, also cached on the device.
@@ -162,7 +164,9 @@ export async function ensureSegmentBaseRuns(key,v=current3DVolume||volume,onProg
    let runs=null;
    if(cacheKeyPromise){const k=await cacheKeyPromise;if(k)try{runs=await loadCachedSegmentRuns(k,v.slices);if(runs)report(v.slices,v.slices)}catch{runs=null}}
    if(!runs){
-    runs=v.sourceBacked?await sourceRunsForSegment(v,key,seg,report):thresholdRunsFromMemory(v,seg);
+    // settings changed meanwhile: stop instead of finishing a stale pass
+    const alive=()=>segmentBaseSignature(key,v)===sig;
+    runs=v.sourceBacked?await sourceRunsForSegment(v,key,seg,report,alive):thresholdRunsFromMemory(v,seg);
     if(cacheKeyPromise&&st.pendingBase===pending)void cacheKeyPromise.then(k=>k&&storeCachedSegmentRuns(k,runs));
    }
    if(st.pendingBase===pending){st.baseRuns=runs;st.baseSignature=sig}return runs;
