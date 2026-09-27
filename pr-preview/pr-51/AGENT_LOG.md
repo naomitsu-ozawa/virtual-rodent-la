@@ -38,6 +38,22 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region fixes, build 245)
+
+**Agent:** Claude
+**Task:** Owner, on the iPad with build 244: the status stayed on "1/3" for all three phases,
+processing took 257 s, and the whole fat segment disappeared.
+
+### What changed
+- `report` in `ensureSegmentBaseRuns` dropped the phase argument; now forwarded.
+- Body mask bound was `max: v.max`; a missing or estimated max of a source series
+  (NaN) would make every voxel air and remove the whole segment. This is the
+  suspected cause, not proven. The bound is now fixed at 1e30, and an empty body mask skips A with a warning.
+- Thresholded runs before post-processing are kept per segment
+  (`rawRunsMemo`), so changing only a post-processing setting skips the GPU
+  threshold pass.
+- The "done" status shows the percentage of voxels kept, so a wrong result is visible.
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region status and all-air rim, build 244)
 
 **Agent:** Claude
