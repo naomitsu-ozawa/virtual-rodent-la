@@ -199,7 +199,8 @@ As built (build 242, `thin-suppress.js`, unit-tested):
   volume mode showed up as streaks (builds 248-253).
 - **Device checks are expensive** (large data, a reload resets everything). Trace the whole
   code path before asking for one, and when the cause is unknown, ship
-  one diagnostics build instead of guessed fixes.
+  one diagnostics build instead of guessed fixes. Run `npm run boot-check` (offline
+  startup check) before every push; the CI browser tests do not catch a non-starting app.
 
 - See `docs/AGENT_LOG.md` for a running record of AI-agent work sessions;
   read it before starting new work and append to it when finishing.
