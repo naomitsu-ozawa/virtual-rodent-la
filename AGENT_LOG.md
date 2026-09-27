@@ -38,6 +38,31 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 2, build 232)
+
+**Agent:** Claude (Claude Code)
+**Task:** 3D surface build. Verbatim moves.
+
+### What changed
+- `renderAll`, `scheduleSourceMprWarmup` (2D) appended to `mpr-render.js`.
+- 3D status UI appended to `scene3d.js`: `set3DBusy`, `set3DState`,
+  `mark3DCurrent`, `mark3DStale`, `updateVolumeFilterBadge`,
+  `gpuVolumeRefresh` (literal initialiser).
+- New `docs/surface-build.js` (24): `render3D`, `render3DSourceBacked`,
+  `render3DMemoryGpu`, GPU mesh tiles (resident/CPU), mesh blocks, edited
+  segment surface restore/refresh, edit raycast readiness, section clipping
+  materials.
+- app.js 2895 → 2492 lines. `verify-split HEAD
+  docs/app.js,docs/mpr-render.js,docs/scene3d.js docs/app.js
+  docs/mpr-render.js docs/scene3d.js docs/surface-build.js` → OK, 360
+  statements verbatim.
+- Closures now: `rebuildCurrent3D` 63 → 31, `rebuildActiveFilters` 59 → 27,
+  `start3D` 42.
+- Exact commands: `tools/split-history/phase2d-part3-step2.sh`.
+- Build 231 → 232.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 1, build 231)
 
 **Agent:** Claude (Claude Code)

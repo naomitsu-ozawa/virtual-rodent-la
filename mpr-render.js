@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { wc, ww, planes, footer, state } from './ui-shell.js?v=20260927-build231';
-import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build231';
-import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane } from './state.js?v=20260927-build231';
-import { analysisRunsContain } from './run-length.js?v=20260927-build231';
-import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast } from './mpr3d-overlay.js?v=20260927-build231';
-import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20260927-build231';
-import { request3DRender } from './scene3d.js?v=20260927-build231';
-import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet } from './source-filters.js?v=20260927-build231';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20260927-build231';
-import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20260927-build231';
-import { hexRgb } from './utils.js?v=20260927-build231';
+import { wc, ww, planes, footer, state, wcVal, wwVal } from './ui-shell.js?v=20260927-build232';
+import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build232';
+import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane, residentGpuUploadSeriesId, sourceMprWarmupToken } from './state.js?v=20260927-build232';
+import { analysisRunsContain } from './run-length.js?v=20260927-build232';
+import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast, ensureMpr3DPreviewCache } from './mpr3d-overlay.js?v=20260927-build232';
+import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20260927-build232';
+import { request3DRender } from './scene3d.js?v=20260927-build232';
+import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet } from './source-filters.js?v=20260927-build232';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20260927-build232';
+import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20260927-build232';
+import { hexRgb, formatCtValue, frameYield } from './utils.js?v=20260927-build232';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { latestOnlyRunner } from './latest-runner.js?v=20260927-build231';
+import { latestOnlyRunner } from './latest-runner.js?v=20260927-build232';
 export function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
 export function drawAnalysisOverlay(p,idx,ctx){
  if(!volumeAnalysisMode||!analysisRegions.length||!ctx)return;
@@ -273,4 +273,49 @@ export function updateMprCanvasPhysicalAspect(p){
  canvas.style.aspectRatio=String(ratio);canvas.style.position='absolute';canvas.style.inset='0';canvas.style.margin='auto';canvas.style.objectFit='fill';
  if(displayW>0&&displayH>0){canvas.style.width=displayW+'px';canvas.style.height=displayH+'px'}else{canvas.style.width='100%';canvas.style.height='100%'}
  canvas.style.maxWidth='100%';canvas.style.maxHeight='100%';
+}
+export function scheduleSourceMprWarmup(){
+ if(!volume?.sourceBacked||residentGpuUploadSeriesId===volume?.series?.id||residentGpuMprAvailable(volume))return;
+ const token=incSourceMprWarmupToken(true);
+ const run=async()=>{
+  if(token!==sourceMprWarmupToken||!volume?.sourceBacked)return;
+  await ensureMpr3DPreviewCache();
+  if(token!==sourceMprWarmupToken||!volume?.sourceBacked||sourceFilterStages().length)return;
+  for(const p of ['coronal','sagittal']){
+   if(token!==sourceMprWarmupToken)return;
+   const idx=+planes[p].slider.value,max=p==='coronal'?volume.rows-1:volume.columns-1;
+   setSourceMprWarmupPlane(p);
+   if(!sourceOrthogonalCacheGet(p,idx)){
+    const revision=++planeRenderRevision[p];
+    try{await renderPlane(p,revision,idx)}catch(e){if(String(e.message||e)!=='__SUPERSEDED__')console.warn('MPR warmup failed.',e)}
+   }
+   if(sourceMprWarmupPlane===p)setSourceMprWarmupPlane(null);
+   const idleRevision=planeRenderRevision[p];
+   for(const offset of [-1,1,-2,2]){
+    if(token!==sourceMprWarmupToken||idleRevision!==planeRenderRevision[p])return;
+    const near=idx+offset;if(near<0||near>max||sourceOrthogonalCacheGet(p,near))continue;
+    try{await buildSourceOrthogonalPlane(p,near,volume.series,idleRevision)}catch(e){if(String(e.message||e)==='__SUPERSEDED__')return;console.warn('MPR neighbor warmup failed.',e);break}
+    await frameYield();
+   }
+  }
+ };
+ if('requestIdleCallback' in window)requestIdleCallback(()=>void run(),{timeout:900});
+ else setTimeout(()=>void run(),180);
+}
+export function renderAll(){
+ if(!volume)return;
+ wcVal.value=formatCtValue(+wc.value,+wc.step);wwVal.value=formatCtValue(+ww.value,+ww.step);
+ if(volume.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||residentGpuMprAvailable(volume))){
+  for(const p of Object.keys(planes))safeRenderPlane(p);
+  return;
+ }
+ if(volume.sourceBacked&&!sourceFilterStages().length){
+  safeRenderPlane('axial');
+  for(const p of ['coronal','sagittal']){
+   const idx=+planes[p].slider.value,cached=sourceOrthogonalCacheGet(p,idx);
+   if(cached)paintSourcePlane(planes[p],p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],cached,p,idx);
+  }
+  scheduleSourceMprWarmup();return;
+ }
+ for(const p of Object.keys(planes))safeRenderPlane(p);
 }
