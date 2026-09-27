@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build270';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build271';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build270';
-import { isDesktopMac, frameYield } from './utils.js?v=20260927-build270';
-import { runsSliceToMask } from './run-length.js?v=20260927-build270';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build270';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build270';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build271';
+import { isDesktopMac, frameYield } from './utils.js?v=20260927-build271';
+import { runsSliceToMask } from './run-length.js?v=20260927-build271';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build271';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build271';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -231,14 +231,14 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
  const aw=acquireGpuWorkBuffer(device,bytes),bw=acquireGpuWorkBuffer(device,bytes),a=aw.buffer,b=bw.buffer;const tUp=performance.now();device.queue.writeBuffer(a,0,data);addGpuStepTime('upload',performance.now()-tUp);
  const small=[];let encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
- const dispatch=async(kind,extraU32=[],paramsF32=[])=>{
+ const dispatch=async(kind,extraU32=[],paramsF32=[],extraEntries=[])=>{
   const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
   const meta=new Uint32Array(8);meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=n;for(let i=0;i<extraU32.length&&i<4;i++)meta[4+i]=extraU32[i]>>>0;
   const params=new Float32Array(8);for(let i=0;i<paramsF32.length&&i<8;i++)params[i]=paramsF32[i];
   const mb=gpuSmallBuffer(device,meta),pb=gpuSmallBuffer(device,params);small.push(mb,pb);
   const bind=pipeline.getBindGroupLayout(0);
   const group=device.createBindGroup({layout:bind,entries:[
-   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}}
+   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}},...extraEntries
   ]});
   const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);gpuDispatch1D(pass,Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
   const t=current;current=next;next=t;
@@ -255,7 +255,16 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[minv,maxv,p.strength,p.threshold]);
   else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[minv,maxv,p.strength]);
   else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[minv,maxv,p.weight]);
-  else if(stage.key==='unsharp')await dispatch('unsharp',[Math.max(1,Math.round(p.radius))],[minv,maxv,p.amount,p.threshold]);
+  else if(stage.key==='unsharp'){
+   // separable: x and y box means, then z mean fused with the sharpening (see gpu-shaders.js)
+   const r=Math.max(1,Math.round(p.radius)),orig=current,xw=acquireGpuWorkBuffer(device,bytes),extra=xw.buffer;
+   await dispatch('boxMean',[0,r],[]);                     // orig -> next (now current)
+   const xMean=current;current=xMean;next=extra;await dispatch('boxMean',[1,r],[]); // xMean -> extra (now current)
+   const xyMean=current;next=xMean;                         // write into the x-mean buffer
+   await dispatch('unsharpCombine',[0,r],[minv,maxv,p.amount,p.threshold],[{binding:4,resource:{buffer:orig}}]);
+   // now current = result (old xMean buffer); keep orig as the spare, drop the extra buffer
+   next=orig;const spare=xyMean;small.push({destroy:()=>releaseGpuWorkBuffer(spare,xw.size)});
+  }
   else if(stage.key==='bilateral'){
    const radius=Math.max(1,Math.min(3,Math.ceil(p.spatialSigma*1.5)));
    for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.intensitySigma]);

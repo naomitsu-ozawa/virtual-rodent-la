@@ -116,6 +116,34 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  diff=src[i-plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);
  dst[i]=center+lambda*flux;
 }`;
+ // Separable unsharp mask (build 271): the clipped box mean is a product of 1D
+ // means, so x and y passes ('boxMean') then a z pass fused with the sharpening
+ // ('unsharpCombine', original CT at binding 4) give the same result as the cube
+ // loop below with 3(2r+1) reads per voxel instead of (2r+1)³.
+ // boxMean: meta[4]=axis, meta[5]=radius.
+ if(kind==='boxMean')return header+`
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=vec3<i32>(coord(i));let axis=meta[4];let r=i32(meta[5]);
+ let dims=vec3<i32>(i32(meta[0]),i32(meta[1]),i32(meta[2]));var sum=0.0;var count=0.0;
+ for(var k=-r;k<=r;k++){
+  var q=c;if(axis==0u){q.x=c.x+k;}else if(axis==1u){q.y=c.y+k;}else{q.z=c.z+k;}
+  if(q.x<0||q.y<0||q.z<0||q.x>=dims.x||q.y>=dims.y||q.z>=dims.z){continue;}
+  sum+=src[idx(u32(q.x),u32(q.y),u32(q.z))];count+=1.0;
+ }
+ dst[i]=sum/max(count,1.0);
+}`;
+ // unsharpCombine: src = x/y box mean, binding 4 = original; meta[5]=radius;
+ // params = min, max, amount, threshold (as 'unsharp').
+ if(kind==='unsharpCombine')return header+`
+@group(0) @binding(4) var<storage, read> orig: array<f32>;
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let d=i32(meta[2]);let r=i32(meta[5]);var sum=0.0;var count=0.0;
+ for(var k=-r;k<=r;k++){let zz=i32(c.z)+k;if(zz<0||zz>=d){continue;}sum+=src[idx(c.x,c.y,u32(zz))];count+=1.0;}
+ let blur=sum/max(count,1.0);let v=orig[i];let detail=v-blur;let range=max(1.0,params[1]-params[0]);let threshold=params[3]*range;
+ dst[i]=select(v,v+params[2]*detail,abs(detail)>=threshold);
+}`;
  if(kind==='unsharp')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
@@ -531,4 +559,4 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite'];
+export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite','boxMean','unsharpCombine'];
