@@ -38,6 +38,38 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 4, build 234)
+
+**Agent:** Claude (Claude Code)
+**Task:** Project load/save, demo loading. Verbatim moves plus one tooling
+change.
+
+### What changed
+- Build markers moved to `docs/version.js` (`APP_VERSION`, `APP_BUILD`),
+  because `gatherProject` writes them into saved projects and modules cannot
+  import from app.js. `tools/bump-build.mjs` now rewrites them there and
+  `tests/static/build-consistency.test.js` reads them there (checked by
+  running the bump 233 → 234).
+- `docs/segment-ui.js` (13): segment preset list add/remove/render, segment
+  output labels, CT range mode/slider range, control setters,
+  `segmentControl` (a lookup function, flagged as a DOM const by the tools).
+- `docs/data-load.js` (33): series selection, source-backed volume opening,
+  resident GPU volume preparation/activation, CT range profile, segment
+  configuration, demo download/cache badge, project gather/save/deliver
+  (share sheet)/apply (+ pending project), `FILTER_PARAM_INPUTS`. Named for
+  its content; extracted as project-io.js and renamed.
+- app.js 2054 → 1601 lines. `verify-split HEAD docs/app.js docs/app.js
+  docs/version.js docs/segment-ui.js docs/data-load.js` → OK, 250 statements.
+  Moved non-primitive consts: literals, or objects of ui-shell elements
+  (evaluated after ui-shell).
+- Exact commands: `tools/split-history/phase2d-part3-step4.sh`.
+- Build 233 → 234.
+
+### Rule change
+- The build markers live in `docs/version.js`; use `npm run bump-build`.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 3, build 233)
 
 **Agent:** Claude (Claude Code)
