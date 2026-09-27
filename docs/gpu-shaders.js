@@ -449,6 +449,39 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  if(tx>0u){if(inside(src[localIdx(x-1u,y,z)])){return;}}
  atomicAdd(&counter.value,1u);
 }`;
+ // Class RLE (air-distance layers): one pass for all layers. cls(v) = 0 outside,
+ // else k (1..K) for v in (bounds[k-1], bounds[k]], with bounds[0] = thresholds[0]
+ // and bounds[k] = thresholds[3+k], K = u32(thresholds[1]). Runs are maximal
+ // stretches of one nonzero class; the record's first word is tz | class<<16.
+ if(kind==='classRunCount'||kind==='classRunWrite')return `
+struct Counter{value:atomic<u32>};
+@group(0) @binding(0) var<storage, read> src:array<f32>;
+${kind==='classRunWrite'?'@group(0) @binding(1) var<storage, read_write> dst:array<u32>;':''}
+@group(0) @binding(2) var<storage, read> meta:array<u32>;
+@group(0) @binding(3) var<storage, read> thresholds:array<f32>;
+@group(0) @binding(4) var<storage, read_write> counter:Counter;
+fn localIdx(x:u32,y:u32,z:u32)->u32{return z*meta[0]*meta[1]+y*meta[0]+x;}
+fn cls(v:f32)->u32{
+ if(v<thresholds[0]){return 0u;}
+ let k=u32(thresholds[1]);
+ for(var c=1u;c<=k;c=c+1u){if(v<=thresholds[3u+c]){return c;}}
+ return 0u;
+}
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[9]){return;}let tw=meta[6];let th=meta[7];
+ let tx=i%tw;let ty=(i/tw)%th;let tz=i/(tw*th);let x=meta[3]+tx;let y=meta[4]+ty;let z=meta[5]+tz;
+ let c=cls(src[localIdx(x,y,z)]);if(c==0u){return;}
+ if(tx>0u){if(cls(src[localIdx(x-1u,y,z)])==c){return;}}
+ ${kind==='classRunWrite'?`var x1=tx;
+ loop{
+  if(x1+1u>=tw){break;}
+  if(cls(src[localIdx(meta[3]+x1+1u,y,z)])!=c){break;}
+  x1=x1+1u;
+ }
+ let slot=atomicAdd(&counter.value,1u)*4u;
+ dst[slot]=tz|(c<<16u);dst[slot+1u]=ty;dst[slot+2u]=tx;dst[slot+3u]=x1;`:'atomicAdd(&counter.value,1u);'}
+}`;
  if(kind==='analysisRunWrite')return `
 struct Counter{value:atomic<u32>};
 @group(0) @binding(0) var<storage, read> src:array<f32>;
@@ -489,4 +522,4 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist'];
+export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite'];
