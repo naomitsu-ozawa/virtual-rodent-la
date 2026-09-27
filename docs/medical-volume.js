@@ -1066,6 +1066,8 @@ export class MedicalVolumeRenderer{
   this.device.queue.writeBuffer(this.uniformBuffer,0,data);
   const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();this.device.queue.submit([encoder.finish()]);
+  // diagnostic: GPU time of one volume frame (submit to completion), one measurement at a time
+  if(!this._frameTimerPending&&this.device.queue.onSubmittedWorkDone){const t0=performance.now();this._frameTimerPending=true;this.device.queue.onSubmittedWorkDone().then(()=>{this.lastFrameMs=performance.now()-t0;this._frameTimerPending=false},()=>{this._frameTimerPending=false})}
  }
  async pickMany(points,camera,obj,segmentState,segmentOrder,preferredKey=null){
   if(!this.active||!this.texture||!this.bindGroup||!obj||!points?.length)return points?.map(()=>null)||[];
