@@ -27,30 +27,27 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let a=src[idx(x0,y0,z0)];let b=src[i];let cc=src[idx(x1,y1,z1)];
  let blur=(a+2.0*b+cc)*0.25;let s=params[0];dst[i]=b*(1.0-s)+blur*s;
 }`;
- // Air-boundary exclusion (thin-suppress.js A, on the GPU): a segment voxel
- // (params[0..1] = min,max) with any "air" voxel (< min) within params[2] mm
- // (squared) gets a value below min, so the following threshold RLE drops it.
- // meta[4..6] = ball radius in voxels per axis, params[3..5] = spacing.
- // Voxels outside the box do not count as air (same as the CPU kernel).
- if(kind==='airExclude')return header+`
+ // Squared distance (mm²) from each voxel to the nearest "air" voxel (value <
+ // segment min), one axis per pass; the three passes compose the exact squared
+ // Euclidean distance within the box radius (min over dx, then dy, then dz).
+ // meta[4]=axis, meta[5]=radius in voxels; params[0..1]=segment min,max,
+ // params[2]=spacing along the axis. Encoding between passes: a segment voxel
+ // stores g (>=0), any other voxel stores -(g+1). Axis 0 reads CT values.
+ if(kind==='airDist')return header+`
+fn decodeG(e:f32)->f32{if(e<0.0){return -e-1.0;}return e;}
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
- let i=gid.x;if(i>=meta[3]){return;}let v=src[i];dst[i]=v;
- let lo=params[0];let hi=params[1];if(v<lo||v>hi){return;}
- let c=vec3<i32>(coord(i));let n=vec3<i32>(i32(meta[4]),i32(meta[5]),i32(meta[6]));let dims=vec3<i32>(i32(meta[0]),i32(meta[1]),i32(meta[2]));
- let a2=params[2]*(1.0+1e-5);let s=vec3<f32>(params[3],params[4],params[5]);
- for(var dz=-n.z;dz<=n.z;dz++){
-  let z=c.z+dz;if(z<0||z>=dims.z){continue;}
-  for(var dy=-n.y;dy<=n.y;dy++){
-   let y=c.y+dy;if(y<0||y>=dims.y){continue;}
-   let ryz=f32(dy)*s.y*f32(dy)*s.y+f32(dz)*s.z*f32(dz)*s.z;if(ryz>a2){continue;}
-   for(var dx=-n.x;dx<=n.x;dx++){
-    let x=c.x+dx;if(x<0||x>=dims.x){continue;}
-    if(ryz+f32(dx)*s.x*f32(dx)*s.x>a2){continue;}
-    if(src[idx(u32(x),u32(y),u32(z))]<lo){dst[i]=-3.0e38;return;}
-   }
-  }
+ let i=gid.x;if(i>=meta[3]){return;}let c=vec3<i32>(coord(i));let axis=meta[4];let n=i32(meta[5]);let s=params[2];
+ let dims=vec3<i32>(i32(meta[0]),i32(meta[1]),i32(meta[2]));
+ var inSeg=false;if(axis==0u){let v=src[i];inSeg=v>=params[0]&&v<=params[1];}else{inSeg=src[i]>=0.0;}
+ var g=1.0e30;
+ for(var k=-n;k<=n;k++){
+  var q=c;if(axis==0u){q.x=c.x+k;}else if(axis==1u){q.y=c.y+k;}else{q.z=c.z+k;}
+  if(q.x<0||q.y<0||q.z<0||q.x>=dims.x||q.y>=dims.y||q.z>=dims.z){continue;}
+  let e=src[idx(u32(q.x),u32(q.y),u32(q.z))];let d=f32(k)*s;
+  if(axis==0u){if(e<params[0]){g=min(g,d*d);}}else{g=min(g,decodeG(e)+d*d);}
  }
+ dst[i]=select(-(g+1.0),g,inSeg);
 }`;
  if(kind==='median')return header+`
 @compute @workgroup_size(${workgroupSize})
@@ -492,4 +489,4 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airExclude'];
+export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist'];

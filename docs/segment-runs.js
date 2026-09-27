@@ -1,19 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build257';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build257';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build257';
-import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build257';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build257';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build257';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build257';
-import { state } from './ui-shell.js?v=20260927-build257';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build258';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build258';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build258';
+import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build258';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build258';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build258';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build258';
+import { state } from './ui-shell.js?v=20260927-build258';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { analysisRunsVoxelCount, maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build257';
-import { frameYield } from './utils.js?v=20260927-build257';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build257';
-import { setProcessingBusy } from './busy.js?v=20260927-build257';
-import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build257';
+import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build258';
+import { frameYield } from './utils.js?v=20260927-build258';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build258';
+import { setProcessingBusy } from './busy.js?v=20260927-build258';
+import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build258';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -72,11 +72,11 @@ export function sourceAnalysisBlockDepth(w,h){
  const preferred=navigator.maxTouchPoints>0?4:16,maxGroups=65535,workgroupSize=256,plane=Math.max(1,w*h),safe=Math.max(1,Math.floor(maxGroups*workgroupSize/plane));
  return Math.max(1,Math.min(preferred,safe));
 }
-export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision,extraSegs=[],airExclude=null){
+export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision,extraSegs=[],airLayers=null){
  const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),device=await ensureGpuFilterDevice();if(!device)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
  const maxGroups=Number(device.limits?.maxComputeWorkgroupsPerDimension)||65535;if(Math.ceil(series.columns*series.rows*coreDepth/256)>maxGroups)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
  let rawError=null;
- if(!airExclude&&!stages.length&&series.slices.slice(zStart,zStart+coreDepth).every(meta=>isNativeDicomTransferSyntax(meta.ts))){
+ if(!airLayers&&!stages.length&&series.slices.slice(zStart,zStart+coreDepth).every(meta=>isNativeDicomTransferSyntax(meta.ts))){
   try{
    const raw=await gpuValidationScope(device,'raw DICOM analysis RLE',()=>extractSourceThresholdRuns(device,series,zStart,coreDepth,seg));
    if(raw){
@@ -86,14 +86,14 @@ export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRe
    }
   }catch(e){rawError=e;console.warn('Raw DICOM GPU RLE unavailable; retrying decoded CT on WebGPU.',e)}
  }
- const halo=sourceFilterHalo(stages)+(airExclude?airExclude.n[2]:0),z0=Math.max(0,zStart-halo),z1=Math.min(series.slices.length,zStart+coreDepth+halo),box={x:0,y:0,z:z0,width:series.columns,height:series.rows,depth:z1-z0},data=await readSourceRegion(series,box,analysisRevision,true);
+ const halo=sourceFilterHalo(stages)+(airLayers?airLayers.n[2]:0),z0=Math.max(0,zStart-halo),z1=Math.min(series.slices.length,zStart+coreDepth+halo),box={x:0,y:0,z:z0,width:series.columns,height:series.rows,depth:z1-z0},data=await readSourceRegion(series,box,analysisRevision,true);
  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  const target={x:0,y:0,z:zStart-z0,width:series.columns,height:series.rows,depth:coreDepth};
  try{
-  const result=await gpuValidationScope(device,'decoded CT analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg},...extraSegs.map((s,i)=>({key:key+':extra'+i,seg:s}))],{analysisRuns:true,airExclude}));
+  const result=await gpuValidationScope(device,'decoded CT analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg},...extraSegs.map((s,i)=>({key:key+':extra'+i,seg:s}))],{analysisRuns:true,airLayers}));
   if(!result?.analysisRuns)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
   setGpuComputeBackend(stages.length?'WEBGPU ANALYSIS FILTER+RLE':'WEBGPU ANALYSIS DECODED-RLE',rawError?.message||null);
-  if(airExclude&&!result.itemsList)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
+  if(airLayers&&!result.itemsList)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
   return{items:result.items,itemsList:result.itemsList||[result.items],coreDepth};
  }catch(e){
   if(rawError&&String(e.message||e)==='__GPU_ANALYSIS_UNAVAILABLE__')gpuFilterRuntime.lastError='raw RLE: '+String(rawError.message||rawError);
@@ -117,20 +117,32 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>t
  const d=v.slices,w=v.columns,h=v.rows,revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
  // thresholded runs before post-processing, kept per segment so changing only
  // a post-processing setting (thin-region sliders, Opening, ...) skips this pass
- // GPU air exclusion (build 251): applied in the threshold pass itself, so no
- // body mask and no CPU pass. Falls back to the CPU route when unavailable.
+ // Air-boundary exclusion on the GPU (build 258): one pass computes each segment
+ // voxel's distance to air and returns the segment split into distance layers
+ // (1..AIR_LAYERS voxels, and farther). A slider change then only unions layers,
+ // with no GPU pass. Falls back to the CPU route when the GPU is unavailable.
  const surfaceMm=(+seg.surfaceMm||0)>0&&key!=='body'?+seg.surfaceMm:0;
  if(surfaceMm){
-  const sp=(v.spacing||[1,1,1]).map(Number),airExclude={a:surfaceMm,spacing:sp,n:sp.map(s=>Math.floor(surfaceMm/s+1e-9))};
-  const airSig=[activeId,filterRebuildRevision,revision,key,seg.min,seg.max,surfaceMm,w,h,d].join('|'),hit=airRunsMemo.get(key);
-  let air=hit?.signature===airSig?hit.runs:null;
-  if(air)onProgress?.(d,d,'threshold');
-  else try{air=(await thresholdSourceRuns(v,key,seg,onProgress,alive,[],airExclude))[0];airRunsMemo.set(key,{signature:airSig,runs:air})}
-  catch(e){if(String(e?.message||e)!=='__AIR_GPU_UNAVAILABLE__')throw e;console.warn('GPU air exclusion unavailable; using the CPU route.');air=null}
-  if(air){
+  const sp=(v.spacing||[1,1,1]).map(Number),vox=Math.max(1e-6,Math.min(sp[0],sp[1])),maxMm=AIR_LAYERS*vox;
+  const layerSig=[activeId,filterRebuildRevision,revision,key,seg.min,seg.max,w,h,d,maxMm].join('|'),hit=airLayersMemo.get(key);
+  let layers=hit?.signature===layerSig?hit.layers:null;
+  if(layers)onProgress?.(d,d,'threshold');
+  else try{
+   const hiOf=k=>(k*vox)**2*(1+1e-5),ranges=[];
+   for(let k=1;k<=AIR_LAYERS;k++)ranges.push({min:k===1?0:hiOf(k-1)*(1+1e-6),max:hiOf(k)});
+   ranges.push({min:hiOf(AIR_LAYERS)*(1+1e-6),max:1e31});
+   const airLayers={min:seg.min,max:seg.max,spacing:sp,n:sp.map(s=>Math.floor(maxMm/s+1e-9))};
+   layers=await thresholdSourceRuns(v,key,ranges[0],onProgress,alive,ranges.slice(1),airLayers);
+   airLayersMemo.set(key,{signature:layerSig,layers});
+  }
+  catch(e){if(String(e?.message||e)!=='__AIR_GPU_UNAVAILABLE__')throw e;console.warn('GPU air layers unavailable; using the CPU route.');layers=null}
+  if(layers){
+   // kept = voxels farther from air than the slider value
+   const k=Math.min(AIR_LAYERS,Math.round(surfaceMm/vox));let air=layers[AIR_LAYERS];
+   for(let i=k;i<AIR_LAYERS;i++)air=unionRunArrays(air,layers[i],d);
+   let all=layers[AIR_LAYERS];for(let i=0;i<AIR_LAYERS;i++)all=unionRunArrays(all,layers[i],d);
    const rest={...seg,surfaceMm:0},processed=segmentNeedsGlobalMask(rest)?await postprocessSourceRuns(air,v,rest,null,alive,(a,b)=>onProgress?.(a,b,'thin')):air;
-   const raw=rawRunsMemo.get(key);
-   postprocessStats.set(key,{before:raw?.signature===[activeId,filterRebuildRevision,revision,key,seg.min,seg.max,w,h,d].join('|')?analysisRunsVoxelCount(raw.runs):null,after:analysisRunsVoxelCount(processed),body:null,insideBody:null,total:w*h*d,dims:[w,h,d],spacing:v.spacing,surfaceApplied:true,gpuAir:true});
+   postprocessStats.set(key,{before:analysisRunsVoxelCount(all),after:analysisRunsVoxelCount(processed),body:null,insideBody:null,total:w*h*d,dims:[w,h,d],spacing:v.spacing,surfaceApplied:true,gpuAir:true});
    return processed;
   }
  }
@@ -162,7 +174,9 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>t
 // voxels before/after post-processing of the last computation, per segment
 // (shown in the segment status so a wrong result is visible at once)
 export const postprocessStats=new Map();
-const rawRunsMemo=new Map(),airRunsMemo=new Map();
+const rawRunsMemo=new Map(),airLayersMemo=new Map();
+// distance layers kept for the air-boundary exclusion (the slider maximum, segment-ui.js)
+const AIR_LAYERS=8;
 // GPU RLE records arrive in atomic-append order; the GPU edit upload and the
 // run-set operations expect rows (then x) ascending.
 function sortedRunSlice(flat){
@@ -173,14 +187,14 @@ function sortedRunSlice(flat){
 }
 // extraSegs: further threshold ranges read from the same (filtered) blocks;
 // returns [runs, ...extraRuns].
-async function thresholdSourceRuns(v,key,seg,onProgress,alive,extraSegs=[],airExclude=null){
+async function thresholdSourceRuns(v,key,seg,onProgress,alive,extraSegs=[],airLayers=null){
  const d=v.slices,w=v.columns,h=v.rows,sets=[seg,...extraSegs].map(()=>Array.from({length:d},()=>new Uint32Array(0))),revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
  onProgress?.(0,d,'threshold');
  for(let z0=0;z0<d;z0+=blockDepth){
   if(!alive())throw new Error('__SUPERSEDED__');
-  let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision,extraSegs,airExclude)}catch(e){console.warn('Edit base GPU RLE failed; using exact CPU RLE path.',e)}
+  let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision,extraSegs,airLayers)}catch(e){console.warn('Edit base GPU RLE failed; using exact CPU RLE path.',e)}
   // the GPU air exclusion must cover every block; otherwise use the CPU route
-  if(airExclude&&!gpu)throw new Error('__AIR_GPU_UNAVAILABLE__');
+  if(airLayers&&!gpu)throw new Error('__AIR_GPU_UNAVAILABLE__');
   if(gpu&&(gpu.itemsList||[gpu.items]).length===sets.length){
    (gpu.itemsList||[gpu.items]).forEach((items,si)=>{
     const per=Array.from({length:gpu.coreDepth},()=>[]);

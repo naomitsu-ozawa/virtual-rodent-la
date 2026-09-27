@@ -136,12 +136,12 @@ fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
  let start=editRows[base+row];
  let finish=editRows[base+row+1u];
  var inside=false;
- for(var i=start;i<finish;i=i+1u){
-  let packed=editIntervals[i];
-  let x0=packed&65535u;
-  let x1=packed>>16u;
-  if(p.x<x0){break;}if(p.x<=x1){inside=true;break;}
- }
+ // intervals are sorted and disjoint per row: binary search for the last one
+ // starting at or before p.x (a linear scan cost tens of reads per sample on
+ // rows with many intervals, e.g. a processed fat segment)
+ var lo=start;var hi=finish;
+ loop{if(lo>=hi){break;}let mid=(lo+hi)/2u;if((editIntervals[mid]&65535u)<=p.x){lo=mid+1u;}else{hi=mid;}}
+ if(lo>start){inside=p.x<=(editIntervals[lo-1u]>>16u);}
  let keep=(keepMask&(1u<<seg))!=0u;return select(!inside,inside,keep);
 }
 fn previewContains(seg:u32,tc0:vec3<f32>)->bool{
@@ -475,13 +475,12 @@ fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
  let start=editRows[base+row];
  let finish=editRows[base+row+1u];
  var inside=false;
- for(var k=start;k<finish;k=k+1u){
-  let packed=editIntervals[k];
-  let x0=packed&65535u;
-  let x1=packed>>16u;
-  if(p.x<x0){break;}
-  if(p.x<=x1){inside=true;break;}
- }
+ // intervals are sorted and disjoint per row: binary search for the last one
+ // starting at or before p.x (a linear scan cost tens of reads per sample on
+ // rows with many intervals, e.g. a processed fat segment)
+ var lo=start;var hi=finish;
+ loop{if(lo>=hi){break;}let mid=(lo+hi)/2u;if((editIntervals[mid]&65535u)<=p.x){lo=mid+1u;}else{hi=mid;}}
+ if(lo>start){inside=p.x<=(editIntervals[lo-1u]>>16u);}
  let keep=(keepMask&(1u<<seg))!=0u;return select(!inside,inside,keep);
 }
 fn segmentIndexAt(tc0:vec3<f32>,preferred:i32)->i32{
