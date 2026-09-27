@@ -38,6 +38,73 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (analysis prewarm, build 219)
+
+**Agent:** Claude (Claude Code)
+**Task:** Follow-up to build 218 (owner confirmed on iPad that analysis now
+finishes and later clicks are fast): make the first analysis click fast too.
+
+### Owner workflow (important for future work)
+- The owner works and views in **GPU volume mode**. The surface mesh is
+  built only once, right before STL export. So features must not assume a
+  surface build has happened, and must not add work to the surface build.
+  (First version of this PR prewarmed after the surface build: wrong
+  trigger, changed before merge.)
+
+### What changed
+- `scheduleAnalysisRunPrewarm()`: when volume analysis mode is turned on,
+  compute each shown segment's filtered runs in the background (300 ms
+  later, one segment at a time, no busy UI). Only for source-backed volumes
+  with filters. Stops when analysis mode is turned off, the analysed volume
+  changes, the segment is hidden, or the filters change (`__SUPERSEDED__`).
+- `ensureSegmentBaseRuns(key, v, onProgress, quiet)`: one computation per
+  signature. A second caller with the same signature (an analysis click
+  while the prewarm runs) joins the pending promise and receives its
+  progress; `quiet` skips `setProcessingBusy` so the background pass does
+  not touch the left progress bar. `clearSegmentEditCache` drops the
+  pending entry (its result is then not stored).
+- Build 218 → 219.
+
+### Same PR, build 220: analysis regions drawn in the GPU volume (no mesh)
+- Owner: volume analysis must not use meshes either (meshes only for STL).
+  Before, every analysed region got a display mesh (`buildAnalysisRunsGroup`)
+  even in GPU volume view.
+- `medical-volume.js`: new storage buffer `analysisOverlay` (binding 10;
+  one buffer so the fragment stage stays at 8 storage buffers, the WebGPU
+  default limit — it already used 7). Layout: `[0]=1`, `[1..rows+1]` row
+  offsets, then `(x0|x1<<16, rgb|focused<<24|valid<<31)` pairs per texture
+  row. `analysisOverlayAt(tc)` in the raycast shader recolours a segment
+  surface hit that lies in a region (focused regions brighter/opaque); the
+  cut preview keeps priority. `setAnalysisRuns(regions, v, signature)`
+  packs runs (via `gpuRunsForTexture`, so reduced iPad textures work) and
+  skips the upload when the signature is unchanged; `clearAnalysisRuns()`.
+  Unit test: `tests/unit/volume-analysis-overlay.test.js`.
+- `app.js`: `attachAnalysisRegion` builds no mesh in GPU volume view;
+  `syncVolumeAnalysisOverlay()` runs at the start of each rendered frame:
+  in volume view it uploads visible regions (signature = series, texture
+  dims, id/colour/focus/voxels) and hides leftover region meshes; in surface
+  view it builds missing region meshes lazily. STL export of a region still
+  builds its mesh on demand (`attachAnalysisRegion(region, v, true)`). If the
+  GPU upload fails, falls back to region meshes (`volumeAnalysisOverlayFailed`).
+- Not verifiable in CI (no GPU): WGSL parses (wgsl-shaders test), packing is
+  unit-tested; colouring must be checked on a device.
+
+### Same PR, build 221: speckled colouring on reduced iPad textures
+- Owner screenshot (iPad GPU 512, source 1024×1024×1784): the region was
+  coloured but speckled with uncoloured texels. `gpuRunsForTexture`
+  point-samples one source voxel per texel, so thin cortical shells miss
+  many texels. Dilate the region by one texel on reduced textures (as the
+  cut preview already does). Side effect: up to one texel (~2 source voxels
+  at 512) of colour can spill onto a touching neighbour; volumes are
+  computed at source resolution and unaffected.
+
+### Follow-up
+- The GPU volume texture already holds the filtered volume
+  (`gpuVolumeShowsCurrentFilters`); extracting runs from it would avoid
+  re-filtering entirely. Needs GPU work verifiable only on a device.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (analysis cache, build 218)
 
 **Agent:** Claude (Claude Code)
