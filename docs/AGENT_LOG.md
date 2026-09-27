@@ -38,6 +38,38 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 2, step 3, build 222)
+
+**Agent:** Claude (Claude Code)
+**Task:** Third step of the MPR feature-module split: 2D plane rendering,
+with the segment-state and section-view helpers it pulled in moved to their
+own modules first. Verbatim moves.
+
+### What changed
+- `docs/segments.js` (10 decls): `segmentState`, `SEGMENT_PRESET_ORDER`,
+  `segmentEditState`, `segmentEditActive`, `segmentNeedsGlobalMask`,
+  `getProcessedSegmentMask`, `segmentMaskVolumeId(s)`, `activeMprSegments`,
+  and `sourceMprMemoryView` (pulled in by the mask helpers).
+- `docs/section-view.js` (6 decls): section view UI and clip-plane helpers.
+- `docs/mpr-render.js` (24 decls): `schedulePlaneRender`, `renderPlane`,
+  `safeRenderPlane`, memory/source-backed/filtered plane renderers,
+  `paintSourcePlane`, instant images while sliding, orthogonal high-res
+  prefetch, 2D analysis overlay drawing, paint caches and timers.
+- app.js 4072 → 3838 lines. `verify-split HEAD docs/app.js docs/app.js
+  docs/segments.js docs/section-view.js docs/mpr-render.js` → OK, 410
+  statements verbatim. Non-primitive consts moved have literal initialisers
+  or only create closures (`filteredPlaneRunners` builds `latestOnlyRunner`
+  closures without running them).
+- Exact commands: `tools/split-history/phase2d-part2-step3.sh`.
+- Build 221 → 222.
+
+### Next
+- Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
+  filter pipeline UI, segmentation UI + mesh building, analysis/edit/cut
+  tools, project load/save, workspace UI, then breaking up `start3D`.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (analysis prewarm, build 219)
 
 **Agent:** Claude (Claude Code)
