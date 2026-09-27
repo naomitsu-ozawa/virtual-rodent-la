@@ -62,8 +62,8 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Add size-limited hole filling and small-object removal
 - [ ] Add morphology tools where they materially improve bone continuity
 - [ ] Add manual brush / eraser correction
-- [ ] Thin-region suppression for segments (planned, not started; see
-      "Planned: thin-region suppression" below)
+- [x] Thin-region suppression for segments (builds 242-248; see
+      "Thin-region suppression" below; check on a device)
 - [ ] Move heavy processing off the main UI thread where needed
 - [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module, UI shell, GPU compute, volume I/O; next: feature modules — see "Refactoring backlog")
 - [x] Compressed DICOM Transfer Syntax support (implemented but untested on real
@@ -116,7 +116,7 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
       could later be grouped per feature once the feature modules exist
       (optional, low priority).
 
-## Planned: thin-region suppression
+## Thin-region suppression
 
 Problem: fat (and other soft-tissue) segments often pick up a thin
 membrane over the whole body surface. Cause: partial volume at the
@@ -125,13 +125,13 @@ skin/air boundary, where a voxel mixing air (about -1000 HU) and soft tissue
 
 Two non-destructive per-segment settings, each one slider:
 
-- [ ] **A. Exclude near body surface (mm)**: build a body mask
+- [x] **A. Exclude near body surface (mm)**: build a body mask
       (non-air), compute each voxel's distance inward from the body
       surface, and drop segment voxels closer than the set distance
       (e.g. 0.3 mm). This targets the cause, keeps internal thin fat such as
       mesentery, and only trims subcutaneous fat by the same small depth.
       Default on for the fat preset.
-- [ ] **B. Minimum thickness (mm)**: distance transform inside the
+- [x] **B. Minimum thickness (mm)**: distance transform inside the
       segment; remove parts where a ball of the given radius does not fit
       (opening by a ball in mm, which does not round corners the way repeated
       voxel Opening does). Removes thin structures anywhere, including
@@ -154,7 +154,53 @@ Design decisions:
 - Relation to the existing Opening: B is the mm-based, shape-preserving
   version of it.
 
+As built (build 242, `thin-suppress.js`, unit-tested):
+
+- Both sliders exist on every segment and can be combined. Order: threshold,
+  A, B, then Opening/Closing, Hole Filling and Min Component.
+- Air = values below the segment's own lower bound (build 248). The fixed
+  -500 HU of builds 242-247 failed on the owner's data: the fat range lies below
+  -500 there, and the device diagnostics showed 0% of the fat inside that body mask,
+  so all fat was removed. Everything darker than the segment counts as air,
+  including the partial-volume voxels between air and fat.
+- CPU, block-wise (z blocks and 256² xy tiles, halo from the radii). Build
+  243 replaced the distance transforms with exact ball stamping around
+  boundary voxels, about 4× faster; the EDT is kept as the test reference.
+  A stale computation stops when the settings change (build 242 kept running
+  every earlier pass after each slider release; the likely cause of the
+  first on-device crash). Thickness is capped at 8 voxels. Not on the GPU yet;
+  about 50 ms per 1024² slice for A on a desktop CPU (noisy synthetic data). Source-backed volumes run it on the segment runs. The body runs
+  are an extra pass, memoized and stored in the run cache.
+- Default is off, including for fat. On large in-memory volumes the processed
+  mask is a synchronous whole-volume pass (same as the existing Opening), so
+  it runs only when asked for.
+- A ball opening rounds convex edges to the ball radius, so the plan's "does
+  not round corners" was wrong. It is still isotropic in mm, unlike
+  the voxel Opening.
+- GPU volume view: segments that need post-processing (these settings, and
+  also Opening/Closing/Hole Filling/Min Component, which it did not show
+  before) are sent to the raycast shader as keep masks
+  (`gpuVolumeEditDescriptors`), computed in the background on entering
+  volume mode, adding a segment or changing a setting.
+- Each segment card shows its own status line: phase n/N (threshold, air
+  mask, thin-region removal), percent and seconds, then done, stopped or error
+  (build 244; the global progress bar sits on the data tab and was not visible).
+- Sliders recompute on release; the step is one in-plane source voxel, the
+  output shows mm and the voxel equivalent. Saved in projects and part of
+  the run-cache key.
+
 ## Architecture rules
+
+- **No meshes in the GPU volume view.** The owner works in the volume view; a surface
+  mesh is built only on an explicit request ("メッシュで確認", STL export). In volume mode,
+  results reach the view through the volume shader (edit/keep/exclude masks,
+  the analysis overlay, the cut preview runs), never through a mesh fallback. Guard every
+  mesh-building call with the render mode. A run surface built in the background in
+  volume mode showed up as streaks (builds 248-253).
+- **Device checks are expensive** (large data, a reload resets everything). Trace the whole
+  code path before asking for one, and when the cause is unknown, ship
+  one diagnostics build instead of guessed fixes. Run `npm run boot-check` (offline
+  startup check) before every push; the CI browser tests do not catch a non-starting app.
 
 - See `docs/AGENT_LOG.md` for a running record of AI-agent work sessions;
   read it before starting new work and append to it when finishing.

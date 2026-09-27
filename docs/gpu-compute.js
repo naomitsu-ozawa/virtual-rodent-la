@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build241';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build267';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build241';
-import { isDesktopMac } from './utils.js?v=20260927-build241';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build241';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build241';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build267';
+import { isDesktopMac } from './utils.js?v=20260927-build267';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build267';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build267';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -170,11 +170,16 @@ export async function ensureGpuFilterDevice(){
  })();
  return gpuFilterRuntime.initPromise;
 }
+const GPU_MAX_GROUPS=65535;
+export function gpuDispatch1D(pass,groups){pass.dispatchWorkgroups(Math.min(groups,GPU_MAX_GROUPS),Math.max(1,Math.ceil(groups/GPU_MAX_GROUPS)))}
 export async function gpuFilterPipeline(kind){
  const device=await ensureGpuFilterDevice();if(!device)return null;
  if(gpuFilterRuntime.pipelines.has(kind))return gpuFilterRuntime.pipelines.get(kind);
  gpuFilterRuntime.lastShaderKind=kind;
- const source=normalizeVrlWgsl(gpuFilterShader(kind,gpuFilterRuntime.workgroupSize)),module=device.createShaderModule({code:source,label:'VRL '+kind+' compute'});
+ // 2D grids: a 1D dispatch is limited to 65535 workgroups, which a 1024x1024 block
+ // of more than 16 slices exceeds (e.g. with the air-distance halo); the voxel index
+ // spans gid.y rows of 65535 workgroups (gpuDispatch1D). 1D dispatches keep gid.y=0.
+ const source=normalizeVrlWgsl(gpuFilterShader(kind,gpuFilterRuntime.workgroupSize)).replaceAll('gid.x','(gid.x+gid.y*'+(GPU_MAX_GROUPS*gpuFilterRuntime.workgroupSize)+'u)'),module=device.createShaderModule({code:source,label:'VRL '+kind+' compute'});
  if(typeof module.getCompilationInfo==='function'){
   const info=await module.getCompilationInfo(),errors=(info.messages||[]).filter(m=>m.type==='error');
   if(errors.length)throw new Error('WGSL '+kind+': '+errors.map(m=>m.message).join(' | '));
@@ -229,7 +234,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   const group=device.createBindGroup({layout:bind,entries:[
    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}}
   ]});
-  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
+  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);gpuDispatch1D(pass,Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
   const t=current;current=next;next=t;
  };
  for(const stage of stages){
@@ -252,25 +257,76 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   else return null;
  }
  if(segments?.length&&faceContext?.analysisRuns){
+  // One filtered block, one run set per segment: the filters (the expensive
+  // part) run once even when several threshold ranges are extracted, e.g. a
+  // segment and its body mask for the air-boundary exclusion.
   const targetCount=target.width*target.height*target.depth,meta=new Uint32Array(12);
   meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=target.x;meta[4]=target.y;meta[5]=target.z;meta[6]=target.width;meta[7]=target.height;meta[8]=target.depth;meta[9]=targetCount;
-  const thresholds=new Float32Array([segments[0].seg.min,segments[0].seg.max,0,0]),mb=gpuSmallBuffer(device,meta),tb=gpuSmallBuffer(device,thresholds),counter=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});small.push(mb,tb);device.queue.writeBuffer(counter,0,new Uint32Array([0]));
-  const countPipeline=await gpuFilterPipeline('analysisRunCount'),countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
-   {binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
-  ]});
-  const countPass=encoder.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);countPass.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));countPass.end();
-  const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});encoder.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([encoder.finish()]);
-  await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
-  if(!runCount){releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();for(const buf of small)buf.destroy();setGpuComputeBackend('WEBGPU ANALYSIS RLE');return{analysisRuns:true,items:new Uint32Array(0),count:0}}
-  const recordBytes=runCount*16,maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
-  if(recordBytes>maxOut){releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();for(const buf of small)buf.destroy();throw new Error('GPU analysis run output exceeds device buffer limit')}
-  const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
-  const writePipeline=await gpuFilterPipeline('analysisRunWrite'),writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries:[
-   {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
-  ]}),writeEncoder=device.createCommandEncoder({label:'VRL analysis RLE'});
-  const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);writePass.dispatchWorkgroups(Math.ceil(targetCount/gpuFilterRuntime.workgroupSize));writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
-  await readback.mapAsync(GPUMapMode.READ);const items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();
-  releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();records.destroy();readback.destroy();for(const buf of small)buf.destroy();setGpuComputeBackend('WEBGPU ANALYSIS RLE');return{analysisRuns:true,items,count:runCount};
+  const mb=gpuSmallBuffer(device,meta),counter=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});small.push(mb);
+  const countPipeline=await gpuFilterPipeline('analysisRunCount'),writePipeline=await gpuFilterPipeline('analysisRunWrite'),groups=Math.ceil(targetCount/gpuFilterRuntime.workgroupSize);
+  const maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
+  const itemsList=[];let enc=encoder;
+  // optional distance-to-air field (airLayers): the segments are then ranges of
+  // squared distance, read from the field instead of the CT values
+  const airl=faceContext.airLayers;
+  if(airl)for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,airl.n[axis]],[airl.min,airl.max,airl.spacing[axis]]);
+  const firstSrc=current;
+  // distance layers: one class RLE pass for all layers instead of a count/write
+  // round trip per layer (the ranges are consecutive: layer k = (max[k-1], max[k]])
+  if(airl&&segments.length>1){
+   const K=segments.length,th=new Float32Array(4+K);th[0]=segments[0].seg.min;th[1]=K;for(let k=0;k<K;k++)th[4+k]=segments[k].seg.max;
+   const tb=gpuSmallBuffer(device,th);small.push(tb);
+   try{
+    const cp=await gpuFilterPipeline('classRunCount'),wp=await gpuFilterPipeline('classRunWrite');device.queue.writeBuffer(counter,0,new Uint32Array([0]));
+    const cg=device.createBindGroup({layout:cp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}]});
+    const pass=enc.beginComputePass();pass.setPipeline(cp);pass.setBindGroup(0,cg);gpuDispatch1D(pass,groups);pass.end();
+    const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
+    await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
+    let items=new Uint32Array(0);
+    if(runCount){
+     const recordBytes=runCount*16;if(recordBytes>maxOut)throw new Error('GPU analysis run output exceeds device buffer limit');
+     const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
+     const wg=device.createBindGroup({layout:wp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}]}),we=device.createCommandEncoder({label:'VRL class RLE'});
+     const p2=we.beginComputePass();p2.setPipeline(wp);p2.setBindGroup(0,wg);gpuDispatch1D(p2,groups);p2.end();we.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([we.finish()]);
+     await readback.mapAsync(GPUMapMode.READ);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();records.destroy();readback.destroy();
+    }
+    // split by class; the first word goes back to the local slice index
+    const counts=new Uint32Array(K);for(let i=0;i<items.length;i+=4)counts[(items[i]>>>16)-1]++;
+    const itemsList=[...counts].map(n=>new Uint32Array(n*4)),fill=new Uint32Array(K);
+    for(let i=0;i<items.length;i+=4){const c=(items[i]>>>16)-1,o=fill[c]++*4,dst=itemsList[c];dst[o]=items[i]&65535;dst[o+1]=items[i+1];dst[o+2]=items[i+2];dst[o+3]=items[i+3]}
+    setGpuComputeBackend('WEBGPU ANALYSIS RLE');
+    return{analysisRuns:true,items:itemsList[0],itemsList,count:itemsList[0].length/4};
+   }finally{
+    if(enc)device.queue.submit([enc.finish()]);
+    releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();for(const buf of small)buf.destroy();
+   }
+  }
+  try{
+   for(const [si,{seg}] of segments.entries()){
+    const src=si===0?firstSrc:current;
+    const tb=gpuSmallBuffer(device,new Float32Array([seg.min,seg.max,0,0]));small.push(tb);device.queue.writeBuffer(counter,0,new Uint32Array([0]));
+    enc=enc||device.createCommandEncoder({label:'VRL analysis RLE count'});
+    const countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
+     {binding:0,resource:{buffer:src}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
+    ]});
+    const countPass=enc.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);gpuDispatch1D(countPass,groups);countPass.end();
+    const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
+    await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
+    if(!runCount){itemsList.push(new Uint32Array(0));continue}
+    const recordBytes=runCount*16;if(recordBytes>maxOut)throw new Error('GPU analysis run output exceeds device buffer limit');
+    const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
+    const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries:[
+     {binding:0,resource:{buffer:src}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
+    ]}),writeEncoder=device.createCommandEncoder({label:'VRL analysis RLE'});
+    const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);gpuDispatch1D(writePass,groups);writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
+    await readback.mapAsync(GPUMapMode.READ);itemsList.push(new Uint32Array(readback.getMappedRange().slice(0)));readback.unmap();records.destroy();readback.destroy();
+   }
+  }finally{
+   if(enc)device.queue.submit([enc.finish()]);
+   releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();for(const buf of small)buf.destroy();
+  }
+  setGpuComputeBackend('WEBGPU ANALYSIS RLE');
+  return{analysisRuns:true,items:itemsList[0],itemsList,count:itemsList[0].length/4};
  }
  if(segments?.length&&faceContext?.mesh){
   const targetCount=target.width*target.height*target.depth,meta=new Uint32Array(24);

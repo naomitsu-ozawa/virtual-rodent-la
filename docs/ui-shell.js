@@ -17,7 +17,7 @@ app.innerHTML=`
   <button id="segment-add-button" class="tool-chip" type="button" data-i18n="addSegment" disabled>セグメントを追加</button>
 </div>
 <div id="segment-controls" class="segment-controls"><div class="segment-card is-hidden" data-segment="bone">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="bone" checked disabled><strong data-i18n="bone">骨</strong></label><input class="segment-color" data-seg-color="bone" type="color" value="#f3f0e8" disabled></div>
+<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="bone" checked disabled><strong data-i18n="bone">骨</strong></label><span class="segment-head-right"><input class="segment-color" data-seg-color="bone" type="color" value="#f3f0e8" disabled><button type="button" class="segment-collapse" data-seg-collapse="bone" aria-expanded="true" aria-label="Collapse">▾</button></span></div>
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="bone">—</output><input data-seg-min="bone" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="bone">—</output><input data-seg-max="bone" type="range" min="0" max="1" value="1" disabled></label>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="bone">0.85</output><input data-seg-opacity="bone" type="range" min="0" max="1" step="0.05" value="0.85" disabled></label>
@@ -25,12 +25,15 @@ app.innerHTML=`
 <label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="bone">0</output><input data-seg-opening="bone" type="range" min="0" max="3" step="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="closing">Closing</span><output data-seg-closing-out="bone">0</output><input data-seg-closing="bone" type="range" min="0" max="3" step="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="minComponent">最小連結成分</span><output data-seg-min-component-out="bone">0</output><input data-seg-min-component="bone" type="range" min="0" max="5000" step="50" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="surfaceExclude">空気との境界から除外</span><output data-seg-surface-mm-out="bone">0</output><input data-seg-surface-mm="bone" type="range" min="0" max="1" step="0.1" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="minThickness">薄い部分を除去</span><output data-seg-thickness-mm-out="bone">0</output><input data-seg-thickness-mm="bone" type="range" min="0" max="1" step="0.1" value="0" disabled></label>
+<div class="segment-status is-hidden" data-seg-status="bone" role="status" aria-live="polite"></div>
 <label class="surface-smooth-toggle"><input data-seg-hole-fill="bone" type="checkbox" disabled><strong data-i18n="holeFill">Hole Filling</strong></label>
 </div>
 <button class="segment-export-stl" data-seg-export="bone" data-i18n="exportStl" disabled>STL書き出し</button>
 <button class="segment-remove-button" data-seg-remove="bone" data-i18n="removeSegment" disabled>削除</button>
 </div><div class="segment-card is-hidden" data-segment="soft">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="soft"  disabled><strong data-i18n="soft">軟部組織</strong></label><input class="segment-color" data-seg-color="soft" type="color" value="#d97f7f" disabled></div>
+<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="soft"  disabled><strong data-i18n="soft">軟部組織</strong></label><span class="segment-head-right"><input class="segment-color" data-seg-color="soft" type="color" value="#d97f7f" disabled><button type="button" class="segment-collapse" data-seg-collapse="soft" aria-expanded="true" aria-label="Collapse">▾</button></span></div>
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="soft">—</output><input data-seg-min="soft" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="soft">—</output><input data-seg-max="soft" type="range" min="0" max="1" value="1" disabled></label>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="soft">0.28</output><input data-seg-opacity="soft" type="range" min="0" max="1" step="0.05" value="0.28" disabled></label>
@@ -38,12 +41,15 @@ app.innerHTML=`
 <label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="soft">0</output><input data-seg-opening="soft" type="range" min="0" max="3" step="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="closing">Closing</span><output data-seg-closing-out="soft">0</output><input data-seg-closing="soft" type="range" min="0" max="3" step="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="minComponent">最小連結成分</span><output data-seg-min-component-out="soft">0</output><input data-seg-min-component="soft" type="range" min="0" max="5000" step="50" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="surfaceExclude">空気との境界から除外</span><output data-seg-surface-mm-out="soft">0</output><input data-seg-surface-mm="soft" type="range" min="0" max="1" step="0.1" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="minThickness">薄い部分を除去</span><output data-seg-thickness-mm-out="soft">0</output><input data-seg-thickness-mm="soft" type="range" min="0" max="1" step="0.1" value="0" disabled></label>
+<div class="segment-status is-hidden" data-seg-status="soft" role="status" aria-live="polite"></div>
 <label class="surface-smooth-toggle"><input data-seg-hole-fill="soft" type="checkbox" disabled><strong data-i18n="holeFill">Hole Filling</strong></label>
 </div>
 <button class="segment-export-stl" data-seg-export="soft" data-i18n="exportStl" disabled>STL書き出し</button>
 <button class="segment-remove-button" data-seg-remove="soft" data-i18n="removeSegment" disabled>削除</button>
 </div><div class="segment-card is-hidden" data-segment="fat">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="fat"  disabled><strong data-i18n="fat">脂肪</strong></label><input class="segment-color" data-seg-color="fat" type="color" value="#e7c85d" disabled></div>
+<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="fat"  disabled><strong data-i18n="fat">脂肪</strong></label><span class="segment-head-right"><input class="segment-color" data-seg-color="fat" type="color" value="#e7c85d" disabled><button type="button" class="segment-collapse" data-seg-collapse="fat" aria-expanded="true" aria-label="Collapse">▾</button></span></div>
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="fat">—</output><input data-seg-min="fat" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="fat">—</output><input data-seg-max="fat" type="range" min="0" max="1" value="1" disabled></label>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="fat">0.35</output><input data-seg-opacity="fat" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
@@ -51,12 +57,15 @@ app.innerHTML=`
 <label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="fat">0</output><input data-seg-opening="fat" type="range" min="0" max="3" step="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="closing">Closing</span><output data-seg-closing-out="fat">0</output><input data-seg-closing="fat" type="range" min="0" max="3" step="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="minComponent">最小連結成分</span><output data-seg-min-component-out="fat">0</output><input data-seg-min-component="fat" type="range" min="0" max="5000" step="50" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="surfaceExclude">空気との境界から除外</span><output data-seg-surface-mm-out="fat">0</output><input data-seg-surface-mm="fat" type="range" min="0" max="1" step="0.1" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="minThickness">薄い部分を除去</span><output data-seg-thickness-mm-out="fat">0</output><input data-seg-thickness-mm="fat" type="range" min="0" max="1" step="0.1" value="0" disabled></label>
+<div class="segment-status is-hidden" data-seg-status="fat" role="status" aria-live="polite"></div>
 <label class="surface-smooth-toggle"><input data-seg-hole-fill="fat" type="checkbox" disabled><strong data-i18n="holeFill">Hole Filling</strong></label>
 </div>
 <button class="segment-export-stl" data-seg-export="fat" data-i18n="exportStl" disabled>STL書き出し</button>
 <button class="segment-remove-button" data-seg-remove="fat" data-i18n="removeSegment" disabled>削除</button>
 </div><div class="segment-card is-hidden" data-segment="lung">
-<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="lung" disabled><strong data-i18n="lung">肺</strong></label><input class="segment-color" data-seg-color="lung" type="color" value="#6fb8d6" disabled></div>
+<div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="lung" disabled><strong data-i18n="lung">肺</strong></label><span class="segment-head-right"><input class="segment-color" data-seg-color="lung" type="color" value="#6fb8d6" disabled><button type="button" class="segment-collapse" data-seg-collapse="lung" aria-expanded="true" aria-label="Collapse">▾</button></span></div>
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="lung">—</output><input data-seg-min="lung" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="lung">—</output><input data-seg-max="lung" type="range" min="0" max="1" value="1" disabled></label>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="lung">0.35</output><input data-seg-opacity="lung" type="range" min="0" max="1" step="0.05" value="0.35" disabled></label>
@@ -64,6 +73,9 @@ app.innerHTML=`
 <label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="lung">0</output><input data-seg-opening="lung" type="range" min="0" max="3" step="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="closing">Closing</span><output data-seg-closing-out="lung">0</output><input data-seg-closing="lung" type="range" min="0" max="3" step="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="minComponent">最小連結成分</span><output data-seg-min-component-out="lung">0</output><input data-seg-min-component="lung" type="range" min="0" max="5000" step="50" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="surfaceExclude">空気との境界から除外</span><output data-seg-surface-mm-out="lung">0</output><input data-seg-surface-mm="lung" type="range" min="0" max="1" step="0.1" value="0" disabled></label>
+<label class="segment-range"><span data-i18n="minThickness">薄い部分を除去</span><output data-seg-thickness-mm-out="lung">0</output><input data-seg-thickness-mm="lung" type="range" min="0" max="1" step="0.1" value="0" disabled></label>
+<div class="segment-status is-hidden" data-seg-status="lung" role="status" aria-live="polite"></div>
 <label class="surface-smooth-toggle"><input data-seg-hole-fill="lung" type="checkbox" disabled><strong data-i18n="holeFill">Hole Filling</strong></label>
 </div>
 <button class="segment-export-stl" data-seg-export="lung" data-i18n="exportStl" disabled>STL書き出し</button>

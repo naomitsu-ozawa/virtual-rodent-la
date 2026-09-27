@@ -38,6 +38,200 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (speed, collapsible cards, builds 259-267)
+
+**Agent:** Claude
+**Task:** Make the air-boundary exclusion and the 3D view usable on the owner's iPad data
+(1024×1024×1784).
+
+### What changed
+- 259: 2D overlay uses a per-plane mask of the processed runs (`runsPlaneMask`) instead of a
+  per-pixel scan of the slice's runs.
+- 260-262: diagnostics (step timings, 2D/3D draw times, GPU failure reason) and
+  `tools/boot-check.mjs` (`npm run boot-check`: offline Chromium startup check that fails on any
+  page error). Run it before every push.
+- 261: 3D segment opacity slider only redraws the volume while it moves (the owner meant the
+  3D opacity; I first treated it as a 2D problem).
+- 263: the actual reason the GPU air layers fell back to the CPU. Blocks with the 8-voxel halo
+  need more than 65535 workgroups in one dimension. The filter/RLE passes now dispatch 2D grids,
+  and `gid.x` is rewritten to the flattened index in `gpuFilterPipeline`.
+- 264: one class-RLE pass (`classRunCount/Write`) for all distance layers; larger blocks
+  with air layers; the kept count sums the disjoint layers. Device: first run 227 s → 78 s,
+  slider change 11 s → 0.3 s.
+- 265-266: segment cards collapse to the header row, collapsed by default (remembered per device).
+- 267: diagnostics only with `?debug`. The normal status reads "処理完了 · Ns · 残り X% · 3D反映済み".
+
+### Open questions / follow-up
+- 3D volume frame about 56 ms on the iPad (the raycast itself); not addressed.
+- CI browser tests do not catch a non-starting app; boot-check does, but it is not in CI yet.
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (startup fix, speed, builds 257-258)
+
+**Agent:** Claude
+**Task:** Build 255/256 did not start: app.js imported an export removed in 255. Then the
+owner reported that both the air-boundary processing and the 3D view after it are heavy.
+
+### What changed
+- Build 257: removed the stale import. New `tests/static/named-imports.test.js` checks that every
+  named import between docs/ modules resolves (it fails on build 256). The iPad kept serving
+  the broken index.html from cache; `?b=257` loaded the new one.
+- Build 258, 3D: `editAllows` binary-searches the sorted row intervals instead of
+  scanning them (processed fat rows have many intervals).
+- Build 258, processing: `airDist` compute shader, three separable passes giving the exact
+  squared distance to air within 8 voxels (about 40 reads per voxel instead of a 2601-voxel
+  ball). The analysis RLE returns the segment split into 8 distance layers plus
+  "farther" (`airLayersMemo`). A slider change only unions layers, with no GPU pass. JS
+  mirror test: `tests/unit/air-dist.test.js`.
+
+### Open questions / follow-up
+- Not checked on the device. The CI browser tests passed on the non-starting builds 255/256,
+  so they do not catch startup failures.
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (no mesh in volume view; revert 250/253, builds 254-256)
+
+**Agent:** Claude
+**Task:** The 3D "streaks" were a run-surface mesh built in the background in the volume
+view (`prepareSourceSegmentPostprocess` → `refreshEditedSegmentSurface`), and it stayed after
+the segment was removed. Builds 250 (keep-mask footprint mapping) and 253 (exclude mask of
+removed voxels, GPU failure reason) were aimed at the wrong cause. The owner asked for them to be removed.
+
+### What changed
+- Build 254: no run surface in volume mode; a removed segment's surface group is disposed.
+- Build 255: the analysis overlay no longer falls back to meshes in volume mode (it reports the error).
+  The no-mesh rule and the device-check rule were added to the architecture rules.
+- Build 256: reverted builds 250 and 253, including build 252's tweak of the footprint mapping.
+  Build 252's run sorting, resync and "3D反映済み" status stay.
+
+### Lesson
+- Follow the owner's rules (no meshes in the volume view). Trace every path before asking
+  for a device check (large data; a reload resets everything).
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (3D keep mask, GPU air exclusion, builds 250-251)
+
+**Agent:** Claude
+**Task:** The owner's 3D screenshot showed the kept fat as streaks. The run was still too slow for device checks.
+
+### What changed
+- Build 250: `gpuRunsForTextureFootprint`, used for keep masks on reduced textures. A texel is kept
+  if any source voxel in its footprint is kept (tests in `tests/unit/keep-footprint.test.js`).
+- Build 251: new `airExclude` compute shader. It runs on the filtered block before the
+  analysis RLE and gives segment voxels with air (< segment min) within the ball a value
+  below min, so the RLE drops them. There is no body mask and no CPU pass for A. The block halo
+  grows by the ball's z radius, and the raw-DICOM RLE path is skipped when A is on. Results are memoized
+  per segment (`airRunsMemo`). If any block fails on the GPU, the CPU route (build 249) is used.
+- The status reads "処理完了 · Ns · GPU · …" on the GPU route.
+
+### Open questions / follow-up
+- Not checked on the device. B (thickness) is still CPU.
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region speed, build 249)
+
+**Agent:** Claude
+**Task:** Build 248 works (inside body 100%, 61% of the fat kept) but takes 216 s, too slow for device checks.
+The owner also reports that the 3D view still shows parts of the rim and renders wrongly
+(screenshot pending).
+
+### What changed
+- `runGpuSourceFilters` analysis-RLE mode returns one run set per segment from
+  one filtered block (`itemsList`). The filters run once.
+- `thresholdSourceRuns` takes extra threshold ranges. The body mask is read from the same
+  blocks as the segment instead of a second full filtered pass (about 100 s saved).
+  It is seeded into the body memo and stored in the run cache.
+
+### Open questions / follow-up
+- The thin-region CPU step (about 50 s on the iPad) is still on the CPU.
+- 3D keep-mask rendering on the reduced texture: waiting for the screenshot.
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region: air threshold, builds 246-248)
+
+**Agent:** Claude
+**Task:** Build 245 still removed all fat or left the rim. Stopped guessing and added
+diagnostics to the segment status.
+
+### What changed
+- Builds 246-247: the done status shows kept voxels, the body share, the share of the segment
+  inside the body mask, spacing and dimensions.
+- Device result: body mask 10.5%, fat inside it 0.0%. The fat range of this
+  dataset lies below the fixed -500 HU "body" threshold.
+- Build 248: air = values below the segment's lower bound (`sourceBodyRuns(v, …, seg.min)`,
+  `suppressThinMask` uses `opts.min`). Test added.
+- Lesson: after the first device failure, gather diagnostics before trying the next fix.
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region fixes, build 245)
+
+**Agent:** Claude
+**Task:** Owner, on the iPad with build 244: the status stayed on "1/3" for all three phases,
+processing took 257 s, and the whole fat segment disappeared.
+
+### What changed
+- `report` in `ensureSegmentBaseRuns` dropped the phase argument; now forwarded.
+- Body mask bound was `max: v.max`; a missing or estimated max of a source series
+  (NaN) would make every voxel air and remove the whole segment. This is the
+  suspected cause, not proven. The bound is now fixed at 1e30, and an empty body mask skips A with a warning.
+- Thresholded runs before post-processing are kept per segment
+  (`rawRunsMemo`), so changing only a post-processing setting skips the GPU
+  threshold pass.
+- The "done" status shows the percentage of voxels kept, so a wrong result is visible.
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region status and all-air rim, build 244)
+
+**Agent:** Claude
+**Task:** Owner, on the iPad with build 243: could not tell whether processing was running
+at all, and the 1-pixel rim was still there (in 2D also around gut gas). Asked for real
+progress reporting.
+
+### What changed
+- Per-segment status line in each segment card, fed by `ensureSegmentBaseRuns`
+  with phase-tagged progress (threshold / air mask / thin-region removal).
+- A now uses all air (skin, gut gas, lungs, holder), not only exterior air.
+
+### Open questions / follow-up
+- Still need the owner's timing on device. If it is minutes, move the kernels
+  to WebGPU.
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region suppression fix, build 243)
+
+**Agent:** Claude
+**Task:** On the iPad with the owner's large data, build 242 did not remove the
+surface shell, and the browser crashed.
+
+### What changed
+- Measured in node on 1024² slices: memory was fine (about 100 MB extra), but the
+  EDT kernels took 170-560 ms per slice (about 5-17 min for 1784 slices). Each
+  slider release started a new pass, and earlier passes kept running.
+- Kernels now stamp balls around boundary voxels. The result is exactly the same as
+  the EDT (tested against it) and it is about 4× faster. The exterior flood uses a typed stack.
+- Base-run computations stop at block boundaries once the segment signature
+  changes (`alive` passed through `sourceRunsForSegment` and `postprocessSourceRuns`).
+- Thickness slider max 16 → 8 voxels.
+
+### Open questions / follow-up
+- Still CPU: roughly minutes on the iPad for the full volume. If that is too slow,
+  move A to the GPU (per-slice work suits compute shaders).
+
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region suppression, build 242)
+
+**Agent:** Claude
+**Task:** Owner asked for a way to ignore the thin membrane that the fat
+segment picks up over the body surface. Discussed and agreed: both A (exclude
+within N mm of the body surface) and B (remove parts N mm thick or thinner),
+selectable together, UI in mm.
+
+### What changed
+- New `docs/thin-suppress.js` (pure): exact EDT with spacing, per-slice exterior
+  air, box and block-wise stack kernels. Tests in `tests/unit/thin-suppress.test.js`.
+- Wired into `getProcessedSegmentMask` (in-memory) and `postprocessSourceRuns`
+  (source-backed, with body runs from `sourceBodyRuns`). Added to signatures,
+  the run-cache key, projects and the UI (2 sliders per segment card).
+- GPU volume view now shows post-processed segments as keep masks. This also
+  makes the existing Opening etc. visible in volume mode.
+
+### Open questions / follow-up
+- Not checked on a device (CI has no GPU). Check on the iPad with the owner's
+  1024×1024×1784 data: speed of the extra body pass and the EDT, and whether
+  the volume-view keep mask looks right on the reduced texture.
+- If CPU time is too slow, move the EDT to WebGPU (the plan's original idea).
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (hide slide diagnostic, build 241)
 
 **Agent:** Claude (Claude Code)

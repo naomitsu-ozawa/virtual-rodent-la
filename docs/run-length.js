@@ -1,7 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { morphMask } from './mask-ops.js?v=20260927-build241';
-import { frameYield } from './utils.js?v=20260927-build241';
+import { morphMask } from './mask-ops.js?v=20260927-build267';
+import { frameYield } from './utils.js?v=20260927-build267';
+import { thinSuppressActive, suppressThinStack } from './thin-suppress.js?v=20260927-build267';
 export class RunUnionFind{
  constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
  grow(){
@@ -123,6 +124,25 @@ export function sourceResultToAnalysisRuns(result,d){
 export function analysisRunsVoxelCount(runsBySlice){
  let count=0;for(const rec of runsBySlice||[])if(rec)for(let i=0;i<rec.length;i+=3)count+=rec[i+2]-rec[i+1]+1;return count;
 }
+// Pixel mask of one MPR plane from per-slice runs, cached per runs array (the
+// 2D overlay tested every pixel with analysisRunsContain, a scan of the whole
+// slice's runs per pixel, which made every 2D repaint slow). Pixel mapping as in
+// paintSourcePlane: axial (x,y) at z=idx; coronal (x, d-1-z) at y=idx;
+// sagittal (y, d-1-z) at x=idx.
+const planeMaskCache=new WeakMap();
+export function runsPlaneMask(runs,p,idx,w,h,d){
+ let byPlane=planeMaskCache.get(runs);if(!byPlane){byPlane=new Map();planeMaskCache.set(runs,byPlane)}
+ const key=p+':'+idx,hit=byPlane.get(key);if(hit)return hit;
+ const pw=p==='sagittal'?h:w,ph=p==='axial'?h:d,mask=new Uint8Array(pw*ph);
+ if(p==='axial'){const rec=runs[idx];if(rec)for(let i=0;i<rec.length;i+=3)mask.fill(1,rec[i]*pw+rec[i+1],rec[i]*pw+rec[i+2]+1)}
+ else for(let z=0;z<d;z++){
+  const rec=runs[z];if(!rec?.length)continue;const row=(d-1-z)*pw;
+  if(p==='coronal'){for(let i=0;i<rec.length;i+=3)if(rec[i]===idx)mask.fill(1,row+rec[i+1],row+rec[i+2]+1)}
+  else for(let i=0;i<rec.length;i+=3)if(rec[i+1]<=idx&&idx<=rec[i+2])mask[row+rec[i]]=1;
+ }
+ if(byPlane.size>=12)byPlane.delete(byPlane.keys().next().value);
+ byPlane.set(key,mask);return mask;
+}
 export function analysisRunsContain(runsBySlice,x,y,z){
  const rec=runsBySlice?.[z];if(!rec)return false;
  for(let i=0;i<rec.length;i+=3){if(rec[i]!==y)continue;if(x>=rec[i+1]&&x<=rec[i+2])return true}
@@ -240,9 +260,20 @@ export async function morphSourceRunArrays(runs,w,h,d,opening,closing){
  }
  return out;
 }
-export async function postprocessSourceRuns(runs,v,seg){
+// Thin-region suppression on runs, block-wise; bodyRuns (voxels at or above
+// segment's lower bound) are needed only for the air-boundary exclusion.
+export async function thinSuppressSourceRuns(runs,w,h,d,spacing,seg,bodyRuns,alive=()=>true,onProgress=null){
+ const out=new Array(d),opts={surfaceMm:bodyRuns?seg.surfaceMm:0,thicknessMm:seg.thicknessMm};
+ if(!thinSuppressActive(opts))return runs;
+ const it=suppressThinStack(z=>runsSliceToMask(runs[z],w,h),z=>runsSliceToMask(bodyRuns[z],w,h),w,h,d,spacing,opts,(z,mask)=>{out[z]=maskToAnalysisRuns(mask,w,h,1)[0]},{blockDepth:8});
+ for(let r=it.next();!r.done;r=it.next()){onProgress?.(r.value,d);await frameYield();if(!alive())throw new Error('__SUPERSEDED__')}
+ return out;
+}
+export async function postprocessSourceRuns(runs,v,seg,bodyRuns=null,alive=()=>true,onProgress=null){
  const w=v.columns,h=v.rows,d=v.slices;
- let out=await morphSourceRunArrays(runs,w,h,d,seg.opening,seg.closing);
+ let out=thinSuppressActive(seg)?await thinSuppressSourceRuns(runs,w,h,d,v.spacing||[1,1,1],seg,bodyRuns,alive,onProgress):runs;
+ if(!alive())throw new Error('__SUPERSEDED__');
+ out=await morphSourceRunArrays(out,w,h,d,seg.opening,seg.closing);
  if(seg.holeFill){
   const background=complementRunArrays(out,w,h,d),holes=componentsFromRuns(background,w,h,d).filter(comp=>!componentTouchesVolumeBoundary(comp,w,h,d));
   if(holes.length){const holeRuns=unionAnalysisRuns(holes,d);out=unionRunArrays(out,holeRuns,d)}
