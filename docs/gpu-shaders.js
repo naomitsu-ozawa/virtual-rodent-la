@@ -30,22 +30,31 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  // Squared distance (mm²) from each voxel to the nearest "air" voxel (value <
  // segment min), one axis per pass; the three passes compose the exact squared
  // Euclidean distance within the box radius (min over dx, then dy, then dz).
- // meta[4]=axis, meta[5]=radius in voxels; params[0..1]=segment min,max,
- // params[2]=spacing along the axis. Encoding between passes: a segment voxel
- // stores g (>=0), any other voxel stores -(g+1). Axis 0 reads CT values.
+ // meta[4]=axis, meta[5]=radius in voxels, meta[6]=mode; params[0..1]=segment min,max,
+ // params[2]=spacing along the axis, params[3]=r² (mode 2). Encoding between passes:
+ // a segment voxel stores g (>=0), any other voxel stores -(g+1). Axis 0 reads:
+ //  mode 0: CT values; feature = air (< min), segment = [min,max]
+ //  mode 1: a 0/1 mask; feature = outside the mask (opening: erosion distance)
+ //  mode 2: an encoded field; feature = segment voxels with g > r² (the eroded core),
+ //          segment = e >= 0 (opening: dilation distance)
  if(kind==='airDist')return header+`
 fn decodeG(e:f32)->f32{if(e<0.0){return -e-1.0;}return e;}
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=vec3<i32>(coord(i));let axis=meta[4];let n=i32(meta[5]);let s=params[2];
  let dims=vec3<i32>(i32(meta[0]),i32(meta[1]),i32(meta[2]));
- var inSeg=false;if(axis==0u){let v=src[i];inSeg=v>=params[0]&&v<=params[1];}else{inSeg=src[i]>=0.0;}
+ let mode=meta[6];var inSeg=false;
+ if(axis==0u&&mode==0u){let v=src[i];inSeg=v>=params[0]&&v<=params[1];}else if(axis==0u&&mode==1u){inSeg=src[i]>0.5;}else{inSeg=src[i]>=0.0;}
  var g=1.0e30;
  for(var k=-n;k<=n;k++){
   var q=c;if(axis==0u){q.x=c.x+k;}else if(axis==1u){q.y=c.y+k;}else{q.z=c.z+k;}
   if(q.x<0||q.y<0||q.z<0||q.x>=dims.x||q.y>=dims.y||q.z>=dims.z){continue;}
   let e=src[idx(u32(q.x),u32(q.y),u32(q.z))];let d=f32(k)*s;
-  if(axis==0u){if(e<params[0]){g=min(g,d*d);}}else{g=min(g,decodeG(e)+d*d);}
+  if(axis==0u){
+   var feature=false;
+   if(mode==0u){feature=e<params[0];}else if(mode==1u){feature=e<=0.5;}else{feature=e>=0.0&&e>params[3];}
+   if(feature){g=min(g,d*d);}
+  }else{g=min(g,decodeG(e)+d*d);}
  }
  dst[i]=select(-(g+1.0),g,inSeg);
 }`;
@@ -106,6 +115,34 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  diff=src[i-w]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+w]-center;flux+=diff/sqrt(diff*diff+eps*eps);
  diff=src[i-plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);
  dst[i]=center+lambda*flux;
+}`;
+ // Separable unsharp mask (build 271): the clipped box mean is a product of 1D
+ // means, so x and y passes ('boxMean') then a z pass fused with the sharpening
+ // ('unsharpCombine', original CT at binding 4) give the same result as the cube
+ // loop below with 3(2r+1) reads per voxel instead of (2r+1)³.
+ // boxMean: meta[4]=axis, meta[5]=radius.
+ if(kind==='boxMean')return header+`
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=vec3<i32>(coord(i));let axis=meta[4];let r=i32(meta[5]);
+ let dims=vec3<i32>(i32(meta[0]),i32(meta[1]),i32(meta[2]));var sum=0.0;var count=0.0;
+ for(var k=-r;k<=r;k++){
+  var q=c;if(axis==0u){q.x=c.x+k;}else if(axis==1u){q.y=c.y+k;}else{q.z=c.z+k;}
+  if(q.x<0||q.y<0||q.z<0||q.x>=dims.x||q.y>=dims.y||q.z>=dims.z){continue;}
+  sum+=src[idx(u32(q.x),u32(q.y),u32(q.z))];count+=1.0;
+ }
+ dst[i]=sum/max(count,1.0);
+}`;
+ // unsharpCombine: src = x/y box mean, binding 4 = original; meta[5]=radius;
+ // params = min, max, amount, threshold (as 'unsharp').
+ if(kind==='unsharpCombine')return header+`
+@group(0) @binding(4) var<storage, read> orig: array<f32>;
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let d=i32(meta[2]);let r=i32(meta[5]);var sum=0.0;var count=0.0;
+ for(var k=-r;k<=r;k++){let zz=i32(c.z)+k;if(zz<0||zz>=d){continue;}sum+=src[idx(c.x,c.y,u32(zz))];count+=1.0;}
+ let blur=sum/max(count,1.0);let v=orig[i];let detail=v-blur;let range=max(1.0,params[1]-params[0]);let threshold=params[3]*range;
+ dst[i]=select(v,v+params[2]*detail,abs(detail)>=threshold);
 }`;
  if(kind==='unsharp')return header+`
 @compute @workgroup_size(${workgroupSize})
@@ -522,4 +559,4 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite'];
+export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite','boxMean','unsharpCombine'];
