@@ -1,16 +1,16 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260927-build256';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260927-build256';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260927-build256';
-import { request3DRender } from './scene3d.js?v=20260927-build256';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260927-build256';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260927-build256';
-import { tr } from './i18n.js?v=20260927-build256';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260927-build256';
-import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build256';
-import { datasetFingerprint } from './project-file.js?v=20260927-build256';
-import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260927-build256';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260927-build257';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260927-build257';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260927-build257';
+import { request3DRender } from './scene3d.js?v=20260927-build257';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260927-build257';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260927-build257';
+import { tr } from './i18n.js?v=20260927-build257';
+import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260927-build257';
+import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build257';
+import { datasetFingerprint } from './project-file.js?v=20260927-build257';
+import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260927-build257';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
