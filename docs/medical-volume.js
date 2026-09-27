@@ -537,7 +537,11 @@ struct MprParams{
 @group(0) @binding(1) var volumeTex:texture_3d<f32>;
 @group(0) @binding(2) var<storage,read_write> outValues:array<f32>;
 fn huAt(x:u32,y:u32,z:u32)->f32{
- let q=textureLoad(volumeTex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg*255.0;
+ // x,y,z are source voxels; a reduced texture (iPad) is sampled at the
+ // nearest texel (identity when the texture has the source dimensions).
+ let td=textureDimensions(volumeTex,0);
+ let tx=min(td.x-1u,(x*td.x)/p.dims.x);let ty=min(td.y-1u,(y*td.y)/p.dims.y);let tz=min(td.z-1u,(z*td.z)/p.dims.z);
+ let q=textureLoad(volumeTex,vec3<i32>(i32(tx),i32(ty),i32(tz)),0).rg*255.0;
  let raw=q.x+q.y*256.0-p.calibration.z;
  return raw*p.calibration.x+p.calibration.y;
 }
@@ -987,9 +991,11 @@ export class MedicalVolumeRenderer{
   }
   return null;
  }
- extractPlane(v,plane,index,{maxSide=0}={}){
+ // allowReduced: also read from a reduced texture (lower resolution); only
+ // for previews while a slider moves, never for values cached as exact.
+ extractPlane(v,plane,index,{maxSide=0,allowReduced=false}={}){
   const run=async()=>{
-   if(!this.hasResident(v)||this.reducedVolume)return null;
+   if(!this.hasResident(v)||(this.reducedVolume&&!allowReduced))return null;
    const w=v.columns,h=v.rows,d=v.slices,kind=plane==='axial'?0:plane==='coronal'?1:plane==='sagittal'?2:-1;
    if(kind<0)throw new Error('Unsupported MPR plane: '+plane);
    const maxIndex=kind===0?d-1:kind===1?h-1:w-1;if(index<0||index>maxIndex)throw new Error('MPR plane index out of range');
