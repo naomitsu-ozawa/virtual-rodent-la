@@ -9,7 +9,7 @@ describe('gpuRunsForTextureFootprint', () => {
     const runs = [new Uint32Array([3, 2, 6]), new Uint32Array(0), new Uint32Array(0)]; // y=3 (between samples 2 and 4)
     const out = gpuRunsForTextureFootprint(runs, src, tex);
     expect(out.length).toBe(2);
-    expect([...out[0]]).toEqual([2, 1, 3]);
+    expect([...out[0]]).toEqual([1, 1, 3]); // texel = floor((source + 0.5) * tex / src), as in the shader
     expect(out[1].length).toBe(0);
   });
 

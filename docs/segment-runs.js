@@ -1,19 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build251';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build251';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build251';
-import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build251';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build251';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build251';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build251';
-import { state } from './ui-shell.js?v=20260927-build251';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build252';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build252';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build252';
+import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build252';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build252';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build252';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build252';
+import { state } from './ui-shell.js?v=20260927-build252';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { analysisRunsVoxelCount, maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build251';
-import { frameYield } from './utils.js?v=20260927-build251';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build251';
-import { setProcessingBusy } from './busy.js?v=20260927-build251';
-import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build251';
+import { analysisRunsVoxelCount, maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build252';
+import { frameYield } from './utils.js?v=20260927-build252';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build252';
+import { setProcessingBusy } from './busy.js?v=20260927-build252';
+import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build252';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -163,6 +163,14 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>t
 // (shown in the segment status so a wrong result is visible at once)
 export const postprocessStats=new Map();
 const rawRunsMemo=new Map(),airRunsMemo=new Map();
+// GPU RLE records arrive in atomic-append order; the GPU edit upload and the
+// run-set operations expect rows (then x) ascending.
+function sortedRunSlice(flat){
+ const n=flat.length/3;if(n<2)return new Uint32Array(flat);
+ const order=Array.from({length:n},(_,i)=>i).sort((a,b)=>(flat[a*3]-flat[b*3])||(flat[a*3+1]-flat[b*3+1])),out=new Uint32Array(flat.length);
+ for(let i=0;i<n;i++){const j=order[i]*3;out[i*3]=flat[j];out[i*3+1]=flat[j+1];out[i*3+2]=flat[j+2]}
+ return out;
+}
 // extraSegs: further threshold ranges read from the same (filtered) blocks;
 // returns [runs, ...extraRuns].
 async function thresholdSourceRuns(v,key,seg,onProgress,alive,extraSegs=[],airExclude=null){
@@ -177,7 +185,7 @@ async function thresholdSourceRuns(v,key,seg,onProgress,alive,extraSegs=[],airEx
    (gpu.itemsList||[gpu.items]).forEach((items,si)=>{
     const per=Array.from({length:gpu.coreDepth},()=>[]);
     for(let i=0;i<items.length;i+=4){const lz=items[i];if(lz<per.length)per[lz].push(items[i+1],items[i+2],items[i+3])}
-    for(let z=0;z<gpu.coreDepth;z++)sets[si][z0+z]=new Uint32Array(per[z]);
+    for(let z=0;z<gpu.coreDepth;z++)sets[si][z0+z]=sortedRunSlice(per[z]);
    });
   }else{
    for(let si=0;si<sets.length;si++){

@@ -633,12 +633,13 @@ export function gpuRunsForTextureFootprint(runs,sourceDims,textureDims){
  const [sw,sh,sd]=sourceDims,[tw,th,td]=textureDims;
  if(!runs)return null;
  if(sw===tw&&sh===th&&sd===td)return runs;
- const kx=tw<=1||sw<=1?0:(tw-1)/(sw-1),ky=th<=1||sh<=1?0:(th-1)/(sh-1),kz=td<=1||sd<=1?0:(td-1)/(sd-1);
+ // same texel lookup as editAllows in the shader: texel = floor(source * tex / src)
+ const kx=tw/sw,ky=th/sh,kz=td/sd;
  const rowsByZ=Array.from({length:td},()=>new Map());
  for(let z=0;z<sd;z++){
-  const rec=runs[z];if(!rec?.length)continue;const rows=rowsByZ[Math.min(td-1,Math.round(z*kz))];
+  const rec=runs[z];if(!rec?.length)continue;const rows=rowsByZ[Math.min(td-1,Math.floor((z+.5)*kz))];
   for(let i=0;i<rec.length;i+=3){
-   const ty=Math.min(th-1,Math.round(rec[i]*ky)),tx0=Math.min(tw-1,Math.round(rec[i+1]*kx)),tx1=Math.min(tw-1,Math.round(rec[i+2]*kx));
+   const ty=Math.min(th-1,Math.floor((rec[i]+.5)*ky)),tx0=Math.min(tw-1,Math.floor((rec[i+1]+.5)*kx)),tx1=Math.min(tw-1,Math.floor((rec[i+2]+.5)*kx));
    let arr=rows.get(ty);if(!arr){arr=[];rows.set(ty,arr)}arr.push([tx0,tx1]);
   }
  }
