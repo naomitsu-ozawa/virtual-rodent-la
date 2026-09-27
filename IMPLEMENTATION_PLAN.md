@@ -73,6 +73,24 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
       a real compressed dataset if one is ever needed; the owner's micro-CT data is
       uncompressed.
 
+## First-run speed (after PR #52)
+
+Build 271 on the owner's iPad (1024x1024x1784, fat, unsharp): first run 43 s =
+read 20.5, gpu filters 7.8, gpu distance 7.5, upload 2.3, sort 2.1, other ~3.
+Rule: measure first (?debug), one diagnostics build when the cause is unknown.
+
+- [ ] Read: diagnostics build splitting `read` into file I/O / decode / frameYield,
+      then (by measured gain) reuse the halo slices of the previous block, yield by
+      time instead of every 2 slices, and prefetch the next block during GPU work.
+      Also find why read grew from 14.2 s (build 270) to 20.5 s (build 271).
+- [ ] Other source filters: measure each on the device with ?debug and optimise
+      the slow ones the way unsharp was (build 271: separable passes, fewer reads
+      per voxel). Candidates: median, bilateral, nlm (largest windows), anisotropic
+      and tv (iterative: fewer passes / shared-memory tiles). gaussian is already
+      per-axis. Each change needs a JS mirror unit test against the old kernel.
+- [ ] gpu distance (air layers A): 7.5 s; check whether the three axis passes can
+      share buffers or skip blocks without air.
+
 ## Refactoring backlog
 
 Status as of build 240: `docs/app.js` is 822 lines (5439 before the split
