@@ -38,6 +38,21 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region: air threshold, builds 246-248)
+
+**Agent:** Claude
+**Task:** Build 245 still removed all fat or left the rim. Stopped guessing and added
+diagnostics to the segment status.
+
+### What changed
+- Builds 246-247: the done status shows kept voxels, the body share, the share of the segment
+  inside the body mask, spacing and dimensions.
+- Device result: body mask 10.5%, fat inside it 0.0%. The fat range of this
+  dataset lies below the fixed -500 HU "body" threshold.
+- Build 248: air = values below the segment's lower bound (`sourceBodyRuns(v, …, seg.min)`,
+  `suppressThinMask` uses `opts.min`). Test added.
+- Lesson: after the first device failure, gather diagnostics before trying the next fix.
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region fixes, build 245)
 
 **Agent:** Claude

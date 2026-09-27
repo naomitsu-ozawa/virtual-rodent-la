@@ -1,8 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { morphMask } from './mask-ops.js?v=20260927-build247';
-import { frameYield } from './utils.js?v=20260927-build247';
-import { thinSuppressActive, suppressThinStack } from './thin-suppress.js?v=20260927-build247';
+import { morphMask } from './mask-ops.js?v=20260927-build248';
+import { frameYield } from './utils.js?v=20260927-build248';
+import { thinSuppressActive, suppressThinStack } from './thin-suppress.js?v=20260927-build248';
 export class RunUnionFind{
  constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
  grow(){
@@ -242,7 +242,7 @@ export async function morphSourceRunArrays(runs,w,h,d,opening,closing){
  return out;
 }
 // Thin-region suppression on runs, block-wise; bodyRuns (voxels at or above
-// BODY_MIN_HU) are needed only for the surface exclusion.
+// segment's lower bound) are needed only for the air-boundary exclusion.
 export async function thinSuppressSourceRuns(runs,w,h,d,spacing,seg,bodyRuns,alive=()=>true,onProgress=null){
  const out=new Array(d),opts={surfaceMm:bodyRuns?seg.surfaceMm:0,thicknessMm:seg.thicknessMm};
  if(!thinSuppressActive(opts))return runs;
