@@ -64,7 +64,12 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Add manual brush / eraser correction
 - [ ] Move heavy processing off the main UI thread where needed
 - [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module, UI shell, GPU compute, volume I/O; next: feature modules — see "Refactoring backlog")
-- [ ] Add compressed DICOM Transfer Syntax support
+- [x] Compressed DICOM Transfer Syntax support (implemented but untested on real
+      data: JPEG baseline/lossless, JPEG-LS, JPEG 2000, RLE decode through the lazily
+      loaded cornerstone dicom-image-loader in `volume-io.js`; the fast raw-RLE
+      analysis and native-slice paths apply to uncompressed data only). Verify with
+      a real compressed dataset if one is ever needed; the owner's micro-CT data is
+      uncompressed.
 
 ## Refactoring backlog
 
