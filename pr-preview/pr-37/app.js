@@ -685,6 +685,7 @@ volumeAnalysisToggle.onclick=async()=>{
   if(threeRenderMode!=='volume')await ensureGpuResidentCpuPositions(null,currentLanguage==='ja'?'体積解析用データを取得中':'Preparing volume analysis');
   if(!volume)return;
   setVolumeAnalysisMode(true);
+  scheduleAnalysisRunPrewarm();
   requestIPadSettingsTab('display');
   volumeAnalysisToggle.textContent=tr('volumeOff');
   volumeAnalysisToggle.classList.add('is-active');
@@ -2871,18 +2872,22 @@ async function ensureSegmentBaseRuns(key,v=current3DVolume||volume,onProgress=nu
  })();
  st.pendingBase=pending;return pending.promise;
 }
-// After a filtered source-backed 3D build, compute each shown segment's
-// filtered runs in the background so the first volume-analysis click does
-// not have to re-filter the whole volume. Quiet (no busy UI), one segment at
-// a time, and abandoned as soon as the 3D scene or the filters change.
-function scheduleAnalysisRunPrewarm(v,keys,renderRevision){
- if(!v?.sourceBacked||!keys.length||!sourceFilterStages().length)return;
+// When volume analysis mode is turned on (usually in GPU volume view), compute
+// each shown segment's filtered runs in the background so the first analysis
+// click does not have to re-filter the whole volume. Quiet (no busy UI), one
+// segment at a time; stops when analysis mode is turned off, the volume
+// changes, or the filters change (`__SUPERSEDED__`). Only source-backed
+// volumes with filters need it; a click during it joins the same computation.
+function scheduleAnalysisRunPrewarm(){
+ const v=current3DVolume||volume;
+ if(!v?.sourceBacked||!sourceFilterStages().length)return;
+ const keys=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key]?.active&&segmentState[key]?.enabled);
  setTimeout(async()=>{
   for(const key of keys){
-   if(renderRevision!==sourceRenderRevision||current3DVolume!==v||!segmentState[key]?.active)return;
+   if(!volumeAnalysisMode||(current3DVolume||volume)!==v||!segmentState[key]?.active)return;
    try{await ensureSegmentBaseRuns(key,v,null,true)}catch(e){if(String(e.message||e)!=='__SUPERSEDED__')console.warn('Background analysis prewarm failed for '+key+'; analysis will compute on demand.',e);return}
   }
- },500);
+ },300);
 }
 async function getFinalSegmentRuns(key,v=current3DVolume||volume,onProgress=null){
  const st=segmentEditState[key],base=await ensureSegmentBaseRuns(key,v,onProgress);if(!base)return null;let runs=base,d=v.slices;
@@ -3729,7 +3734,7 @@ async function render3DSourceBacked(v){
   if(previous){previous.parent?.remove(previous);dispose(previous)}
   sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
   const resident=residentTileCount>0&&cpuTileCount===0,mixed=residentTileCount>0&&cpuTileCount>0;threeLabel.textContent=(sceneState.backend||'3D')+(resident?' · GPU resident':mixed?' · GPU/CPU full resolution':' · full resolution');
-  if(resident){setGpuComputeBackend(surfaceSmoothingActive()?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');footer.textContent='3D full resolution · GPU resident · source DICOM · no vertex readback'}else if(mixed){setGpuComputeBackend('GPU+CPU FULL RESOLUTION');footer.textContent='3D full resolution · GPU+CPU exact geometry · GPU-resident evaluation unavailable'}else footer.textContent='3D full resolution · source DICOM · no resampling';set3DBusy(false);request3DRender();mark3DCurrent();scheduleAnalysisRunPrewarm(v,streamActive.map(({key})=>key),revision);return true;
+  if(resident){setGpuComputeBackend(surfaceSmoothingActive()?'WEBGPU GPU-RESIDENT MESH+SMOOTH':'WEBGPU GPU-RESIDENT MESH');footer.textContent='3D full resolution · GPU resident · source DICOM · no vertex readback'}else if(mixed){setGpuComputeBackend('GPU+CPU FULL RESOLUTION');footer.textContent='3D full resolution · GPU+CPU exact geometry · GPU-resident evaluation unavailable'}else footer.textContent='3D full resolution · source DICOM · no resampling';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){
   dispose(group);
   if(revision===sourceRenderRevision){threeLabel.textContent=(sceneState.backend||'3D')+' · build error';footer.textContent='3D build error: '+String(e.message||e);set3DBusy(false);mark3DStale()}
