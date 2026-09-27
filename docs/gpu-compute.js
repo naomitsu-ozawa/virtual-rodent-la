@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build250';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build251';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build250';
-import { isDesktopMac } from './utils.js?v=20260927-build250';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build250';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build250';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build251';
+import { isDesktopMac } from './utils.js?v=20260927-build251';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build251';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build251';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -261,12 +261,21 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   const countPipeline=await gpuFilterPipeline('analysisRunCount'),writePipeline=await gpuFilterPipeline('analysisRunWrite'),groups=Math.ceil(targetCount/gpuFilterRuntime.workgroupSize);
   const maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
   const itemsList=[];let enc=encoder;
+  // optional air-boundary exclusion for the first segment only (extras such as
+  // the body mask read the unmodified filtered values)
+  let firstSrc=current;const airx=faceContext.airExclude;
+  if(airx){
+   const original=current;
+   await dispatch('airExclude',[airx.n[0],airx.n[1],airx.n[2]],[segments[0].seg.min,segments[0].seg.max,airx.a*airx.a,airx.spacing[0],airx.spacing[1],airx.spacing[2]]);
+   firstSrc=current;current=original;
+  }
   try{
-   for(const {seg} of segments){
+   for(const [si,{seg}] of segments.entries()){
+    const src=si===0?firstSrc:current;
     const tb=gpuSmallBuffer(device,new Float32Array([seg.min,seg.max,0,0]));small.push(tb);device.queue.writeBuffer(counter,0,new Uint32Array([0]));
     enc=enc||device.createCommandEncoder({label:'VRL analysis RLE count'});
     const countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
-     {binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
+     {binding:0,resource:{buffer:src}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
     ]});
     const countPass=enc.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);countPass.dispatchWorkgroups(groups);countPass.end();
     const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
@@ -275,7 +284,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     const recordBytes=runCount*16;if(recordBytes>maxOut)throw new Error('GPU analysis run output exceeds device buffer limit');
     const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
     const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries:[
-     {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
+     {binding:0,resource:{buffer:src}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
     ]}),writeEncoder=device.createCommandEncoder({label:'VRL analysis RLE'});
     const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);writePass.dispatchWorkgroups(groups);writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
     await readback.mapAsync(GPUMapMode.READ);itemsList.push(new Uint32Array(readback.getMappedRange().slice(0)));readback.unmap();records.destroy();readback.destroy();
