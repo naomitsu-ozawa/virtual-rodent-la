@@ -88,6 +88,13 @@ own modules first. Verbatim moves.
   original-preview | original | gpu N ms | gpu-read-empty | full-resolution
   filter (GPU volume not used: <reason>)"). Use it to find the path on the
   device before changing more.
+- Build 224 on the iPad showed "full-resolution filter (GPU volume not used:
+  GPU readback disabled after an error)". Not an error: `app.js` sets
+  `residentMprReadbackDisabled` on purpose when the texture is reduced
+  (`setResidentMprReadbackDisabled(!!mv.isReduced?.(v))`) so exact readback
+  never uses it. Build 225: the slide preview checks only
+  `mv.hasResident(target)` (it never caches values as exact); the misleading
+  reason text is removed.
 
 ### Next
 - Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
