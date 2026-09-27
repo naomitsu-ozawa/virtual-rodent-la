@@ -117,7 +117,12 @@ own modules first. Verbatim moves.
   finger position and the precision value. Build 228: `touchstart` on a range
   is prevented (except in `.sidebar-scroll`, where vertical scrolling may
   start on a slider) and `touchmove` during an active precision drag.
-  Open: whether the owner wants 1:1 following for pen (gain 1).
+- Owner: touch flicker gone. Slice sliders should follow pen and touch 1:1;
+  other sliders keep the precision drag. Build 229: `SLICE_SLIDER_SELECTOR`
+  (`#axial/#coronal/#sagittal-slider`, `#mpr3d-slider-*`,
+  `#section-position`) drags absolutely: the value comes from the pointer
+  position on the slider (a tap jumps there), so the thumb stays under the
+  pen/finger. Other ranges unchanged (gain .48 mouse/pen, .36 touch).
 
 ### Next
 - Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
