@@ -89,6 +89,15 @@ finishes and later clicks are fast): make the first analysis click fast too.
 - Not verifiable in CI (no GPU): WGSL parses (wgsl-shaders test), packing is
   unit-tested; colouring must be checked on a device.
 
+### Same PR, build 221: speckled colouring on reduced iPad textures
+- Owner screenshot (iPad GPU 512, source 1024×1024×1784): the region was
+  coloured but speckled with uncoloured texels. `gpuRunsForTexture`
+  point-samples one source voxel per texel, so thin cortical shells miss
+  many texels. Dilate the region by one texel on reduced textures (as the
+  cut preview already does). Side effect: up to one texel (~2 source voxels
+  at 512) of colour can spill onto a touching neighbour; volumes are
+  computed at source resolution and unaffected.
+
 ### Follow-up
 - The GPU volume texture already holds the filtered volume
   (`gpuVolumeShowsCurrentFilters`); extracting runs from it would avoid

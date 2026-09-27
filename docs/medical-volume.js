@@ -818,12 +818,15 @@ export class MedicalVolumeRenderer{
   this.analysisOverlaySignature='';this.rebuildBindGroup();
  }
  // regions: [{runs (per-slice y,x0,x1 triples in source voxels), color (0xRRGGBB), focused}].
+ // Reduced textures point-sample the source, so thin cortical shells would
+ // miss most texels (speckled colouring); dilate by one texel as the cut
+ // preview does.
  setAnalysisRuns(regions,v,signature=''){
   if(signature&&signature===this.analysisOverlaySignature)return;
   if(!v||!this.textureDims||!regions?.length){this.clearAnalysisRuns();this.analysisOverlaySignature=signature;return}
   const sourceDims=[v.columns,v.rows,v.slices],gridDims=this.textureDims.slice(),[w,h,d]=gridDims;
   if(w>65535)throw new Error('GPU analysis overlay requires width <= 65535');
-  const rowCount=h*d,counts=new Uint32Array(rowCount),grids=regions.map(r=>gpuRunsForTexture(r.runs,sourceDims,gridDims,{dilate:0}));
+  const rowCount=h*d,counts=new Uint32Array(rowCount),grids=regions.map(r=>gpuRunsForTexture(r.runs,sourceDims,gridDims,{dilate:this.reducedVolume?1:0}));
   for(const g of grids)if(g)for(let z=0;z<d;z++){const rec=g[z];if(rec)for(let i=0;i<rec.length;i+=3)counts[z*h+rec[i]]++}
   const header=2+rowCount;let total=0;for(let r=0;r<rowCount;r++)total+=counts[r];
   if(!total){this.clearAnalysisRuns();this.analysisOverlaySignature=signature;return}
