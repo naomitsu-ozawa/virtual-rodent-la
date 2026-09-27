@@ -38,6 +38,41 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (analysis prewarm, build 219)
+
+**Agent:** Claude (Claude Code)
+**Task:** Follow-up to build 218 (owner confirmed on iPad that analysis now
+finishes and later clicks are fast): make the first analysis click fast too.
+
+### What changed
+- `scheduleAnalysisRunPrewarm(v, keys, revision)`: after a successful
+  filtered source-backed 3D build (`render3DSourceBacked`), compute each
+  shown segment's filtered runs in the background (500 ms later, one
+  segment at a time, no busy UI). Abandoned when the 3D scene is rebuilt,
+  `current3DVolume` changes, the segment is hidden, or the filters change
+  (`__SUPERSEDED__`).
+- `ensureSegmentBaseRuns(key, v, onProgress, quiet)`: one computation per
+  signature. A second caller with the same signature (e.g. an analysis
+  click while the prewarm runs) joins the pending promise and receives its
+  progress; `quiet` skips `setProcessingBusy` so the background pass does
+  not touch the left progress bar. `clearSegmentEditCache` drops the
+  pending entry (its result is then not stored).
+- Build 218 → 219.
+
+### Why not in the 3D build pass itself
+- The filtered 3D build produces faces on the GPU (`getFilteredSourceAxialFaceBlock`,
+  often GPU-resident tiles), not runs. Emitting runs from the same pass means
+  changing the GPU face kernels, which can only be verified on a device. The
+  background pass costs one extra filtered pass per segment after each 3D
+  build (GPU/CPU load on iPad right after building).
+
+### Follow-up
+- If the extra pass makes the UI sluggish right after a 3D build on iPad,
+  delay it further or run it only after volume analysis mode is turned on.
+- Longer term: emit analysis runs from the same GPU filter pass as the faces.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (analysis cache, build 218)
 
 **Agent:** Claude (Claude Code)
