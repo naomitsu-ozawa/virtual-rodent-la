@@ -62,7 +62,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Add size-limited hole filling and small-object removal
 - [ ] Add morphology tools where they materially improve bone continuity
 - [ ] Add manual brush / eraser correction
-- [x] Thin-region suppression for segments (builds 242-243; see
+- [x] Thin-region suppression for segments (builds 242-244; see
       "Thin-region suppression" below; check on a device)
 - [ ] Move heavy processing off the main UI thread where needed
 - [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module, UI shell, GPU compute, volume I/O; next: feature modules — see "Refactoring backlog")
@@ -158,10 +158,11 @@ As built (build 242, `thin-suppress.js`, unit-tested):
 
 - Both sliders exist on every segment and can be combined. Order: threshold,
   A, B, then Opening/Closing, Hole Filling and Min Component.
-- Body = voxels at or above -500 HU (`BODY_MIN_HU`). Exterior air is filled per
-  axial slice from the border, so enclosed air (lung, trachea, gut gas) is
-  not treated as outside and fat next to it is kept. Non-HU data: A has no
-  effect.
+- Air = voxels below -500 HU (`BODY_MIN_HU`). Since build 244, A uses all air.
+  Builds 242-243 used only air outside the body. The owner's data showed the same
+  1-voxel rim around gut gas, so enclosed air now counts too (fat right next
+  to the lungs is trimmed by the same depth). UI label: "空気との境界から除外".
+  Non-HU data: A has no effect.
 - CPU, block-wise (z blocks and 256² xy tiles, halo from the radii). Build
   243 replaced the distance transforms with exact ball stamping around
   boundary voxels, about 4× faster; the EDT is kept as the test reference.
@@ -181,6 +182,9 @@ As built (build 242, `thin-suppress.js`, unit-tested):
   before) are sent to the raycast shader as keep masks
   (`gpuVolumeEditDescriptors`), computed in the background on entering
   volume mode, adding a segment or changing a setting.
+- Each segment card shows its own status line: phase n/N (threshold, air
+  mask, thin-region removal), percent and seconds, then done, stopped or error
+  (build 244; the global progress bar sits on the data tab and was not visible).
 - Sliders recompute on release; the step is one in-plane source voxel, the
   output shows mm and the voxel equivalent. Saved in projects and part of
   the run-cache key.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { suppressThinBoxEdt, edtSq, exteriorAirSlice, suppressThinBox, suppressThinMask, BODY_MIN_HU } from '../../docs/thin-suppress.js';
+import { suppressThinBoxEdt, edtSq, exteriorAirSlice, airSlice, suppressThinBox, suppressThinMask, BODY_MIN_HU } from '../../docs/thin-suppress.js';
 
 const count = m => m.reduce((a, b) => a + b, 0);
 
@@ -28,7 +28,7 @@ describe('thin-suppress', () => {
     expect(count(ext)).toBe(49 - 25);
   });
 
-  it('A removes a surface shell but keeps deeper voxels and enclosed-air neighbours', () => {
+  it('A removes the rim next to any air (outside and enclosed) and keeps deeper voxels', () => {
     const w = 12, h = 12, d = 1, n = w * h, sp = [0.1, 0.1, 0.1];
     const values = new Float32Array(n).fill(-1000);
     for (let y = 2; y < 10; y++) for (let x = 2; x < 10; x++) values[y * w + x] = -100;
@@ -37,8 +37,9 @@ describe('thin-suppress', () => {
     const out = suppressThinMask(seg, values, w, h, d, sp, { surfaceMm: 0.1, thicknessMm: 0 });
     expect(out[2 * w + 5]).toBe(0); // outer ring gone
     expect(out[3 * w + 5]).toBe(1);
-    expect(out[5 * w + 6]).toBe(1); // next to enclosed air: kept
-    expect(count(out)).toBe(count(seg) - 28);
+    expect(out[5 * w + 6]).toBe(0); // next to enclosed air (gut gas): removed too
+    expect(out[4 * w + 6]).toBe(1);
+    expect(count(out)).toBe(count(seg) - 28 - 4);
     expect(BODY_MIN_HU).toBeLessThan(-250);
   });
 
@@ -66,7 +67,7 @@ describe('thin-suppress', () => {
     const ext = new Uint8Array(n), plane = w * h;
     for (let z = 0; z < d; z++) {
       const b = new Uint8Array(plane); for (let i = 0; i < plane; i++) b[i] = values[z * plane + i] >= BODY_MIN_HU ? 1 : 0;
-      ext.set(exteriorAirSlice(b, w, h), z * plane);
+      ext.set(airSlice(b), z * plane);
     }
     expect([...tiled]).toEqual([...suppressThinBox(seg, ext, w, h, d, sp, opts)]);
   });

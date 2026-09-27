@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend } from './gpu-compute.js?v=20260927-build243';
-import { sourceVolume, filterOrder } from './state.js?v=20260927-build243';
-import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260927-build243';
-import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260927-build243';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build243';
-import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260927-build243';
-import { cacheKey } from './gpu-volume-cache.js?v=20260927-build243';
+import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend } from './gpu-compute.js?v=20260927-build244';
+import { sourceVolume, filterOrder } from './state.js?v=20260927-build244';
+import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260927-build244';
+import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260927-build244';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build244';
+import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260927-build244';
+import { cacheKey } from './gpu-volume-cache.js?v=20260927-build244';
 export const memoryFilterPreviewCache={map:new Map(),bytes:0};
 export const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
 export function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024}

@@ -1,9 +1,9 @@
 // Thin-region suppression for segments (IMPLEMENTATION_PLAN "Planned:
 // thin-region suppression"). Pure kernels, no module state.
 //
-// A. surfaceMm: drop segment voxels within this distance of the air outside
-//    the body. Targets the partial-volume shell at the skin/air boundary
-//    (air + tissue averaging into the fat range).
+// A. surfaceMm: drop segment voxels within this distance of air (below
+//    BODY_MIN_HU: outside the body, gut gas, lungs). Targets the partial-volume
+//    rim at air boundaries (air + tissue averaging into the fat range).
 // B. thicknessMm: remove parts of the segment this thick or thinner
 //    (opening by a ball of radius thicknessMm/2, in mm, via distance fields).
 //
@@ -55,9 +55,8 @@ function dt1(f,n,s2,g,v,z){
  for(let q=0;q<n;q++){while(z[j+1]<q)j++;const p=v[j],dq=q-p;g[q]=f[p]+s2*dq*dq}
 }
 
-// Per-slice exterior air: non-body pixels connected to the slice border.
-// Enclosed air (lungs, trachea, gut gas) is not exterior, so fat next to
-// the lungs is not trimmed.
+// Per-slice exterior air: non-body pixels connected to the slice border
+// (enclosed air excluded). Not used by A any more; kept for reference/tests.
 export function exteriorAirSlice(body,w,h){
  const out=new Uint8Array(w*h),stack=new Int32Array(w*h);let top=0;
  const push=i=>{if(!body[i]&&!out[i]){out[i]=1;stack[top++]=i}};
@@ -66,6 +65,10 @@ export function exteriorAirSlice(body,w,h){
  while(top){const i=stack[--top],y=(i/w)|0,x=i-y*w;if(x>0)push(i-1);if(x<w-1)push(i+1);if(y>0)push(i-w);if(y<h-1)push(i+w)}
  return out;
 }
+
+// Air = not body. The partial-volume rim forms at every air boundary (skin,
+// gut gas, lungs, holder), so A uses all air, not only air outside the body.
+export function airSlice(body){const out=new Uint8Array(body.length);for(let i=0;i<body.length;i++)out[i]=body[i]?0:1;return out}
 
 // Halo in voxels per axis that a block needs around its core.
 export function thinSuppressHalo(spacing,seg){
@@ -147,7 +150,7 @@ export function suppressThinBoxEdt(seg,exterior,w,h,d,spacing,opts){
 // responsive; sync callers just drain it.
 export function* suppressThinStack(segSlice,bodySlice,w,h,d,spacing,opts,emit,{blockDepth=8,tile=256}={}){
  const [hx,hy,hz]=thinSuppressHalo(spacing,opts),useA=(+opts.surfaceMm||0)>0,plane=w*h,cache=new Map();
- const sliceAt=z=>{let s=cache.get(z);if(!s){const seg=segSlice(z);s={seg,ext:useA?exteriorAirSlice(bodySlice(z),w,h):null};cache.set(z,s)}return s};
+ const sliceAt=z=>{let s=cache.get(z);if(!s){const seg=segSlice(z);s={seg,ext:useA?airSlice(bodySlice(z)):null};cache.set(z,s)}return s};
  for(let z0=0;z0<d;z0+=blockDepth){
   const core=Math.min(blockDepth,d-z0),za=Math.max(0,z0-hz),zb=Math.min(d,z0+core+hz),ld=zb-za;
   for(const key of [...cache.keys()])if(key<za)cache.delete(key);
