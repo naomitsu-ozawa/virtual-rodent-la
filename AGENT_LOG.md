@@ -38,6 +38,44 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 2, step 2)
+
+**Agent:** Claude (Claude Code)
+**Task:** Second step of the MPR feature-module split: the 3D preview cache
+and the MPR-in-3D overlay, verbatim.
+
+### What changed (all verbatim moves)
+- `mpr3DSliceSliders` (DOM const) appended to `docs/ui-shell.js`. It now
+  queries `#mpr3d-slider-*` when ui-shell.js runs instead of at its old
+  line in app.js; the elements come from the template and nothing before
+  the old line recreates them (the only `innerHTML` writes there build new
+  toolbar/drawer nodes), so it holds the same nodes.
+- New `docs/scene3d.js`: `request3DRender` (3 lines, state only). Kept out
+  of the overlay module because 67 call sites across the app use it; this
+  module is meant to receive the 3D scene code (`start3D`) later.
+- New `docs/mpr3d-overlay.js` (22 decls): 3D preview cache build/paint
+  (`ensureMpr3DPreviewCache`, `paintMpr3DCacheSliceFast`, window LUT,
+  preview plan/map), overlay plane objects and positions, the 7-function
+  overlay cycle, the 3D slice panel sync (`syncMpr3DSliceSliders`,
+  `mpr3DOpacitySource`), and their state objects (`mpr3DPreviewCache`,
+  `mpr3DCacheImage`, `mpr3DVisibility`, `mpr3DOrthoSliding`; literal
+  initialisers).
+- app.js 4321 → 4088 lines. `verify-split HEAD docs/app.js,docs/ui-shell.js
+  docs/app.js docs/ui-shell.js docs/scene3d.js docs/mpr3d-overlay.js` → OK,
+  581 statements verbatim.
+- Exact commands: `tools/split-history/phase2d-part2-step2.sh`.
+- Build 216 → 217.
+
+### Next (step 3)
+- 2D plane rendering: `renderPlane`, `paintSourcePlane`,
+  `schedulePlaneRender`, instant-image path. Its closure also pulls in
+  segment-mask helpers (`getProcessedSegmentMask`, `activeMprSegments`, …)
+  and analysis overlay drawing; consider moving those first as their own
+  module.
+- `mpr3DSlicePanelReady` stays in app.js (used by the panel wiring).
+
+---
+
 ## 2026-09-26 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 2, step 1)
 
 **Agent:** Claude (Claude Code)
