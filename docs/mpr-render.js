@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { wc, ww, planes, footer, state } from './ui-shell.js?v=20260927-build230';
-import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build230';
-import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane } from './state.js?v=20260927-build230';
-import { analysisRunsContain } from './run-length.js?v=20260927-build230';
-import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast } from './mpr3d-overlay.js?v=20260927-build230';
-import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20260927-build230';
-import { request3DRender } from './scene3d.js?v=20260927-build230';
-import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet } from './source-filters.js?v=20260927-build230';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20260927-build230';
-import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20260927-build230';
-import { hexRgb } from './utils.js?v=20260927-build230';
+import { wc, ww, planes, footer, state } from './ui-shell.js?v=20260927-build231';
+import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build231';
+import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane } from './state.js?v=20260927-build231';
+import { analysisRunsContain } from './run-length.js?v=20260927-build231';
+import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast } from './mpr3d-overlay.js?v=20260927-build231';
+import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20260927-build231';
+import { request3DRender } from './scene3d.js?v=20260927-build231';
+import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet } from './source-filters.js?v=20260927-build231';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20260927-build231';
+import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20260927-build231';
+import { hexRgb } from './utils.js?v=20260927-build231';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { latestOnlyRunner } from './latest-runner.js?v=20260927-build230';
+import { latestOnlyRunner } from './latest-runner.js?v=20260927-build231';
 export function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
 export function drawAnalysisOverlay(p,idx,ctx){
  if(!volumeAnalysisMode||!analysisRegions.length||!ctx)return;

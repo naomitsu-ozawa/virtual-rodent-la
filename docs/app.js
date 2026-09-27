@@ -2,33 +2,37 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build230';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build231';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-import { clampRangeValue, ctDigits, esc, fmt, formatCtValue, frameYield, hexRgb, isDesktopMac, isIPadRuntime, isIPhoneRuntime, multi, niceCtStep, num, numberOr, rangeNumber, rangePrecision, rangeStep, safePair, safeTriple, withTimeout } from './utils.js?v=20260927-build230';
-import { COMPRESSED_DICOM_TRANSFER_SYNTAXES, NATIVE_DICOM_TRANSFER_SYNTAXES, canDecodeToInt16, dicomImageFrameInfo, encapsulatedFrameBytes, expandParsedFrames, groupSeries, isNativeDicomTransferSyntax, parseDicomHeader, parseFiles, parsedSliceMeta, sourceRangeFromMetadata } from './dicom.js?v=20260927-build230';
-import { boxBlur3D, buildThresholdMask, compactFaceFlags, fillMaskHoles, morphMask, removeSmallMaskComponents, smoothMaskScalarField, thresholdSourceMask, valuesToFaceFlags, valuesToSegmentBits } from './mask-ops.js?v=20260927-build230';
-import { RunUnionFind, analysisRunRows, analysisRunSliceState, analysisRunsContain, analysisRunsOverlap, analysisRunsVoxelCount, complementRunArrays, componentAtVoxel, componentTouchesVolumeBoundary, componentsFromRuns, componentsFromRunsAsync, consumeGpuAnalysisRuns, forEachUncoveredRun, intersectRunArrays, intersectRunSlice, maskFromAnalysisRuns, maskToAnalysisRuns, mergeIntervals, morphSourceRunArrays, postprocessSourceRuns, rowIntervalsFromRuns, rowsToRunSlice, runArraysBinary, runsSliceToMask, sourceComponentSliceState, sourceResultToAnalysisRuns, sourceRunSlice, sourceRunSliceFromRanges, subtractRunArrays, subtractRunSlice, unionAnalysisRuns, unionOverlappingRuns, unionRunArrays, unionRunSlice } from './run-length.js?v=20260927-build230';
-import { Float32FaceBuilder, appendAnalysisRunBoundaryFaces, appendDecodedMaskSliceFaces, appendSourceFacesFromCompactTile, appendSourceSliceFaces, appendSourceSliceFacesFast, appendSourceSliceFacesFromBits, appendSourceSliceFacesFromFlags, eachGeometryTriangle, eachGeometryTriangleRange, geometryToBinaryStl, groupToBinaryStl, groupTriangleCount, indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates } from './mesh-geometry.js?v=20260927-build230';
-import { I18N, tr } from './i18n.js?v=20260927-build230';
-import { GPU_PREWARM_KINDS, gpuFilterShader, normalizeVrlWgsl } from './gpu-shaders.js?v=20260927-build230';
-import { activeId, activeSeries, analysisCutApplying, analysisCutScreen, analysisCutStroke, analysisEditPreparing, analysisEditTargetKey, analysisEditTargetMode, analysisEditTool, analysisFocusedRegionId, analysisPendingCut, analysisRegions, ctRangeMode, ctRangeProfile, current3DVolume, currentLanguage, cutBvhModulePromise, cutControlPreviewRaf, cutRaycastMaterial, cutResultPreviewRevision, cutResultPreviewTimer, deferAutomatic3D, dicomCodecModulePromise, filterOrder, filterRebuildRevision, filterRebuildTimer, gpuPrewarmIndex, gpuPrewarmScheduled, incCutResultPreviewRevision, incFilterRebuildRevision, incGpuPrewarmIndex, incNextAnalysisColorIndex, incNextAnalysisRegionId, incNextSegmentMaskVolumeId, incResidentMprEpoch, incSourceMprWarmupToken, incSourceRenderRevision, ipadGpuTargetSide, memoryGpuPreviewActive, mpr3DSurfaceOpacity, mpr3DVolumeOpacity, mpr3DWindowLutKey, mpr3DWindowLutTable, nextAnalysisColorIndex, nextAnalysisRegionId, nextSegmentMaskVolumeId, precisionRangeDrag, residentGpuUploadSeriesId, residentMprEpoch, residentMprReadbackDisabled, sceneState, sectionAutoPlane, sectionCapEnabled, sectionCapHatch, sectionCapOpacity, sectionSliceImageVisible, sectionViewOpen, sectionViewPlane, sectionViewReverse, segmentRenderTimer, setActiveId, setActiveSeries, setAnalysisCutApplying, setAnalysisCutScreen, setAnalysisCutStroke, setAnalysisEditPreparing, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisEditTool, setAnalysisFocusedRegionId, setAnalysisPendingCut, setAnalysisRegions, setCtRangeMode, setCtRangeProfile, setCurrent3DVolume, setCurrentLanguage, setCutBvhModulePromise, setCutControlPreviewRaf, setCutRaycastMaterial, setCutResultPreviewRevision, setCutResultPreviewTimer, setDeferAutomatic3D, setDicomCodecModulePromise, setFilterOrder, setFilterRebuildRevision, setFilterRebuildTimer, setGpuPrewarmIndex, setGpuPrewarmScheduled, setIpadGpuTargetSide, setMemoryGpuPreviewActive, setMpr3DSurfaceOpacity, setMpr3DVolumeOpacity, setMpr3DWindowLutKey, setMpr3DWindowLutTable, setNextAnalysisColorIndex, setNextAnalysisRegionId, setNextSegmentMaskVolumeId, setPrecisionRangeDrag, setResidentGpuUploadSeriesId, setResidentMprEpoch, setResidentMprReadbackDisabled, setSceneState, setSectionAutoPlane, setSectionCapEnabled, setSectionCapHatch, setSectionCapOpacity, setSectionSliceImageVisible, setSectionViewOpen, setSectionViewPlane, setSectionViewReverse, setSegmentRenderTimer, setSmoothingRefreshTimer, setSourceMprWarmupPlane, setSourceMprWarmupToken, setSourceOrthogonalPlaneCacheBytes, setSourceRenderRevision, setSourceVolume, setThreeDApplying, setThreeDCancelRequested, setThreeDDirty, setThreeRenderMode, setVolume, setVolumeAnalysisBusy, setVolumeAnalysisMode, smoothingRefreshTimer, sourceMprWarmupPlane, sourceMprWarmupToken, sourceOrthogonalPlaneCacheBytes, sourceRenderRevision, sourceVolume, threeDApplying, threeDCancelRequested, threeDDirty, threeRenderMode, volume, volumeAnalysisBusy, volumeAnalysisMode } from './state.js?v=20260927-build230';
-import { $, analysisClearButton, analysisCutApply, analysisCutButton, analysisCutCancel, analysisCutConfirm, analysisCutDepth, analysisCutDepthValue, analysisCutOffset, analysisCutOffsetValue, analysisCutPitch, analysisCutPitchValue, analysisCutWidth, analysisCutWidthValue, analysisCutYaw, analysisCutYawValue, analysisEditRemoveSelected, analysisEditTargetSelect, analysisExportSelected, analysisKeepSelected, analysisLassoButton, analysisLineCutButton, analysisMergeButton, analysisNavigateButton, analysisRedo, analysisRegionList, analysisRemoveSelected, analysisResetEdit, analysisSelectRegionButton, analysisSummary, analysisUndo, anisotropicBtn, anisotropicIterations, anisotropicIterationsValue, anisotropicStrength, anisotropicStrengthValue, app, appVersionBadge, bar, bilateralBtn, bilateralIntensity, bilateralIntensityValue, bilateralPasses, bilateralPassesValue, bilateralSpatial, bilateralSpatialValue, bilateralStrength, bilateralStrengthValue, ctRangeAuto, ctRangeFull, demoBtn, filter3DState, filterAddButton, filterAddSelect, filterControlList, filterRebuild3D, folderBtn, folderInput, footer, gaussianBtn, gaussianStrength, gaussianStrengthValue, ipadGpuQuality, ipadGpuQualityControl, languageToggle, list, mainViewSlot, mpr3DSliceSliders, mprSurfaceOpacity, mprSurfaceOpacityValue, mprVolumeOpacity, mprVolumeOpacityValue, nlmBtn, nlmPatchRadius, nlmPatchRadiusValue, nlmSearchRadius, nlmSearchRadiusValue, nlmStrength, nlmStrengthValue, planes, processingOverlay, processingOverlayLabel, prog, progLabel, projectInput, projectOpenBtn, projectSaveBtn, renderModeToggle, resetFilterBtn, sectionCapEnabledControl, sectionCapHatchControl, sectionCapOpacityControl, sectionCapOpacityValue, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionViewReadout, sectionViewResult, sectionViewToggle, segmentAddButton, segmentAddSelect, segmentControls, selected, sigmoidBtn, sigmoidCenter, sigmoidCenterValue, sigmoidStrength, sigmoidStrengthValue, smoothingType, spatialPasses, spatialPassesValue, spikeHoleBtn, spikeHoleStrength, spikeHoleStrengthValue, spikeHoleThreshold, spikeHoleThresholdValue, state, status, subViewSlots, surfaceSmoothEnabled, surfaceSmoothStrength, surfaceSmoothValue, threeBusy, threeBusyCancel, threeBusyLabel, threeEditHelp, threeEditOverlay, threeEditStatus, threeFilterBadge, threeLabel, tvBtn, tvIterations, tvIterationsValue, tvWeight, tvWeightValue, unsharpAmount, unsharpAmountValue, unsharpBtn, unsharpRadius, unsharpRadiusValue, unsharpThreshold, unsharpThresholdValue, viewport, volumeAnalysisResult, volumeAnalysisToggle, volumeCacheClearBtn, wc, wcVal, ww, wwVal } from './ui-shell.js?v=20260927-build230';
-import { latestOnlyRunner } from './latest-runner.js?v=20260927-build230';
-import { strongSurfaceSmoothingActive, surfaceSmoothingActive } from './settings.js?v=20260927-build230';
-import { GPU_FILTER_KEYS, acquireGpuWorkBuffer, adoptRendererGpuDevice, clearGpuBufferPool, createGpuResidentFloat3Attribute, destroyGpuResidentAttribute, ensureGpuFilterDevice, finishGpuResidentTemps, gpuAdapterLabel, gpuBufferBucketSize, gpuComputeWorkgroupSize, gpuDeviceMode, gpuDeviceRequestDescriptor, gpuFilterPipeline, gpuFilterRuntime, gpuPoolLimit, gpuSmallBuffer, gpuStagesSupported, gpuValidationScope, installGpuErrorListener, releaseGpuWorkBuffer, requestVrlGpuAdapter, requestVrlGpuDevice, runGpuSourceFilters, setGpuComputeBackend, updateGpuStatus, verifyGpuComputeDevice, verifyGpuPipelineSet } from './gpu-compute.js?v=20260927-build230';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane, decode, decodeCompressedDicomSlice, decodeSourceSlice, getDicomCodecModule, prepareSourceMprCache, readSourceColumn, readSourceRow, readSourceRows, sourceMprCacheLimit, sourceMprDecodeConcurrency, sourceSliceCache } from './volume-io.js?v=20260927-build230';
-const APP_VERSION='2026.09.27-230';const APP_BUILD='230';
-import { componentFullyInside, makeVoxelProjector, polygonBounds } from './lasso.js?v=20260927-build230';
-import { PROJECT_EXTENSION, compareFingerprints, datasetFingerprint, decodeRuns, encodeRuns, isProjectArchiveName, packProject, projectFromEntries, unpackProject } from './project-file.js?v=20260927-build230';
-import { cacheKey, openVolumeCache, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build230';
-import { createSourceFilterSlot, ensureSourceFilterWorkers, filterState, fitSourceTile, getCachedSourceSlice, getFilteredMemoryPlaneValues, getFilteredSourceAxialBlock, getFilteredSourcePlaneValues, memoryFilterPreviewCache, memoryFilterPreviewGet, memoryFilterPreviewSet, memoryPreviewCacheLimit, planeRenderRevision, processMemoryRegion, processSourceRegion, pumpSourceFilterWorkers, readMemoryRegion, readSourceRegion, readSourceSubregion, runSourceFilterWorker, sourceFilterCacheGet, sourceFilterCacheLimit, sourceFilterCacheSet, sourceFilterHalo, sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterWorkerMain, sourceSliceCacheLimit, sourceTileBudget } from './source-filters.js?v=20260927-build230';
-import { buildSourceOrthogonalPlane, readResidentGpuMprPlane, readSourceOrthogonalStrip, residentGpuMprAvailable, residentMprJobs, sourceOrthogonalCacheGet, sourceOrthogonalCacheLimit, sourceOrthogonalCacheSet, sourceOrthogonalPlaneCache, sourceOrthogonalPlanePending } from './mpr-orthogonal.js?v=20260927-build230';
-import { request3DRender } from './scene3d.js?v=20260927-build230';
-import { cpuAnisotropicDiffusion, cpuBilateral3D, cpuGaussian3D, cpuMedian3D, cpuNlm3D, cpuSigmoid, cpuSpikeHole, cpuTvDenoising3D, cpuUnsharpMask3D } from './cpu-filters.js?v=20260927-build230';
-import { disposeMprPlaneGroup, ensureMpr3DPlanes, ensureMpr3DPreviewCache, makeMprPlaneLabel, mpr3DCacheImage, mpr3DOpacitySource, mpr3DOrthoSliding, mpr3DPreviewCache, mpr3DPreviewMap, mpr3DPreviewPlan, mpr3DPreviewSignature, mpr3DVisibility, mpr3DWindowLut, paintMpr3DCacheSliceFast, pushCachedMpr3DPlane, refreshMpr3DPlaneTexture, restoreSectionAutoPlane, setMpr3DOverlayVisible, showSectionPlaneOverlay, syncMpr3DOverlayPresentation, syncMpr3DSliceSliders, updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20260927-build230';
-import { SEGMENT_PRESET_ORDER, activeMprSegments, getProcessedSegmentMask, segmentEditActive, segmentEditState, segmentMaskVolumeId, segmentMaskVolumeIds, segmentNeedsGlobalMask, segmentState, sourceMprMemoryView } from './segments.js?v=20260927-build230';
-import { rebindWebGpuSectionClipGroup, sectionLocalNormal, sectionLocalPoint, sectionPlaneLabel, updateSectionClipPlaneWorld, updateSectionViewUi } from './section-view.js?v=20260927-build230';
-import { analysisColorCss, buildSourceOrthogonalNeighborhood, cancelSourceMprWarmup, currentFilterSignature, drawAnalysisOverlay, filteredPlaneDims, filteredPlaneRunners, gpuVolumeShowsCurrentFilters, mprPaintCache, orthogonalHighResPrefetch, paintFastOrthogonalPreview, paintInstantPlaneWhileSliding, paintResidentCachedMprPreview, paintSourcePlane, perSliceFilteredActive, planeRenderTimers, prefetchOrthogonalHighRes, renderPlane, renderPlaneMemoryFiltered, renderPlaneSourceBacked, reusableMprImage, safeRenderPlane, schedulePlaneRender, updateMprCanvasPhysicalAspect } from './mpr-render.js?v=20260927-build230';
+import { clampRangeValue, ctDigits, esc, fmt, formatCtValue, frameYield, hexRgb, isDesktopMac, isIPadRuntime, isIPhoneRuntime, multi, niceCtStep, num, numberOr, rangeNumber, rangePrecision, rangeStep, safePair, safeTriple, withTimeout } from './utils.js?v=20260927-build231';
+import { COMPRESSED_DICOM_TRANSFER_SYNTAXES, NATIVE_DICOM_TRANSFER_SYNTAXES, canDecodeToInt16, dicomImageFrameInfo, encapsulatedFrameBytes, expandParsedFrames, groupSeries, isNativeDicomTransferSyntax, parseDicomHeader, parseFiles, parsedSliceMeta, sourceRangeFromMetadata } from './dicom.js?v=20260927-build231';
+import { boxBlur3D, buildThresholdMask, compactFaceFlags, fillMaskHoles, morphMask, removeSmallMaskComponents, smoothMaskScalarField, thresholdSourceMask, valuesToFaceFlags, valuesToSegmentBits } from './mask-ops.js?v=20260927-build231';
+import { RunUnionFind, analysisRunRows, analysisRunSliceState, analysisRunsContain, analysisRunsOverlap, analysisRunsVoxelCount, complementRunArrays, componentAtVoxel, componentTouchesVolumeBoundary, componentsFromRuns, componentsFromRunsAsync, consumeGpuAnalysisRuns, forEachUncoveredRun, intersectRunArrays, intersectRunSlice, maskFromAnalysisRuns, maskToAnalysisRuns, mergeIntervals, morphSourceRunArrays, postprocessSourceRuns, rowIntervalsFromRuns, rowsToRunSlice, runArraysBinary, runsSliceToMask, sourceComponentSliceState, sourceResultToAnalysisRuns, sourceRunSlice, sourceRunSliceFromRanges, subtractRunArrays, subtractRunSlice, unionAnalysisRuns, unionOverlappingRuns, unionRunArrays, unionRunSlice } from './run-length.js?v=20260927-build231';
+import { Float32FaceBuilder, appendAnalysisRunBoundaryFaces, appendDecodedMaskSliceFaces, appendSourceFacesFromCompactTile, appendSourceSliceFaces, appendSourceSliceFacesFast, appendSourceSliceFacesFromBits, appendSourceSliceFacesFromFlags, eachGeometryTriangle, eachGeometryTriangleRange, geometryToBinaryStl, groupToBinaryStl, groupTriangleCount, indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates } from './mesh-geometry.js?v=20260927-build231';
+import { I18N, tr } from './i18n.js?v=20260927-build231';
+import { GPU_PREWARM_KINDS, gpuFilterShader, normalizeVrlWgsl } from './gpu-shaders.js?v=20260927-build231';
+import { activeId, activeSeries, analysisCutApplying, analysisCutScreen, analysisCutStroke, analysisEditPreparing, analysisEditTargetKey, analysisEditTargetMode, analysisEditTool, analysisFocusedRegionId, analysisPendingCut, analysisRegions, ctRangeMode, ctRangeProfile, current3DVolume, currentLanguage, cutBvhModulePromise, cutControlPreviewRaf, cutRaycastMaterial, cutResultPreviewRevision, cutResultPreviewTimer, deferAutomatic3D, dicomCodecModulePromise, filterOrder, filterRebuildRevision, filterRebuildTimer, gpuPrewarmIndex, gpuPrewarmScheduled, incCutResultPreviewRevision, incFilterRebuildRevision, incGpuPrewarmIndex, incNextAnalysisColorIndex, incNextAnalysisRegionId, incNextSegmentMaskVolumeId, incResidentMprEpoch, incSourceMprWarmupToken, incSourceRenderRevision, ipadGpuTargetSide, memoryGpuPreviewActive, mpr3DSurfaceOpacity, mpr3DVolumeOpacity, mpr3DWindowLutKey, mpr3DWindowLutTable, nextAnalysisColorIndex, nextAnalysisRegionId, nextSegmentMaskVolumeId, precisionRangeDrag, residentGpuUploadSeriesId, residentMprEpoch, residentMprReadbackDisabled, sceneState, sectionAutoPlane, sectionCapEnabled, sectionCapHatch, sectionCapOpacity, sectionSliceImageVisible, sectionViewOpen, sectionViewPlane, sectionViewReverse, segmentRenderTimer, setActiveId, setActiveSeries, setAnalysisCutApplying, setAnalysisCutScreen, setAnalysisCutStroke, setAnalysisEditPreparing, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisEditTool, setAnalysisFocusedRegionId, setAnalysisPendingCut, setAnalysisRegions, setCtRangeMode, setCtRangeProfile, setCurrent3DVolume, setCurrentLanguage, setCutBvhModulePromise, setCutControlPreviewRaf, setCutRaycastMaterial, setCutResultPreviewRevision, setCutResultPreviewTimer, setDeferAutomatic3D, setDicomCodecModulePromise, setFilterOrder, setFilterRebuildRevision, setFilterRebuildTimer, setGpuPrewarmIndex, setGpuPrewarmScheduled, setIpadGpuTargetSide, setMemoryGpuPreviewActive, setMpr3DSurfaceOpacity, setMpr3DVolumeOpacity, setMpr3DWindowLutKey, setMpr3DWindowLutTable, setNextAnalysisColorIndex, setNextAnalysisRegionId, setNextSegmentMaskVolumeId, setPrecisionRangeDrag, setResidentGpuUploadSeriesId, setResidentMprEpoch, setResidentMprReadbackDisabled, setSceneState, setSectionAutoPlane, setSectionCapEnabled, setSectionCapHatch, setSectionCapOpacity, setSectionSliceImageVisible, setSectionViewOpen, setSectionViewPlane, setSectionViewReverse, setSegmentRenderTimer, setSmoothingRefreshTimer, setSourceMprWarmupPlane, setSourceMprWarmupToken, setSourceOrthogonalPlaneCacheBytes, setSourceRenderRevision, setSourceVolume, setThreeDApplying, setThreeDCancelRequested, setThreeDDirty, setThreeRenderMode, setVolume, setVolumeAnalysisBusy, setVolumeAnalysisMode, smoothingRefreshTimer, sourceMprWarmupPlane, sourceMprWarmupToken, sourceOrthogonalPlaneCacheBytes, sourceRenderRevision, sourceVolume, threeDApplying, threeDCancelRequested, threeDDirty, threeRenderMode, volume, volumeAnalysisBusy, volumeAnalysisMode } from './state.js?v=20260927-build231';
+import { $, analysisClearButton, analysisCutApply, analysisCutButton, analysisCutCancel, analysisCutConfirm, analysisCutDepth, analysisCutDepthValue, analysisCutOffset, analysisCutOffsetValue, analysisCutPitch, analysisCutPitchValue, analysisCutWidth, analysisCutWidthValue, analysisCutYaw, analysisCutYawValue, analysisEditRemoveSelected, analysisEditTargetSelect, analysisExportSelected, analysisKeepSelected, analysisLassoButton, analysisLineCutButton, analysisMergeButton, analysisNavigateButton, analysisRedo, analysisRegionList, analysisRemoveSelected, analysisResetEdit, analysisSelectRegionButton, analysisSummary, analysisUndo, anisotropicBtn, anisotropicIterations, anisotropicIterationsValue, anisotropicStrength, anisotropicStrengthValue, app, appVersionBadge, bar, bilateralBtn, bilateralIntensity, bilateralIntensityValue, bilateralPasses, bilateralPassesValue, bilateralSpatial, bilateralSpatialValue, bilateralStrength, bilateralStrengthValue, ctRangeAuto, ctRangeFull, demoBtn, filter3DState, filterAddButton, filterAddSelect, filterControlList, filterRebuild3D, folderBtn, folderInput, footer, gaussianBtn, gaussianStrength, gaussianStrengthValue, ipadGpuQuality, ipadGpuQualityControl, languageToggle, list, mainViewSlot, mpr3DSliceSliders, mprSurfaceOpacity, mprSurfaceOpacityValue, mprVolumeOpacity, mprVolumeOpacityValue, nlmBtn, nlmPatchRadius, nlmPatchRadiusValue, nlmSearchRadius, nlmSearchRadiusValue, nlmStrength, nlmStrengthValue, planes, processingOverlay, processingOverlayLabel, prog, progLabel, projectInput, projectOpenBtn, projectSaveBtn, renderModeToggle, resetFilterBtn, sectionCapEnabledControl, sectionCapHatchControl, sectionCapOpacityControl, sectionCapOpacityValue, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionViewReadout, sectionViewResult, sectionViewToggle, segmentAddButton, segmentAddSelect, segmentControls, selected, sigmoidBtn, sigmoidCenter, sigmoidCenterValue, sigmoidStrength, sigmoidStrengthValue, smoothingType, spatialPasses, spatialPassesValue, spikeHoleBtn, spikeHoleStrength, spikeHoleStrengthValue, spikeHoleThreshold, spikeHoleThresholdValue, state, status, subViewSlots, surfaceSmoothEnabled, surfaceSmoothStrength, surfaceSmoothValue, threeBusy, threeBusyCancel, threeBusyLabel, threeEditHelp, threeEditOverlay, threeEditStatus, threeFilterBadge, threeLabel, tvBtn, tvIterations, tvIterationsValue, tvWeight, tvWeightValue, unsharpAmount, unsharpAmountValue, unsharpBtn, unsharpRadius, unsharpRadiusValue, unsharpThreshold, unsharpThresholdValue, viewport, volumeAnalysisResult, volumeAnalysisToggle, volumeCacheClearBtn, wc, wcVal, ww, wwVal } from './ui-shell.js?v=20260927-build231';
+import { latestOnlyRunner } from './latest-runner.js?v=20260927-build231';
+import { strongSurfaceSmoothingActive, surfaceSmoothingActive } from './settings.js?v=20260927-build231';
+import { GPU_FILTER_KEYS, acquireGpuWorkBuffer, adoptRendererGpuDevice, clearGpuBufferPool, createGpuResidentFloat3Attribute, destroyGpuResidentAttribute, ensureGpuFilterDevice, finishGpuResidentTemps, gpuAdapterLabel, gpuBufferBucketSize, gpuComputeWorkgroupSize, gpuDeviceMode, gpuDeviceRequestDescriptor, gpuFilterPipeline, gpuFilterRuntime, gpuPoolLimit, gpuSmallBuffer, gpuStagesSupported, gpuValidationScope, installGpuErrorListener, releaseGpuWorkBuffer, requestVrlGpuAdapter, requestVrlGpuDevice, runGpuSourceFilters, setGpuComputeBackend, updateGpuStatus, verifyGpuComputeDevice, verifyGpuPipelineSet } from './gpu-compute.js?v=20260927-build231';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane, decode, decodeCompressedDicomSlice, decodeSourceSlice, getDicomCodecModule, prepareSourceMprCache, readSourceColumn, readSourceRow, readSourceRows, sourceMprCacheLimit, sourceMprDecodeConcurrency, sourceSliceCache } from './volume-io.js?v=20260927-build231';
+const APP_VERSION='2026.09.27-231';const APP_BUILD='231';
+import { componentFullyInside, makeVoxelProjector, polygonBounds } from './lasso.js?v=20260927-build231';
+import { PROJECT_EXTENSION, compareFingerprints, datasetFingerprint, decodeRuns, encodeRuns, isProjectArchiveName, packProject, projectFromEntries, unpackProject } from './project-file.js?v=20260927-build231';
+import { cacheKey, openVolumeCache, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build231';
+import { createSourceFilterSlot, ensureSourceFilterWorkers, filterState, fitSourceTile, getCachedSourceSlice, getFilteredMemoryPlaneValues, getFilteredSourceAxialBlock, getFilteredSourcePlaneValues, memoryFilterPreviewCache, memoryFilterPreviewGet, memoryFilterPreviewSet, memoryPreviewCacheLimit, planeRenderRevision, processMemoryRegion, processSourceRegion, pumpSourceFilterWorkers, readMemoryRegion, readSourceRegion, readSourceSubregion, runSourceFilterWorker, sourceFilterCacheGet, sourceFilterCacheLimit, sourceFilterCacheSet, sourceFilterHalo, sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterWorkerMain, sourceSliceCacheLimit, sourceTileBudget } from './source-filters.js?v=20260927-build231';
+import { buildSourceOrthogonalPlane, readResidentGpuMprPlane, readSourceOrthogonalStrip, residentGpuMprAvailable, residentMprJobs, sourceOrthogonalCacheGet, sourceOrthogonalCacheLimit, sourceOrthogonalCacheSet, sourceOrthogonalPlaneCache, sourceOrthogonalPlanePending } from './mpr-orthogonal.js?v=20260927-build231';
+import { request3DRender } from './scene3d.js?v=20260927-build231';
+import { cpuAnisotropicDiffusion, cpuBilateral3D, cpuGaussian3D, cpuMedian3D, cpuNlm3D, cpuSigmoid, cpuSpikeHole, cpuTvDenoising3D, cpuUnsharpMask3D } from './cpu-filters.js?v=20260927-build231';
+import { disposeMprPlaneGroup, ensureMpr3DPlanes, ensureMpr3DPreviewCache, makeMprPlaneLabel, mpr3DCacheImage, mpr3DOpacitySource, mpr3DOrthoSliding, mpr3DPreviewCache, mpr3DPreviewMap, mpr3DPreviewPlan, mpr3DPreviewSignature, mpr3DVisibility, mpr3DWindowLut, paintMpr3DCacheSliceFast, pushCachedMpr3DPlane, refreshMpr3DPlaneTexture, restoreSectionAutoPlane, setMpr3DOverlayVisible, showSectionPlaneOverlay, syncMpr3DOverlayPresentation, syncMpr3DSliceSliders, updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20260927-build231';
+import { SEGMENT_PRESET_ORDER, activeMprSegments, getProcessedSegmentMask, segmentEditActive, segmentEditState, segmentMaskVolumeId, segmentMaskVolumeIds, segmentNeedsGlobalMask, segmentState, sourceMprMemoryView } from './segments.js?v=20260927-build231';
+import { rebindWebGpuSectionClipGroup, sectionLocalNormal, sectionLocalPoint, sectionPlaneLabel, updateSectionClipPlaneWorld, updateSectionViewUi } from './section-view.js?v=20260927-build231';
+import { analysisColorCss, buildSourceOrthogonalNeighborhood, cancelSourceMprWarmup, currentFilterSignature, drawAnalysisOverlay, filteredPlaneDims, filteredPlaneRunners, gpuVolumeShowsCurrentFilters, mprPaintCache, orthogonalHighResPrefetch, paintFastOrthogonalPreview, paintInstantPlaneWhileSliding, paintResidentCachedMprPreview, paintSourcePlane, perSliceFilteredActive, planeRenderTimers, prefetchOrthogonalHighRes, renderPlane, renderPlaneMemoryFiltered, renderPlaneSourceBacked, reusableMprImage, safeRenderPlane, schedulePlaneRender, updateMprCanvasPhysicalAspect } from './mpr-render.js?v=20260927-build231';
+import { setProcessingBusy } from './busy.js?v=20260927-build231';
+import { decodeSourceSegmentMasks, ensureSegmentBaseRuns, getFilteredSourceAxialMaskBlock, getFinalSegmentRuns, processSourceRegionMasks, segmentBaseSignature, sourceAnalysisBlockDepth, sourceRunsForSegment, sourceSegmentMaskBlock, sourceSegmentRunBlockGpu, thresholdRunsFromMemory } from './segment-runs.js?v=20260927-build231';
+import { buildEditableRunsGroup, buildSmoothIsoMesh, consolidateSegmentForStrongSmoothing, dispose, fullVolumeSmoothIsosurfaceFeasible, geometryFromSourcePositions, smoothIsosurfaceGeometry, taubinSmoothGeometry } from './surface-mesh.js?v=20260927-build231';
+import { analysisRegionById, clearCutResultPreview, configureCutControlRanges, cutDirectionFromPoint, cutPlanDirection, cutRunsFromVoxelStroke, cutSurfaceFrameData, cutSurfaceStroke, cutWidthMm, rebuildCutResultPreview, refreshCutControlReadouts, scheduleCutResultPreview, setCutResultSourceHidden, setEditTargetHighlight, updateAnalysisEditorControls, updateCutPreview, updateThreeEditUi } from './edit-tools.js?v=20260927-build231';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -217,7 +221,6 @@ function nextAnalysisColor(){
  const color=ANALYSIS_REGION_COLORS[nextAnalysisColorIndex%ANALYSIS_REGION_COLORS.length];
  incNextAnalysisColorIndex(false);return color;
 }
-function analysisRegionById(id){return analysisRegions.find(r=>r.id===id)||null}
 function analysisRegionRepresentativeVoxel(region){
  if(!region?.runsBySlice)return null;
  const nonEmpty=[];for(let z=0;z<region.runsBySlice.length;z++)if(region.runsBySlice[z]?.length)nonEmpty.push(z);
@@ -562,26 +565,6 @@ analysisKeepSelected.onclick=()=>void applyEditKeepSelected();
 analysisUndo.onclick=()=>void undoSegmentEdit();
 analysisRedo.onclick=()=>void redoSegmentEdit();
 analysisResetEdit.onclick=()=>void resetFocusedSegmentEdit();
-function configureCutControlRanges(v=current3DVolume||volume){
- if(!v||!analysisCutWidth)return;
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,dims=[w*sx,h*sy,d*sz],diag=Math.hypot(...dims),minSpacing=Math.min(sx,sy,sz),minDim=Math.min(...dims);
- const clamp=(el,min,max,step)=>{el.min=String(min);el.max=String(max);el.step=String(step);el.value=String(Math.max(min,Math.min(max,+el.value)))};
- const widthMax=Math.max(2,Math.min(8,minDim*.22));
- clamp(analysisCutWidth,0,widthMax,.05);
- clamp(analysisCutDepth,Math.max(.1,minSpacing*.5),Math.max(5,diag),.1);
- clamp(analysisCutYaw,-90,90,.25);clamp(analysisCutPitch,-90,90,.25);
- const offsetMax=Math.max(5,diag*.6);clamp(analysisCutOffset,-offsetMax,offsetMax,.1);
-}
-function cutWidthMm(){
- const value=Number(analysisCutWidth?.value);return Number.isFinite(value)?Math.max(0,value):.8;
-}
-function refreshCutControlReadouts(){
- analysisCutWidthValue.value=cutWidthMm().toFixed(2)+' mm';
- analysisCutDepthValue.value=(+analysisCutDepth.value).toFixed(1)+' mm';
- analysisCutYawValue.value=(+analysisCutYaw.value).toFixed(1)+'°';
- analysisCutPitchValue.value=(+analysisCutPitch.value).toFixed(1)+'°';
- analysisCutOffsetValue.value=(+analysisCutOffset.value).toFixed(1)+' mm';
-}
 const onCutControlInput=()=>{
  refreshCutControlReadouts();updateThreeEditUi();
  if(cutControlPreviewRaf)cancelAnimationFrame(cutControlPreviewRaf);
@@ -1297,25 +1280,6 @@ function invalidateSourceFilters(){
  sourceFilterRuntime.revision++;incSourceRenderRevision(false);
  sourceFilterRuntime.cache.clear();sourceFilterRuntime.cacheBytes=0;disposeSourceFilterWorkers();
 }
-async function processSourceRegionMasks(series,target,stages,key,revision,segments){
- const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
- const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
- if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
- const localTarget={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
- if(gpuStagesSupported(stages)){
-  try{
-   const bits=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments);
-   if(bits instanceof Uint32Array){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return bits}
-  }catch(e){
-   gpuFilterRuntime.lastError='mask: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU mask execution failed; using exact CPU mask path.',e);gpuFilterRuntime.warned=true}
-  }
- }
- setGpuComputeBackend(gpuFilterRuntime.lastError?'CPU WORKER · GPU FAIL':'CPU WORKER',gpuFilterRuntime.lastError);
- const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:localTarget};
- const values=await runSourceFilterWorker(message,key);
- if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
- return valuesToSegmentBits(values,segments);
-}
 async function processSourceRegionFaces(series,target,stages,key,revision,segments,gpuResident=true){
  const halo=Math.max(1,sourceFilterHalo(stages)),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -1360,21 +1324,6 @@ async function getFilteredSourceAxialFaceBlock(zStart,coreDepth,series,segments,
  }
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return{tiles,coreDepth:outDepth};
-}
-async function getFilteredSourceAxialMaskBlock(zStart,coreDepth,series,segments,keyPrefix='3d-mask-block'){
- const stages=sourceFilterStages();if(!stages.length)return null;
- const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=sourceFilterHalo(stages),outDepth=Math.min(d-zStart,coreDepth+(zStart+coreDepth<d?1:0));
- const out=new Uint32Array(w*h*outDepth),[tx,ty]=fitSourceTile(w,h,outDepth,halo,384,128);
- for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
-  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
-  const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),tile=await processSourceRegionMasks(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart,revision,segments);
-  for(let zz=0;zz<outDepth;zz++)for(let yy=0;yy<th;yy++){
-   const src=(zz*th+yy)*tw,dst=(zz*h+y+yy)*w+x;
-   out.set(tile.subarray(src,src+tw),dst);
-  }
- }
- if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
- return{data:out,depth:outDepth,coreDepth:Math.min(coreDepth,d-zStart)};
 }
 function segmentMasksFromBits(bits,segments){
  const blockSize=16384,states=new Map(segments.map(({key})=>[key,{mask:new Uint8Array(bits.length),blocks:[],block:new Uint32Array(blockSize),used:0}]));
@@ -1484,34 +1433,6 @@ function resetProcessing(){
 function clearMemoryFilterPreviewCache(){memoryFilterPreviewCache.map.clear();memoryFilterPreviewCache.bytes=0}
 function hasGlobalSegmentProcessing(){
  return SEGMENT_PRESET_ORDER.some(key=>{const s=segmentState[key];return s.active&&s.enabled&&segmentNeedsGlobalMask(s)});
-}
-function setProcessingBusy(busyState,label='Processing',lockControls=true){
- if(processingOverlay){
-  processingOverlay.classList.toggle('is-hidden',!busyState||!lockControls);
-  processingOverlay.setAttribute('aria-busy',busyState?'true':'false');
- }
- if(processingOverlayLabel)processingOverlayLabel.textContent=busyState&&lockControls?label+' · 処理中…':'';
- if(lockControls){
-  resetFilterBtn.disabled=busyState||!sourceVolume;
-  gaussianBtn.disabled=spikeHoleBtn.disabled=nlmBtn.disabled=anisotropicBtn.disabled=sigmoidBtn.disabled=busyState||!sourceVolume;smoothingType.disabled=busyState||!sourceVolume||!filterState.gaussian;
-  gaussianStrength.disabled=busyState||!sourceVolume||!filterState.gaussian;
-  spatialPasses.disabled=busyState||!sourceVolume||!filterState.gaussian;
-  spikeHoleStrength.disabled=busyState||!sourceVolume||!filterState.spikeHole;
-  spikeHoleThreshold.disabled=busyState||!sourceVolume||!filterState.spikeHole;
-  nlmStrength.disabled=busyState||!sourceVolume||!filterState.nlm;
-  nlmSearchRadius.disabled=busyState||!sourceVolume||!filterState.nlm;
-  nlmPatchRadius.disabled=busyState||!sourceVolume||!filterState.nlm;
-  anisotropicStrength.disabled=busyState||!sourceVolume||!filterState.anisotropic;
-  anisotropicIterations.disabled=busyState||!sourceVolume||!filterState.anisotropic;
-  sigmoidStrength.disabled=busyState||!sourceVolume||!filterState.sigmoid;
-  sigmoidCenter.disabled=busyState||!sourceVolume||!filterState.sigmoid;
-  bilateralStrength.disabled=bilateralSpatial.disabled=bilateralIntensity.disabled=bilateralPasses.disabled=busyState||!sourceVolume||!filterState.bilateral;
-  tvWeight.disabled=tvIterations.disabled=busyState||!sourceVolume||!filterState.tv;
-  unsharpRadius.disabled=unsharpAmount.disabled=unsharpThreshold.disabled=busyState||!sourceVolume||!filterState.unsharp;
-  folderBtn.disabled=demoBtn.disabled=busyState;
- }
- prog.classList.toggle('is-hidden',!busyState);
- if(busyState){bar.style.width='0%';progLabel.textContent=label}
 }
 
 function setCtSliderRange(el,min,max,step){
@@ -1989,53 +1910,6 @@ async function start3D(){
  renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;if(viewport.clientWidth<8||viewport.clientHeight<8)return;sceneState.needsRender=false;// 3D hidden (2D-only layout): keep the request until it is shown again
 syncVolumeAnalysisOverlay();if(sceneState.obj){axisWidget.quaternion.copy(sceneState.obj.quaternion);if(sectionViewOpen&&sectionViewPlane)updateSectionClipPlaneWorld();if(sceneState.mprPlaneGroup){sceneState.mprPlaneGroup.visible=true;sceneState.mprPlaneGroup.position.copy(sceneState.obj.position);sceneState.mprPlaneGroup.quaternion.copy(sceneState.obj.quaternion);sceneState.mprPlaneGroup.scale.copy(sceneState.obj.scale)}}else if(sceneState.mprPlaneGroup)sceneState.mprPlaneGroup.visible=false;if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){const interactiveVisible=mpr3DHideDuringCameraMoves&&fastInteractionActive&&!fastKeepOverlays?[sectionViewOpen&&sectionViewPlane==='axial'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='coronal'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='sagittal'&&sectionSliceImageVisible?1:0]:[sectionViewOpen&&sectionViewPlane==='axial'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.axial?1:0),sectionViewOpen&&sectionViewPlane==='coronal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.coronal?1:0),sectionViewOpen&&sectionViewPlane==='sagittal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.sagittal?1:0)];sceneState.medicalVolume.render(camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,{indices:[+planes.axial.slider.value,+planes.coronal.slider.value,+planes.sagittal.slider.value],visible:interactiveVisible,opacity:mpr3DVolumeOpacity,windowCenter:+wc.value,windowWidth:+ww.value,section:{active:sectionViewOpen&&!!sectionViewPlane,plane:sectionViewPlane,index:sectionViewPlane?+planes[sectionViewPlane].slider.value:0,reverse:sectionViewReverse,capEnabled:sectionCapEnabled,capOpacity:sectionCapOpacity,hatch:sectionCapHatch}});renderer.render(scene,camera)}else renderer.render(scene,camera)});
 }
-async function sourceSegmentMaskBlock(v,key,seg,zStart,depth,analysisRevision){
- const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart);
- if(stages.length){
-  const block=await getFilteredSourceAxialMaskBlock(zStart,coreDepth,series,[{key,seg}],'analysis:'+analysisRevision);
-  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
-  const masks=[];
-  for(let z=0;z<block.coreDepth;z++){
-   const bits=block.data.subarray(z*series.columns*series.rows,(z+1)*series.columns*series.rows),mask=new Uint8Array(bits.length);
-   for(let i=0;i<bits.length;i++)mask[i]=(bits[i]&1)?1:0;
-   masks.push(mask);
-  }
-  return masks;
- }
- const masks=[];
- for(let z=0;z<coreDepth;z++){
-  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
-  const state=(await decodeSourceSegmentMasks(series.slices[zStart+z],[{key,seg}])).get(key);masks.push(state.mask);
- }
- return masks;
-}
-function sourceAnalysisBlockDepth(w,h){
- const preferred=navigator.maxTouchPoints>0?4:16,maxGroups=65535,workgroupSize=256,plane=Math.max(1,w*h),safe=Math.max(1,Math.floor(maxGroups*workgroupSize/plane));
- return Math.max(1,Math.min(preferred,safe));
-}
-async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision){
- const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),device=await ensureGpuFilterDevice();if(!device)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
- const maxGroups=Number(device.limits?.maxComputeWorkgroupsPerDimension)||65535;if(Math.ceil(series.columns*series.rows*coreDepth/256)>maxGroups)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
- let rawError=null;
- if(!stages.length&&series.slices.slice(zStart,zStart+coreDepth).every(meta=>isNativeDicomTransferSyntax(meta.ts))){
-  try{
-   const raw=await gpuValidationScope(device,'raw DICOM analysis RLE',()=>extractSourceThresholdRuns(device,series,zStart,coreDepth,seg));
-   if(raw){setGpuComputeBackend('WEBGPU ANALYSIS RAW-RLE');return raw}
-  }catch(e){rawError=e;console.warn('Raw DICOM GPU RLE unavailable; retrying decoded CT on WebGPU.',e)}
- }
- const halo=sourceFilterHalo(stages),z0=Math.max(0,zStart-halo),z1=Math.min(series.slices.length,zStart+coreDepth+halo),box={x:0,y:0,z:z0,width:series.columns,height:series.rows,depth:z1-z0},data=await readSourceRegion(series,box,analysisRevision,true);
- if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
- const target={x:0,y:0,z:zStart-z0,width:series.columns,height:series.rows,depth:coreDepth};
- try{
-  const result=await gpuValidationScope(device,'decoded CT analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg}],{analysisRuns:true}));
-  if(!result?.analysisRuns)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
-  setGpuComputeBackend(stages.length?'WEBGPU ANALYSIS FILTER+RLE':'WEBGPU ANALYSIS DECODED-RLE',rawError?.message||null);
-  return{items:result.items,coreDepth};
- }catch(e){
-  if(rawError&&String(e.message||e)==='__GPU_ANALYSIS_UNAVAILABLE__')gpuFilterRuntime.lastError='raw RLE: '+String(rawError.message||rawError);
-  throw e;
- }
-}
 async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
  const device=await ensureGpuFilterDevice();if(!device||segmentNeedsGlobalMask(seg))return null;
  const w=v.columns,h=v.rows,d=v.slices,uf=new RunUnionFind(),sliceRuns=new Array(d),seed={x:Math.max(0,Math.min(w-1,x0)),y:Math.max(0,Math.min(h-1,y0)),z:Math.max(0,Math.min(d-1,z0)),label:null,bestDist2:Infinity},plane=w*h;
@@ -2294,9 +2168,6 @@ function createAnalysisMaterial(color=0x00d8ff){
   polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:!surfaceSmoothingActive()
  });
 }
-function segmentBaseSignature(key,v){
- const s=segmentState[key];return [activeId,key,s.min,s.max,s.opening,s.closing,s.minComponent,s.holeFill,filterRebuildRevision,sourceFilterRuntime.revision,v?.columns,v?.rows,v?.slices].join('|');
-}
 function clearSegmentEditCache(key,clearEdits=false){
  const st=segmentEditState[key];if(!st)return;st.baseRuns=null;st.baseSignature='';st.finalRuns=null;st.pendingBase=null;
  if(clearEdits){st.keepRuns=null;st.excludeRuns=null;st.cutRuns=null;st.rawCutSurface=false;st.undo=[];st.redo=[];st.revision=0}
@@ -2304,48 +2175,6 @@ function clearSegmentEditCache(key,clearEdits=false){
 function clearAllSegmentEdits(){
  for(const key of SEGMENT_PRESET_ORDER){const st=segmentEditState[key];if(st.surfaceGroup?.parent)st.surfaceGroup.parent.remove(st.surfaceGroup);st.surfaceGroup=null;clearSegmentEditCache(key,true)}
  setAnalysisEditTool('select');setAnalysisEditTargetKey(null);setAnalysisEditTargetMode('auto');if(analysisEditTargetSelect)analysisEditTargetSelect.value='auto';setAnalysisCutStroke(null);setAnalysisCutScreen([]);setAnalysisPendingCut(null);clearCutResultPreview();updateThreeEditUi();
-}
-function thresholdRunsFromMemory(v,seg){
- const w=v.columns,h=v.rows,d=v.slices,out=new Array(d),plane=w*h;
- if(segmentNeedsGlobalMask(seg))return maskToAnalysisRuns(getProcessedSegmentMask(v,seg),w,h,d);
- for(let z=0;z<d;z++){const rec=[],base=z*plane;for(let y=0;y<h;y++){let x=0,row=base+y*w;while(x<w){while(x<w&&(v.data[row+x]<seg.min||v.data[row+x]>seg.max))x++;if(x>=w)break;const x0=x;while(x+1<w&&v.data[row+x+1]>=seg.min&&v.data[row+x+1]<=seg.max)x++;rec.push(y,x0,x);x++}}out[z]=new Uint32Array(rec)}
- return out;
-}
-async function sourceRunsForSegment(v,key,seg,onProgress=null){
- if(segmentNeedsGlobalMask(seg)&&v.mprData){
-  const memoryView=sourceMprMemoryView(v);
-  return thresholdRunsFromMemory(memoryView,seg);
- }
- const d=v.slices,w=v.columns,h=v.rows,out=Array.from({length:d},()=>new Uint32Array(0)),revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
- onProgress?.(0,d);
- for(let z0=0;z0<d;z0+=blockDepth){
-  let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision)}catch(e){console.warn('Edit base GPU RLE failed; using exact CPU RLE path.',e)}
-  if(gpu){
-   const per=Array.from({length:gpu.coreDepth},()=>[]);
-   for(let i=0;i<gpu.items.length;i+=4){const lz=gpu.items[i];if(lz<per.length)per[lz].push(gpu.items[i+1],gpu.items[i+2],gpu.items[i+3])}
-   for(let z=0;z<gpu.coreDepth;z++)out[z0+z]=new Uint32Array(per[z]);
-  }else{
-   const masks=await sourceSegmentMaskBlock(v,key,seg,z0,blockDepth,revision);
-   for(let z=0;z<masks.length;z++)out[z0+z]=maskToAnalysisRuns(masks[z],w,h,1)[0];
-  }
-  onProgress?.(Math.min(d,z0+blockDepth),d);
-  if((z0&63)===0)await frameYield();
- }
- return segmentNeedsGlobalMask(seg)?postprocessSourceRuns(out,v,seg):out;
-}
-async function ensureSegmentBaseRuns(key,v=current3DVolume||volume,onProgress=null,quiet=false){
- if(!v||!segmentState[key])return null;const st=segmentEditState[key],sig=segmentBaseSignature(key,v);
- if(st.baseRuns&&st.baseSignature===sig)return st.baseRuns;
- // One computation per signature: a click during the background prewarm
- // waits for it (and receives its progress) instead of starting a second pass.
- if(st.pendingBase?.signature===sig){if(onProgress)st.pendingBase.listeners.add(onProgress);return st.pendingBase.promise}
- const pending={signature:sig,listeners:new Set(onProgress?[onProgress]:[]),promise:null},report=(done,total)=>{for(const fn of pending.listeners)fn(done,total)};
- pending.promise=(async()=>{
-  if(!quiet)setProcessingBusy(true,currentLanguage==='ja'?'編集領域を準備中':'Preparing editable segment',false);
-  try{const runs=v.sourceBacked?await sourceRunsForSegment(v,key,segmentState[key],report):thresholdRunsFromMemory(v,segmentState[key]);if(st.pendingBase===pending){st.baseRuns=runs;st.baseSignature=sig}return runs}
-  finally{if(st.pendingBase===pending)st.pendingBase=null;if(!quiet)setProcessingBusy(false,'',false)}
- })();
- st.pendingBase=pending;return pending.promise;
 }
 // When volume analysis mode is turned on (usually in GPU volume view), compute
 // each shown segment's filtered runs in the background so the first analysis
@@ -2364,12 +2193,6 @@ function scheduleAnalysisRunPrewarm(){
   }
  },300);
 }
-async function getFinalSegmentRuns(key,v=current3DVolume||volume,onProgress=null){
- const st=segmentEditState[key],base=await ensureSegmentBaseRuns(key,v,onProgress);if(!base)return null;let runs=base,d=v.slices;
- if(st.keepRuns)runs=intersectRunArrays(runs,st.keepRuns,d);
- if(st.excludeRuns)runs=subtractRunArrays(runs,st.excludeRuns,d);
- st.finalRuns=runs;return runs;
-}
 function snapshotAnalysisRegionsForSegment(key){
  return analysisRegions.filter(r=>r.segmentKeys.length===1&&r.segmentKeys[0]===key).map(r=>({
   runsBySlice:r.runsBySlice,color:r.color,visible:r.visible,selected:r.selected,focused:r.id===analysisFocusedRegionId,merged:r.merged,groupId:r.groupId||null
@@ -2383,28 +2206,6 @@ function setBaseSegmentSurfaceVisibility(key,visible){
   if(o.userData?.segmentKey===key){o.visible=visible;return}
   if(Array.isArray(o.userData?.segmentRanges)&&Array.isArray(o.material))for(const r of o.userData.segmentRanges)if(r.key===key&&o.material[r.materialIndex])o.material[r.materialIndex].visible=visible;
  });
-}
-async function buildEditableRunsGroup(v,runs,key,shouldContinue=null,forceRaw=false){
- const seg=segmentState[key],st=segmentEditState[key],smooth=!forceRaw&&surfaceSmoothingActive(),hasRawCut=!!(st?.rawCutSurface&&st?.cutRuns);
- if(smooth&&!hasRawCut&&fullVolumeSmoothIsosurfaceFeasible(v)){
-  if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');
-  const mask=maskFromAnalysisRuns(v,runs),mesh=await buildSmoothIsoMesh(v,mask,seg,key,true);
-  if(shouldContinue&&!shouldContinue()){if(mesh)dispose(mesh);throw new Error('__SUPERSEDED__')}
-  if(!mesh)return null;const group=new THREE.Group();group.add(mesh);return group;
- }
- const coords=v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v),group=new THREE.Group(),builder=new Float32FaceBuilder(),limit=(navigator.maxTouchPoints>0?4:8)*1024*1024,pinnedKeys=hasRawCut?new Set():null;
- const params={color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:!smooth};
- const flush=z=>{const positions=builder.take();if(!positions)return;const geometry=geometryFromSourcePositions(positions,false,null,!forceRaw,pinnedKeys),mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial(params));mesh.name='edited_segment_'+key+'_'+z;mesh.userData.segmentKey=key;mesh.userData.editSurface=true;mesh.userData.displayScale=coords.scale;group.add(mesh);if(pinnedKeys)pinnedKeys.clear()};
- try{
-  for(let z=0;z<v.slices;z++){
-   if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__');
-   appendAnalysisRunBoundaryFaces(builder,runs[z],z?runs[z-1]:null,z+1<v.slices?runs[z+1]:null,coords,z,hasRawCut?st.cutRuns[z]:null,hasRawCut&&z?st.cutRuns[z-1]:null,hasRawCut&&z+1<v.slices?st.cutRuns[z+1]:null,pinnedKeys);if(builder.length>=limit)flush(z);
-   if((z&15)===0){await frameYield();if(shouldContinue&&!shouldContinue())throw new Error('__SUPERSEDED__')}
-  }
-  flush(v.slices-1);
-  if(smooth&&!hasRawCut)consolidateSegmentForStrongSmoothing(group,key,+surfaceSmoothStrength.value);
-  return group.children.length?group:null;
- }catch(e){dispose(group);throw e}
 }
 function segmentUsesRunSurface(key,v=current3DVolume||volume){
  return segmentEditActive(key)||!!(v?.sourceBacked&&segmentState[key]?.active&&segmentState[key]?.enabled&&segmentNeedsGlobalMask(segmentState[key]));
@@ -2471,116 +2272,6 @@ async function resetFocusedSegmentEdit(){
  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key);if(refs.length)await rebuildEditedAnalysisForSegment(key,refs)}
  updateAnalysisEditorControls();footer.textContent=currentLanguage==='ja'?'編集をリセットしました':'Edits reset';
 }
-function cutDirectionFromPoint(p,yawDeg=0,pitchDeg=0){
- const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
- const base=norm(p?.ray||{x:0,y:0,z:1}),right=norm(p?.right||{x:1,y:0,z:0}),up=norm(p?.up||{x:0,y:1,z:0});
- const yaw=yawDeg*Math.PI/180,pitch=pitchDeg*Math.PI/180,cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
- return norm({x:base.x*cy*cp+right.x*sy*cp+up.x*sp,y:base.y*cy*cp+right.y*sy*cp+up.y*sp,z:base.z*cy*cp+right.z*sy*cp+up.z*sp});
-}
-function cutSurfaceStroke(points,mode='pen',offsetMm=0,v=current3DVolume||volume){
- if(!points?.length)return[];
- const src=mode==='line'&&points.length>1?[points[0],points[points.length-1]]:points;
- if(!v||!offsetMm)return src;
- const [sx,sy,sz]=v.spacing,anchor=src[0],r=anchor?.ray||{x:0,y:0,z:1};
- return src.map(p=>({...p,x:p.x+r.x*offsetMm/sx,y:p.y+r.y*offsetMm/sy,z:p.z+r.z*offsetMm/sz}));
-}
-function cutPlanDirection(points,yawDeg=0,pitchDeg=0){
- return cutDirectionFromPoint(points?.[0]||null,yawDeg,pitchDeg);
-}
-function cutSurfaceFrameData(points,mode='pen',offsetMm=0,v=current3DVolume||volume,yawDeg=0,pitchDeg=0){
- const curve=cutSurfaceStroke(points,mode,offsetMm,v),dir=cutPlanDirection(points,yawDeg,pitchDeg);
- if(!v||!curve.length)return{curve,dir,normals:[]};
- const [sx,sy,sz]=v.spacing,norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}},cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x}),dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z,neg=q=>({x:-q.x,y:-q.y,z:-q.z}),delta=(a,b)=>({x:(b.x-a.x)*sx,y:(b.y-a.y)*sy,z:(b.z-a.z)*sz});
- const normals=[];let previous=null;
- for(let i=0;i<curve.length;i++){
-  let tangent;
-  if(curve.length===1)tangent=norm(curve[0]?.right||{x:1,y:0,z:0});
-  else if(i===0)tangent=norm(delta(curve[0],curve[1]));
-  else if(i===curve.length-1)tangent=norm(delta(curve[i-1],curve[i]));
-  else tangent=norm(delta(curve[i-1],curve[i+1]));
-  let normal=cross(tangent,dir),len=Math.hypot(normal.x,normal.y,normal.z);
-  if(len<1e-6&&previous)normal={...previous},len=1;
-  if(len<1e-6){normal=cross(tangent,curve[i]?.up||curve[0]?.up||{x:0,y:1,z:0});len=Math.hypot(normal.x,normal.y,normal.z)}
-  if(len<1e-6){normal=cross(tangent,curve[i]?.right||curve[0]?.right||{x:1,y:0,z:0});len=Math.hypot(normal.x,normal.y,normal.z)}
-  if(len<1e-6)normal={x:1,y:0,z:0};else normal=norm(normal);
-  if(previous&&dot(normal,previous)<0)normal=neg(normal);
-  normals.push(normal);previous=normal;
- }
- return{curve,dir,normals};
-}
-function cutRunsFromVoxelStroke(v,points,kerfMm,depthMm,yawDeg=0,pitchDeg=0,mode='pen',offsetMm=0){
- const d=v.slices,w=v.columns,h=v.rows,[sx,sy,sz]=v.spacing,rows=Array.from({length:d},()=>new Map()),frame=cutSurfaceFrameData(points,mode,offsetMm,v,yawDeg,pitchDeg),curve=frame.curve,dir=frame.dir,normals=frame.normals;
- if(!curve.length)return rows.map(rowsToRunSlice);
- const norm=q=>{const n=Math.hypot(q.x,q.y,q.z)||1;return{x:q.x/n,y:q.y/n,z:q.z/n}};
- const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
- const dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;
- const addInterval=(z,y,x0,x1)=>{
-  if(z<0||y<0||z>=d||y>=h||x1<0||x0>=w)return;
-  x0=Math.max(0,x0);x1=Math.min(w-1,x1);if(x1<x0)return;
-  const map=rows[z],arr=map.get(y)||[];arr.push([x0,x1]);map.set(y,arr);
- };
- const addSingle=p=>{
-  const x=Math.floor(p.x),y=Math.floor(p.y),z=Math.floor(p.z);addInterval(z,y,x,x);
- };
- if(curve.length<2){addSingle(curve[0]);return rows.map(rowsToRunSlice)}
-
- const halfKerf=Math.max(0,Number.isFinite(+kerfMm)?+kerfMm*.5:0);
- const depth=Math.max(.1,+depthMm||.1);
- // Conservative solid voxelization: if a voxel cell intersects the swept cut prism,
- // that voxel is included in the cut mask. This deliberately avoids the pinholes that
- // point-sampling produced in GPU volume mode.
- const voxelMargin=.5*Math.hypot(sx,sy,sz)+1e-6;
- const dvec=norm(dir);
-
- for(let seg=0;seg<curve.length-1;seg++){
-  const a=curve[seg],b=curve[seg+1];
-  const A={x:a.x*sx,y:a.y*sy,z:a.z*sz},B={x:b.x*sx,y:b.y*sy,z:b.z*sz};
-  const e0={x:B.x-A.x,y:B.y-A.y,z:B.z-A.z};
-  const segLen=Math.hypot(e0.x,e0.y,e0.z);if(segLen<1e-7)continue;
-  const n0=normals[seg]||{x:1,y:0,z:0},n1=normals[seg+1]||n0;
-  let nvec=norm({x:n0.x+n1.x,y:n0.y+n1.y,z:n0.z+n1.z});
-  // Keep the width axis perpendicular to both the stroke and cut depth.
-  const exactN=cross(norm(e0),dvec);if(Math.hypot(exactN.x,exactN.y,exactN.z)>1e-7)nvec=norm(exactN);
-
-  const dn=cross(dvec,nvec),det=dot(e0,dn);
-  if(Math.abs(det)<1e-9)continue;
-
-  const corners=[];
-  for(const u of [0,1])for(const dep of [0,depth])for(const side of [-halfKerf,halfKerf]){
-   const base=u?B:A;
-   corners.push({
-    x:base.x+dvec.x*dep+nvec.x*side,
-    y:base.y+dvec.y*dep+nvec.y*side,
-    z:base.z+dvec.z*dep+nvec.z*side
-   });
-  }
-  let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity;
-  for(const p of corners){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);minZ=Math.min(minZ,p.z);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);maxZ=Math.max(maxZ,p.z)}
-  minX-=voxelMargin;minY-=voxelMargin;minZ-=voxelMargin;maxX+=voxelMargin;maxY+=voxelMargin;maxZ+=voxelMargin;
-  const x0=Math.max(0,Math.floor(minX/sx)),x1=Math.min(w-1,Math.floor(maxX/sx));
-  const y0=Math.max(0,Math.floor(minY/sy)),y1=Math.min(h-1,Math.floor(maxY/sy));
-  const z0=Math.max(0,Math.floor(minZ/sz)),z1=Math.min(d-1,Math.floor(maxZ/sz));
-  const alphaMargin=voxelMargin/segLen;
-
-  for(let z=z0;z<=z1;z++){
-   const pz=(z+.5)*sz;
-   for(let y=y0;y<=y1;y++){
-    const py=(y+.5)*sy;let runStart=-1;
-    for(let x=x0;x<=x1;x++){
-     const q={x:(x+.5)*sx-A.x,y:py-A.y,z:pz-A.z};
-     const alpha=dot(q,dn)/det;
-     const beta=dot(e0,cross(q,nvec))/det;
-     const gamma=dot(e0,cross(dvec,q))/det;
-     const inside=alpha>=-alphaMargin&&alpha<=1+alphaMargin&&beta>=-voxelMargin&&beta<=depth+voxelMargin&&gamma>=-halfKerf-voxelMargin&&gamma<=halfKerf+voxelMargin;
-     if(inside){if(runStart<0)runStart=x}
-     else if(runStart>=0){addInterval(z,y,runStart,x-1);runStart=-1}
-    }
-    if(runStart>=0)addInterval(z,y,runStart,x1);
-   }
-  }
- }
- return rows.map(rowsToRunSlice);
-}
 async function applyCutStroke(points,key=analysisEditTargetKey,mode='pen'){
  if(!key||!SEGMENT_PRESET_ORDER.includes(key)||!points?.length)return false;
  const v=current3DVolume||volume;if(!v)return false;
@@ -2608,256 +2299,7 @@ async function applyCutStroke(points,key=analysisEditTargetKey,mode='pen'){
   return false;
  }finally{clearThreeEditOverlay();request3DRender()}
 }
-function setEditTargetHighlight(key=null){
- if(!sceneState?.obj)return;
- sceneState.obj.traverse(o=>{
-  if(!o.isMesh)return;
-  const direct=o.userData?.segmentKey||null,ranges=Array.isArray(o.userData?.segmentRanges)?o.userData.segmentRanges:null;
-  const mats=Array.isArray(o.material)?o.material:[o.material];
-  if(direct){
-   for(const m of mats){if(!m)continue;if(m.userData._editBaseEmissive===undefined){m.userData._editBaseEmissive=m.emissiveIntensity??0;m.userData._editBaseOpacity=m.opacity}
-    m.emissiveIntensity=key&&direct===key?Math.max(.55,m.userData._editBaseEmissive):m.userData._editBaseEmissive;
-    if(key)m.opacity=direct===key?Math.max(.92,m.userData._editBaseOpacity??1):Math.min(.42,m.userData._editBaseOpacity??1);else if(m.userData._editBaseOpacity!==undefined)m.opacity=m.userData._editBaseOpacity;
-   }
-  }else if(ranges&&Array.isArray(o.material)){
-   for(const r of ranges){const m=o.material[r.materialIndex];if(!m)continue;if(m.userData._editBaseEmissive===undefined){m.userData._editBaseEmissive=m.emissiveIntensity??0;m.userData._editBaseOpacity=m.opacity}
-    m.emissiveIntensity=key&&r.key===key?Math.max(.55,m.userData._editBaseEmissive):m.userData._editBaseEmissive;
-    if(key)m.opacity=r.key===key?Math.max(.92,m.userData._editBaseOpacity??1):Math.min(.42,m.userData._editBaseOpacity??1);else if(m.userData._editBaseOpacity!==undefined)m.opacity=m.userData._editBaseOpacity;
-   }
-  }
- });
- request3DRender();
-}
-function setCutResultSourceHidden(key,hidden){
- const root=sceneState?.obj;if(!root||!key)return;
- root.traverse(o=>{
-  if(!o.isMesh||o.userData?.cutResultPreview)return;
-  const direct=o.userData?.segmentKey||null;
-  if(direct===key){
-   if(hidden){if(o.userData._cutPreviewVisible===undefined)o.userData._cutPreviewVisible=o.visible;o.visible=false}
-   else if(o.userData._cutPreviewVisible!==undefined){o.visible=!!o.userData._cutPreviewVisible;delete o.userData._cutPreviewVisible}
-  }
-  const ranges=Array.isArray(o.userData?.segmentRanges)?o.userData.segmentRanges:null;
-  if(ranges&&Array.isArray(o.material))for(const r of ranges)if(r.key===key){
-   const m=o.material[r.materialIndex];if(!m)continue;
-   if(hidden){if(m.userData._cutPreviewVisible===undefined)m.userData._cutPreviewVisible=m.visible;m.visible=false}
-   else if(m.userData._cutPreviewVisible!==undefined){m.visible=!!m.userData._cutPreviewVisible;delete m.userData._cutPreviewVisible}
-  }
- });
-}
-function clearCutResultPreview(){
- incCutResultPreviewRevision(false);clearTimeout(cutResultPreviewTimer);setCutResultPreviewTimer(null);
- const state=sceneState;if(!state)return;
- state.medicalVolume?.clearPreviewRuns?.();
- const key=state.cutResultPreviewKey,group=state.cutResultPreviewGroup;
- if(group){if(group.parent)group.parent.remove(group);dispose(group)}
- state.cutResultPreviewGroup=null;state.cutResultPreviewKey=null;
- if(key)setCutResultSourceHidden(key,false);
- request3DRender();
-}
-function scheduleCutResultPreview(delay=180){
- clearTimeout(cutResultPreviewTimer);const pending=analysisPendingCut;
- if(!pending?.key||analysisCutApplying||!sceneState?.obj){sceneState?.medicalVolume?.clearPreviewRuns?.();return}
- const revision=incCutResultPreviewRevision(true);
- if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){
-  setCutResultPreviewTimer(setTimeout(()=>{
-   setCutResultPreviewTimer(null);
-   if(revision!==cutResultPreviewRevision||pending!==analysisPendingCut||analysisCutApplying)return;
-   try{
-    const v=sourceVolume||current3DVolume||volume;
-    const cut=cutRunsFromVoxelStroke(v,pending.points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,pending.mode,+analysisCutOffset.value||0);
-    if(revision!==cutResultPreviewRevision||pending!==analysisPendingCut)return;
-    sceneState.medicalVolume.setPreviewRuns(pending.key,cut,SEGMENT_PRESET_ORDER,v);request3DRender();
-   }catch(e){console.warn('GPU cut preview failed.',e);sceneState?.medicalVolume?.clearPreviewRuns?.()}
-  },Math.min(delay,90)));return;
- }
- setCutResultPreviewTimer(setTimeout(()=>{setCutResultPreviewTimer(null);void rebuildCutResultPreview(revision,pending)},delay));
-}
-async function rebuildCutResultPreview(revision,pending){
- const state=sceneState,v=current3DVolume||volume,key=pending?.key;
- if(!state?.obj||!v||!key||analysisCutApplying||pending!==analysisPendingCut)return;
- try{
-  const current=await getFinalSegmentRuns(key,v);
-  if(revision!==cutResultPreviewRevision||pending!==analysisPendingCut)return;
-  const cut=cutRunsFromVoxelStroke(v,pending.points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,pending.mode,+analysisCutOffset.value||0);
-  const removedRuns=intersectRunArrays(current,cut,v.slices),isCurrent=()=>revision===cutResultPreviewRevision&&pending===analysisPendingCut&&!analysisCutApplying;
-  let group=await buildEditableRunsGroup(v,removedRuns,key,isCurrent,true);
-  if(!isCurrent()){if(group)dispose(group);return}
-  if(!group)group=new THREE.Group();
-  group.name='cut_remove_preview';
-  group.traverse?.(o=>{
-   if(!o.isMesh)return;
-   o.userData.cutResultPreview=true;
-   const mats=Array.isArray(o.material)?o.material:[o.material];
-   for(const m of mats){
-    if(!m)continue;
-    if(m.color?.set)m.color.set(0xff5a36);
-    if(m.emissive?.set)m.emissive.set(0xff3b12);
-    m.emissiveIntensity=1.15;m.transparent=true;m.opacity=.88;m.depthTest=false;m.depthWrite=false;
-    if('polygonOffset' in m){m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2}
-   }
-   o.renderOrder=120;
-  });
-  const old=state.cutResultPreviewGroup;
-  if(old){if(old.parent)old.parent.remove(old);dispose(old)}
-  if(state.cutResultPreviewKey)setCutResultSourceHidden(state.cutResultPreviewKey,false);
-  setCutResultSourceHidden(key,false);
-  state.cutResultPreviewKey=key;state.cutResultPreviewGroup=group;state.obj.add(group);request3DRender();
- }catch(e){
-  if(String(e.message||e)!=='__SUPERSEDED__')console.warn('Cut removal preview failed.',e);
- }
-}
 function cutPreviewDirection(point){return cutDirectionFromPoint(point,+analysisCutYaw.value||0,+analysisCutPitch.value||0)}
-function updateCutPreview(point=null){
- const state=sceneState,obj=state?.obj;if(!state||!obj)return;
- if(state.editCutPreview){if(state.editCutPreview.parent)state.editCutPreview.parent.remove(state.editCutPreview);dispose(state.editCutPreview);state.editCutPreview=null}
- const pending=analysisPendingCut;
- if(!pending){state.editCutPreviewPoint=point||null;if(!analysisCutApplying)clearCutResultPreview();request3DRender();return}
- const v=current3DVolume||volume,frame=cutSurfaceFrameData(pending.points,pending.mode,+analysisCutOffset.value||0,v,+analysisCutYaw.value||0,+analysisCutPitch.value||0),curve=frame.curve,normals=frame.normals;
- scheduleCutResultPreview();if(!v||curve.length<2){request3DRender();return}
- const [sx,sy,sz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),depthMm=Math.max(.1,+analysisCutDepth.value||5),depthWorld=depthMm*scale,halfKerfMm=Math.max(0,cutWidthMm())*.5,halfKerfWorld=halfKerfMm*scale,dir=new THREE.Vector3(frame.dir.x,-frame.dir.y,frame.dir.z).normalize();
- const localPoint=p=>new THREE.Vector3((p.x*sx-px/2)*scale,-(p.y*sy-py/2)*scale,(p.z*sz-pz/2)*scale);
- const localNormal=(n,i)=>{
-  if(n){const q=new THREE.Vector3(n.x,-n.y,n.z);if(q.lengthSq()>1e-12)return q.normalize()}
-  const a=curve[Math.max(0,i-1)],b=curve[Math.min(curve.length-1,i+1)],t=new THREE.Vector3((b.x-a.x)*sx,-(b.y-a.y)*sy,(b.z-a.z)*sz).normalize(),q=new THREE.Vector3().crossVectors(t,dir);
-  return q.lengthSq()>1e-12?q.normalize():new THREE.Vector3(0,1,0);
- };
- // Exact requested geometry:
- // upper = drawn/contact curve; lower = same curve translated by configured depth.
- const upper=curve.map(localPoint),lower=upper.map(p=>p.clone().addScaledVector(dir,depthWorld)),normalVecs=upper.map((_,i)=>localNormal(normals?.[i],i));
- const offsetRow=(row,sign)=>row.map((p,i)=>p.clone().addScaledVector(normalVecs[i],halfKerfWorld*sign));
- const upperNeg=offsetRow(upper,-1),upperPos=offsetRow(upper,1),lowerNeg=offsetRow(lower,-1),lowerPos=offsetRow(lower,1);
- const quad=(arr,a,b,c,d)=>arr.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z,a.x,a.y,a.z,c.x,c.y,c.z,d.x,d.y,d.z);
- const curtainFaces=(aRow,bRow)=>{const out=[];for(let i=0;i<aRow.length-1;i++)quad(out,aRow[i],aRow[i+1],bRow[i+1],bRow[i]);return out};
- const ribbonFaces=(aRow,bRow)=>{const out=[];for(let i=0;i<aRow.length-1;i++)quad(out,aRow[i],bRow[i],bRow[i+1],aRow[i+1]);return out};
- const group=new THREE.Group();group.name='cut_preview';
-
- // Active CAD curtain: always visible, including the part inside the 3D model.
- const activeGeom=new THREE.BufferGeometry();activeGeom.setAttribute('position',new THREE.Float32BufferAttribute(curtainFaces(upper,lower),3));activeGeom.computeVertexNormals();
- const active=new THREE.Mesh(activeGeom,new THREE.MeshBasicMaterial({color:0x00d8ff,transparent:true,opacity:.16,depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
- active.name='cut_preview_active_surface';active.renderOrder=124;group.add(active);
-
- // Exact cut-width prism, built from the same +/- width/2 geometry used by cutRunsFromVoxelStroke().
- if(halfKerfWorld>1e-7){
-  const volumeFaces=[];
-  const pushFaces=faces=>volumeFaces.push(...faces);
-  pushFaces(curtainFaces(upperNeg,lowerNeg));
-  pushFaces(curtainFaces(lowerPos,upperPos));
-  pushFaces(ribbonFaces(upperNeg,upperPos));
-  pushFaces(ribbonFaces(lowerPos,lowerNeg));
-  const first=0,last=upper.length-1;
-  quad(volumeFaces,upperNeg[first],lowerNeg[first],lowerPos[first],upperPos[first]);
-  quad(volumeFaces,upperNeg[last],upperPos[last],lowerPos[last],lowerNeg[last]);
-  const vg=new THREE.BufferGeometry();vg.setAttribute('position',new THREE.Float32BufferAttribute(volumeFaces,3));vg.computeVertexNormals();
-  const vm=new THREE.Mesh(vg,new THREE.MeshBasicMaterial({color:0x16c8e8,transparent:true,opacity:.075,depthTest:false,depthWrite:false,side:THREE.FrontSide}));
-  vm.name='cut_preview_width_volume';vm.renderOrder=122;group.add(vm);
- }
-
- const lineMat=(color,opacity=1)=>new THREE.LineBasicMaterial({color,transparent:opacity<1,opacity,depthTest:false,depthWrite:false});
- const addLineSegments=(points,material,name,order)=>{if(!points.length)return;const g=new THREE.BufferGeometry().setFromPoints(points),line=new THREE.LineSegments(g,material);line.name=name;line.renderOrder=order;group.add(line)};
- const addCurve=(dst,row)=>{for(let i=0;i<row.length-1;i++)dst.push(row[i],row[i+1])};
-
- // Upper/lower outlines are exact copies of the same curve.
- const outline=[];addCurve(outline,upper);addCurve(outline,lower);outline.push(upper[0],lower[0],upper[upper.length-1],lower[lower.length-1]);
- addLineSegments(outline,lineMat(0x00e5ff,.98),'cut_preview_active_outline',130);
-
- // Contact edge is explicit.
- const contact=[];addCurve(contact,upper);
- addLineSegments(contact,lineMat(0xffffff,1),'cut_preview_contact_edge',133);
-
- // Exact width boundary curves.
- if(halfKerfWorld>1e-7){
-  const widthEdges=[];addCurve(widthEdges,upperNeg);addCurve(widthEdges,upperPos);addCurve(widthEdges,lowerNeg);addCurve(widthEdges,lowerPos);
-  widthEdges.push(upperNeg[0],upperPos[0],lowerNeg[0],lowerPos[0],upperNeg[upperNeg.length-1],upperPos[upperPos.length-1],lowerNeg[lowerNeg.length-1],lowerPos[lowerPos.length-1]);
-  addLineSegments(widthEdges,lineMat(0x65efff,.90),'cut_preview_width_outline',129);
- }
-
- // CAD hatch only on the active curtain.
- const sampleCurve=t=>{const u=THREE.MathUtils.clamp(t,0,1)*(upper.length-1),i=Math.min(upper.length-2,Math.floor(u)),f=u-i;return upper[i].clone().lerp(upper[i+1],f)};
- const hatchPoints=[],hatchCount=Math.max(7,Math.min(15,Math.round(upper.length/3))),steps=8,slope=.055;
- for(let hIdx=0;hIdx<hatchCount;hIdx++){
-  const base=(hIdx+.5)/hatchCount;let prev=null;
-  for(let k=0;k<=steps;k++){
-   const dv=k/steps,t=base+slope*(dv-.5);
-   if(t<0||t>1){prev=null;continue}
-   const p=sampleCurve(t).addScaledVector(dir,dv*depthWorld);
-   if(prev)hatchPoints.push(prev,p.clone());
-   prev=p;
-  }
- }
- addLineSegments(hatchPoints,lineMat(0x91f4ff,.72),'cut_preview_hatch',131);
-
- obj.add(group);state.editCutPreview=group;state.editCutPreviewPoint=curve[curve.length-1];request3DRender();
-}
-function updateThreeEditUi(message=null){
- configureCutControlRanges();refreshCutControlReadouts();
- const enabledKeys=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k].active&&segmentState[k].enabled);
- const surfaceUsable=!!sceneState?.obj&&enabledKeys.length>0&&(threeRenderMode==='surface'||(threeRenderMode==='volume'&&!!sceneState?.medicalVolume?.active));
- const modeLabel=analysisEditTool==='lasso'?tr('lassoSelectRegion'):analysisEditTool==='region'?tr('selectEditRegion'):analysisEditTool==='pen'?tr('cutRegion'):analysisEditTool==='line'?tr('lineCutRegion'):tr('editNavigate');
- const targetLabel=analysisEditTargetMode==='auto'?tr('editAuto'):(tr(analysisEditTargetMode)||analysisEditTargetMode);
- analysisNavigateButton?.classList.toggle('is-active',analysisEditTool==='select');
- analysisSelectRegionButton?.classList.toggle('is-active',analysisEditTool==='region');
- analysisLassoButton?.classList.toggle('is-active',analysisEditTool==='lasso');
- analysisCutButton?.classList.toggle('is-active',analysisEditTool==='pen');
- analysisLineCutButton?.classList.toggle('is-active',analysisEditTool==='line');
- if(analysisNavigateButton)analysisNavigateButton.disabled=!sceneState?.obj||analysisCutApplying||!!analysisPendingCut;
- if(analysisSelectRegionButton)analysisSelectRegionButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
- if(analysisLassoButton)analysisLassoButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
- if(analysisCutButton)analysisCutButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
- if(analysisLineCutButton)analysisLineCutButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
- if(analysisEditTargetSelect){
-  for(const option of analysisEditTargetSelect.options){if(option.value==='auto'){option.disabled=false;continue}option.disabled=!(segmentState[option.value]?.active&&segmentState[option.value]?.enabled)}
-  if(analysisEditTargetMode!=='auto'&&analysisEditTargetSelect.querySelector('option[value="'+analysisEditTargetMode+'"]')?.disabled){setAnalysisEditTargetMode('auto');setAnalysisEditTargetKey(analysisPendingCut?.key||null)}
-  analysisEditTargetSelect.value=analysisEditTargetMode;analysisEditTargetSelect.disabled=!surfaceUsable||analysisCutApplying||!!(analysisPendingCut&&analysisPendingCut.key);
- }
- if(threeEditStatus){
-  if(message)threeEditStatus.textContent=message;
-  else if(!sceneState?.obj)threeEditStatus.textContent=currentLanguage==='ja'?'3Dを構築すると編集できます':'Build the 3D surface to edit';
-  else if(!enabledKeys.length)threeEditStatus.textContent=currentLanguage==='ja'?'編集する組織セグメントを追加してください':'Add a tissue segment to edit';
-  else threeEditStatus.textContent=modeLabel+' · '+targetLabel+' · '+(+analysisCutWidth.value).toFixed(2)+' mm × '+(+analysisCutDepth.value).toFixed(1)+' mm · '+(+analysisCutYaw.value).toFixed(1)+'° / '+(+analysisCutPitch.value).toFixed(1)+'°';
- }
- if(analysisCutApply)analysisCutApply.disabled=analysisCutApplying||!analysisPendingCut||!analysisPendingCut.key;
- if(analysisCutCancel)analysisCutCancel.disabled=analysisCutApplying||!analysisPendingCut;
- if(analysisCutConfirm)analysisCutConfirm.classList.toggle('is-hidden',!analysisPendingCut||analysisCutApplying);
- for(const control of [analysisCutWidth,analysisCutDepth,analysisCutYaw,analysisCutPitch,analysisCutOffset])if(control)control.disabled=analysisCutApplying;
- if(threeEditHelp){
-  if(analysisCutApplying)threeEditHelp.textContent=currentLanguage==='ja'?'切断結果を3Dへ反映しています…':'Applying cut result to 3D…';
-  else if(analysisPendingCut)threeEditHelp.textContent=tr('cutPendingHint');
-  else if(analysisEditTool==='region')threeEditHelp.textContent=tr('editRegionHint');
-  else if(analysisEditTool==='lasso')threeEditHelp.textContent=tr('editLassoHint');
-  else if(analysisEditTool==='pen')threeEditHelp.textContent=tr('editPenHint');
-  else if(analysisEditTool==='line')threeEditHelp.textContent=tr('editLineHint');
-  else if(surfaceUsable)threeEditHelp.textContent=currentLanguage==='ja'?'ペン切断または直線切断を選択してください。対象「自動」は最初に触れた組織を編集します。':'Choose Pen cut or Line cut. Auto targets the first tissue you touch.';
-  else threeEditHelp.textContent=tr('editAutoHint');
- }
- const cutInteractionReady=(analysisEditTool==='pen'||analysisEditTool==='line')&&!analysisPendingCut&&!analysisCutApplying&&!!sceneState?.obj&&(threeRenderMode==='surface'||(threeRenderMode==='volume'&&!!sceneState?.medicalVolume?.active));
- viewport?.classList.toggle('is-editing-3d',cutInteractionReady);
- viewport?.classList.toggle('is-editing-pen',cutInteractionReady&&analysisEditTool==='pen');
- viewport?.classList.toggle('is-editing-line',cutInteractionReady&&analysisEditTool==='line');
- const visualTarget=(analysisEditTool==='select'||analysisEditTool==='region')?null:(analysisEditTargetMode==='auto'?analysisEditTargetKey:analysisEditTargetMode);
- setEditTargetHighlight(visualTarget);
- if(analysisEditTool==='select')updateCutPreview(null);
- else if(sceneState?.editCutPreviewPoint)updateCutPreview(sceneState.editCutPreviewPoint);
-}
-function updateAnalysisEditorControls(){
- const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,regionKey=single?region.segmentKeys[0]:null;
- const surfaceUsable=!!sceneState?.obj&&SEGMENT_PRESET_ORDER.some(k=>segmentState[k].active&&segmentState[k].enabled)&&(threeRenderMode==='surface'||(threeRenderMode==='volume'&&!!sceneState?.medicalVolume?.active));
- const historyKey=analysisEditTargetKey||regionKey||SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length||segmentEditState[k].redo.length||segmentEditActive(k)),historyState=historyKey?segmentEditState[historyKey]:null;
- if(!surfaceUsable&&(analysisEditTool==='region'||analysisEditTool==='lasso'||analysisEditTool==='pen'||analysisEditTool==='line'))setAnalysisEditTool('select');
- if(analysisNavigateButton)analysisNavigateButton.disabled=!sceneState?.obj;
- if(analysisSelectRegionButton)analysisSelectRegionButton.disabled=!surfaceUsable;
- if(analysisLassoButton)analysisLassoButton.disabled=!surfaceUsable;
- if(analysisCutButton)analysisCutButton.disabled=!surfaceUsable;
- if(analysisLineCutButton)analysisLineCutButton.disabled=!surfaceUsable;
- if(analysisEditRemoveSelected)analysisEditRemoveSelected.disabled=!regionKey;
- if(analysisRemoveSelected)analysisRemoveSelected.disabled=!regionKey;
- if(analysisKeepSelected)analysisKeepSelected.disabled=!regionKey;
- if(analysisUndo)analysisUndo.disabled=!historyState?.undo?.length;
- if(analysisRedo)analysisRedo.disabled=!historyState?.redo?.length;
- if(analysisResetEdit)analysisResetEdit.disabled=!historyKey||!segmentEditActive(historyKey);
- if(analysisExportSelected)analysisExportSelected.disabled=!region;
- updateThreeEditUi();
-}
 function ensureAnalysisRoot(){
  if(sceneState?.analysisMesh?.parent===sceneState?.obj)return sceneState.analysisMesh;
  const root=new THREE.Group();root.name='analysis_regions';sceneState.analysisMesh=root;sceneState?.obj?.add(root);return root;
@@ -2995,71 +2437,6 @@ function buildMaskSurface(v,mask,key){
 }
 
 
-async function smoothIsosurfaceGeometry(v,mask,strength){
- const w=v.columns,h=v.rows,d=v.slices;if(!mask||mask.length!==w*h*d)return null;
- const {data,fw,fh,fd}=await smoothMaskScalarField(mask,w,h,d,strength),plane=fw*fh,[sx,sy,sz]=v.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1),iso=.5;
- const positions=[],indices=[],edgeVertices=new Map();
- const cubeCorners=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
- const tets=[[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];
- const tetEdges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]];
- const gridId=(x,y,z)=>z*plane+y*fw+x,field=(x,y,z)=>data[gridId(x,y,z)];
- const world=(x,y,z)=>[((x-.5)*sx-px/2)*scale,-((y-.5)*sy-py/2)*scale,((z-.5)*sz-pz/2)*scale];
- const edgeVertex=(ax,ay,az,bx,by,bz,va,vb)=>{
-  const ia=gridId(ax,ay,az),ib=gridId(bx,by,bz),lo=Math.min(ia,ib),hi=Math.max(ia,ib),key=lo+':'+hi,found=edgeVertices.get(key);if(found!==undefined)return found;
-  const den=vb-va,t=Math.abs(den)<1e-8?.5:Math.max(0,Math.min(1,(iso-va)/den)),pa=world(ax,ay,az),pb=world(bx,by,bz),id=positions.length/3;
-  positions.push(pa[0]+(pb[0]-pa[0])*t,pa[1]+(pb[1]-pa[1])*t,pa[2]+(pb[2]-pa[2])*t);edgeVertices.set(key,id);return id;
- };
- const pcoord=id=>[positions[id*3],positions[id*3+1],positions[id*3+2]];
- const emit=(tri,out)=>{
-  const a=pcoord(tri[0]),b=pcoord(tri[1]),cc=pcoord(tri[2]),abx=b[0]-a[0],aby=b[1]-a[1],abz=b[2]-a[2],acx=cc[0]-a[0],acy=cc[1]-a[1],acz=cc[2]-a[2],nx=aby*acz-abz*acy,ny=abz*acx-abx*acz,nz=abx*acy-aby*acx;
-  if(nx*nx+ny*ny+nz*nz<1e-14)return;
-  if(nx*out[0]+ny*out[1]+nz*out[2]<0){const t=tri[1];tri[1]=tri[2];tri[2]=t}indices.push(tri[0],tri[1],tri[2]);
- };
- for(let z=0;z<fd-1;z++){
-  for(let y=0;y<fh-1;y++)for(let x=0;x<fw-1;x++){
-   const cv=new Array(8),cg=new Array(8);let min=Infinity,max=-Infinity;
-   for(let k=0;k<8;k++){const q=cubeCorners[k],gx=x+q[0],gy=y+q[1],gz=z+q[2],vv=field(gx,gy,gz);cv[k]=vv;cg[k]=[gx,gy,gz];if(vv<min)min=vv;if(vv>max)max=vv}
-   if(min>=iso||max<iso)continue;
-   for(const tet of tets){
-    let inCount=0,outCount=0,ix=0,iy=0,iz=0,ox=0,oy=0,oz=0;
-    for(const k of tet){const g=cg[k],p=world(g[0],g[1],g[2]);if(cv[k]>=iso){inCount++;ix+=p[0];iy+=p[1];iz+=p[2]}else{outCount++;ox+=p[0];oy+=p[1];oz+=p[2]}}
-    if(inCount===0||inCount===4)continue;
-    let crossings=[];
-    for(const e of tetEdges){const ka=tet[e[0]],kb=tet[e[1]],va=cv[ka],vb=cv[kb];if((va>=iso)===(vb>=iso))continue;const a=cg[ka],b=cg[kb];crossings.push(edgeVertex(a[0],a[1],a[2],b[0],b[1],b[2],va,vb))}
-    crossings=[...new Set(crossings)];
-    const out=[ox/Math.max(1,outCount)-ix/Math.max(1,inCount),oy/Math.max(1,outCount)-iy/Math.max(1,inCount),oz/Math.max(1,outCount)-iz/Math.max(1,inCount)];
-    if(crossings.length===3)emit([crossings[0],crossings[1],crossings[2]],out);
-    else if(crossings.length===4){
-     let cx=0,cy=0,cz=0;const pts=crossings.map(id=>{const p=pcoord(id);cx+=p[0];cy+=p[1];cz+=p[2];return{id,p}});cx/=4;cy/=4;cz/=4;
-     let nl=Math.hypot(out[0],out[1],out[2])||1,nx=out[0]/nl,ny=out[1]/nl,nz=out[2]/nl;
-     let ux=pts[0].p[0]-cx,uy=pts[0].p[1]-cy,uz=pts[0].p[2]-cz,ul=Math.hypot(ux,uy,uz)||1;ux/=ul;uy/=ul;uz/=ul;
-     let vx=ny*uz-nz*uy,vy=nz*ux-nx*uz,vz=nx*uy-ny*ux;
-     pts.sort((aa,bb)=>{const ap=aa.p,bp=bb.p,ax=ap[0]-cx,ay=ap[1]-cy,az=ap[2]-cz,bx=bp[0]-cx,by=bp[1]-cy,bz=bp[2]-cz;return Math.atan2(ax*vx+ay*vy+az*vz,ax*ux+ay*uy+az*uz)-Math.atan2(bx*vx+by*vy+bz*vz,bx*ux+by*uy+bz*uz)});
-     emit([pts[0].id,pts[1].id,pts[2].id],out);emit([pts[0].id,pts[2].id,pts[3].id],out);
-    }
-   }
-  }
-  if((z&3)===3)await frameYield();
- }
- if(!indices.length)return null;
- const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);
- taubinSmoothGeometry(geometry,Math.max(0,strength));geometry.computeVertexNormals();geometry.computeBoundingSphere();return geometry;
-}
-async function buildSmoothIsoMesh(v,mask,seg,key,editSurface=false){
- const geometry=await smoothIsosurfaceGeometry(v,mask,+surfaceSmoothStrength.value);if(!geometry)return null;
- const material=new THREE.MeshStandardMaterial({color:seg.color,transparent:seg.opacity<.999,opacity:seg.opacity,roughness:key==='bone'?.55:.8,metalness:0,side:THREE.DoubleSide,depthWrite:seg.opacity>.55,flatShading:false}),mesh=new THREE.Mesh(geometry,material);
- mesh.name='segment_'+key+'_isosurface';mesh.userData.segmentKey=key;mesh.userData.editSurface=!!editSurface;mesh.userData.displayScale=(v.sourceBacked?makeSource3DCoordinates(v.series):makeVolume3DCoordinates(v)).scale;return mesh;
-}
-function fullVolumeSmoothIsosurfaceFeasible(v){
- if(!v)return false;
- const w=Number(v.columns)||0,h=Number(v.rows)||0,d=Number(v.slices)||0;
- if(w<=0||h<=0||d<=0)return false;
- const voxels=w*h*d,padded=(w+2)*(h+2)*(d+2);
- // Minimum working set before mesh arrays: binary mask + two Float32 scalar fields.
- const estimatedBytes=voxels+padded*8;
- const limit=(navigator.maxTouchPoints||0)>0?48*1024*1024:96*1024*1024;
- return estimatedBytes<=limit;
-}
 async function render3DSmoothIsosurface(v){
  if(!sceneState||!surfaceSmoothingActive())return false;
  const revision=incSourceRenderRevision(true),previous=sceneState.obj,group=new THREE.Group();if(previous){group.position.copy(previous.position);group.quaternion.copy(previous.quaternion);group.scale.copy(previous.scale)}
@@ -3081,73 +2458,6 @@ async function render3DSmoothIsosurface(v){
   if(previous){previous.parent?.remove(previous);dispose(previous)}sceneState.obj=group;sceneState.scene.add(group);syncSectionClipParent();if(sectionViewOpen&&sectionViewPlane){updateSectionClipPlaneWorld();applySectionClippingMaterials(group)}
   setGpuComputeBackend('CPU ISOSURFACE · WEBGPU RENDER');threeLabel.textContent=(sceneState.backend||'3D')+' · smooth isosurface';footer.textContent=currentLanguage==='ja'?'3D滑面表示 · フル解像度':'3D smooth surface · full resolution';set3DBusy(false);request3DRender();mark3DCurrent();return true;
  }catch(e){dispose(group);set3DBusy(false);console.error(e);threeLabel.textContent=(sceneState.backend||'3D')+' · smooth surface error';footer.textContent='3D isosurface error: '+String(e.message||e);mark3DStale();request3DRender();return false}
-}
-function geometryFromSourcePositions(positions,alreadyGpuSmoothed=false,normals=null,applySmoothing=true,pinnedKeys=null){
- if(!positions||!positions.length)return null;
- let geometry;
- if(surfaceSmoothingActive()&&!alreadyGpuSmoothed&&applySmoothing){
-  geometry=indexedGeometryFromTrianglePositions(positions);
-  let pinned=null;
-  if(pinnedKeys?.size){pinned=new Set();const p=geometry.getAttribute('position');for(let i=0;i<p.count;i++){const k=Math.fround(p.getX(i))+','+Math.fround(p.getY(i))+','+Math.fround(p.getZ(i));if(pinnedKeys.has(k))pinned.add(i)}}
-  taubinSmoothGeometry(geometry,+surfaceSmoothStrength.value,pinned);
- }else{
-  geometry=new THREE.BufferGeometry();
-  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
-  if(alreadyGpuSmoothed&&normals?.length===positions.length)geometry.setAttribute('normal',new THREE.BufferAttribute(normals,3));
-  geometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,0,0),3);
- }
- return geometry;
-}
-function consolidateSegmentForStrongSmoothing(group,key,strength){
- const meshes=(group?.children||[]).filter(m=>m?.isMesh&&m.userData?.segmentKey===key&&!m.userData?.gpuResident);
- if(!meshes.length)return null;
- let floats=0;for(const mesh of meshes)floats+=mesh.geometry?.getAttribute?.('position')?.array?.length||0;
- if(!floats)return null;
- const positions=new Float32Array(floats);let q=0;
- for(const mesh of meshes){const a=mesh.geometry.getAttribute('position').array;positions.set(a,q);q+=a.length}
- const geometry=indexedGeometryFromTrianglePositions(positions);taubinSmoothGeometry(geometry,strength);
- const first=meshes[0],material=Array.isArray(first.material)?first.material[0].clone():first.material.clone(),merged=new THREE.Mesh(geometry,material);
- merged.name='segment_'+key+'_global_smooth';merged.userData.segmentKey=key;merged.userData.displayScale=first.userData.displayScale;if(first.userData.editSurface)merged.userData.editSurface=true;
- for(const mesh of meshes){mesh.parent?.remove(mesh);dispose(mesh)}
- group.add(merged);return merged;
-}
-async function decodeSourceSegmentMasks(meta,segments){
- if(!isNativeDicomTransferSyntax(meta.ts)){
-  const values=await getCachedSourceSlice(meta),n=meta.rows*meta.columns,blockSize=16384,states=new Map(segments.map(({key,seg})=>[key,{mask:new Uint8Array(n),blocks:[],block:new Uint32Array(blockSize),used:0,min:seg.min,max:seg.max}]));
-  for(let i=0;i<n;i++){const value=values[i];for(const state of states.values())if(value>=state.min&&value<=state.max){state.mask[i]=1;if(state.used===state.block.length){state.blocks.push(state.block);state.block=new Uint32Array(blockSize);state.used=0}state.block[state.used++]=i}}
-  for(const state of states.values()){if(state.used)state.blocks.push(state.block.subarray(0,state.used));state.block=null;delete state.used;delete state.min;delete state.max}
-  return states;
- }
- const bpp=meta.bits===8?1:meta.bits===16?2:0;
- if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
- let bytes,offset=meta.pixelOffset;
- if(offset!=null){
-  bytes=new Uint8Array(await meta.file.slice(offset,offset+meta.rows*meta.columns*bpp).arrayBuffer());
-  offset=0;
- }else{
-  const all=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(all),el=ds.elements.x7fe00010;
-  if(!el)throw new Error('Pixel Data missing');bytes=all;offset=el.dataOffset;
- }
- const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=meta.rows*meta.columns,blockSize=16384;
- const states=new Map(segments.map(({key,seg})=>[key,{mask:new Uint8Array(n),blocks:[],block:new Uint32Array(blockSize),used:0,min:seg.min,max:seg.max}]));
- const pushIndex=(state,i)=>{
-  if(state.used===state.block.length){state.blocks.push(state.block);state.block=new Uint32Array(blockSize);state.used=0}
-  state.block[state.used++]=i;
- };
- for(let i=0;i<n;i++){
-  let raw;
-  if(meta.bits===8){raw=bytes[offset+i];if(meta.signed&&raw>127)raw-=256}
-  else raw=meta.signed?view.getInt16(offset+i*2,little):view.getUint16(offset+i*2,little);
-  const value=Math.fround(raw*meta.slope+meta.intercept);
-  for(const state of states.values()){
-   if(value>=state.min&&value<=state.max){state.mask[i]=1;pushIndex(state,i)}
-  }
- }
- for(const state of states.values()){
-  if(state.used)state.blocks.push(state.block.subarray(0,state.used));
-  state.block=null;delete state.used;delete state.min;delete state.max;
- }
- return states;
 }
 function appendGpuMeshTile(positionsByKey,normalsByKey,tile,active){
  let faceOffset=0;
@@ -3576,44 +2886,8 @@ async function exportSegmentStl(key){
  if(!blob){footer.textContent='STL: segment is empty';return}
  const names={bone:'bone',soft:'soft-tissue',fat:'fat',lung:'lung'},filename='virtual-rodent-'+(names[key]||key)+'.stl';downloadBlob(blob,filename);footer.textContent=(currentLanguage==='ja'?'STLを書き出しました: ':'STL exported: ')+filename;
 }
-function taubinSmoothGeometry(geometry,strength,pinned=null){
- const pos=geometry.getAttribute('position');
- const index=geometry.index;
- if(!pos||!index||strength<=0)return;
- const vertexCount=pos.count;
- const neighbors=Array.from({length:vertexCount},()=>[]);
- const addNeighbor=(a,b)=>{const list=neighbors[a];for(let i=0;i<list.length;i++)if(list[i]===b)return;list.push(b)};
- const idx=index.array;
- for(let i=0;i<idx.length;i+=3){
-  const a=idx[i],b=idx[i+1],c=idx[i+2];
-  addNeighbor(a,b);addNeighbor(a,c);
-  addNeighbor(b,a);addNeighbor(b,c);
-  addNeighbor(c,a);addNeighbor(c,b);
- }
- const coords=new Float32Array(pos.array);
- const tmp=new Float32Array(coords.length);
- const baseStrength=Math.min(strength,1),lambda=.34*baseStrength,mu=-.36*baseStrength;
- const pass=(src,dst,factor)=>{
-  for(let i=0;i<vertexCount;i++){
-   const ns=neighbors[i];
-   if(pinned?.has(i)||ns.length===0){dst[i*3]=src[i*3];dst[i*3+1]=src[i*3+1];dst[i*3+2]=src[i*3+2];continue}
-   let ax=0,ay=0,az=0;
-   for(const j of ns){ax+=src[j*3];ay+=src[j*3+1];az+=src[j*3+2]}
-   const inv=1/ns.length;ax*=inv;ay*=inv;az*=inv;
-   const o=i*3;dst[o]=src[o]+factor*(ax-src[o]);dst[o+1]=src[o+1]+factor*(ay-src[o+1]);dst[o+2]=src[o+2]+factor*(az-src[o+2]);
-  }
- };
- const iterations=Math.max(1,Math.round(strength<=1?2+strength*4:strength<=3?6+(strength-1)*18:42+(strength-3)*24));
- let a=coords,b=tmp;
- for(let k=0;k<iterations;k++){
-  pass(a,b,lambda);[a,b]=[b,a];
-  pass(a,b,mu);[a,b]=[b,a];
- }
- pos.array.set(a);pos.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();
-}
 
 function resetVolume(){incSourceRenderRevision(false);setThreeDCancelRequested(false);setCurrent3DVolume(null);setAnalysisEditPreparing(false);setAnalysisEditTool('select');setAnalysisEditTargetKey(null);setAnalysisEditTargetMode('auto');setAnalysisCutStroke(null);setAnalysisCutScreen([]);setAnalysisPendingCut(null);if(analysisEditTargetSelect)analysisEditTargetSelect.value='auto';setMemoryGpuPreviewActive(false);clearMemoryFilterPreviewCache();invalidateSourceFilters();clearSourceSliceCache();setActiveSeries(null);setSectionViewOpen(false);clearSectionView();updateSectionViewUi();if(threeRenderMode==='volume')setThreeVolumeOverlay(false);setThreeRenderMode('surface');sceneState?.medicalVolume?.resetData();clearAllSegmentEdits();clearAnalysisHighlight();smoothingType.value='gaussian';setFilterOrder([]);for(const box of [spikeHoleBtn,nlmBtn,anisotropicBtn,gaussianBtn,sigmoidBtn,bilateralBtn,tvBtn,unsharpBtn])box.checked=false;renderFilterOrder();for(const key of SEGMENT_PRESET_ORDER){segmentState[key].active=false;segmentState[key].enabled=false;const enabled=$('[data-seg-enabled="'+key+'"]');if(enabled)enabled.checked=false}renderSegmentPresets();setVolumeAnalysisMode(false);setVolumeAnalysisBusy(false);volumeAnalysisToggle.disabled=true;volumeAnalysisToggle.classList.remove('is-active');volumeAnalysisToggle.textContent=tr('volumeMode');sectionViewToggle.disabled=true;volumeAnalysisResult.classList.add('is-hidden');clearAnalysisHighlight();incFilterRebuildRevision(false);filterState.spikeHole=filterState.nlm=filterState.anisotropic=filterState.gaussian=filterState.sigmoid=filterState.bilateral=filterState.tv=filterState.unsharp=false;setVolume(null);setSourceVolume(null);enableProcessingControls(false);surfaceSmoothEnabled.disabled=true;surfaceSmoothStrength.disabled=true;gaussianStrength.disabled=true;spatialPasses.disabled=true;spikeHoleStrength.disabled=true;spikeHoleThreshold.disabled=true;nlmStrength.disabled=true;nlmSearchRadius.disabled=true;nlmPatchRadius.disabled=true;anisotropicStrength.disabled=true;anisotropicIterations.disabled=true;bilateralStrength.disabled=true;bilateralSpatial.disabled=true;bilateralIntensity.disabled=true;bilateralPasses.disabled=true;tvWeight.disabled=true;tvIterations.disabled=true;unsharpRadius.disabled=true;unsharpAmount.disabled=true;unsharpThreshold.disabled=true;wc.disabled=ww.disabled=true;setCtRangeProfile(null);setCtRangeMode('auto');ctRangeAuto.disabled=ctRangeFull.disabled=true;ctRangeAuto.classList.add('is-active');ctRangeFull.classList.remove('is-active');for(const key of Object.keys(segmentState)){for(const sel of ['enabled','color','min','max','opacity','opening','closing','min-component','hole-fill']){const el=$('[data-seg-'+sel+'="'+key+'"]');if(el)el.disabled=true}const exportBtn=$('[data-seg-export="'+key+'"]');if(exportBtn)exportBtn.disabled=true;const removeBtn=$('[data-seg-remove="'+key+'"]');if(removeBtn)removeBtn.disabled=true}wcVal.value=wwVal.value='—';for(const p of Object.values(planes)){p.slider.disabled=true;p.label.textContent='—';p.canvas.getContext('2d')?.clearRect(0,0,p.canvas.width,p.canvas.height)}if(sceneState?.obj){sceneState.obj.parent?.remove(sceneState.obj);dispose(sceneState.obj);sceneState.obj=null}set3DBusy(false);updateRenderModeControl(null);updateAnalysisEditorControls();updateThreeEditUi();request3DRender();set3DState('current');threeLabel.textContent=sceneState?.backend||'3D'}
-function dispose(o){o.traverse(c=>{const release=()=>{c.geometry?.dispose?.();if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material?.dispose?.()};const pending=c.userData?.gpuCompletion;if(pending?.then)pending.then(release,release);else release()})}
 function busy(v){folderBtn.disabled=demoBtn.disabled=v}
 function progress(a,b){bar.style.width=(b?Math.round(a/b*100):0)+'%';progLabel.textContent=a+' / '+b}
 function byteProgress(a,b,label){bar.style.width=Math.min(100,Math.round(a/b*100))+'%';progLabel.textContent=label+' '+fmt(a)+' / '+fmt(b)}
