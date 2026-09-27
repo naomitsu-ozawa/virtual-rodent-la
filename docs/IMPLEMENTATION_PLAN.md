@@ -68,7 +68,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 
 ## Refactoring backlog
 
-Status as of build 235: `docs/app.js` is 1017 lines (5439 before the split
+Status as of build 240: `docs/app.js` is 822 lines (5439 before the split
 began) with 378 top-level declarations and 90 top-level side-effect
 statements. Every move so far was mechanical and proven with
 `tools/verify-split.mjs`; keep that approach (`tools/closure.mjs` to size a
@@ -93,7 +93,7 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
   - [x] Project load/save glue (`applyProject`) and demo loading (`data-load.js`, build 234)
         (`loadDemo`)
   - [x] iPad / Mac workspace UI (`workspace-ui.js`, build 235)
-- [ ] Break up `start3D` (290 lines, the largest function) into scene
+- [x] Break up `start3D` (291 → 112 lines, `scene-view.js`, build 240) into scene
       setup, renderer selection (WebGPU/WebGL) and render loop. This is a
       real refactor, not a verbatim move: do it after its feature module is
       extracted, in its own PR, and check it on a device via the PR preview.
