@@ -38,6 +38,24 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region speed, build 249)
+
+**Agent:** Claude
+**Task:** Build 248 works (inside body 100%, 61% of the fat kept) but takes 216 s, too slow for device checks.
+The owner also reports that the 3D view still shows parts of the rim and renders wrongly
+(screenshot pending).
+
+### What changed
+- `runGpuSourceFilters` analysis-RLE mode returns one run set per segment from
+  one filtered block (`itemsList`). The filters run once.
+- `thresholdSourceRuns` takes extra threshold ranges. The body mask is read from the same
+  blocks as the segment instead of a second full filtered pass (about 100 s saved).
+  It is seeded into the body memo and stored in the run cache.
+
+### Open questions / follow-up
+- The thin-region CPU step (about 50 s on the iPad) is still on the CPU.
+- 3D keep-mask rendering on the reduced texture: waiting for the screenshot.
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region: air threshold, builds 246-248)
 
 **Agent:** Claude
