@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build268';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build269';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build268';
-import { isDesktopMac, frameYield } from './utils.js?v=20260927-build268';
-import { runsSliceToMask } from './run-length.js?v=20260927-build268';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build268';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build268';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build269';
+import { isDesktopMac, frameYield } from './utils.js?v=20260927-build269';
+import { runsSliceToMask } from './run-length.js?v=20260927-build269';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build269';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build269';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -172,6 +172,9 @@ export async function ensureGpuFilterDevice(){
  return gpuFilterRuntime.initPromise;
 }
 const GPU_MAX_GROUPS=65535;
+// step-time accumulator for ?debug status lines (segment-runs.js resets and reads it)
+export const gpuStepTimes=new Map();
+export function addGpuStepTime(name,ms){gpuStepTimes.set(name,(gpuStepTimes.get(name)||0)+ms)}
 export function gpuDispatch1D(pass,groups){pass.dispatchWorkgroups(Math.min(groups,GPU_MAX_GROUPS),Math.max(1,Math.ceil(groups/GPU_MAX_GROUPS)))}
 export async function gpuFilterPipeline(kind){
  const device=await ensureGpuFilterDevice();if(!device)return null;
@@ -224,7 +227,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
  const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
  const bytes=data.byteLength,n=data.length;
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
- const aw=acquireGpuWorkBuffer(device,bytes),bw=acquireGpuWorkBuffer(device,bytes),a=aw.buffer,b=bw.buffer;device.queue.writeBuffer(a,0,data);
+ const aw=acquireGpuWorkBuffer(device,bytes),bw=acquireGpuWorkBuffer(device,bytes),a=aw.buffer,b=bw.buffer;const tUp=performance.now();device.queue.writeBuffer(a,0,data);addGpuStepTime('upload',performance.now()-tUp);
  const small=[];let encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
  const dispatch=async(kind,extraU32=[],paramsF32=[])=>{
   const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
@@ -290,20 +293,21 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     const cg=device.createBindGroup({layout:cp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}]});
     const pass=enc.beginComputePass();pass.setPipeline(cp);pass.setBindGroup(0,cg);gpuDispatch1D(pass,groups);pass.end();
     const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
-    await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
+    const tGpu=performance.now();await countRead.mapAsync(GPUMapMode.READ);addGpuStepTime('gpu compute',performance.now()-tGpu);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
     let items=new Uint32Array(0);
     if(runCount){
      const recordBytes=runCount*16;if(recordBytes>maxOut)throw new Error('GPU analysis run output exceeds device buffer limit');
      const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
      const wg=device.createBindGroup({layout:wp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}]}),we=device.createCommandEncoder({label:'VRL class RLE'});
      const p2=we.beginComputePass();p2.setPipeline(wp);p2.setBindGroup(0,wg);gpuDispatch1D(p2,groups);p2.end();we.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([we.finish()]);
-     await readback.mapAsync(GPUMapMode.READ);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();records.destroy();readback.destroy();
+     const tRb=performance.now();await readback.mapAsync(GPUMapMode.READ);addGpuStepTime('readback',performance.now()-tRb);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();records.destroy();readback.destroy();
     }
     // split by class; the first word goes back to the local slice index
+    const tSplit=performance.now();
     const counts=new Uint32Array(K);for(let i=0;i<items.length;i+=4)counts[(items[i]>>>16)-1]++;
     const itemsList=[...counts].map(n=>new Uint32Array(n*4)),fill=new Uint32Array(K);
     for(let i=0;i<items.length;i+=4){const c=(items[i]>>>16)-1,o=fill[c]++*4,dst=itemsList[c];dst[o]=items[i]&65535;dst[o+1]=items[i+1];dst[o+2]=items[i+2];dst[o+3]=items[i+3]}
-    setGpuComputeBackend('WEBGPU ANALYSIS RLE');
+    addGpuStepTime('split',performance.now()-tSplit);setGpuComputeBackend('WEBGPU ANALYSIS RLE');
     return{analysisRuns:true,items:itemsList[0],itemsList,count:itemsList[0].length/4};
    }finally{
     if(enc)device.queue.submit([enc.finish()]);
@@ -320,7 +324,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     ]});
     const countPass=enc.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);gpuDispatch1D(countPass,groups);countPass.end();
     const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
-    await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
+    const tGpu=performance.now();await countRead.mapAsync(GPUMapMode.READ);addGpuStepTime('gpu compute',performance.now()-tGpu);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
     if(!runCount){itemsList.push(new Uint32Array(0));continue}
     const recordBytes=runCount*16;if(recordBytes>maxOut)throw new Error('GPU analysis run output exceeds device buffer limit');
     const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
@@ -328,7 +332,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
      {binding:0,resource:{buffer:src}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
     ]}),writeEncoder=device.createCommandEncoder({label:'VRL analysis RLE'});
     const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);gpuDispatch1D(writePass,groups);writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
-    await readback.mapAsync(GPUMapMode.READ);itemsList.push(new Uint32Array(readback.getMappedRange().slice(0)));readback.unmap();records.destroy();readback.destroy();
+    const tRb=performance.now();await readback.mapAsync(GPUMapMode.READ);addGpuStepTime('readback',performance.now()-tRb);itemsList.push(new Uint32Array(readback.getMappedRange().slice(0)));readback.unmap();records.destroy();readback.destroy();
    }
   }finally{
    if(enc)device.queue.submit([enc.finish()]);
@@ -473,7 +477,7 @@ export async function gpuOpenRuns(runs,w,h,d,spacing,thicknessMm,onProgress=null
  for(let z0=0;z0<d;z0+=core){
   if(!alive())throw new Error('__SUPERSEDED__');
   const depth=Math.min(core,d-z0),za=Math.max(0,z0-halo),zb=Math.min(d,z0+depth+halo),mask=new Float32Array(plane*(zb-za));
-  for(let z=za;z<zb;z++){const m=runsSliceToMask(runs[z],w,h),base=(z-za)*plane;for(let i=0;i<plane;i++)if(m[i])mask[base+i]=1}
+  const tMask=performance.now();for(let z=za;z<zb;z++){const m=runsSliceToMask(runs[z],w,h),base=(z-za)*plane;for(let i=0;i<plane;i++)if(m[i])mask[base+i]=1}addGpuStepTime('open mask',performance.now()-tMask);
   const target={x:0,y:0,z:z0-za,width:w,height:h,depth};
   const result=await runGpuSourceFilters(mask,w,h,zb-za,0,1,[],target,seg,{analysisRuns:true,openBall:{r2,n,spacing:sp}});
   if(!result?.analysisRuns)return null;
