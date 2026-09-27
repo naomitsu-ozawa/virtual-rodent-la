@@ -1,17 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build237';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build237';
-import { sourceFilterRuntime, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build237';
-import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build237';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build237';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build237';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build237';
-import { state } from './ui-shell.js?v=20260927-build237';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build238';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build238';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build238';
+import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build238';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build238';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build238';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build238';
+import { state } from './ui-shell.js?v=20260927-build238';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build237';
-import { frameYield } from './utils.js?v=20260927-build237';
-import { setProcessingBusy } from './busy.js?v=20260927-build237';
+import { maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build238';
+import { frameYield } from './utils.js?v=20260927-build238';
+import { setProcessingBusy } from './busy.js?v=20260927-build238';
+import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build238';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -133,7 +134,18 @@ export async function ensureSegmentBaseRuns(key,v=current3DVolume||volume,onProg
  const pending={signature:sig,listeners:new Set(onProgress?[onProgress]:[]),promise:null},report=(done,total)=>{for(const fn of pending.listeners)fn(done,total)};
  pending.promise=(async()=>{
   if(!quiet)setProcessingBusy(true,currentLanguage==='ja'?'編集領域を準備中':'Preparing editable segment',false);
-  try{const runs=v.sourceBacked?await sourceRunsForSegment(v,key,segmentState[key],report):thresholdRunsFromMemory(v,segmentState[key]);if(st.pendingBase===pending){st.baseRuns=runs;st.baseSignature=sig}return runs}
+  try{
+   // Source-backed volumes: reuse runs stored on the device by an earlier
+   // session with the same data, filters and segment settings (run-cache.js).
+   const seg=segmentState[key],cacheKeyPromise=v.sourceBacked&&v.series?segmentRunsCacheKey(v.series,sourceFilterSignature(sourceFilterStages()),seg).catch(()=>null):null;
+   let runs=null;
+   if(cacheKeyPromise){const k=await cacheKeyPromise;if(k)try{runs=await loadCachedSegmentRuns(k,v.slices);if(runs)report(v.slices,v.slices)}catch{runs=null}}
+   if(!runs){
+    runs=v.sourceBacked?await sourceRunsForSegment(v,key,seg,report):thresholdRunsFromMemory(v,seg);
+    if(cacheKeyPromise&&st.pendingBase===pending)void cacheKeyPromise.then(k=>k&&storeCachedSegmentRuns(k,runs));
+   }
+   if(st.pendingBase===pending){st.baseRuns=runs;st.baseSignature=sig}return runs;
+  }
   finally{if(st.pendingBase===pending)st.pendingBase=null;if(!quiet)setProcessingBusy(false,'',false)}
  })();
  st.pendingBase=pending;return pending.promise;
