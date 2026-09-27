@@ -38,6 +38,48 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (analysis cache, build 218)
+
+**Agent:** Claude (Claude Code)
+**Task:** Owner report (iPad, own DICOM folder, filters on, analysis started
+from 3D): volume analysis stays at "解析中…" and never reaches the usual
+"n / N" progress.
+
+### Cause (from reading the code; not reproducible here: no GPU, CDNs blocked)
+- On a source-backed volume with filters on, every analysis click re-read
+  the whole volume from DICOM and re-ran all filters block by block
+  (`connectedComponentVolumeSource`, 4 slices per block on touch devices),
+  although the 3D surface had just been built from the same filtered data.
+  Progress text was first written after the first block, which with heavy
+  filters (NLM) or the CPU fallback can take very long on iPad, so it
+  looked stuck. Not caused by the module split (the moved functions are
+  byte-identical; call structure unchanged).
+
+### What changed
+- `analyzeVolumeComponentAtVoxel`: for source-backed volumes with filter
+  stages, use `getFinalSegmentRuns` (the per-segment filtered-run cache the
+  edit tools already use, keyed by `segmentBaseSignature`: segment
+  settings, `filterRebuildRevision`, `sourceFilterRuntime.revision`, dims)
+  + `componentsFromRunsAsync`. The first click computes the runs once; later
+  clicks with the same filter/segment settings reuse them. Connectivity is
+  the same as before (both paths use `sourceRunSlice*` +
+  `unionOverlappingRuns`), so volumes are unchanged.
+- Progress: `sourceRunsForSegment` / `ensureSegmentBaseRuns` /
+  `getFinalSegmentRuns` take an optional `onProgress(done,total)`; the
+  analysis shows "フィルター適用済みの領域を準備中… n / N" from 0. The
+  uncached path (no filters) now shows "0 / N" before its first block.
+- Build 217 → 218.
+
+### Follow-up
+- First click is still one full filtered pass. Next: fill the run cache
+  while the 3D surface is built from filtered data, so even the first
+  click is instant.
+- If analysis still never finishes on the device (not just slow), look for
+  a GPU call that never resolves (e.g. `gpuValidationScope` / device lost on
+  iPad); ask the owner for the GPU status text.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 2, step 2)
 
 **Agent:** Claude (Claude Code)
