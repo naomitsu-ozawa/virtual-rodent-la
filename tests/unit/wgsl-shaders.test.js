@@ -12,6 +12,12 @@ const parse = src => new WgslReflect(src);
 const FILTER_KINDS = [...GPU_PREWARM_KINDS, 'faceExtract'];
 
 describe('compute shaders (docs/gpu-shaders.js)', () => {
+  // gpuFilterPipeline rewrites gid.x for 2D dispatch grids (build 263)
+  it.each(FILTER_KINDS)('%s parses with the 2D-grid index rewrite', kind => {
+    const src = normalizeVrlWgsl(gpuFilterShader(kind, 64)).replaceAll('gid.x', '(gid.x+gid.y*' + (65535 * 64) + 'u)');
+    expect(() => parse(src)).not.toThrow();
+    expect(src).not.toMatch(/[^(]gid\.x/);
+  });
   it.each(FILTER_KINDS)('%s parses and exposes a compute main()', kind => {
     const src = normalizeVrlWgsl(gpuFilterShader(kind, 64));
     expect(src).not.toMatch(/undefined|NaN/);

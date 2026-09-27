@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build262';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build263';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build262';
-import { isDesktopMac } from './utils.js?v=20260927-build262';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build262';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build262';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build263';
+import { isDesktopMac } from './utils.js?v=20260927-build263';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build263';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build263';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -170,11 +170,16 @@ export async function ensureGpuFilterDevice(){
  })();
  return gpuFilterRuntime.initPromise;
 }
+const GPU_MAX_GROUPS=65535;
+export function gpuDispatch1D(pass,groups){pass.dispatchWorkgroups(Math.min(groups,GPU_MAX_GROUPS),Math.max(1,Math.ceil(groups/GPU_MAX_GROUPS)))}
 export async function gpuFilterPipeline(kind){
  const device=await ensureGpuFilterDevice();if(!device)return null;
  if(gpuFilterRuntime.pipelines.has(kind))return gpuFilterRuntime.pipelines.get(kind);
  gpuFilterRuntime.lastShaderKind=kind;
- const source=normalizeVrlWgsl(gpuFilterShader(kind,gpuFilterRuntime.workgroupSize)),module=device.createShaderModule({code:source,label:'VRL '+kind+' compute'});
+ // 2D grids: a 1D dispatch is limited to 65535 workgroups, which a 1024x1024 block
+ // of more than 16 slices exceeds (e.g. with the air-distance halo); the voxel index
+ // spans gid.y rows of 65535 workgroups (gpuDispatch1D). 1D dispatches keep gid.y=0.
+ const source=normalizeVrlWgsl(gpuFilterShader(kind,gpuFilterRuntime.workgroupSize)).replaceAll('gid.x','(gid.x+gid.y*'+(GPU_MAX_GROUPS*gpuFilterRuntime.workgroupSize)+'u)'),module=device.createShaderModule({code:source,label:'VRL '+kind+' compute'});
  if(typeof module.getCompilationInfo==='function'){
   const info=await module.getCompilationInfo(),errors=(info.messages||[]).filter(m=>m.type==='error');
   if(errors.length)throw new Error('WGSL '+kind+': '+errors.map(m=>m.message).join(' | '));
@@ -229,7 +234,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   const group=device.createBindGroup({layout:bind,entries:[
    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}}
   ]});
-  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
+  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);gpuDispatch1D(pass,Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
   const t=current;current=next;next=t;
  };
  for(const stage of stages){
@@ -274,7 +279,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     const countGroup=device.createBindGroup({layout:countPipeline.getBindGroupLayout(0),entries:[
      {binding:0,resource:{buffer:src}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
     ]});
-    const countPass=enc.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);countPass.dispatchWorkgroups(groups);countPass.end();
+    const countPass=enc.beginComputePass();countPass.setPipeline(countPipeline);countPass.setBindGroup(0,countGroup);gpuDispatch1D(countPass,groups);countPass.end();
     const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
     await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
     if(!runCount){itemsList.push(new Uint32Array(0));continue}
@@ -283,7 +288,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     const writeGroup=device.createBindGroup({layout:writePipeline.getBindGroupLayout(0),entries:[
      {binding:0,resource:{buffer:src}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}
     ]}),writeEncoder=device.createCommandEncoder({label:'VRL analysis RLE'});
-    const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);writePass.dispatchWorkgroups(groups);writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
+    const writePass=writeEncoder.beginComputePass();writePass.setPipeline(writePipeline);writePass.setBindGroup(0,writeGroup);gpuDispatch1D(writePass,groups);writePass.end();writeEncoder.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([writeEncoder.finish()]);
     await readback.mapAsync(GPUMapMode.READ);itemsList.push(new Uint32Array(readback.getMappedRange().slice(0)));readback.unmap();records.destroy();readback.destroy();
    }
   }finally{
