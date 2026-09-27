@@ -38,6 +38,28 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (startup fix, speed, builds 257-258)
+
+**Agent:** Claude
+**Task:** Build 255/256 did not start: app.js imported an export removed in 255. Then the
+owner reported that both the air-boundary processing and the 3D view after it are heavy.
+
+### What changed
+- Build 257: removed the stale import. New `tests/static/named-imports.test.js` checks that every
+  named import between docs/ modules resolves (it fails on build 256). The iPad kept serving
+  the broken index.html from cache; `?b=257` loaded the new one.
+- Build 258, 3D: `editAllows` binary-searches the sorted row intervals instead of
+  scanning them (processed fat rows have many intervals).
+- Build 258, processing: `airDist` compute shader, three separable passes giving the exact
+  squared distance to air within 8 voxels (about 40 reads per voxel instead of a 2601-voxel
+  ball). The analysis RLE returns the segment split into 8 distance layers plus
+  "farther" (`airLayersMemo`). A slider change only unions layers, with no GPU pass. JS
+  mirror test: `tests/unit/air-dist.test.js`.
+
+### Open questions / follow-up
+- Not checked on the device. The CI browser tests passed on the non-starting builds 255/256,
+  so they do not catch startup failures.
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (no mesh in volume view; revert 250/253, builds 254-256)
 
 **Agent:** Claude

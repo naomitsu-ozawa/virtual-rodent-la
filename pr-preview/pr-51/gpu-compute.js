@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build257';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build258';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build257';
-import { isDesktopMac } from './utils.js?v=20260927-build257';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build257';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build257';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build258';
+import { isDesktopMac } from './utils.js?v=20260927-build258';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build258';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build258';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -261,14 +261,11 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   const countPipeline=await gpuFilterPipeline('analysisRunCount'),writePipeline=await gpuFilterPipeline('analysisRunWrite'),groups=Math.ceil(targetCount/gpuFilterRuntime.workgroupSize);
   const maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
   const itemsList=[];let enc=encoder;
-  // optional air-boundary exclusion for the first segment only (extras such as
-  // the body mask read the unmodified filtered values)
-  let firstSrc=current;const airx=faceContext.airExclude;
-  if(airx){
-   const original=current;
-   await dispatch('airExclude',[airx.n[0],airx.n[1],airx.n[2]],[segments[0].seg.min,segments[0].seg.max,airx.a*airx.a,airx.spacing[0],airx.spacing[1],airx.spacing[2]]);
-   firstSrc=current;current=original;
-  }
+  // optional distance-to-air field (airLayers): the segments are then ranges of
+  // squared distance, read from the field instead of the CT values
+  const airl=faceContext.airLayers;
+  if(airl)for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,airl.n[axis]],[airl.min,airl.max,airl.spacing[axis]]);
+  const firstSrc=current;
   try{
    for(const [si,{seg}] of segments.entries()){
     const src=si===0?firstSrc:current;
