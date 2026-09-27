@@ -38,6 +38,33 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (speed, collapsible cards, builds 259-267)
+
+**Agent:** Claude
+**Task:** Make the air-boundary exclusion and the 3D view usable on the owner's iPad data
+(1024×1024×1784).
+
+### What changed
+- 259: 2D overlay uses a per-plane mask of the processed runs (`runsPlaneMask`) instead of a
+  per-pixel scan of the slice's runs.
+- 260-262: diagnostics (step timings, 2D/3D draw times, GPU failure reason) and
+  `tools/boot-check.mjs` (`npm run boot-check`: offline Chromium startup check that fails on any
+  page error). Run it before every push.
+- 261: 3D segment opacity slider only redraws the volume while it moves (the owner meant the
+  3D opacity; I first treated it as a 2D problem).
+- 263: the actual reason the GPU air layers fell back to the CPU. Blocks with the 8-voxel halo
+  need more than 65535 workgroups in one dimension. The filter/RLE passes now dispatch 2D grids,
+  and `gid.x` is rewritten to the flattened index in `gpuFilterPipeline`.
+- 264: one class-RLE pass (`classRunCount/Write`) for all distance layers; larger blocks
+  with air layers; the kept count sums the disjoint layers. Device: first run 227 s → 78 s,
+  slider change 11 s → 0.3 s.
+- 265-266: segment cards collapse to the header row, collapsed by default (remembered per device).
+- 267: diagnostics only with `?debug`. The normal status reads "処理完了 · Ns · 残り X% · 3D反映済み".
+
+### Open questions / follow-up
+- 3D volume frame about 56 ms on the iPad (the raycast itself); not addressed.
+- CI browser tests do not catch a non-starting app; boot-check does, but it is not in CI yet.
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (startup fix, speed, builds 257-258)
 
 **Agent:** Claude
