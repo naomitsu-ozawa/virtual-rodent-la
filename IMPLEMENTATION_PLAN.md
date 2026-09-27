@@ -126,6 +126,9 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
 - `docs/app.js` is the canonical deployed entry point; it imports the other
   `docs/*.js` modules. Extracted modules must not import from `app.js`
   (no cycles) and must not hold UI/application state.
+- The module graph must stay acyclic (tests/static/no-import-cycles.test.js).
+  After moving exported functions between modules, run
+  `tools/retarget-imports.mjs` to update importers.
 - Shared mutable state lives in `docs/state.js` (`export let x` + setter
   `setX`). Read it directly; write it only through the setter.
 - Build markers (`APP_VERSION`/`APP_BUILD`) live in `docs/version.js`.
