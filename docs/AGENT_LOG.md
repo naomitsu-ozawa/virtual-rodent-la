@@ -95,6 +95,13 @@ own modules first. Verbatim moves.
   never uses it. Build 225: the slide preview checks only
   `mv.hasResident(target)` (it never caches values as exact); the misleading
   reason text is removed.
+- Build 225 on the iPad: heavy flicker while sliding, images from other
+  positions in every direction. Each drag step picked whichever source was
+  available (cached full-res filtered slice, low-res 3D preview, unfiltered
+  original, or the GPU read), so resolution, filtering and latency changed
+  step by step. Build 226: when the GPU volume holds the current filters,
+  every drag step uses only the GPU read (latest-only per plane); the other
+  instant sources are used only when it is unavailable.
 
 ### Next
 - Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
