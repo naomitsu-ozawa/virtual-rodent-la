@@ -38,6 +38,55 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-26 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 2, step 1)
+
+**Agent:** Claude (Claude Code)
+**Task:** First step of the MPR feature-module split: move the lowest
+layers (filtered-slice computation and orthogonal plane building) out of
+`docs/app.js`, verbatim.
+
+### What changed (all verbatim moves)
+- `docs/source-filters.js` (30 decls): source-filter worker pool
+  (`sourceFilterWorkerMain` is still serialised via `toString()` into a
+  Blob worker), region reads and tiling, per-slice filtered plane values
+  for source-backed and in-memory volumes, both filter caches,
+  `filterState`, `sourceFilterStages` / `sourceFilterSignature`, and
+  `planeRenderRevision` (pulled in because `getFilteredMemoryPlaneValues`
+  checks it).
+- `docs/mpr-orthogonal.js` (10 decls): coronal/sagittal plane building
+  from source rows/columns, its cache, and resident-GPU MPR plane readback.
+- app.js 4662 → 4321 lines. `verify-split HEAD docs/app.js docs/app.js
+  docs/source-filters.js docs/mpr-orthogonal.js` → OK, 470 statements
+  verbatim. Non-primitive consts moved (all literal/`new Map()`
+  initialisers, no side effects): `sourceFilterRuntime`,
+  `memoryFilterPreviewCache`, `filterState`, `planeRenderRevision`,
+  `sourceOrthogonalPlaneCache`, `sourceOrthogonalPlanePending`,
+  `residentMprJobs`.
+- Exact commands: `tools/split-history/phase2d-part2-step1.sh`.
+- Build 215 → 216.
+
+### Findings / plan for the next steps
+- The whole MPR closure (seeds `schedulePlaneRender`, `paintSourcePlane`,
+  `ensureMpr3DPreviewCache`, `paintInstantPlaneWhileSliding`) was 103
+  declarations / ~890 lines, too large for one reviewable PR; hence the
+  bottom-up steps.
+- Only blocker left for the rest: `mpr3DSliceSliders` (DOM const declared
+  in app.js, not in ui-shell.js) used by `syncMpr3DSliceSliders`. Move it
+  to `ui-shell.js` first (or keep the 3D slice panel in app.js).
+- Step 2: 3D preview cache + MPR-in-3D overlay (`ensureMpr3DPreviewCache`,
+  `paintMpr3DCacheSliceFast`, overlay plane functions, the 7-function
+  cycle). Step 3: 2D plane rendering (`renderPlane`, `paintSourcePlane`,
+  `schedulePlaneRender`); it also pulls in segment-mask and analysis
+  overlay helpers, which may be better moved first as their own module.
+- `filterState` / `planeRenderRevision` ended up in `source-filters.js`
+  because of the dependency closure; fine for now, revisit when the filter
+  UI module is extracted.
+- E2E could not run in the Claude Code cloud container: its network policy
+  blocks the CDNs (jsdelivr, esm.sh), so the app never boots there. Lint and
+  unit tests ran locally; E2E ran in GitHub CI on the PR.
+
+---
+
 ## 2026-09-26 — claude/dicom-viewer-handoff-eaqyyu
 
 **Agent:** Claude (Claude Code, handed over from the claude.ai chat)
