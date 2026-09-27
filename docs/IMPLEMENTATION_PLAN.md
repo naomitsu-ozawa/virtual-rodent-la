@@ -68,7 +68,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 
 ## Refactoring backlog
 
-Status as of build 233: `docs/app.js` is 2054 lines (5439 before the split
+Status as of build 234: `docs/app.js` is 1601 lines (5439 before the split
 began) with 378 top-level declarations and 90 top-level side-effect
 statements. Every move so far was mechanical and proven with
 `tools/verify-split.mjs`; keep that approach (`tools/closure.mjs` to size a
@@ -90,7 +90,7 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
   - [ ] Analysis / edit / cut tools (`updateCutPreview`,
         `cutRunsFromVoxelStroke`, `updateThreeEditUi`,
         `renderAnalysisResults`)
-  - [ ] Project load/save glue (`applyProject`) and demo loading
+  - [x] Project load/save glue (`applyProject`) and demo loading (`data-load.js`, build 234)
         (`loadDemo`)
   - [ ] iPad / Mac workspace UI (`initIPadWorkspaceUi`)
 - [ ] Break up `start3D` (290 lines, the largest function) into scene
@@ -128,6 +128,7 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
   (no cycles) and must not hold UI/application state.
 - Shared mutable state lives in `docs/state.js` (`export let x` + setter
   `setX`). Read it directly; write it only through the setter.
+- Build markers (`APP_VERSION`/`APP_BUILD`) live in `docs/version.js`.
 - Every relative import carries a cache tag of the current build
   (`?v=YYYYMMDD-buildN`, optional suffix). `npm run bump-build [N]` updates
   all markers at once; the build-consistency test enforces agreement.

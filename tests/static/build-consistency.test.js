@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
-// docs/app.js compares its APP_BUILD with docs/version.json on startup and
+// docs/app.js compares APP_BUILD (from docs/version.js) with docs/version.json on startup and
 // force-reloads the page when they differ (ensureLatestDeployedBuild). If the
 // markers drift apart, users get stale assets or reload loops.
 //
@@ -12,22 +12,22 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 //   followed by a free-form suffix (?v=20260925-build184-groupedcut1), and
 //   different files may carry different suffixes.
 const read = p => readFileSync(p, 'utf8');
-const appJs = read('docs/app.js');
+const versionJs = read('docs/version.js');
 const indexHtml = read('docs/index.html');
 const versionJson = JSON.parse(read('docs/version.json'));
 
-const build = appJs.match(/const APP_BUILD='([^']+)'/)?.[1];
-const version = appJs.match(/const APP_VERSION='([^']+)'/)?.[1];
+const build = versionJs.match(/const APP_BUILD='([^']+)'/)?.[1];
+const version = versionJs.match(/const APP_VERSION='([^']+)'/)?.[1];
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const tagFor = () => new RegExp(`^\\?v=[0-9]{8}-build${esc(build)}(?![0-9])[\\w.-]*$`);
 
 describe('build markers', () => {
-  it('app.js declares APP_BUILD and APP_VERSION', () => {
+  it('version.js declares APP_BUILD and APP_VERSION', () => {
     expect(build).toBeTruthy();
     expect(version).toBeTruthy();
   });
 
-  it('version.json matches app.js (prevents the reload loop)', () => {
+  it('version.json matches version.js (prevents the reload loop)', () => {
     expect(String(versionJson.build)).toBe(build);
     expect(String(versionJson.version)).toBe(version);
   });
