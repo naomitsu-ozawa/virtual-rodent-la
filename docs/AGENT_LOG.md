@@ -38,6 +38,55 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (keep/delete all selected regions, build 236)
+
+**Agent:** Claude (Claude Code)
+**Task:** Owner report: with two or more regions selected in the volume
+analysis list, "keep selected" / "delete selected" applied to only one.
+
+### Cause
+- `applyEditKeepSelected` / `applyEditRemoveSelected` used only the focused
+  region (`analysisFocusedRegionId`); the list checkboxes (`region.selected`,
+  also used by "merge selected") were ignored. Pre-existing, not from the
+  module split.
+
+### What changed
+- `edit-tools.js`: `editTargetRegions()` — every ticked region, or the
+  focused one when none is ticked; regions merged across segments are
+  skipped (edits are per segment). The keep/delete buttons are enabled
+  from it.
+- `analysis-ops.js`: both operations group the targets by segment and apply
+  once per segment (keep = union of the targets' runs; delete = add the
+  union to `excludeRuns`), with one undo entry per segment. Undo/redo still
+  act on one segment at a time, so an edit that spanned two segments takes
+  two undos.
+- Build 235 → 236.
+- Same PR, build 237 — owner: having to tick each region is poor UX. New
+  analysis regions (`addAnalysisRegion`) and merged regions now start
+  ticked (`selected:true`), so "click the parts, then keep/delete selected"
+  acts on all of them; untick a region to leave it out. "Merge selected"
+  also uses the ticked regions.
+- Same PR, build 238 — owner asked why the first analysis after reopening
+  is not "from the cache". The GPU volume cache holds the reduced display
+  texture; analysis runs were only kept in memory. New device cache for the
+  per-segment filtered runs:
+  - `docs/run-pack.js`: `packRuns` / `unpackRuns` (one blob, format tag,
+    slice count check; unit-tested in `tests/unit/run-pack.test.js`).
+  - `docs/run-cache.js`: key = dataset fingerprint + filter signature +
+    segment settings (stable across sessions); stored in the GPU volume
+    cache DB as a 1-slice entry (`info.kind='segment-runs'`), same LRU
+    budget and "clear cache" button.
+  - `segment-runs.js` `ensureSegmentBaseRuns`: source-backed volumes try the
+    cache first (progress jumps to N/N on a hit), otherwise compute and
+    store in the background.
+- Module import cycles exist since the split appended functions to existing
+  modules (e.g. scene3d.js ↔ mpr-render.js, scene3d.js ↔ edit-tools.js; now
+  also via run-cache.js → gpu-volume-data.js → scene3d.js). They only
+  involve functions called after evaluation, so they work, but should be
+  untangled (follow-up).
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 5, build 235)
 
 **Agent:** Claude (Claude Code)
