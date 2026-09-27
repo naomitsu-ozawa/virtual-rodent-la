@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build263';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build264';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build263';
-import { isDesktopMac } from './utils.js?v=20260927-build263';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build263';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build263';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build264';
+import { isDesktopMac } from './utils.js?v=20260927-build264';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build264';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build264';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -271,6 +271,36 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   const airl=faceContext.airLayers;
   if(airl)for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,airl.n[axis]],[airl.min,airl.max,airl.spacing[axis]]);
   const firstSrc=current;
+  // distance layers: one class RLE pass for all layers instead of a count/write
+  // round trip per layer (the ranges are consecutive: layer k = (max[k-1], max[k]])
+  if(airl&&segments.length>1){
+   const K=segments.length,th=new Float32Array(4+K);th[0]=segments[0].seg.min;th[1]=K;for(let k=0;k<K;k++)th[4+k]=segments[k].seg.max;
+   const tb=gpuSmallBuffer(device,th);small.push(tb);
+   try{
+    const cp=await gpuFilterPipeline('classRunCount'),wp=await gpuFilterPipeline('classRunWrite');device.queue.writeBuffer(counter,0,new Uint32Array([0]));
+    const cg=device.createBindGroup({layout:cp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}]});
+    const pass=enc.beginComputePass();pass.setPipeline(cp);pass.setBindGroup(0,cg);gpuDispatch1D(pass,groups);pass.end();
+    const countRead=device.createBuffer({size:4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});enc.copyBufferToBuffer(counter,0,countRead,0,4);device.queue.submit([enc.finish()]);enc=null;
+    await countRead.mapAsync(GPUMapMode.READ);const runCount=new Uint32Array(countRead.getMappedRange().slice(0))[0];countRead.unmap();countRead.destroy();
+    let items=new Uint32Array(0);
+    if(runCount){
+     const recordBytes=runCount*16;if(recordBytes>maxOut)throw new Error('GPU analysis run output exceeds device buffer limit');
+     const records=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC}),readback=device.createBuffer({size:recordBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});device.queue.writeBuffer(counter,0,new Uint32Array([0]));
+     const wg=device.createBindGroup({layout:wp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:records}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:tb}},{binding:4,resource:{buffer:counter}}]}),we=device.createCommandEncoder({label:'VRL class RLE'});
+     const p2=we.beginComputePass();p2.setPipeline(wp);p2.setBindGroup(0,wg);gpuDispatch1D(p2,groups);p2.end();we.copyBufferToBuffer(records,0,readback,0,recordBytes);device.queue.submit([we.finish()]);
+     await readback.mapAsync(GPUMapMode.READ);items=new Uint32Array(readback.getMappedRange().slice(0));readback.unmap();records.destroy();readback.destroy();
+    }
+    // split by class; the first word goes back to the local slice index
+    const counts=new Uint32Array(K);for(let i=0;i<items.length;i+=4)counts[(items[i]>>>16)-1]++;
+    const itemsList=[...counts].map(n=>new Uint32Array(n*4)),fill=new Uint32Array(K);
+    for(let i=0;i<items.length;i+=4){const c=(items[i]>>>16)-1,o=fill[c]++*4,dst=itemsList[c];dst[o]=items[i]&65535;dst[o+1]=items[i+1];dst[o+2]=items[i+2];dst[o+3]=items[i+3]}
+    setGpuComputeBackend('WEBGPU ANALYSIS RLE');
+    return{analysisRuns:true,items:itemsList[0],itemsList,count:itemsList[0].length/4};
+   }finally{
+    if(enc)device.queue.submit([enc.finish()]);
+    releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);counter.destroy();for(const buf of small)buf.destroy();
+   }
+  }
   try{
    for(const [si,{seg}] of segments.entries()){
     const src=si===0?firstSrc:current;

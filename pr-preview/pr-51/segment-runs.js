@@ -1,19 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build263';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build263';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build263';
-import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build263';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build263';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build263';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build263';
-import { state } from './ui-shell.js?v=20260927-build263';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build264';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build264';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build264';
+import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build264';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build264';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build264';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build264';
+import { state } from './ui-shell.js?v=20260927-build264';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build263';
-import { frameYield } from './utils.js?v=20260927-build263';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build263';
-import { setProcessingBusy } from './busy.js?v=20260927-build263';
-import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build263';
+import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build264';
+import { frameYield } from './utils.js?v=20260927-build264';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build264';
+import { setProcessingBusy } from './busy.js?v=20260927-build264';
+import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build264';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -74,7 +74,7 @@ export function sourceAnalysisBlockDepth(w,h){
 }
 export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision,extraSegs=[],airLayers=null){
  const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),device=await ensureGpuFilterDevice();if(!device)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
- const maxGroups=Number(device.limits?.maxComputeWorkgroupsPerDimension)||65535;if(Math.ceil(series.columns*series.rows*coreDepth/256)>maxGroups)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
+ // no workgroup-count limit here: the filter and RLE passes dispatch 2D grids (build 263)
  let rawError=null;
  if(!airLayers&&!stages.length&&series.slices.slice(zStart,zStart+coreDepth).every(meta=>isNativeDicomTransferSyntax(meta.ts))){
   try{
@@ -141,10 +141,10 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>t
    let tl=performance.now();const k=Math.min(AIR_LAYERS,Math.round(surfaceMm/vox));let air=layers[AIR_LAYERS];
    for(let i=k;i<AIR_LAYERS;i++)air=unionRunArrays(air,layers[i],d);
    tl=timeStep(key,ja0()?'層の合成':'layer union',tl);
-   let all=layers[AIR_LAYERS];for(let i=0;i<AIR_LAYERS;i++)all=unionRunArrays(all,layers[i],d);
-   tl=timeStep(key,ja0()?'元の数(合成)':'raw union',tl);
+   // layers are disjoint: the unprocessed count is the sum of the layer counts
+   let before=0;for(const layer of layers)before+=analysisRunsVoxelCount(layer);
    const rest={...seg,surfaceMm:0},processed=segmentNeedsGlobalMask(rest)?await postprocessSourceRuns(air,v,rest,null,alive,(a,b)=>onProgress?.(a,b,'thin')):air;
-   postprocessStats.set(key,{before:analysisRunsVoxelCount(all),after:analysisRunsVoxelCount(processed),body:null,insideBody:null,total:w*h*d,dims:[w,h,d],spacing:v.spacing,surfaceApplied:true,gpuAir:true});
+   postprocessStats.set(key,{before,after:analysisRunsVoxelCount(processed),body:null,insideBody:null,total:w*h*d,dims:[w,h,d],spacing:v.spacing,surfaceApplied:true,gpuAir:true});
    timeStep(key,ja0()?'数える':'count',tl);
    return processed;
   }
@@ -195,7 +195,14 @@ function sortedRunSlice(flat){
 // extraSegs: further threshold ranges read from the same (filtered) blocks;
 // returns [runs, ...extraRuns].
 async function thresholdSourceRuns(v,key,seg,onProgress,alive,extraSegs=[],airLayers=null){
- const d=v.slices,w=v.columns,h=v.rows,sets=[seg,...extraSegs].map(()=>Array.from({length:d},()=>new Uint32Array(0))),revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
+ const d=v.slices,w=v.columns,h=v.rows,sets=[seg,...extraSegs].map(()=>Array.from({length:d},()=>new Uint32Array(0))),revision=sourceFilterRuntime.revision;
+ let blockDepth=sourceAnalysisBlockDepth(w,h);
+ // air layers: the z halo (filters + ball) dwarfs a 4-slice core on the iPad, so
+ // take as many slices as the storage-buffer limit allows (2D dispatch, build 263)
+ if(airLayers){
+  const device=await ensureGpuFilterDevice(),limit=Number(device?.limits?.maxStorageBufferBindingSize)||134217728,halo=sourceFilterHalo(sourceFilterStages())+airLayers.n[2];
+  const fit=Math.floor(limit/(w*h*4))-2*halo-1;if(fit>blockDepth)blockDepth=Math.min(32,fit);
+ }
  onProgress?.(0,d,'threshold');
  for(let z0=0;z0<d;z0+=blockDepth){
   if(!alive())throw new Error('__SUPERSEDED__');
