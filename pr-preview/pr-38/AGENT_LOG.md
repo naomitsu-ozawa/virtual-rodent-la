@@ -109,6 +109,15 @@ own modules first. Verbatim moves.
   loop skips frames while the 3D viewport has no size (2D-only layout) and
   keeps the request until it is shown; footer now shows "gpu read N ms ·
   paint M ms" to measure the 2D path on the device.
+- Build 227 on the iPad: jerkiness fixed, 2D fast. Pen: no flicker but the
+  thumb drifts far from the pen; touch: heavy flicker. Cause: the global
+  precision drag sets `value = start + dx/width*span*gain` (gain .48 mouse/
+  pen, .36 touch) — the pen drift is that gain — while iPad Safari also
+  runs the native range touch behaviour, so the value alternated between the
+  finger position and the precision value. Build 228: `touchstart` on a range
+  is prevented (except in `.sidebar-scroll`, where vertical scrolling may
+  start on a slider) and `touchmove` during an active precision drag.
+  Open: whether the owner wants 1:1 following for pen (gain 1).
 
 ### Next
 - Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
