@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { suppressThinBox } from '../../docs/thin-suppress.js';
 
 // JS mirror of the 'airDist' compute shader (gpu-shaders.js): three passes, one
 // axis each, compose the exact squared distance to the nearest air voxel within
@@ -46,3 +47,44 @@ describe('airDist separable distance field', () => {
     }
   });
 });
+
+// JS mirror of the opening passes (airDist modes 1 and 2, gpuOpenRuns): erosion
+// distance on a 0/1 mask, distance to the eroded core, kept = g <= r².
+function openPasses(mask, w, h, d, sp, r) {
+  const idx = (x, y, z) => z * w * h + y * w + x, N = w * h * d, r2 = r * r, n = sp.map(s => Math.floor(r / s + 1e-9));
+  const run = (src, mode) => {
+    for (let axis = 0; axis < 3; axis++) {
+      const dst = new Float32Array(N);
+      for (let z = 0; z < d; z++) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = idx(x, y, z), inSeg = axis === 0 && mode === 1 ? src[i] > 0.5 : src[i] >= 0;
+        let g = 1e30;
+        for (let k = -n[axis]; k <= n[axis]; k++) {
+          const q = [x, y, z]; q[axis] += k;
+          if (q[0] < 0 || q[1] < 0 || q[2] < 0 || q[0] >= w || q[1] >= h || q[2] >= d) continue;
+          const e = src[idx(...q)], dd = k * sp[axis];
+          if (axis === 0) { const f = mode === 1 ? e <= 0.5 : e >= 0 && e > r2; if (f) g = Math.min(g, dd * dd); }
+          else g = Math.min(g, (e < 0 ? -e - 1 : e) + dd * dd);
+        }
+        dst[i] = inSeg ? g : -(g + 1);
+      }
+      src = dst;
+    }
+    return src;
+  };
+  const field = run(run(Float32Array.from(mask), 1), 2), out = new Uint8Array(N);
+  for (let i = 0; i < N; i++) out[i] = field[i] >= 0 && field[i] <= r2 * (1 + 1e-5) ? 1 : 0;
+  return out;
+}
+
+describe('GPU opening (thin-part removal) mirror', () => {
+  it('equals the CPU ball-stamping kernel', () => {
+    const w = 16, h = 14, d = 10, N = w * h * d;
+    let s = 9; const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const mask = new Uint8Array(N); for (let i = 0; i < N; i++) mask[i] = rnd() < 0.7 ? 1 : 0;
+    for (const sp of [[1, 1, 1], [0.04, 0.04, 0.08]]) for (const t of [sp[0] * 2.3, sp[0] * 4.1]) {
+      const gpu = openPasses(mask, w, h, d, sp, t / 2), cpu = suppressThinBox(mask, null, w, h, d, sp, { surfaceMm: 0, thicknessMm: t });
+      expect([...gpu]).toEqual([...cpu]);
+    }
+  });
+});
+

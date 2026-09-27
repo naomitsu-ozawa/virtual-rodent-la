@@ -1,11 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build267';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build268';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build267';
-import { isDesktopMac } from './utils.js?v=20260927-build267';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build267';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build267';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build268';
+import { isDesktopMac, frameYield } from './utils.js?v=20260927-build268';
+import { runsSliceToMask } from './run-length.js?v=20260927-build268';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build268';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build268';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -269,7 +270,15 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   // optional distance-to-air field (airLayers): the segments are then ranges of
   // squared distance, read from the field instead of the CT values
   const airl=faceContext.airLayers;
-  if(airl)for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,airl.n[axis]],[airl.min,airl.max,airl.spacing[axis]]);
+  if(airl)for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,airl.n[axis],0],[airl.min,airl.max,airl.spacing[axis]]);
+  // opening by a ball (thin-region removal B) on a 0/1 mask: erosion distance
+  // (mode 1), then distance to the eroded core (mode 2); segment[0] then reads
+  // the kept voxels as [0, r²]
+  const open=faceContext.openBall;
+  if(open){
+   for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,open.n[axis],1],[0,1,open.spacing[axis],open.r2]);
+   for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,open.n[axis],2],[0,1,open.spacing[axis],open.r2]);
+  }
   const firstSrc=current;
   // distance layers: one class RLE pass for all layers instead of a count/write
   // round trip per layer (the ranges are consecutive: layer k = (max[k-1], max[k]])
@@ -451,4 +460,31 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
  const copy=readback.getMappedRange().slice(0),result=segments?.length?new Uint32Array(copy):new Float32Array(copy);readback.unmap();
  releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);targetBuffer.destroy();readback.destroy();for(const buf of small)buf.destroy();
  setGpuComputeBackend(segments?.length?'WEBGPU FILTER+MASK':'WEBGPU COMPUTE');return result;
+}
+
+// Thin-region removal B on the GPU: opening of per-slice runs by a ball of
+// diameter thicknessMm (erode, then dilate back within the segment), block-wise
+// along z. Returns per-slice runs sorted by row, or null when WebGPU is unavailable.
+export async function gpuOpenRuns(runs,w,h,d,spacing,thicknessMm,onProgress=null,alive=()=>true){
+ const device=await ensureGpuFilterDevice();if(!device)return null;
+ const sp=spacing.map(Number),r=thicknessMm/2,r2=r*r,n=sp.map(s=>Math.floor(r/s+1e-9)),halo=2*n[2]+1,plane=w*h;
+ const limit=Number(device.limits?.maxStorageBufferBindingSize)||134217728,core=Math.max(1,Math.min(32,Math.floor(limit/(plane*4))-2*halo-1));
+ const out=new Array(d),seg=[{key:'open',seg:{min:0,max:r2*(1+1e-5)}}];
+ for(let z0=0;z0<d;z0+=core){
+  if(!alive())throw new Error('__SUPERSEDED__');
+  const depth=Math.min(core,d-z0),za=Math.max(0,z0-halo),zb=Math.min(d,z0+depth+halo),mask=new Float32Array(plane*(zb-za));
+  for(let z=za;z<zb;z++){const m=runsSliceToMask(runs[z],w,h),base=(z-za)*plane;for(let i=0;i<plane;i++)if(m[i])mask[base+i]=1}
+  const target={x:0,y:0,z:z0-za,width:w,height:h,depth};
+  const result=await runGpuSourceFilters(mask,w,h,zb-za,0,1,[],target,seg,{analysisRuns:true,openBall:{r2,n,spacing:sp}});
+  if(!result?.analysisRuns)return null;
+  const per=Array.from({length:depth},()=>[]),items=result.items;
+  for(let i=0;i<items.length;i+=4){const lz=items[i];if(lz<depth)per[lz].push(items[i+1],items[i+2],items[i+3])}
+  for(let z=0;z<depth;z++){
+   const flat=per[z],k=flat.length/3,order=Array.from({length:k},(_,i)=>i).sort((a,b)=>(flat[a*3]-flat[b*3])||(flat[a*3+1]-flat[b*3+1])),rec=new Uint32Array(flat.length);
+   for(let i=0;i<k;i++){const j=order[i]*3;rec[i*3]=flat[j];rec[i*3+1]=flat[j+1];rec[i*3+2]=flat[j+2]}
+   out[z0+z]=rec;
+  }
+  onProgress?.(Math.min(d,z0+depth),d);await frameYield();
+ }
+ return out;
 }

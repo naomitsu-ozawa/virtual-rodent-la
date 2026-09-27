@@ -38,6 +38,24 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-part removal on the GPU, build 268)
+
+**Agent:** Claude
+**Task:** Owner's order after PR #51: (1) boot check in CI, then (3) move thin-part removal (B)
+to the GPU.
+
+### What changed
+- (1) was dropped: the CI runs of builds 255/256 were cancelled, not green, and the smoke test
+  already fails on page errors. Corrected in this log and in the plan.
+- `gpuOpenRuns` (gpu-compute.js): an opening by a ball on a 0/1 mask of the segment runs, block-wise.
+  It uses the `airDist` shader in two new modes: 1 = erosion distance, 2 = distance to the eroded core.
+  The kept voxels are read with the analysis RLE. It runs after A and before Opening etc.
+  (`postprocessWithGpuOpen` in segment-runs.js), with a CPU fallback.
+- JS mirror test: the shader steps equal the CPU ball-stamping kernel (`tests/unit/air-dist.test.js`).
+
+### Open questions / follow-up
+- Not checked on the device.
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (speed, collapsible cards, builds 259-267)
 
 **Agent:** Claude
@@ -63,7 +81,9 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ### Open questions / follow-up
 - 3D volume frame about 56 ms on the iPad (the raycast itself); not addressed.
-- CI browser tests do not catch a non-starting app; boot-check does, but it is not in CI yet.
+- Correction: the CI runs of the non-starting builds 255/256 were cancelled (superseded by
+  the next push), not green. The smoke test fails on any page error, so it does catch a
+  non-starting app. boot-check is the local, offline equivalent to run before pushing.
 
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (startup fix, speed, builds 257-258)
 
@@ -84,8 +104,8 @@ owner reported that both the air-boundary processing and the 3D view after it ar
   mirror test: `tests/unit/air-dist.test.js`.
 
 ### Open questions / follow-up
-- Not checked on the device. The CI browser tests passed on the non-starting builds 255/256,
-  so they do not catch startup failures.
+- Not checked on the device. (Wrongly noted at the time: the CI runs of builds 255/256 were
+  cancelled, not green; the smoke test does catch startup failures.)
 
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (no mesh in volume view; revert 250/253, builds 254-256)
 
