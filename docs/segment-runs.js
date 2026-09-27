@@ -1,19 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build248';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build248';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build248';
-import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build248';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build248';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build248';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build248';
-import { state } from './ui-shell.js?v=20260927-build248';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build249';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build249';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build249';
+import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build249';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build249';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build249';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build249';
+import { state } from './ui-shell.js?v=20260927-build249';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { analysisRunsVoxelCount, maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build248';
-import { frameYield } from './utils.js?v=20260927-build248';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build248';
-import { setProcessingBusy } from './busy.js?v=20260927-build248';
-import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build248';
+import { analysisRunsVoxelCount, maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build249';
+import { frameYield } from './utils.js?v=20260927-build249';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20260927-build249';
+import { setProcessingBusy } from './busy.js?v=20260927-build249';
+import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build249';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -72,24 +72,28 @@ export function sourceAnalysisBlockDepth(w,h){
  const preferred=navigator.maxTouchPoints>0?4:16,maxGroups=65535,workgroupSize=256,plane=Math.max(1,w*h),safe=Math.max(1,Math.floor(maxGroups*workgroupSize/plane));
  return Math.max(1,Math.min(preferred,safe));
 }
-export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision){
+export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision,extraSegs=[]){
  const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),device=await ensureGpuFilterDevice();if(!device)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
  const maxGroups=Number(device.limits?.maxComputeWorkgroupsPerDimension)||65535;if(Math.ceil(series.columns*series.rows*coreDepth/256)>maxGroups)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
  let rawError=null;
  if(!stages.length&&series.slices.slice(zStart,zStart+coreDepth).every(meta=>isNativeDicomTransferSyntax(meta.ts))){
   try{
    const raw=await gpuValidationScope(device,'raw DICOM analysis RLE',()=>extractSourceThresholdRuns(device,series,zStart,coreDepth,seg));
-   if(raw){setGpuComputeBackend('WEBGPU ANALYSIS RAW-RLE');return raw}
+   if(raw){
+    const itemsList=[raw.items];
+    for(const extra of extraSegs){const r=await gpuValidationScope(device,'raw DICOM analysis RLE',()=>extractSourceThresholdRuns(device,series,zStart,coreDepth,extra));if(!r)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');itemsList.push(r.items)}
+    setGpuComputeBackend('WEBGPU ANALYSIS RAW-RLE');return{...raw,itemsList};
+   }
   }catch(e){rawError=e;console.warn('Raw DICOM GPU RLE unavailable; retrying decoded CT on WebGPU.',e)}
  }
  const halo=sourceFilterHalo(stages),z0=Math.max(0,zStart-halo),z1=Math.min(series.slices.length,zStart+coreDepth+halo),box={x:0,y:0,z:z0,width:series.columns,height:series.rows,depth:z1-z0},data=await readSourceRegion(series,box,analysisRevision,true);
  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  const target={x:0,y:0,z:zStart-z0,width:series.columns,height:series.rows,depth:coreDepth};
  try{
-  const result=await gpuValidationScope(device,'decoded CT analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg}],{analysisRuns:true}));
+  const result=await gpuValidationScope(device,'decoded CT analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg},...extraSegs.map((s,i)=>({key:key+':extra'+i,seg:s}))],{analysisRuns:true}));
   if(!result?.analysisRuns)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
   setGpuComputeBackend(stages.length?'WEBGPU ANALYSIS FILTER+RLE':'WEBGPU ANALYSIS DECODED-RLE',rawError?.message||null);
-  return{items:result.items,coreDepth};
+  return{items:result.items,itemsList:result.itemsList||[result.items],coreDepth};
  }catch(e){
   if(rawError&&String(e.message||e)==='__GPU_ANALYSIS_UNAVAILABLE__')gpuFilterRuntime.lastError='raw RLE: '+String(rawError.message||rawError);
   throw e;
@@ -115,7 +119,16 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>t
  const rawSig=[activeId,filterRebuildRevision,revision,key,seg.min,seg.max,w,h,d].join('|'),memo=rawRunsMemo.get(key);
  let out=memo?.signature===rawSig?memo.runs:null;
  if(out)onProgress?.(d,d,'threshold');
- else out=await thresholdSourceRuns(v,key,seg,onProgress,alive);
+ else{
+  // the air-boundary exclusion needs the body mask; when it is not known yet,
+  // read it from the same filtered blocks instead of filtering the volume twice
+  const surface=(+seg.surfaceMm||0)>0&&key!=='body',bodySeg=bodySegment(seg.min);
+  let withBody=surface&&bodyRunsMemo.signature!==bodySignature(v,seg.min);
+  if(withBody){const hit=await loadCachedBodyRuns(v,bodySeg);if(hit){seedBodyRuns(v,seg.min,hit);withBody=false}}
+  const sets=await thresholdSourceRuns(v,key,seg,onProgress,alive,withBody?[bodySeg]:[]);
+  out=sets[0];
+  if(withBody){seedBodyRuns(v,seg.min,sets[1]);void storeBodyRuns(v,bodySeg,sets[1])}
+ }
  if(key!=='body')rawRunsMemo.set(key,{signature:rawSig,runs:out});
  if(!segmentNeedsGlobalMask(seg))return out;
  let bodyRuns=(+seg.surfaceMm||0)>0?await sourceBodyRuns(v,(a,b)=>onProgress?.(a,b,'body'),seg.min):null;
@@ -132,24 +145,30 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>t
 // (shown in the segment status so a wrong result is visible at once)
 export const postprocessStats=new Map();
 const rawRunsMemo=new Map();
-async function thresholdSourceRuns(v,key,seg,onProgress,alive){
- const d=v.slices,w=v.columns,h=v.rows,out=Array.from({length:d},()=>new Uint32Array(0)),revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
+// extraSegs: further threshold ranges read from the same (filtered) blocks;
+// returns [runs, ...extraRuns].
+async function thresholdSourceRuns(v,key,seg,onProgress,alive,extraSegs=[]){
+ const d=v.slices,w=v.columns,h=v.rows,sets=[seg,...extraSegs].map(()=>Array.from({length:d},()=>new Uint32Array(0))),revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
  onProgress?.(0,d,'threshold');
  for(let z0=0;z0<d;z0+=blockDepth){
   if(!alive())throw new Error('__SUPERSEDED__');
-  let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision)}catch(e){console.warn('Edit base GPU RLE failed; using exact CPU RLE path.',e)}
-  if(gpu){
-   const per=Array.from({length:gpu.coreDepth},()=>[]);
-   for(let i=0;i<gpu.items.length;i+=4){const lz=gpu.items[i];if(lz<per.length)per[lz].push(gpu.items[i+1],gpu.items[i+2],gpu.items[i+3])}
-   for(let z=0;z<gpu.coreDepth;z++)out[z0+z]=new Uint32Array(per[z]);
+  let gpu=null;try{gpu=await sourceSegmentRunBlockGpu(v,key,seg,z0,blockDepth,revision,extraSegs)}catch(e){console.warn('Edit base GPU RLE failed; using exact CPU RLE path.',e)}
+  if(gpu&&(gpu.itemsList||[gpu.items]).length===sets.length){
+   (gpu.itemsList||[gpu.items]).forEach((items,si)=>{
+    const per=Array.from({length:gpu.coreDepth},()=>[]);
+    for(let i=0;i<items.length;i+=4){const lz=items[i];if(lz<per.length)per[lz].push(items[i+1],items[i+2],items[i+3])}
+    for(let z=0;z<gpu.coreDepth;z++)sets[si][z0+z]=new Uint32Array(per[z]);
+   });
   }else{
-   const masks=await sourceSegmentMaskBlock(v,key,seg,z0,blockDepth,revision);
-   for(let z=0;z<masks.length;z++)out[z0+z]=maskToAnalysisRuns(masks[z],w,h,1)[0];
+   for(let si=0;si<sets.length;si++){
+    const masks=await sourceSegmentMaskBlock(v,key,si?extraSegs[si-1]:seg,z0,blockDepth,revision);
+    for(let z=0;z<masks.length;z++)sets[si][z0+z]=maskToAnalysisRuns(masks[z],w,h,1)[0];
+   }
   }
   onProgress?.(Math.min(d,z0+blockDepth),d,'threshold');
   if((z0&63)===0)await frameYield();
  }
- return out;
+ return sets;
 }
 // Body mask runs (voxels at or above the segment's lower bound, filters applied) for the
 // surface exclusion; one per data/filter state, also cached on the device.
@@ -157,17 +176,22 @@ const bodyRunsMemo={signature:'',promise:null};
 // "Body" = values at or above the segment's lower bound, so "air" is anything
 // darker than the segment. A fixed -500 HU failed on the owner's data, where the fat
 // range itself lies below -500 (build 247: 0% of the fat inside that body mask).
+function bodySignature(v,minValue){return[activeId,filterRebuildRevision,sourceFilterRuntime.revision,v.columns,v.rows,v.slices,minValue].join('|')}
+// max is a fixed large value: v.max of a source-backed series can be an
+// estimate or missing, and a NaN bound would make the whole volume "air"
+function bodySegment(minValue){return{min:minValue,max:1e30,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0}}
+function bodyCacheKey(v,body){return v.series?segmentRunsCacheKey(v.series,sourceFilterSignature(sourceFilterStages()),body).catch(()=>null):Promise.resolve(null)}
+async function loadCachedBodyRuns(v,body){const k=await bodyCacheKey(v,body);if(!k)return null;try{return await loadCachedSegmentRuns(k,v.slices)}catch{return null}}
+async function storeBodyRuns(v,body,runs){const k=await bodyCacheKey(v,body);if(k)await storeCachedSegmentRuns(k,runs)}
+function seedBodyRuns(v,minValue,runs){bodyRunsMemo.signature=bodySignature(v,minValue);bodyRunsMemo.promise=Promise.resolve(runs)}
 export function sourceBodyRuns(v,onProgress=null,minValue=BODY_MIN_HU){
- const sig=[activeId,filterRebuildRevision,sourceFilterRuntime.revision,v.columns,v.rows,v.slices,minValue].join('|');
+ const sig=bodySignature(v,minValue);
  if(bodyRunsMemo.signature===sig&&bodyRunsMemo.promise)return bodyRunsMemo.promise;
- // max is a fixed large value: v.max of a source-backed series can be an
- // estimate or missing, and a NaN bound would make the whole volume "air"
- const body={min:minValue,max:1e30,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0};
+ const body=bodySegment(minValue);
  const promise=(async()=>{
-  const k=v.series?await segmentRunsCacheKey(v.series,sourceFilterSignature(sourceFilterStages()),body).catch(()=>null):null;
-  if(k)try{const hit=await loadCachedSegmentRuns(k,v.slices);if(hit)return hit}catch{}
+  const hit=await loadCachedBodyRuns(v,body);if(hit)return hit;
   const runs=await sourceRunsForSegment(v,'body',body,onProgress);
-  if(k)void storeCachedSegmentRuns(k,runs);
+  void storeBodyRuns(v,body,runs);
   return runs;
  })();
  bodyRunsMemo.signature=sig;bodyRunsMemo.promise=promise;
