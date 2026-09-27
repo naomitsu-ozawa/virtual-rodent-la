@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { currentLanguage } from './state.js?v=20260927-build234';
+import { currentLanguage, setCurrentLanguage } from './state.js?v=20260927-build235';
 export const I18N={
  ja:{
   subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
@@ -58,3 +58,10 @@ export const I18N={
  }
 };
 export const tr=key=>I18N[currentLanguage][key]??key;
+export function applyLanguage(lang){
+ setCurrentLanguage(lang);
+ document.documentElement.lang=lang;
+ document.title=lang==='ja'?'Virtual Rodent Lab — DICOMビューワー':'Virtual Rodent Lab — DICOM Viewer';
+ document.querySelectorAll('[data-i18n]').forEach(el=>{const key=el.dataset.i18n;if(key)el.textContent=tr(key)});
+ const toggle=document.querySelector('#language-toggle');if(toggle)toggle.textContent=lang==='ja'?'English':'日本語';
+}
