@@ -68,7 +68,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 
 ## Refactoring backlog
 
-Status as of build 215: `docs/app.js` is 4662 lines (5439 before the split
+Status as of build 222: `docs/app.js` is 3838 lines (5439 before the split
 began) with 378 top-level declarations and 90 top-level side-effect
 statements. Every move so far was mechanical and proven with
 `tools/verify-split.mjs`; keep that approach (`tools/closure.mjs` to size a
@@ -78,8 +78,8 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
 - [ ] Phase 2d part 2 — feature modules, extracted bottom-up (the
       dependency graph is almost a DAG; the largest cycle is the 7-function
       MPR-in-3D plane overlay):
-  - [ ] MPR rendering and caches (step 1 done: `source-filters.js`, `mpr-orthogonal.js`; next `schedulePlaneRender`,
-        `paintSourcePlane`, `ensureMpr3DPreviewCache`, instant-image path)
+  - [x] MPR rendering and caches (`source-filters.js`, `mpr-orthogonal.js`,
+        `mpr-render.js`; helpers in `segments.js`, `section-view.js`; build 222)
   - [x] MPR-in-3D overlay and 3D slice panel (`mpr3d-overlay.js`, build 217)
   - [ ] Filter pipeline UI (`rebuildActiveFilters`, CPU filters such as
         `applyNlm3D`)

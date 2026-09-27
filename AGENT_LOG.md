@@ -38,6 +38,99 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 2, step 3, build 222)
+
+**Agent:** Claude (Claude Code)
+**Task:** Third step of the MPR feature-module split: 2D plane rendering,
+with the segment-state and section-view helpers it pulled in moved to their
+own modules first. Verbatim moves.
+
+### What changed
+- `docs/segments.js` (10 decls): `segmentState`, `SEGMENT_PRESET_ORDER`,
+  `segmentEditState`, `segmentEditActive`, `segmentNeedsGlobalMask`,
+  `getProcessedSegmentMask`, `segmentMaskVolumeId(s)`, `activeMprSegments`,
+  and `sourceMprMemoryView` (pulled in by the mask helpers).
+- `docs/section-view.js` (6 decls): section view UI and clip-plane helpers.
+- `docs/mpr-render.js` (24 decls): `schedulePlaneRender`, `renderPlane`,
+  `safeRenderPlane`, memory/source-backed/filtered plane renderers,
+  `paintSourcePlane`, instant images while sliding, orthogonal high-res
+  prefetch, 2D analysis overlay drawing, paint caches and timers.
+- app.js 4072 → 3838 lines. `verify-split HEAD docs/app.js docs/app.js
+  docs/segments.js docs/section-view.js docs/mpr-render.js` → OK, 410
+  statements verbatim. Non-primitive consts moved have literal initialisers
+  or only create closures (`filteredPlaneRunners` builds `latestOnlyRunner`
+  closures without running them).
+- Exact commands: `tools/split-history/phase2d-part2-step3.sh`.
+- Build 221 → 222.
+
+### Same PR, build 223: 2D slices lag behind the slider with filters (iPad)
+- Owner (pre-existing, same on build 221; reported before): with filters on,
+  2D slices do not follow the slider, update only a while after release,
+  and sometimes not at all; the 3D view follows in real time.
+- Cause: the instant image while sliding (`paintInstantPlaneWhileSliding`)
+  uses the GPU volume only through its CPU preview copy, which the reduced
+  iPad texture plan does not have, and `extractPlane` refused reduced
+  textures because `mprPlaneShader` read source voxel coordinates directly.
+  So on iPad each drag step fell back to filtering a full-resolution slice.
+- Fix: `mprPlaneShader.huAt` maps source voxels to the nearest texel of the
+  texture (`textureDimensions`; identity at full resolution).
+  `extractPlane(..., {allowReduced})` reads reduced textures only when asked.
+  `gpuSlidePreviewRunners` (mpr-render.js): while a filtered plane's slider
+  moves and nothing instant is cached, read the plane from the GPU volume
+  when it holds the current filters (`gpuVolumeShowsCurrentFilters`), one
+  latest-only read per plane; the full-resolution filtered slice is still
+  rendered on release. Exact paths (unfiltered orthogonal planes cached as
+  exact) keep refusing reduced textures.
+- CI has no GPU: WGSL parses; behaviour must be checked on the iPad.
+- Owner on build 223: still not following. Build 224 adds a diagnostic:
+  while a filtered slider moves, the footer shows the 2D image source
+  ("2D <plane> while sliding: filtered | filtered-gpu | filtered-preview |
+  original-preview | original | gpu N ms | gpu-read-empty | full-resolution
+  filter (GPU volume not used: <reason>)"). Use it to find the path on the
+  device before changing more.
+- Build 224 on the iPad showed "full-resolution filter (GPU volume not used:
+  GPU readback disabled after an error)". Not an error: `app.js` sets
+  `residentMprReadbackDisabled` on purpose when the texture is reduced
+  (`setResidentMprReadbackDisabled(!!mv.isReduced?.(v))`) so exact readback
+  never uses it. Build 225: the slide preview checks only
+  `mv.hasResident(target)` (it never caches values as exact); the misleading
+  reason text is removed.
+- Build 225 on the iPad: heavy flicker while sliding, images from other
+  positions in every direction. Each drag step picked whichever source was
+  available (cached full-res filtered slice, low-res 3D preview, unfiltered
+  original, or the GPU read), so resolution, filtering and latency changed
+  step by step. Build 226: when the GPU volume holds the current filters,
+  every drag step uses only the GPU read (latest-only per plane); the other
+  instant sources are used only when it is unavailable.
+- Build 226 on the iPad: occasional flicker while sliding; jerky only in the
+  2D-only layout after the section view was shown in 3D (split layout is
+  smooth); slider thumb and finger/pen drift apart (open question: also on
+  build 221? slower than the finger, or lagging?). Build 227: the 3D render
+  loop skips frames while the 3D viewport has no size (2D-only layout) and
+  keeps the request until it is shown; footer now shows "gpu read N ms ·
+  paint M ms" to measure the 2D path on the device.
+- Build 227 on the iPad: jerkiness fixed, 2D fast. Pen: no flicker but the
+  thumb drifts far from the pen; touch: heavy flicker. Cause: the global
+  precision drag sets `value = start + dx/width*span*gain` (gain .48 mouse/
+  pen, .36 touch) — the pen drift is that gain — while iPad Safari also
+  runs the native range touch behaviour, so the value alternated between the
+  finger position and the precision value. Build 228: `touchstart` on a range
+  is prevented (except in `.sidebar-scroll`, where vertical scrolling may
+  start on a slider) and `touchmove` during an active precision drag.
+- Owner: touch flicker gone. Slice sliders should follow pen and touch 1:1;
+  other sliders keep the precision drag. Build 229: `SLICE_SLIDER_SELECTOR`
+  (`#axial/#coronal/#sagittal-slider`, `#mpr3d-slider-*`,
+  `#section-position`) drags absolutely: the value comes from the pointer
+  position on the slider (a tap jumps there), so the thumb stays under the
+  pen/finger. Other ranges unchanged (gain .48 mouse/pen, .36 touch).
+
+### Next
+- Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
+  filter pipeline UI, segmentation UI + mesh building, analysis/edit/cut
+  tools, project load/save, workspace UI, then breaking up `start3D`.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (analysis prewarm, build 219)
 
 **Agent:** Claude (Claude Code)

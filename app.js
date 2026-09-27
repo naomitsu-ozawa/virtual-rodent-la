@@ -2,29 +2,32 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build221';
+import { MedicalVolumeRenderer, extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build229';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-import { clampRangeValue, ctDigits, esc, fmt, formatCtValue, frameYield, hexRgb, isDesktopMac, isIPadRuntime, isIPhoneRuntime, multi, niceCtStep, num, numberOr, rangeNumber, rangePrecision, rangeStep, safePair, safeTriple, withTimeout } from './utils.js?v=20260927-build221';
-import { COMPRESSED_DICOM_TRANSFER_SYNTAXES, NATIVE_DICOM_TRANSFER_SYNTAXES, canDecodeToInt16, dicomImageFrameInfo, encapsulatedFrameBytes, expandParsedFrames, groupSeries, isNativeDicomTransferSyntax, parseDicomHeader, parseFiles, parsedSliceMeta, sourceRangeFromMetadata } from './dicom.js?v=20260927-build221';
-import { boxBlur3D, buildThresholdMask, compactFaceFlags, fillMaskHoles, morphMask, removeSmallMaskComponents, smoothMaskScalarField, thresholdSourceMask, valuesToFaceFlags, valuesToSegmentBits } from './mask-ops.js?v=20260927-build221';
-import { RunUnionFind, analysisRunRows, analysisRunSliceState, analysisRunsContain, analysisRunsOverlap, analysisRunsVoxelCount, complementRunArrays, componentAtVoxel, componentTouchesVolumeBoundary, componentsFromRuns, componentsFromRunsAsync, consumeGpuAnalysisRuns, forEachUncoveredRun, intersectRunArrays, intersectRunSlice, maskFromAnalysisRuns, maskToAnalysisRuns, mergeIntervals, morphSourceRunArrays, postprocessSourceRuns, rowIntervalsFromRuns, rowsToRunSlice, runArraysBinary, runsSliceToMask, sourceComponentSliceState, sourceResultToAnalysisRuns, sourceRunSlice, sourceRunSliceFromRanges, subtractRunArrays, subtractRunSlice, unionAnalysisRuns, unionOverlappingRuns, unionRunArrays, unionRunSlice } from './run-length.js?v=20260927-build221';
-import { Float32FaceBuilder, appendAnalysisRunBoundaryFaces, appendDecodedMaskSliceFaces, appendSourceFacesFromCompactTile, appendSourceSliceFaces, appendSourceSliceFacesFast, appendSourceSliceFacesFromBits, appendSourceSliceFacesFromFlags, eachGeometryTriangle, eachGeometryTriangleRange, geometryToBinaryStl, groupToBinaryStl, groupTriangleCount, indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates } from './mesh-geometry.js?v=20260927-build221';
-import { I18N, tr } from './i18n.js?v=20260927-build221';
-import { GPU_PREWARM_KINDS, gpuFilterShader, normalizeVrlWgsl } from './gpu-shaders.js?v=20260927-build221';
-import { activeId, activeSeries, analysisCutApplying, analysisCutScreen, analysisCutStroke, analysisEditPreparing, analysisEditTargetKey, analysisEditTargetMode, analysisEditTool, analysisFocusedRegionId, analysisPendingCut, analysisRegions, ctRangeMode, ctRangeProfile, current3DVolume, currentLanguage, cutBvhModulePromise, cutControlPreviewRaf, cutRaycastMaterial, cutResultPreviewRevision, cutResultPreviewTimer, deferAutomatic3D, dicomCodecModulePromise, filterOrder, filterRebuildRevision, filterRebuildTimer, gpuPrewarmIndex, gpuPrewarmScheduled, incCutResultPreviewRevision, incFilterRebuildRevision, incGpuPrewarmIndex, incNextAnalysisColorIndex, incNextAnalysisRegionId, incNextSegmentMaskVolumeId, incResidentMprEpoch, incSourceMprWarmupToken, incSourceRenderRevision, ipadGpuTargetSide, memoryGpuPreviewActive, mpr3DSurfaceOpacity, mpr3DVolumeOpacity, mpr3DWindowLutKey, mpr3DWindowLutTable, nextAnalysisColorIndex, nextAnalysisRegionId, nextSegmentMaskVolumeId, precisionRangeDrag, residentGpuUploadSeriesId, residentMprEpoch, residentMprReadbackDisabled, sceneState, sectionAutoPlane, sectionCapEnabled, sectionCapHatch, sectionCapOpacity, sectionSliceImageVisible, sectionViewOpen, sectionViewPlane, sectionViewReverse, segmentRenderTimer, setActiveId, setActiveSeries, setAnalysisCutApplying, setAnalysisCutScreen, setAnalysisCutStroke, setAnalysisEditPreparing, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisEditTool, setAnalysisFocusedRegionId, setAnalysisPendingCut, setAnalysisRegions, setCtRangeMode, setCtRangeProfile, setCurrent3DVolume, setCurrentLanguage, setCutBvhModulePromise, setCutControlPreviewRaf, setCutRaycastMaterial, setCutResultPreviewRevision, setCutResultPreviewTimer, setDeferAutomatic3D, setDicomCodecModulePromise, setFilterOrder, setFilterRebuildRevision, setFilterRebuildTimer, setGpuPrewarmIndex, setGpuPrewarmScheduled, setIpadGpuTargetSide, setMemoryGpuPreviewActive, setMpr3DSurfaceOpacity, setMpr3DVolumeOpacity, setMpr3DWindowLutKey, setMpr3DWindowLutTable, setNextAnalysisColorIndex, setNextAnalysisRegionId, setNextSegmentMaskVolumeId, setPrecisionRangeDrag, setResidentGpuUploadSeriesId, setResidentMprEpoch, setResidentMprReadbackDisabled, setSceneState, setSectionAutoPlane, setSectionCapEnabled, setSectionCapHatch, setSectionCapOpacity, setSectionSliceImageVisible, setSectionViewOpen, setSectionViewPlane, setSectionViewReverse, setSegmentRenderTimer, setSmoothingRefreshTimer, setSourceMprWarmupPlane, setSourceMprWarmupToken, setSourceOrthogonalPlaneCacheBytes, setSourceRenderRevision, setSourceVolume, setThreeDApplying, setThreeDCancelRequested, setThreeDDirty, setThreeRenderMode, setVolume, setVolumeAnalysisBusy, setVolumeAnalysisMode, smoothingRefreshTimer, sourceMprWarmupPlane, sourceMprWarmupToken, sourceOrthogonalPlaneCacheBytes, sourceRenderRevision, sourceVolume, threeDApplying, threeDCancelRequested, threeDDirty, threeRenderMode, volume, volumeAnalysisBusy, volumeAnalysisMode } from './state.js?v=20260927-build221';
-import { $, analysisClearButton, analysisCutApply, analysisCutButton, analysisCutCancel, analysisCutConfirm, analysisCutDepth, analysisCutDepthValue, analysisCutOffset, analysisCutOffsetValue, analysisCutPitch, analysisCutPitchValue, analysisCutWidth, analysisCutWidthValue, analysisCutYaw, analysisCutYawValue, analysisEditRemoveSelected, analysisEditTargetSelect, analysisExportSelected, analysisKeepSelected, analysisLassoButton, analysisLineCutButton, analysisMergeButton, analysisNavigateButton, analysisRedo, analysisRegionList, analysisRemoveSelected, analysisResetEdit, analysisSelectRegionButton, analysisSummary, analysisUndo, anisotropicBtn, anisotropicIterations, anisotropicIterationsValue, anisotropicStrength, anisotropicStrengthValue, app, appVersionBadge, bar, bilateralBtn, bilateralIntensity, bilateralIntensityValue, bilateralPasses, bilateralPassesValue, bilateralSpatial, bilateralSpatialValue, bilateralStrength, bilateralStrengthValue, ctRangeAuto, ctRangeFull, demoBtn, filter3DState, filterAddButton, filterAddSelect, filterControlList, filterRebuild3D, folderBtn, folderInput, footer, gaussianBtn, gaussianStrength, gaussianStrengthValue, ipadGpuQuality, ipadGpuQualityControl, languageToggle, list, mainViewSlot, mpr3DSliceSliders, mprSurfaceOpacity, mprSurfaceOpacityValue, mprVolumeOpacity, mprVolumeOpacityValue, nlmBtn, nlmPatchRadius, nlmPatchRadiusValue, nlmSearchRadius, nlmSearchRadiusValue, nlmStrength, nlmStrengthValue, planes, processingOverlay, processingOverlayLabel, prog, progLabel, projectInput, projectOpenBtn, projectSaveBtn, renderModeToggle, resetFilterBtn, sectionCapEnabledControl, sectionCapHatchControl, sectionCapOpacityControl, sectionCapOpacityValue, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionViewReadout, sectionViewResult, sectionViewToggle, segmentAddButton, segmentAddSelect, segmentControls, selected, sigmoidBtn, sigmoidCenter, sigmoidCenterValue, sigmoidStrength, sigmoidStrengthValue, smoothingType, spatialPasses, spatialPassesValue, spikeHoleBtn, spikeHoleStrength, spikeHoleStrengthValue, spikeHoleThreshold, spikeHoleThresholdValue, state, status, subViewSlots, surfaceSmoothEnabled, surfaceSmoothStrength, surfaceSmoothValue, threeBusy, threeBusyCancel, threeBusyLabel, threeEditHelp, threeEditOverlay, threeEditStatus, threeFilterBadge, threeLabel, tvBtn, tvIterations, tvIterationsValue, tvWeight, tvWeightValue, unsharpAmount, unsharpAmountValue, unsharpBtn, unsharpRadius, unsharpRadiusValue, unsharpThreshold, unsharpThresholdValue, viewport, volumeAnalysisResult, volumeAnalysisToggle, volumeCacheClearBtn, wc, wcVal, ww, wwVal } from './ui-shell.js?v=20260927-build221';
-import { latestOnlyRunner } from './latest-runner.js?v=20260927-build221';
-import { strongSurfaceSmoothingActive, surfaceSmoothingActive } from './settings.js?v=20260927-build221';
-import { GPU_FILTER_KEYS, acquireGpuWorkBuffer, adoptRendererGpuDevice, clearGpuBufferPool, createGpuResidentFloat3Attribute, destroyGpuResidentAttribute, ensureGpuFilterDevice, finishGpuResidentTemps, gpuAdapterLabel, gpuBufferBucketSize, gpuComputeWorkgroupSize, gpuDeviceMode, gpuDeviceRequestDescriptor, gpuFilterPipeline, gpuFilterRuntime, gpuPoolLimit, gpuSmallBuffer, gpuStagesSupported, gpuValidationScope, installGpuErrorListener, releaseGpuWorkBuffer, requestVrlGpuAdapter, requestVrlGpuDevice, runGpuSourceFilters, setGpuComputeBackend, updateGpuStatus, verifyGpuComputeDevice, verifyGpuPipelineSet } from './gpu-compute.js?v=20260927-build221';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane, decode, decodeCompressedDicomSlice, decodeSourceSlice, getDicomCodecModule, prepareSourceMprCache, readSourceColumn, readSourceRow, readSourceRows, sourceMprCacheLimit, sourceMprDecodeConcurrency, sourceSliceCache } from './volume-io.js?v=20260927-build221';
-const APP_VERSION='2026.09.27-221';const APP_BUILD='221';
-import { componentFullyInside, makeVoxelProjector, polygonBounds } from './lasso.js?v=20260927-build221';
-import { PROJECT_EXTENSION, compareFingerprints, datasetFingerprint, decodeRuns, encodeRuns, isProjectArchiveName, packProject, projectFromEntries, unpackProject } from './project-file.js?v=20260927-build221';
-import { cacheKey, openVolumeCache, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build221';
-import { createSourceFilterSlot, ensureSourceFilterWorkers, filterState, fitSourceTile, getCachedSourceSlice, getFilteredMemoryPlaneValues, getFilteredSourceAxialBlock, getFilteredSourcePlaneValues, memoryFilterPreviewCache, memoryFilterPreviewGet, memoryFilterPreviewSet, memoryPreviewCacheLimit, planeRenderRevision, processMemoryRegion, processSourceRegion, pumpSourceFilterWorkers, readMemoryRegion, readSourceRegion, readSourceSubregion, runSourceFilterWorker, sourceFilterCacheGet, sourceFilterCacheLimit, sourceFilterCacheSet, sourceFilterHalo, sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterWorkerMain, sourceSliceCacheLimit, sourceTileBudget } from './source-filters.js?v=20260927-build221';
-import { buildSourceOrthogonalPlane, readResidentGpuMprPlane, readSourceOrthogonalStrip, residentGpuMprAvailable, residentMprJobs, sourceOrthogonalCacheGet, sourceOrthogonalCacheLimit, sourceOrthogonalCacheSet, sourceOrthogonalPlaneCache, sourceOrthogonalPlanePending } from './mpr-orthogonal.js?v=20260927-build221';
-import { request3DRender } from './scene3d.js?v=20260927-build221';
-import { disposeMprPlaneGroup, ensureMpr3DPlanes, ensureMpr3DPreviewCache, makeMprPlaneLabel, mpr3DCacheImage, mpr3DOpacitySource, mpr3DOrthoSliding, mpr3DPreviewCache, mpr3DPreviewMap, mpr3DPreviewPlan, mpr3DPreviewSignature, mpr3DVisibility, mpr3DWindowLut, paintMpr3DCacheSliceFast, pushCachedMpr3DPlane, refreshMpr3DPlaneTexture, restoreSectionAutoPlane, setMpr3DOverlayVisible, showSectionPlaneOverlay, syncMpr3DOverlayPresentation, syncMpr3DSliceSliders, updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20260927-build221';
+import { clampRangeValue, ctDigits, esc, fmt, formatCtValue, frameYield, hexRgb, isDesktopMac, isIPadRuntime, isIPhoneRuntime, multi, niceCtStep, num, numberOr, rangeNumber, rangePrecision, rangeStep, safePair, safeTriple, withTimeout } from './utils.js?v=20260927-build229';
+import { COMPRESSED_DICOM_TRANSFER_SYNTAXES, NATIVE_DICOM_TRANSFER_SYNTAXES, canDecodeToInt16, dicomImageFrameInfo, encapsulatedFrameBytes, expandParsedFrames, groupSeries, isNativeDicomTransferSyntax, parseDicomHeader, parseFiles, parsedSliceMeta, sourceRangeFromMetadata } from './dicom.js?v=20260927-build229';
+import { boxBlur3D, buildThresholdMask, compactFaceFlags, fillMaskHoles, morphMask, removeSmallMaskComponents, smoothMaskScalarField, thresholdSourceMask, valuesToFaceFlags, valuesToSegmentBits } from './mask-ops.js?v=20260927-build229';
+import { RunUnionFind, analysisRunRows, analysisRunSliceState, analysisRunsContain, analysisRunsOverlap, analysisRunsVoxelCount, complementRunArrays, componentAtVoxel, componentTouchesVolumeBoundary, componentsFromRuns, componentsFromRunsAsync, consumeGpuAnalysisRuns, forEachUncoveredRun, intersectRunArrays, intersectRunSlice, maskFromAnalysisRuns, maskToAnalysisRuns, mergeIntervals, morphSourceRunArrays, postprocessSourceRuns, rowIntervalsFromRuns, rowsToRunSlice, runArraysBinary, runsSliceToMask, sourceComponentSliceState, sourceResultToAnalysisRuns, sourceRunSlice, sourceRunSliceFromRanges, subtractRunArrays, subtractRunSlice, unionAnalysisRuns, unionOverlappingRuns, unionRunArrays, unionRunSlice } from './run-length.js?v=20260927-build229';
+import { Float32FaceBuilder, appendAnalysisRunBoundaryFaces, appendDecodedMaskSliceFaces, appendSourceFacesFromCompactTile, appendSourceSliceFaces, appendSourceSliceFacesFast, appendSourceSliceFacesFromBits, appendSourceSliceFacesFromFlags, eachGeometryTriangle, eachGeometryTriangleRange, geometryToBinaryStl, groupToBinaryStl, groupTriangleCount, indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates } from './mesh-geometry.js?v=20260927-build229';
+import { I18N, tr } from './i18n.js?v=20260927-build229';
+import { GPU_PREWARM_KINDS, gpuFilterShader, normalizeVrlWgsl } from './gpu-shaders.js?v=20260927-build229';
+import { activeId, activeSeries, analysisCutApplying, analysisCutScreen, analysisCutStroke, analysisEditPreparing, analysisEditTargetKey, analysisEditTargetMode, analysisEditTool, analysisFocusedRegionId, analysisPendingCut, analysisRegions, ctRangeMode, ctRangeProfile, current3DVolume, currentLanguage, cutBvhModulePromise, cutControlPreviewRaf, cutRaycastMaterial, cutResultPreviewRevision, cutResultPreviewTimer, deferAutomatic3D, dicomCodecModulePromise, filterOrder, filterRebuildRevision, filterRebuildTimer, gpuPrewarmIndex, gpuPrewarmScheduled, incCutResultPreviewRevision, incFilterRebuildRevision, incGpuPrewarmIndex, incNextAnalysisColorIndex, incNextAnalysisRegionId, incNextSegmentMaskVolumeId, incResidentMprEpoch, incSourceMprWarmupToken, incSourceRenderRevision, ipadGpuTargetSide, memoryGpuPreviewActive, mpr3DSurfaceOpacity, mpr3DVolumeOpacity, mpr3DWindowLutKey, mpr3DWindowLutTable, nextAnalysisColorIndex, nextAnalysisRegionId, nextSegmentMaskVolumeId, precisionRangeDrag, residentGpuUploadSeriesId, residentMprEpoch, residentMprReadbackDisabled, sceneState, sectionAutoPlane, sectionCapEnabled, sectionCapHatch, sectionCapOpacity, sectionSliceImageVisible, sectionViewOpen, sectionViewPlane, sectionViewReverse, segmentRenderTimer, setActiveId, setActiveSeries, setAnalysisCutApplying, setAnalysisCutScreen, setAnalysisCutStroke, setAnalysisEditPreparing, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisEditTool, setAnalysisFocusedRegionId, setAnalysisPendingCut, setAnalysisRegions, setCtRangeMode, setCtRangeProfile, setCurrent3DVolume, setCurrentLanguage, setCutBvhModulePromise, setCutControlPreviewRaf, setCutRaycastMaterial, setCutResultPreviewRevision, setCutResultPreviewTimer, setDeferAutomatic3D, setDicomCodecModulePromise, setFilterOrder, setFilterRebuildRevision, setFilterRebuildTimer, setGpuPrewarmIndex, setGpuPrewarmScheduled, setIpadGpuTargetSide, setMemoryGpuPreviewActive, setMpr3DSurfaceOpacity, setMpr3DVolumeOpacity, setMpr3DWindowLutKey, setMpr3DWindowLutTable, setNextAnalysisColorIndex, setNextAnalysisRegionId, setNextSegmentMaskVolumeId, setPrecisionRangeDrag, setResidentGpuUploadSeriesId, setResidentMprEpoch, setResidentMprReadbackDisabled, setSceneState, setSectionAutoPlane, setSectionCapEnabled, setSectionCapHatch, setSectionCapOpacity, setSectionSliceImageVisible, setSectionViewOpen, setSectionViewPlane, setSectionViewReverse, setSegmentRenderTimer, setSmoothingRefreshTimer, setSourceMprWarmupPlane, setSourceMprWarmupToken, setSourceOrthogonalPlaneCacheBytes, setSourceRenderRevision, setSourceVolume, setThreeDApplying, setThreeDCancelRequested, setThreeDDirty, setThreeRenderMode, setVolume, setVolumeAnalysisBusy, setVolumeAnalysisMode, smoothingRefreshTimer, sourceMprWarmupPlane, sourceMprWarmupToken, sourceOrthogonalPlaneCacheBytes, sourceRenderRevision, sourceVolume, threeDApplying, threeDCancelRequested, threeDDirty, threeRenderMode, volume, volumeAnalysisBusy, volumeAnalysisMode } from './state.js?v=20260927-build229';
+import { $, analysisClearButton, analysisCutApply, analysisCutButton, analysisCutCancel, analysisCutConfirm, analysisCutDepth, analysisCutDepthValue, analysisCutOffset, analysisCutOffsetValue, analysisCutPitch, analysisCutPitchValue, analysisCutWidth, analysisCutWidthValue, analysisCutYaw, analysisCutYawValue, analysisEditRemoveSelected, analysisEditTargetSelect, analysisExportSelected, analysisKeepSelected, analysisLassoButton, analysisLineCutButton, analysisMergeButton, analysisNavigateButton, analysisRedo, analysisRegionList, analysisRemoveSelected, analysisResetEdit, analysisSelectRegionButton, analysisSummary, analysisUndo, anisotropicBtn, anisotropicIterations, anisotropicIterationsValue, anisotropicStrength, anisotropicStrengthValue, app, appVersionBadge, bar, bilateralBtn, bilateralIntensity, bilateralIntensityValue, bilateralPasses, bilateralPassesValue, bilateralSpatial, bilateralSpatialValue, bilateralStrength, bilateralStrengthValue, ctRangeAuto, ctRangeFull, demoBtn, filter3DState, filterAddButton, filterAddSelect, filterControlList, filterRebuild3D, folderBtn, folderInput, footer, gaussianBtn, gaussianStrength, gaussianStrengthValue, ipadGpuQuality, ipadGpuQualityControl, languageToggle, list, mainViewSlot, mpr3DSliceSliders, mprSurfaceOpacity, mprSurfaceOpacityValue, mprVolumeOpacity, mprVolumeOpacityValue, nlmBtn, nlmPatchRadius, nlmPatchRadiusValue, nlmSearchRadius, nlmSearchRadiusValue, nlmStrength, nlmStrengthValue, planes, processingOverlay, processingOverlayLabel, prog, progLabel, projectInput, projectOpenBtn, projectSaveBtn, renderModeToggle, resetFilterBtn, sectionCapEnabledControl, sectionCapHatchControl, sectionCapOpacityControl, sectionCapOpacityValue, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionViewReadout, sectionViewResult, sectionViewToggle, segmentAddButton, segmentAddSelect, segmentControls, selected, sigmoidBtn, sigmoidCenter, sigmoidCenterValue, sigmoidStrength, sigmoidStrengthValue, smoothingType, spatialPasses, spatialPassesValue, spikeHoleBtn, spikeHoleStrength, spikeHoleStrengthValue, spikeHoleThreshold, spikeHoleThresholdValue, state, status, subViewSlots, surfaceSmoothEnabled, surfaceSmoothStrength, surfaceSmoothValue, threeBusy, threeBusyCancel, threeBusyLabel, threeEditHelp, threeEditOverlay, threeEditStatus, threeFilterBadge, threeLabel, tvBtn, tvIterations, tvIterationsValue, tvWeight, tvWeightValue, unsharpAmount, unsharpAmountValue, unsharpBtn, unsharpRadius, unsharpRadiusValue, unsharpThreshold, unsharpThresholdValue, viewport, volumeAnalysisResult, volumeAnalysisToggle, volumeCacheClearBtn, wc, wcVal, ww, wwVal } from './ui-shell.js?v=20260927-build229';
+import { latestOnlyRunner } from './latest-runner.js?v=20260927-build229';
+import { strongSurfaceSmoothingActive, surfaceSmoothingActive } from './settings.js?v=20260927-build229';
+import { GPU_FILTER_KEYS, acquireGpuWorkBuffer, adoptRendererGpuDevice, clearGpuBufferPool, createGpuResidentFloat3Attribute, destroyGpuResidentAttribute, ensureGpuFilterDevice, finishGpuResidentTemps, gpuAdapterLabel, gpuBufferBucketSize, gpuComputeWorkgroupSize, gpuDeviceMode, gpuDeviceRequestDescriptor, gpuFilterPipeline, gpuFilterRuntime, gpuPoolLimit, gpuSmallBuffer, gpuStagesSupported, gpuValidationScope, installGpuErrorListener, releaseGpuWorkBuffer, requestVrlGpuAdapter, requestVrlGpuDevice, runGpuSourceFilters, setGpuComputeBackend, updateGpuStatus, verifyGpuComputeDevice, verifyGpuPipelineSet } from './gpu-compute.js?v=20260927-build229';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane, decode, decodeCompressedDicomSlice, decodeSourceSlice, getDicomCodecModule, prepareSourceMprCache, readSourceColumn, readSourceRow, readSourceRows, sourceMprCacheLimit, sourceMprDecodeConcurrency, sourceSliceCache } from './volume-io.js?v=20260927-build229';
+const APP_VERSION='2026.09.27-229';const APP_BUILD='229';
+import { componentFullyInside, makeVoxelProjector, polygonBounds } from './lasso.js?v=20260927-build229';
+import { PROJECT_EXTENSION, compareFingerprints, datasetFingerprint, decodeRuns, encodeRuns, isProjectArchiveName, packProject, projectFromEntries, unpackProject } from './project-file.js?v=20260927-build229';
+import { cacheKey, openVolumeCache, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build229';
+import { createSourceFilterSlot, ensureSourceFilterWorkers, filterState, fitSourceTile, getCachedSourceSlice, getFilteredMemoryPlaneValues, getFilteredSourceAxialBlock, getFilteredSourcePlaneValues, memoryFilterPreviewCache, memoryFilterPreviewGet, memoryFilterPreviewSet, memoryPreviewCacheLimit, planeRenderRevision, processMemoryRegion, processSourceRegion, pumpSourceFilterWorkers, readMemoryRegion, readSourceRegion, readSourceSubregion, runSourceFilterWorker, sourceFilterCacheGet, sourceFilterCacheLimit, sourceFilterCacheSet, sourceFilterHalo, sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterWorkerMain, sourceSliceCacheLimit, sourceTileBudget } from './source-filters.js?v=20260927-build229';
+import { buildSourceOrthogonalPlane, readResidentGpuMprPlane, readSourceOrthogonalStrip, residentGpuMprAvailable, residentMprJobs, sourceOrthogonalCacheGet, sourceOrthogonalCacheLimit, sourceOrthogonalCacheSet, sourceOrthogonalPlaneCache, sourceOrthogonalPlanePending } from './mpr-orthogonal.js?v=20260927-build229';
+import { request3DRender } from './scene3d.js?v=20260927-build229';
+import { disposeMprPlaneGroup, ensureMpr3DPlanes, ensureMpr3DPreviewCache, makeMprPlaneLabel, mpr3DCacheImage, mpr3DOpacitySource, mpr3DOrthoSliding, mpr3DPreviewCache, mpr3DPreviewMap, mpr3DPreviewPlan, mpr3DPreviewSignature, mpr3DVisibility, mpr3DWindowLut, paintMpr3DCacheSliceFast, pushCachedMpr3DPlane, refreshMpr3DPlaneTexture, restoreSectionAutoPlane, setMpr3DOverlayVisible, showSectionPlaneOverlay, syncMpr3DOverlayPresentation, syncMpr3DSliceSliders, updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20260927-build229';
+import { SEGMENT_PRESET_ORDER, activeMprSegments, getProcessedSegmentMask, segmentEditActive, segmentEditState, segmentMaskVolumeId, segmentMaskVolumeIds, segmentNeedsGlobalMask, segmentState, sourceMprMemoryView } from './segments.js?v=20260927-build229';
+import { rebindWebGpuSectionClipGroup, sectionLocalNormal, sectionLocalPoint, sectionPlaneLabel, updateSectionClipPlaneWorld, updateSectionViewUi } from './section-view.js?v=20260927-build229';
+import { analysisColorCss, buildSourceOrthogonalNeighborhood, cancelSourceMprWarmup, currentFilterSignature, drawAnalysisOverlay, filteredPlaneDims, filteredPlaneRunners, gpuVolumeShowsCurrentFilters, mprPaintCache, orthogonalHighResPrefetch, paintFastOrthogonalPreview, paintInstantPlaneWhileSliding, paintResidentCachedMprPreview, paintSourcePlane, perSliceFilteredActive, planeRenderTimers, prefetchOrthogonalHighRes, renderPlane, renderPlaneMemoryFiltered, renderPlaneSourceBacked, reusableMprImage, safeRenderPlane, schedulePlaneRender, updateMprCanvasPhysicalAspect } from './mpr-render.js?v=20260927-build229';
 async function ensureLatestDeployedBuild(){
  try{
   const res=await fetch('./version.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
@@ -56,6 +59,10 @@ function applyLanguage(lang){
 // - wheel works on every range input
 // - pointer dragging is relative and intentionally slower than the browser default
 const RANGE_DRAG_MOUSE_GAIN=.48,RANGE_DRAG_TOUCH_GAIN=.36;
+// Owner: slice sliders follow the pen/finger 1:1 (the thumb stays under it);
+// every other slider keeps the precision gain above.
+const SLICE_SLIDER_SELECTOR='#axial-slider,#coronal-slider,#sagittal-slider,[id^="mpr3d-slider-"],#section-position';
+function rangeValueAtPointer(el,clientX,min,max){const r=el.getBoundingClientRect(),t=r.width>0?(clientX-r.left)/r.width:0;return min+Math.max(0,Math.min(1,t))*(max-min)}
 const setRangeValue=(el,value,commit=false)=>{
  const next=clampRangeValue(el,value);if(Number(el.value)===next)return false;
  el.value=String(next);el.dispatchEvent(new Event('input',{bubbles:true}));
@@ -101,7 +108,9 @@ document.addEventListener('pointerdown',e=>{
  const el=e.target?.closest?.('input[type="range"]');if(!el||el.disabled||e.button!==0)return;
  const min=rangeNumber(el,'min',0),max=rangeNumber(el,'max',100),step=rangeStep(el),steps=Math.max(1,(max-min)/step);
  const gain=steps<=12 ? 0.78 : (e.pointerType==='touch'?RANGE_DRAG_TOUCH_GAIN:RANGE_DRAG_MOUSE_GAIN);
- setPrecisionRangeDrag({el,id:e.pointerId,startX:e.clientX,startValue:Number(el.value),min,max,step,gain,moved:false});
+ const absolute=el.matches(SLICE_SLIDER_SELECTOR);
+ setPrecisionRangeDrag({el,id:e.pointerId,startX:e.clientX,startValue:Number(el.value),min,max,step,gain,moved:false,absolute});
+ if(absolute){const value=rangeValueAtPointer(el,e.clientX,min,max);if(Math.round(value/step)!==Math.round(Number(el.value)/step)){precisionRangeDrag.moved=true;beginSliderFastInteraction();setRangeValue(el,value,false)}}
  el.focus({preventScroll:true});el.style.touchAction='none';
  try{el.setPointerCapture(e.pointerId)}catch{}
  e.preventDefault();
@@ -110,7 +119,7 @@ document.addEventListener('pointermove',e=>{
  const d=precisionRangeDrag;if(!d||d.id!==e.pointerId||d.el.disabled)return;
  const width=Math.max(80,d.el.getBoundingClientRect().width),dx=e.clientX-d.startX;
  if(Math.abs(dx)>1){d.moved=true;beginSliderFastInteraction()}
- const value=d.startValue+(dx/width)*(d.max-d.min)*d.gain;
+ const value=d.absolute?rangeValueAtPointer(d.el,e.clientX,d.min,d.max):d.startValue+(dx/width)*(d.max-d.min)*d.gain;
  setRangeValue(d.el,value,false);e.preventDefault();
 },{capture:true});
 const finishPrecisionRangeDrag=e=>{
@@ -119,6 +128,20 @@ const finishPrecisionRangeDrag=e=>{
  d.el.style.touchAction='';if(d.moved)d.el.dispatchEvent(new Event('change',{bubbles:true}));
  setPrecisionRangeDrag(null);endSliderFastInteraction(120);e.preventDefault();
 };
+// iPad Safari still runs the native range behaviour for touches (the thumb
+// jumps to and follows the finger) next to the precision drag above, so the
+// value alternated between the two positions and 2D slices flickered (build
+// 226, touch only; pen was fine). Suppress the native touch handling: on
+// touchstart except in the scrollable sidebar (vertical scroll may start on a
+// slider there), and on every touchmove of an active precision drag.
+document.addEventListener('touchstart',e=>{
+ const el=e.target?.closest?.('input[type="range"]');if(!el||el.disabled||el.closest('.sidebar-scroll'))return;
+ e.preventDefault();
+},{passive:false,capture:true});
+document.addEventListener('touchmove',e=>{
+ const d=precisionRangeDrag;if(!d||e.target?.closest?.('input[type="range"]')!==d.el)return;
+ e.preventDefault();
+},{passive:false,capture:true});
 document.addEventListener('pointerup',finishPrecisionRangeDrag,{capture:true});
 document.addEventListener('pointercancel',finishPrecisionRangeDrag,{capture:true});
 
@@ -149,58 +172,13 @@ const mpr3DSlicePanelReady={value:false};
 if(mprSurfaceOpacity)mprSurfaceOpacity.oninput=()=>{setMpr3DSurfaceOpacity(Math.max(0,Math.min(1,+mprSurfaceOpacity.value/100)));updateMpr3DOpacityControls();syncMpr3DOverlayPresentation()};
 if(mprVolumeOpacity)mprVolumeOpacity.oninput=()=>{setMpr3DVolumeOpacity(Math.max(0,Math.min(1,+mprVolumeOpacity.value/100)));updateMpr3DOpacityControls();syncMpr3DOverlayPresentation()};
 updateMpr3DOpacityControls();
-function sectionPlaneLabel(p){return p?p[0].toUpperCase()+p.slice(1):''}
-function updateSectionViewUi(){
- if(!sectionViewToggle)return;
- sectionViewToggle.removeAttribute('data-i18n');sectionViewToggle.textContent=sectionViewOpen?tr('sliceAnalysisOff'):tr('sliceAnalysis');sectionViewToggle.classList.toggle('is-active',sectionViewOpen);
- sectionViewResult?.classList.toggle('is-hidden',!sectionViewOpen);
- const active=!!sectionViewPlane&&!!planes[sectionViewPlane],idx=active?+planes[sectionViewPlane].slider.value:0,max=active?+planes[sectionViewPlane].slider.max:0;
- if(sectionPosition){sectionPosition.disabled=!active;sectionPosition.max=String(max);sectionPosition.value=String(idx)}
- if(sectionPositionValue)sectionPositionValue.value=active?(idx+1)+' / '+(max+1):'—';
- if(sectionReverse)sectionReverse.disabled=!active;
- if(sectionSliceImageControl)sectionSliceImageControl.disabled=!active;
- if(sectionCapEnabledControl)sectionCapEnabledControl.disabled=!active;
- if(sectionCapOpacityControl)sectionCapOpacityControl.disabled=!active||!sectionCapEnabled;
- if(sectionCapHatchControl)sectionCapHatchControl.disabled=!active||!sectionCapEnabled;
- if(sectionViewReadout)sectionViewReadout.textContent=active?sectionPlaneLabel(sectionViewPlane)+' · '+(idx+1)+' / '+(max+1)+(sectionViewReverse?' · '+tr('sectionReverse'):''):tr('sliceAnalysisHint');
-}
-function sectionLocalPoint(p=sectionViewPlane,idx=p?+planes[p].slider.value:0){
- if(!volume||!p)return null;
- const w=volume.columns,h=volume.rows,d=volume.slices,[sx,sy,sz]=volume.spacing,px=w*sx,py=h*sy,pz=d*sz,scale=3.3/Math.max(px,py,pz,1);
- if(p==='axial')return new THREE.Vector3(0,0,((idx+.5)*sz-pz/2)*scale);
- if(p==='coronal')return new THREE.Vector3(0,-((idx+.5)*sy-py/2)*scale,0);
- return new THREE.Vector3(((idx+.5)*sx-px/2)*scale,0,0);
-}
 function sectionLocalStep(p=sectionViewPlane){
  if(!volume||!p)return null;const[sx,sy,sz]=volume.spacing,w=volume.columns,h=volume.rows,d=volume.slices,scale=3.3/Math.max(w*sx,h*sy,d*sz,1);
  return p==='axial'?new THREE.Vector3(0,0,sz*scale):p==='coronal'?new THREE.Vector3(0,-sy*scale,0):new THREE.Vector3(sx*scale,0,0);
 }
-function sectionLocalNormal(p=sectionViewPlane){
- if(!p)return null;
- const normal=p==='axial'?new THREE.Vector3(0,0,1):p==='coronal'?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
- if(sectionViewReverse)normal.negate();return normal;
-}
 function sectionLocalPlane(){
  if(!volume||!sectionViewPlane)return null;
  const point=sectionLocalPoint(),normal=sectionLocalNormal();return new THREE.Plane(normal,-normal.dot(point));
-}
-function updateSectionClipPlaneWorld(){
- if(!sceneState?.obj||!sectionViewOpen||!sectionViewPlane)return;
- const localPoint=sectionLocalPoint(),localNormal=sectionLocalNormal();if(!localPoint||!localNormal)return;
- const obj=sceneState.obj;obj.updateMatrixWorld(true);
- const worldPoint=localPoint.clone().applyMatrix4(obj.matrixWorld),normalMatrix=new THREE.Matrix3().getNormalMatrix(obj.matrixWorld),worldNormal=localNormal.clone().applyMatrix3(normalMatrix).normalize();
- sceneState.sectionClipPlane.setFromNormalAndCoplanarPoint(worldNormal,worldPoint);
- if(sceneState.backend==='WEBGPU'&&sceneState.sectionClipGroup){
-  const g=sceneState.sectionClipGroup;g.clippingPlanes=[sceneState.sectionClipPlane];g.enabled=true;
- }
-}
-function rebindWebGpuSectionClipGroup(){
- if(!sceneState?.obj||sceneState.backend!=='WEBGPU'||!THREE.ClippingGroup||!sectionViewOpen||!sectionViewPlane)return;
- const obj=sceneState.obj,old=sceneState.sectionClipGroup,next=new THREE.ClippingGroup();
- next.name='section_clip_group';next.enabled=true;next.clippingPlanes=[sceneState.sectionClipPlane];
- if(old&&obj.parent===old)old.remove(obj);else obj.parent?.remove?.(obj);
- if(old?.parent)old.parent.remove(old);
- sceneState.scene.add(next);next.add(obj);sceneState.sectionClipGroup=next;obj.updateMatrixWorld(true);
 }
 function applySectionClippingMaterials(root=sceneState?.obj){
  if(!root||!sceneState)return;
@@ -238,7 +216,6 @@ function nextAnalysisColor(){
  const color=ANALYSIS_REGION_COLORS[nextAnalysisColorIndex%ANALYSIS_REGION_COLORS.length];
  incNextAnalysisColorIndex(false);return color;
 }
-function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
 function analysisRegionById(id){return analysisRegions.find(r=>r.id===id)||null}
 function analysisRegionRepresentativeVoxel(region){
  if(!region?.runsBySlice)return null;
@@ -285,34 +262,7 @@ function selectAnalysisRegionFromMpr(p,event){
  if(region){setAnalysisFocusedRegion(region.id,voxel);return true}
  void analyzeVolumeAtVoxel(voxel.x,voxel.y,voxel.z);return true;
 }
-function drawAnalysisOverlay(p,idx,ctx){
- if(!volumeAnalysisMode||!analysisRegions.length||!ctx)return;
- const d=volume?.slices||0;
- ctx.save();
- for(const region of analysisRegions){
-  if(!region.visible)continue;
-  const css=analysisColorCss(region.color),focused=region.id===analysisFocusedRegionId;
-  ctx.fillStyle=css+(focused?'66':'2e');ctx.strokeStyle=css;ctx.lineWidth=focused?2:1;
-  if(p==='axial'){
-   const rec=region.runsBySlice?.[idx];if(!rec)continue;
-   for(let i=0;i<rec.length;i+=3){const y=rec[i],x0=rec[i+1],x1=rec[i+2];ctx.fillRect(x0,y,x1-x0+1,1);if(focused)ctx.strokeRect(x0-.5,y-.5,x1-x0+1,1)}
-  }else if(p==='coronal'){
-   for(let z=0;z<d;z++){const rec=region.runsBySlice?.[z];if(!rec)continue;const py=d-1-z;for(let i=0;i<rec.length;i+=3)if(rec[i]===idx){ctx.fillRect(rec[i+1],py,rec[i+2]-rec[i+1]+1,1);if(focused)ctx.strokeRect(rec[i+1]-.5,py-.5,rec[i+2]-rec[i+1]+1,1)}}
-  }else{
-   for(let z=0;z<d;z++){const rec=region.runsBySlice?.[z];if(!rec)continue;const py=d-1-z;for(let i=0;i<rec.length;i+=3)if(idx>=rec[i+1]&&idx<=rec[i+2]){const y=rec[i];ctx.fillRect(y,py,1,1);if(focused)ctx.strokeRect(y-.5,py-.5,1,1)}}
-  }
- }
- ctx.restore();
-}
 const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid','bilateral','tv','unsharp'];
-const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
-const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
-const segmentState={
- bone:{active:false,enabled:false,color:'#f3f0e8',opacity:.85,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,_maskCache:null,_maskCacheKey:''},
- soft:{active:false,enabled:false,color:'#d97f7f',opacity:.28,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,_maskCache:null,_maskCacheKey:''},
- fat:{active:false,enabled:false,color:'#e7c85d',opacity:.35,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,_maskCache:null,_maskCacheKey:''},
- lung:{active:false,enabled:false,color:'#6fb8d6',opacity:.35,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,_maskCache:null,_maskCacheKey:''}
-};
 
 // GPU volume + filters (source-backed series only; that is what the GPU volume
 // renderer supports). Filters apply to 2D immediately; the volume is updated
@@ -320,7 +270,6 @@ const segmentState={
 // The texture is rewritten in place with filtered slices streamed from
 // getFilteredSourceAxialBlock, so no full filtered copy is kept in memory.
 const gpuVolumeApplied={seriesId:null,signature:''};
-function currentFilterSignature(){const stages=sourceFilterStages();return stages.length?sourceFilterSignature(stages):''}
 // Data the volume should show: the filters applied by the last 3D rebuild of
 // this series, if they are still the current settings; otherwise the original.
 function gpuVolumeDataSignature(){
@@ -1000,49 +949,6 @@ filterRebuild3D.onclick=()=>{if(threeDApplying)cancel3DRebuild();else void rebui
 threeBusyCancel.onclick=()=>cancel3DRebuild();
 installFilterReorder();
 
-const planeRenderTimers={axial:null,coronal:null,sagittal:null};
-const orthogonalHighResPrefetch={coronal:{running:false,next:null},sagittal:{running:false,next:null}};
-function prefetchOrthogonalHighRes(p,idx){
- if((p!=='coronal'&&p!=='sagittal')||!volume?.sourceBacked||sourceFilterStages().length||residentGpuMprAvailable(volume)||volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))return;
- const state=orthogonalHighResPrefetch[p];state.next=idx;if(state.running)return;state.running=true;
- void(async()=>{
-  try{
-   while(state.next!=null&&volume?.sourceBacked){
-    const target=state.next;state.next=null;
-    try{await buildSourceOrthogonalPlane(p,target,volume.series,null)}catch(e){if(String(e.message||e)!=='__SUPERSEDED__')console.warn('MPR high-res prefetch failed.',p,e)}
-   }
-  }finally{state.running=false}
- })();
-}
-function paintFastOrthogonalPreview(p,idx){
- if(p==='axial'||!volume?.sourceBacked||sourceFilterStages().length||volumeAnalysisMode)return false;
- if(mpr3DPreviewCache.signature!==mpr3DPreviewSignature(volume)||!mpr3DPreviewCache.planes[p])return false;
- const ok=paintMpr3DCacheSliceFast(p,idx,planes[p].canvas);
- if(ok)updateMprCanvasPhysicalAspect(p);
- return ok;
-}
-function paintResidentCachedMprPreview(p,idx,filteredOk=false){
- // filteredOk: the GPU texture holds the current filters (see gpuVolumeShowsCurrentFilters)
- if((p==='axial'&&!filteredOk)||!residentGpuMprAvailable(volume)||(sourceFilterStages().length&&!filteredOk)||volumeAnalysisMode)return false;
- const mv=sceneState?.medicalVolume,result=mv?.previewPlane?.(volume,p,idx);if(!result?.values)return false;
- const dims=result.dims,canvas=planes[p].canvas,ctx=canvas.getContext('2d');
- if(canvas.width!==dims[0])canvas.width=dims[0];if(canvas.height!==dims[1])canvas.height=dims[1];
- const image=ctx.createImageData(dims[0],dims[1]),pixels=new Uint32Array(image.data.buffer),values=result.values,cal=result.calibration||{slope:1,intercept:0,signedBias:0},low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);
- for(let i=0;i<values.length;i++){const hu=(values[i]-cal.signedBias)*cal.slope+cal.intercept,g=Math.max(0,Math.min(255,Math.round((hu-low)*scale)));pixels[i]=(255<<24)|(g<<16)|(g<<8)|g}
- ctx.putImageData(image,0,0);updateMprCanvasPhysicalAspect(p);
- const entry=sceneState?.mprPlaneEntries?.[p];
- if(entry&&mpr3DVisibility[p]){
-  const [tw,th]=dims;
-  if(!entry.liveTexture||entry.liveTexture.image?.width!==tw||entry.liveTexture.image?.height!==th){
-   entry.liveTexture?.dispose?.();entry.liveData=new Uint8Array(tw*th*4);entry.livePixels=new Uint32Array(entry.liveData.buffer);
-   entry.liveTexture=new THREE.DataTexture(entry.liveData,tw,th,THREE.RGBAFormat,THREE.UnsignedByteType);entry.liveTexture.minFilter=THREE.LinearFilter;entry.liveTexture.magFilter=THREE.LinearFilter;entry.liveTexture.generateMipmaps=false;entry.liveTexture.flipY=true;
-  }
-  entry.liveData.set(image.data);entry.liveTexture.needsUpdate=true;
-  if(entry.mesh.material.map!==entry.liveTexture){entry.mesh.material.map=entry.liveTexture;entry.mesh.material.needsUpdate=true}
-  request3DRender();
- }
- return true;
-}
 // While a filtered plane's slider moves, show something at once instead of
 // waiting for per-slice GPU filtering (owner choice A + caches, build 214),
 // best first:
@@ -1052,32 +958,6 @@ function paintResidentCachedMprPreview(p,idx,filteredOk=false){
 //  3. the low-res 3D preview cache (filtered if built for these filters)
 //  4. the original data (source MPR memory cache / low-res preview)
 // The full-resolution filtered slice is computed when the slider is released.
-function gpuVolumeShowsCurrentFilters(){const mv=sceneState?.medicalVolume,sig=currentFilterSignature();return!!sig&&mv?.dataSignature===sig}
-function filteredPlaneDims(p){
- const v=volume?.sourceBacked?{columns:volume.series.columns,rows:volume.series.rows,slices:volume.series.slices.length}:sourceVolume;
- if(!v)return null;return p==='axial'?[v.columns,v.rows]:p==='coronal'?[v.columns,v.slices]:[v.rows,v.slices];
-}
-function paintInstantPlaneWhileSliding(p,idx){
- const v=volume;if(!v)return null;
- const key=sourceFilterSignature(sourceFilterStages())+'|'+p+'|'+idx;
- const hit=v.sourceBacked?sourceFilterCacheGet(key):(memoryGpuPreviewActive?memoryFilterPreviewGet(key):null),dims=filteredPlaneDims(p);
- if(hit&&dims){paintSourcePlane(planes[p],dims,hit,p,idx);return'filtered'}
- if(gpuVolumeShowsCurrentFilters()&&paintResidentCachedMprPreview(p,idx,true))return'filtered-gpu';
- if(p!=='axial'&&v.sourceBacked){
-  for(const[sig,kind]of[[mpr3DPreviewSignature(v),'filtered-preview'],[mpr3DPreviewSignature(v,[]),'original-preview']]){
-   if(mpr3DPreviewCache.signature===sig&&mpr3DPreviewCache.planes[p]&&paintMpr3DCacheSliceFast(p,idx,planes[p].canvas)){updateMprCanvasPhysicalAspect(p);return kind}
-  }
- }
- if(v.sourceBacked&&(v.mprData||(p==='sagittal'&&(v.mprSagittalAll||v.mprSagittalDisplayAll)))){
-  const values=p==='sagittal'&&v.mprSagittalDisplayAll&&!v.mprSagittalAll?cachedSagittalDisplayPlane(v,idx):cachedSourceMprPlane(v,p,idx);
-  if(values&&dims){paintSourcePlane(planes[p],dims,values,p,idx);return'original'}
- }
- return null;
-}
-function perSliceFilteredActive(){return!!sourceFilterStages().length&&(memoryGpuPreviewActive||!!volume?.sourceBacked)}
-const filteredPlaneRunners=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,latestOnlyRunner(async()=>{
- const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];await renderPlane(p,revision,idx);
-},e=>{if(String(e.message||e)!=='__SUPERSEDED__')console.warn('MPR render failed.',e)})]));
 // Slice sliders for planes shown in the 3D view: in 3D-only layouts the 2D
 // cards (and their sliders) are hidden, so these drive the real plane sliders.
 mpr3DSlicePanelReady.value=true;
@@ -1087,36 +967,6 @@ for(const[p,el]of Object.entries(mpr3DSliceSliders)){
  const toReal=()=>String(+planes[p].slider.max-(+el.value)); // reversed direction
  el.addEventListener('input',()=>{planes[p].slider.value=toReal();planes[p].slider.dispatchEvent(new Event('input'))});
  el.addEventListener('change',()=>{planes[p].slider.value=toReal();planes[p].slider.dispatchEvent(new Event('change'))});
-}
-function schedulePlaneRender(p,immediate=false){
- cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
- const idx=+planes[p].slider.value;planes[p].label.textContent=idx+1;syncMpr3DSliceSliders();
- if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate){pushCachedMpr3DPlane(p,idx);prefetchOrthogonalHighRes(p,idx)}}
- if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
- // Filtered planes are computed per slice on the GPU (expensive). While the
- // slider moves, render the latest slice one at a time: 2D and the 3D planes
- // (axial 3D copies the 2D canvas) keep following in real time, and no filter
- // work piles up. (A 90 ms debounce here, build 194, froze them during drags.)
- if(!immediate&&perSliceFilteredActive()){
-  // an instant image supersedes any older slice still being filtered (bumping
-  // the revision makes that render skip its paint)
-  if(paintInstantPlaneWhileSliding(p,idx))planeRenderRevision[p]++;else filteredPlaneRunners[p]();
-  return;
- }
- const revision=++planeRenderRevision[p];
- if(!immediate&&paintFastOrthogonalPreview(p,idx))return;
- if(!immediate&&paintResidentCachedMprPreview(p,idx))return;
- if(p==='axial')refreshMpr3DPlaneTexture(p);
- if(volume?.sourceBacked&&!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))){
-  const values=p==='sagittal'&&volume.mprSagittalDisplayAll&&!volume.mprSagittalAll?cachedSagittalDisplayPlane(volume,idx):cachedSourceMprPlane(volume,p,idx),dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices];
-  if(values){paintSourcePlane(planes[p],dims,values,p,idx);return}
- }
- if(volume?.sourceBacked&&p!=='axial'&&!sourceFilterStages().length){
-  const cached=sourceOrthogonalCacheGet(p,idx);
-  if(cached){paintSourcePlane(planes[p],p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],cached,p,idx);return}
- }
- const wait=immediate||p==='axial'?0:sourceFilterStages().length?16:residentGpuMprAvailable(volume)?16:0;
- planeRenderTimers[p]=setTimeout(()=>{planeRenderTimers[p]=null;if(revision===planeRenderRevision[p])safeRenderPlane(p,revision,idx)},wait);
 }
 function renderSectionPlaneLive(p){
  if(!volume||!planes[p])return;
@@ -1449,9 +1299,6 @@ function clearSourceSliceCache(){cancelSourceMprWarmup();sourceSliceCache.map.cl
 function paintMpr3DPreview(p,idx,canvas){
  if((p==='coronal'||p==='sagittal')&&paintMpr3DCacheSliceFast(p,idx,canvas))return true;
  return false;
-}
-async function buildSourceOrthogonalNeighborhood(p,idx,series,revision){
- return buildSourceOrthogonalPlane(p,idx,series,revision);
 }
 function disposeSourceFilterWorkers(){
  const error=new Error('__SUPERSEDED__');
@@ -1876,18 +1723,6 @@ function clearMemoryFilterPreviewCache(){memoryFilterPreviewCache.map.clear();me
 function hasGlobalSegmentProcessing(){
  return SEGMENT_PRESET_ORDER.some(key=>{const s=segmentState[key];return s.active&&s.enabled&&segmentNeedsGlobalMask(s)});
 }
-async function renderPlaneMemoryFiltered(p,revision,idx){
- const c=planes[p];c.label.textContent=idx+1;if(revision!==planeRenderRevision[p])return;
- try{
-  const values=await getFilteredMemoryPlaneValues(p,idx,sourceVolume,revision);
-  if(revision!==planeRenderRevision[p])return;
-  const dims=p==='axial'?[sourceVolume.columns,sourceVolume.rows]:p==='coronal'?[sourceVolume.columns,sourceVolume.slices]:[sourceVolume.rows,sourceVolume.slices];
-  paintSourcePlane(c,dims,values,p,idx);
- }catch(e){
-  if(String(e.message||e)==='__SUPERSEDED__')return;
-  console.warn('GPU MPR preview failed.',e);setMemoryGpuPreviewActive(false);throw e;
- }
-}
 function setProcessingBusy(busyState,label='Processing',lockControls=true){
  if(processingOverlay){
   processingOverlay.classList.toggle('is-hidden',!busyState||!lockControls);
@@ -1989,20 +1824,6 @@ function configureSegments(v){
  }
  renderSegmentPresets();
 }
-const segmentMaskVolumeIds=new WeakMap();
-function segmentMaskVolumeId(v){
- let id=segmentMaskVolumeIds.get(v);if(!id){id=incNextSegmentMaskVolumeId(false);segmentMaskVolumeIds.set(v,id)}return id;
-}
-function segmentNeedsGlobalMask(seg){return seg.opening>0||seg.closing>0||seg.holeFill||seg.minComponent>0}
-function getProcessedSegmentMask(v,seg){
- const key=[segmentMaskVolumeId(v),seg.min,seg.max,seg.opening,seg.closing,seg.minComponent,seg.holeFill].join('|');if(seg._maskCache&&seg._maskCacheKey===key)return seg._maskCache;
- const w=v.columns,h=v.rows,d=v.slices;let mask=buildThresholdMask(v,seg);
- if(seg.opening>0){mask=morphMask(mask,w,h,d,seg.opening,false);mask=morphMask(mask,w,h,d,seg.opening,true)}
- if(seg.closing>0){mask=morphMask(mask,w,h,d,seg.closing,true);mask=morphMask(mask,w,h,d,seg.closing,false)}
- if(seg.holeFill)mask=fillMaskHoles(mask,w,h,d);
- if(seg.minComponent>0)mask=removeSmallMaskComponents(mask,w,h,d,seg.minComponent);
- seg._maskCache=mask;seg._maskCacheKey=key;return mask;
-}
 function updateSegmentOutputs(key){
  const minEl=$('[data-seg-min="'+key+'"]'),maxEl=$('[data-seg-max="'+key+'"]');
  $('[data-seg-min-out="'+key+'"]').value=formatCtValue(segmentState[key].min,+minEl?.step||1);
@@ -2010,10 +1831,6 @@ function updateSegmentOutputs(key){
  $('[data-seg-opacity-out="'+key+'"]').value=segmentState[key].opacity.toFixed(2);
 }
 function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);incSourceRenderRevision(false);mark3DStale();if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){request3DRender();threeLabel.textContent=(sceneState.backend||'3D')+' · GPU volume'}}
-function cancelSourceMprWarmup(){
- incSourceMprWarmupToken(false);
- if(sourceMprWarmupPlane){planeRenderRevision[sourceMprWarmupPlane]++;setSourceMprWarmupPlane(null)}
-}
 function scheduleSourceMprWarmup(){
  if(!volume?.sourceBacked||residentGpuUploadSeriesId===volume?.series?.id||residentGpuMprAvailable(volume))return;
  const token=incSourceMprWarmupToken(true);
@@ -2042,11 +1859,6 @@ function scheduleSourceMprWarmup(){
  if('requestIdleCallback' in window)requestIdleCallback(()=>void run(),{timeout:900});
  else setTimeout(()=>void run(),180);
 }
-function safeRenderPlane(p,revision=null,idx=null){
- if(revision==null)revision=++planeRenderRevision[p];
- if(idx==null)idx=+planes[p].slider.value;
- void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('MPR render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
-}
 function renderMainMprPreview(){
  if(!volume)return;
  const key=currentMainViewKey(),p=planes[key]?key:'axial';
@@ -2069,106 +1881,7 @@ function renderAll(){
  }
  for(const p of Object.keys(planes))safeRenderPlane(p);
 }
-async function renderPlane(p,revision,idx){
- if(!volume||revision!==planeRenderRevision[p])return;
- updateMprCanvasPhysicalAspect(p);
- if(volume.sourceBacked)return renderPlaneSourceBacked(p,revision,idx);
- if(memoryGpuPreviewActive&&sourceFilterStages().length)return renderPlaneMemoryFiltered(p,revision,idx);
- const c=planes[p];c.label.textContent=idx+1;
- const dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
- const img=reusableMprImage(p,ctx,dims),values=volume.mprData?cachedSourceMprPlane(volume,p,idx):null,low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);let q=0;
- const segOrder=['lung','fat','soft','bone'],segMasks={};for(const key of segOrder){const seg=segmentState[key];if(seg.active&&seg.enabled&&segmentNeedsGlobalMask(seg))segMasks[key]=getProcessedSegmentMask(volume,seg)}
- for(let y=0;y<dims[1];y++)for(let x=0;x<dims[0];x++){
-  let v;if(values)v=values[y*dims[0]+x];else if(p==='axial')v=volume.data[idx*volume.rows*volume.columns+y*volume.columns+x];else if(p==='coronal'){const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+idx*volume.columns+x]}else{const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+x*volume.columns+idx]}
-  const g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
-  const voxelIndex=p==='axial'?idx*volume.rows*volume.columns+y*volume.columns+x:p==='coronal'?(volume.slices-1-y)*volume.rows*volume.columns+idx*volume.columns+x:(volume.slices-1-y)*volume.rows*volume.columns+x*volume.columns+idx;
-  const ix=p==='sagittal'?idx:x,iy=p==='coronal'?idx:(p==='sagittal'?x:y),iz=p==='axial'?idx:volume.slices-1-y;
-  for(const key of segOrder){const seg=segmentState[key],mask=segMasks[key],edit=segmentEditState[key];if(!seg.active||!seg.enabled)continue;const inside=segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(mask?mask[voxelIndex]===1:(v>=seg.min&&v<=seg.max));if(!inside)continue;const rgb=hexRgb(seg.color),a=Math.min(.75,seg.opacity*.65);rr=Math.round(rr*(1-a)+rgb[0]*a);gg=Math.round(gg*(1-a)+rgb[1]*a);bb=Math.round(bb*(1-a)+rgb[2]*a)}
-  img.data[q++]=rr;img.data[q++]=gg;img.data[q++]=bb;img.data[q++]=255
- }
- ctx.putImageData(img,0,0);drawAnalysisOverlay(p,idx,ctx);refreshMpr3DPlaneTexture(p)
-}
-const mprPaintCache={axial:null,coronal:null,sagittal:null};
-function reusableMprImage(p,ctx,dims){
- let cache=mprPaintCache[p];
- if(!cache||cache.width!==dims[0]||cache.height!==dims[1]){
-  cache={width:dims[0],height:dims[1],image:ctx.createImageData(dims[0],dims[1])};mprPaintCache[p]=cache;
- }
- return cache.image;
-}
-function sourceMprMemoryView(v){
- if(!v?.mprData)return null;
- if(!v._mprMemoryView||v._mprMemoryView.data!==v.mprData)v._mprMemoryView={data:v.mprData,columns:v.columns,rows:v.rows,slices:v.slices,spacing:v.spacing,min:v.min,max:v.max};
- return v._mprMemoryView;
-}
-function activeMprSegments(){
- const out=[],baseView=volume?.sourceBacked?sourceMprMemoryView(volume):volume;
- for(const key of ['lung','fat','soft','bone']){
-  const seg=segmentState[key];if(!seg.active||!seg.enabled)continue;
-  const edit=segmentEditState[key],processedMask=baseView&&segmentNeedsGlobalMask(seg)?getProcessedSegmentMask(baseView,seg):null,processedRuns=volume?.sourceBacked&&segmentNeedsGlobalMask(seg)?(edit.finalRuns||edit.baseRuns):null;
-  out.push({key,seg,edit,processedMask,processedRuns,rgb:hexRgb(seg.color),alpha:Math.min(.75,seg.opacity*.65)});
- }
- return out;
-}
-function paintSourcePlane(c,dims,values,p='axial',idx=0){
- const started=performance.now();updateMprCanvasPhysicalAspect(p);
- const ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
- const img=reusableMprImage(p,ctx,dims),pixels=new Uint32Array(img.data.buffer),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments(),simple=activeSegs.every(item=>!item.processedMask&&!item.processedRuns&&!(segmentEditActive(item.key)&&item.edit.finalRuns));
- if(simple){
-  const segs=activeSegs.map(item=>({min:item.seg.min,max:item.seg.max,a:item.alpha,ia:1-item.alpha,r:item.rgb[0],g:item.rgb[1],b:item.rgb[2]})),n=values.length;
-  for(let i=0;i<n;i++){
-   const v=values[i];let g=Math.max(0,Math.min(255,Math.round((v-low)*scale))),rr=g,gg=g,bb=g;
-   for(let s=0;s<segs.length;s++){const q=segs[s];if(v<q.min||v>q.max)continue;rr=Math.round(rr*q.ia+q.r*q.a);gg=Math.round(gg*q.ia+q.g*q.a);bb=Math.round(bb*q.ia+q.b*q.a)}
-   pixels[i]=(255<<24)|(bb<<16)|(gg<<8)|rr;
-  }
- }else{
-  let i=0;
-  for(let py=0;py<dims[1];py++)for(let px=0;px<dims[0];px++,i++){
-   const v=values[i],g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
-   const ix=p==='sagittal'?idx:px,iy=p==='coronal'?idx:(p==='sagittal'?px:py),iz=p==='axial'?idx:(volume.slices-1-py);
-   for(const item of activeSegs){const {key,seg,edit,processedMask,processedRuns,rgb,alpha}=item,inside=processedRuns?analysisRunsContain(processedRuns,ix,iy,iz):(segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(processedMask?processedMask[iz*volume.rows*volume.columns+iy*volume.columns+ix]===1:(v>=seg.min&&v<=seg.max)));if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha)}
-   pixels[i]=(255<<24)|(bb<<16)|(gg<<8)|rr;
-  }
- }
- ctx.putImageData(img,0,0);drawAnalysisOverlay(p,idx,ctx);
- if(p==='axial'||mpr3DVisibility[p])refreshMpr3DPlaneTexture(p);
- return performance.now()-started;
-}
-async function renderPlaneSourceBacked(p,revision,idx){
- const c=planes[p],series=volume.series;c.label.textContent=idx+1;if(revision!==planeRenderRevision[p])return;
- try{
-  if(!sourceFilterStages().length&&(volume.mprData||(p==='sagittal'&&(volume.mprSagittalAll||volume.mprSagittalDisplayAll)))){
-   const values=p==='sagittal'&&volume.mprSagittalDisplayAll&&!volume.mprSagittalAll?cachedSagittalDisplayPlane(volume,idx):cachedSourceMprPlane(volume,p,idx);if(revision!==planeRenderRevision[p]||!values)return;
-   const dims=p==='axial'?[series.columns,series.rows]:p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length];
-   paintSourcePlane(c,dims,values,p,idx);return;
-  }
-  if(sourceFilterStages().length){
-   const values=await getFilteredSourcePlaneValues(p,idx,series,'mpr:'+p,revision);
-   if(revision!==planeRenderRevision[p])return;
-   const dims=p==='axial'?[series.columns,series.rows]:p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length];
-   paintSourcePlane(c,dims,values,p,idx);return;
-  }
-  if(p==='axial'){
-   const values=await getCachedSourceSlice(series.slices[idx]);if(revision!==planeRenderRevision[p])return;
-   paintSourcePlane(c,[series.columns,series.rows],values,p,idx);return;
-  }
-  const gpuStart=performance.now(),values=await buildSourceOrthogonalNeighborhood(p,idx,series,revision),gpuMs=performance.now()-gpuStart;if(revision!==planeRenderRevision[p]||!values)return;
-  const paintMs=paintSourcePlane(c,p==='coronal'?[series.columns,series.slices.length]:[series.rows,series.slices.length],values,p,idx);
-  if(p==='sagittal')console.debug('[VRL S MPR] extract='+gpuMs.toFixed(1)+'ms paint='+paintMs.toFixed(1)+'ms total='+(gpuMs+paintMs).toFixed(1)+'ms');
- }catch(e){if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);footer.textContent='MPR read error: '+String(e.message||e)}}
-}
 
-function updateMprCanvasPhysicalAspect(p){
- if(!volume||!planes[p]?.canvas)return;
- const w=volume.columns,h=volume.rows,d=volume.slices,[sx,sy,sz]=volume.spacing;
- const physical=p==='axial'?[w*sx,h*sy]:p==='coronal'?[w*sx,d*sz]:[h*sy,d*sz];
- const canvas=planes[p].canvas,parent=canvas.parentElement,ratio=physical[0]/Math.max(physical[1],1e-12),rect=parent?.getBoundingClientRect?.();
- let displayW=rect?.width||0,displayH=displayW/Math.max(ratio,1e-12);
- if(rect?.height>0&&displayH>rect.height){displayH=rect.height;displayW=displayH*ratio}
- canvas.style.aspectRatio=String(ratio);canvas.style.position='absolute';canvas.style.inset='0';canvas.style.margin='auto';canvas.style.objectFit='fill';
- if(displayW>0&&displayH>0){canvas.style.width=displayW+'px';canvas.style.height=displayH+'px'}else{canvas.style.width='100%';canvas.style.height='100%'}
- canvas.style.maxWidth='100%';canvas.style.maxHeight='100%';
-}
 
 const mprWheelFinalizeTimers={axial:null,coronal:null,sagittal:null};
 function installMprTouch(p){const c=planes[p];let id=null,startX=0,startY=0,start=0,moved=false;c.canvas.onpointerdown=e=>{if(!volume||c.slider.disabled)return;id=e.pointerId;startX=e.clientX;startY=e.clientY;start=+c.slider.value;moved=false;c.canvas.setPointerCapture(id)};c.canvas.onpointermove=e=>{if(id!==e.pointerId)return;const dx=e.clientX-startX,dy=e.clientY-startY;if(Math.hypot(dx,dy)>5)moved=true;if(volumeAnalysisMode&&!moved)return;const max=+c.slider.max,sens=Math.max(1,c.canvas.clientWidth/(max+1)),next=Math.round(start+dx/sens);c.slider.value=Math.max(0,Math.min(max,next));schedulePlaneRender(p)};const end=e=>{if(id!==e.pointerId)return;const wasClick=!moved&&e.type==='pointerup';if(c.canvas.hasPointerCapture(id))c.canvas.releasePointerCapture(id);id=null;if(moved)schedulePlaneRender(p,true);if(wasClick&&selectAnalysisRegionFromMpr(p,e))e.preventDefault()};c.canvas.onpointerup=end;c.canvas.onpointercancel=end;c.canvas.addEventListener('wheel',e=>{if(!volume||c.slider.disabled)return;e.preventDefault();const max=+c.slider.max,delta=e.deltaY===0?e.deltaX:e.deltaY,step=delta>0?1:-1;c.slider.value=Math.max(0,Math.min(max,+c.slider.value+step));schedulePlaneRender(p,false);clearTimeout(mprWheelFinalizeTimers[p]);mprWheelFinalizeTimers[p]=setTimeout(()=>schedulePlaneRender(p,true),48)},{passive:false})}
@@ -2511,7 +2224,8 @@ async function start3D(){
  renderer.domElement.onlostpointercapture=e=>{const start=pointerStarts.get(e.pointerId);pointers.delete(e.pointerId);pointerStarts.delete(e.pointerId);if(!analysisPendingCut){setAnalysisCutScreen([]);clearThreeEditOverlay()}renderer.domElement.style.cursor='';if(pointers.size<2){lastPinch=0;lastCenter=null;lastTwist=null}if(!pointers.size&&start?.mode!=='section-drag')end3DInteraction()};
  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();begin3DInteraction();showViewPivot();clearTimeout(wheelQualityTimer);distance=THREE.MathUtils.clamp(distance+e.deltaY*.004,MIN_3D_DISTANCE,MAX_3D_DISTANCE);camera.position.z=distance;setFastInteraction(true);request3DRender();wheelQualityTimer=setTimeout(()=>end3DInteraction(),120)},{passive:false});
  const resize=()=>{const rect=viewport.getBoundingClientRect(),w=Math.round(rect.width),h=Math.round(rect.height);if(w<8||h<8)return;camera.aspect=w/h;camera.updateProjectionMatrix();updateAxisWidget();renderer.setPixelRatio(active3DPixelRatio);renderer.setSize(w,h,false);resizeEditOverlay(w,h);sceneState?.medicalVolume?.resize();request3DRender()};sceneState.resize=resize;new ResizeObserver(resize).observe(viewport);resize();
- renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;sceneState.needsRender=false;syncVolumeAnalysisOverlay();if(sceneState.obj){axisWidget.quaternion.copy(sceneState.obj.quaternion);if(sectionViewOpen&&sectionViewPlane)updateSectionClipPlaneWorld();if(sceneState.mprPlaneGroup){sceneState.mprPlaneGroup.visible=true;sceneState.mprPlaneGroup.position.copy(sceneState.obj.position);sceneState.mprPlaneGroup.quaternion.copy(sceneState.obj.quaternion);sceneState.mprPlaneGroup.scale.copy(sceneState.obj.scale)}}else if(sceneState.mprPlaneGroup)sceneState.mprPlaneGroup.visible=false;if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){const interactiveVisible=mpr3DHideDuringCameraMoves&&fastInteractionActive&&!fastKeepOverlays?[sectionViewOpen&&sectionViewPlane==='axial'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='coronal'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='sagittal'&&sectionSliceImageVisible?1:0]:[sectionViewOpen&&sectionViewPlane==='axial'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.axial?1:0),sectionViewOpen&&sectionViewPlane==='coronal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.coronal?1:0),sectionViewOpen&&sectionViewPlane==='sagittal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.sagittal?1:0)];sceneState.medicalVolume.render(camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,{indices:[+planes.axial.slider.value,+planes.coronal.slider.value,+planes.sagittal.slider.value],visible:interactiveVisible,opacity:mpr3DVolumeOpacity,windowCenter:+wc.value,windowWidth:+ww.value,section:{active:sectionViewOpen&&!!sectionViewPlane,plane:sectionViewPlane,index:sectionViewPlane?+planes[sectionViewPlane].slider.value:0,reverse:sectionViewReverse,capEnabled:sectionCapEnabled,capOpacity:sectionCapOpacity,hatch:sectionCapHatch}});renderer.render(scene,camera)}else renderer.render(scene,camera)});
+ renderer.setAnimationLoop(()=>{if(!sceneState?.needsRender)return;if(viewport.clientWidth<8||viewport.clientHeight<8)return;sceneState.needsRender=false;// 3D hidden (2D-only layout): keep the request until it is shown again
+syncVolumeAnalysisOverlay();if(sceneState.obj){axisWidget.quaternion.copy(sceneState.obj.quaternion);if(sectionViewOpen&&sectionViewPlane)updateSectionClipPlaneWorld();if(sceneState.mprPlaneGroup){sceneState.mprPlaneGroup.visible=true;sceneState.mprPlaneGroup.position.copy(sceneState.obj.position);sceneState.mprPlaneGroup.quaternion.copy(sceneState.obj.quaternion);sceneState.mprPlaneGroup.scale.copy(sceneState.obj.scale)}}else if(sceneState.mprPlaneGroup)sceneState.mprPlaneGroup.visible=false;if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){const interactiveVisible=mpr3DHideDuringCameraMoves&&fastInteractionActive&&!fastKeepOverlays?[sectionViewOpen&&sectionViewPlane==='axial'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='coronal'&&sectionSliceImageVisible?1:0,sectionViewOpen&&sectionViewPlane==='sagittal'&&sectionSliceImageVisible?1:0]:[sectionViewOpen&&sectionViewPlane==='axial'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.axial?1:0),sectionViewOpen&&sectionViewPlane==='coronal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.coronal?1:0),sectionViewOpen&&sectionViewPlane==='sagittal'?(sectionSliceImageVisible?1:0):(mpr3DVisibility.sagittal?1:0)];sceneState.medicalVolume.render(camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,{indices:[+planes.axial.slider.value,+planes.coronal.slider.value,+planes.sagittal.slider.value],visible:interactiveVisible,opacity:mpr3DVolumeOpacity,windowCenter:+wc.value,windowWidth:+ww.value,section:{active:sectionViewOpen&&!!sectionViewPlane,plane:sectionViewPlane,index:sectionViewPlane?+planes[sectionViewPlane].slider.value:0,reverse:sectionViewReverse,capEnabled:sectionCapEnabled,capOpacity:sectionCapOpacity,hatch:sectionCapHatch}});renderer.render(scene,camera)}else renderer.render(scene,camera)});
 }
 async function sourceSegmentMaskBlock(v,key,seg,zStart,depth,analysisRevision){
  const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart);
@@ -2818,7 +2532,6 @@ function createAnalysisMaterial(color=0x00d8ff){
   polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,flatShading:!surfaceSmoothingActive()
  });
 }
-function segmentEditActive(key){const s=segmentEditState[key];return !!(s?.keepRuns||s?.excludeRuns)}
 function segmentBaseSignature(key,v){
  const s=segmentState[key];return [activeId,key,s.min,s.max,s.opening,s.closing,s.minComponent,s.holeFill,filterRebuildRevision,sourceFilterRuntime.revision,v?.columns,v?.rows,v?.slices].join('|');
 }
