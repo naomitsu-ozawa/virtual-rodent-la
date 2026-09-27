@@ -61,6 +61,11 @@ analysis list, "keep selected" / "delete selected" applied to only one.
   act on one segment at a time, so an edit that spanned two segments takes
   two undos.
 - Build 235 → 236.
+- Same PR, build 237 — owner: having to tick each region is poor UX. New
+  analysis regions (`addAnalysisRegion`) and merged regions now start
+  ticked (`selected:true`), so "click the parts, then keep/delete selected"
+  acts on all of them; untick a region to leave it out. "Merge selected"
+  also uses the ticked regions.
 
 ---
 

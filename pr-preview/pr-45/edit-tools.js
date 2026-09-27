@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20260927-build236';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20260927-build236';
-import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20260927-build236';
-import { tr } from './i18n.js?v=20260927-build236';
-import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20260927-build236';
-import { request3DRender } from './scene3d.js?v=20260927-build236';
+import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20260927-build237';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20260927-build237';
+import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20260927-build237';
+import { tr } from './i18n.js?v=20260927-build237';
+import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20260927-build237';
+import { request3DRender } from './scene3d.js?v=20260927-build237';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20260927-build236';
-import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20260927-build236';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20260927-build237';
+import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20260927-build237';
 export function analysisRegionById(id){return analysisRegions.find(r=>r.id===id)||null}
 export function configureCutControlRanges(v=current3DVolume||volume){
  if(!v||!analysisCutWidth)return;
@@ -371,7 +371,7 @@ export function updateThreeEditUi(message=null){
  else if(sceneState?.editCutPreviewPoint)updateCutPreview(sceneState.editCutPreviewPoint);
 }
 // Regions that "keep selected" / "delete selected" act on: every region ticked
-// in the list, or the focused region when none is ticked (owner report, build
+// in the list (new regions start ticked), or the focused region when none is ticked (owner report, build
 // 236: with two or more ticked regions only the focused one was applied).
 // Regions merged across segments are skipped (edits are per segment).
 export function editTargetRegions(){
