@@ -80,8 +80,7 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
       MPR-in-3D plane overlay):
   - [ ] MPR rendering and caches (step 1 done: `source-filters.js`, `mpr-orthogonal.js`; next `schedulePlaneRender`,
         `paintSourcePlane`, `ensureMpr3DPreviewCache`, instant-image path)
-  - [ ] MPR-in-3D overlay and 3D slice panel (move the 7-function cycle
-        together)
+  - [x] MPR-in-3D overlay and 3D slice panel (`mpr3d-overlay.js`, build 217)
   - [ ] Filter pipeline UI (`rebuildActiveFilters`, CPU filters such as
         `applyNlm3D`)
   - [ ] Segmentation UI and mesh building (`rebuildCurrent3D`,
