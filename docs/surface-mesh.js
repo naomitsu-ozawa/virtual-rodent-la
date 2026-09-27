@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces } from './mesh-geometry.js?v=20260927-build235';
+import { indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces } from './mesh-geometry.js?v=20260927-build236';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { list, surfaceSmoothStrength } from './ui-shell.js?v=20260927-build235';
-import { segmentState, segmentEditState } from './segments.js?v=20260927-build235';
-import { surfaceSmoothingActive } from './settings.js?v=20260927-build235';
-import { maskFromAnalysisRuns } from './run-length.js?v=20260927-build235';
-import { frameYield } from './utils.js?v=20260927-build235';
-import { smoothMaskScalarField } from './mask-ops.js?v=20260927-build235';
+import { list, surfaceSmoothStrength } from './ui-shell.js?v=20260927-build236';
+import { segmentState, segmentEditState } from './segments.js?v=20260927-build236';
+import { surfaceSmoothingActive } from './settings.js?v=20260927-build236';
+import { maskFromAnalysisRuns } from './run-length.js?v=20260927-build236';
+import { frameYield } from './utils.js?v=20260927-build236';
+import { smoothMaskScalarField } from './mask-ops.js?v=20260927-build236';
 export async function buildEditableRunsGroup(v,runs,key,shouldContinue=null,forceRaw=false){
  const seg=segmentState[key],st=segmentEditState[key],smooth=!forceRaw&&surfaceSmoothingActive(),hasRawCut=!!(st?.rawCutSurface&&st?.cutRuns);
  if(smooth&&!hasRawCut&&fullVolumeSmoothIsosurfaceFeasible(v)){

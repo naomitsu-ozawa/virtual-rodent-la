@@ -1,28 +1,28 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { meshSegmentRanges, syncSectionClipParent, applySectionClippingMaterials, refreshEditedSegmentSurface, ensureGpuResidentCpuPositions } from './surface-build.js?v=20260927-build235';
-import { sceneState, incSourceRenderRevision, sourceRenderRevision, currentLanguage, sectionViewOpen, sectionViewPlane, setAnalysisEditTool, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisCutStroke, setAnalysisCutScreen, setAnalysisPendingCut, current3DVolume, volume, volumeAnalysisMode, analysisRegions, threeRenderMode, threeDDirty, analysisFocusedRegionId, volumeAnalysisBusy, setVolumeAnalysisBusy, setAnalysisRegions, incNextAnalysisRegionId, nextAnalysisColorIndex, incNextAnalysisColorIndex, analysisEditTargetKey, sourceVolume, setAnalysisFocusedRegionId, analysisEditTool, analysisEditTargetMode } from './state.js?v=20260927-build235';
+import { meshSegmentRanges, syncSectionClipParent, applySectionClippingMaterials, refreshEditedSegmentSurface, ensureGpuResidentCpuPositions } from './surface-build.js?v=20260927-build236';
+import { sceneState, incSourceRenderRevision, sourceRenderRevision, currentLanguage, sectionViewOpen, sectionViewPlane, setAnalysisEditTool, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisCutStroke, setAnalysisCutScreen, setAnalysisPendingCut, current3DVolume, volume, volumeAnalysisMode, analysisRegions, threeRenderMode, threeDDirty, analysisFocusedRegionId, volumeAnalysisBusy, setVolumeAnalysisBusy, setAnalysisRegions, incNextAnalysisRegionId, nextAnalysisColorIndex, incNextAnalysisColorIndex, analysisEditTargetKey, sourceVolume, setAnalysisFocusedRegionId, analysisEditTool, analysisEditTargetMode } from './state.js?v=20260927-build236';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { eachGeometryTriangleRange, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces, groupToBinaryStl } from './mesh-geometry.js?v=20260927-build235';
-import { surfaceSmoothingActive } from './settings.js?v=20260927-build235';
-import { SEGMENT_PRESET_ORDER, segmentState, getProcessedSegmentMask, segmentEditState, segmentEditActive, segmentNeedsGlobalMask } from './segments.js?v=20260927-build235';
-import { set3DBusy, request3DRender, mark3DCurrent, mark3DStale } from './scene3d.js?v=20260927-build235';
-import { threeLabel, footer, analysisEditTargetSelect, selected, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutOffset, threeEditOverlay, volumeAnalysisResult, analysisSummary, threeBusyLabel } from './ui-shell.js?v=20260927-build235';
-import { dispose, buildSmoothIsoMesh, geometryFromSourcePositions } from './surface-mesh.js?v=20260927-build235';
-import { ensureSegmentBaseRuns, getFinalSegmentRuns, sourceAnalysisBlockDepth, sourceSegmentRunBlockGpu, sourceSegmentMaskBlock } from './segment-runs.js?v=20260927-build235';
-import { maskFromAnalysisRuns, unionAnalysisRuns, analysisRunsVoxelCount, unionRunArrays, componentsFromRuns, analysisRunsOverlap, componentsFromRunsAsync, analysisRunsContain, sourceResultToAnalysisRuns, maskToAnalysisRuns, RunUnionFind, consumeGpuAnalysisRuns, sourceRunSlice } from './run-length.js?v=20260927-build235';
-import { frameYield } from './utils.js?v=20260927-build235';
-import { updateSectionClipPlaneWorld } from './section-view.js?v=20260927-build235';
-import { setGpuComputeBackend, ensureGpuFilterDevice, gpuValidationScope, runGpuSourceFilters, gpuFilterRuntime } from './gpu-compute.js?v=20260927-build235';
-import { clearSegmentEditCache, clearAnalysisHighlight } from './segment-ui.js?v=20260927-build235';
-import { clearCutResultPreview, updateThreeEditUi, analysisRegionById, cutRunsFromVoxelStroke, cutWidthMm, updateAnalysisEditorControls } from './edit-tools.js?v=20260927-build235';
-import { sourceFilterStages, readMemoryRegion, sourceFilterRuntime, getFilteredSourcePlaneValues, getCachedSourceSlice } from './source-filters.js?v=20260927-build235';
-import { downloadBlob } from './data-load.js?v=20260927-build235';
-import { renderAnalysisResults, disposeAnalysisRegionMesh, setAnalysisFocusedRegion } from './analysis-results.js?v=20260927-build235';
-import { tr } from './i18n.js?v=20260927-build235';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260927-build235';
-import { renderAll } from './mpr-render.js?v=20260927-build235';
-import { makeVoxelProjector, polygonBounds, componentFullyInside } from './lasso.js?v=20260927-build235';
+import { eachGeometryTriangleRange, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces, groupToBinaryStl } from './mesh-geometry.js?v=20260927-build236';
+import { surfaceSmoothingActive } from './settings.js?v=20260927-build236';
+import { SEGMENT_PRESET_ORDER, segmentState, getProcessedSegmentMask, segmentEditState, segmentEditActive, segmentNeedsGlobalMask } from './segments.js?v=20260927-build236';
+import { set3DBusy, request3DRender, mark3DCurrent, mark3DStale } from './scene3d.js?v=20260927-build236';
+import { threeLabel, footer, analysisEditTargetSelect, selected, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutOffset, threeEditOverlay, volumeAnalysisResult, analysisSummary, threeBusyLabel } from './ui-shell.js?v=20260927-build236';
+import { dispose, buildSmoothIsoMesh, geometryFromSourcePositions } from './surface-mesh.js?v=20260927-build236';
+import { ensureSegmentBaseRuns, getFinalSegmentRuns, sourceAnalysisBlockDepth, sourceSegmentRunBlockGpu, sourceSegmentMaskBlock } from './segment-runs.js?v=20260927-build236';
+import { maskFromAnalysisRuns, unionAnalysisRuns, analysisRunsVoxelCount, unionRunArrays, componentsFromRuns, analysisRunsOverlap, componentsFromRunsAsync, analysisRunsContain, sourceResultToAnalysisRuns, maskToAnalysisRuns, RunUnionFind, consumeGpuAnalysisRuns, sourceRunSlice } from './run-length.js?v=20260927-build236';
+import { frameYield } from './utils.js?v=20260927-build236';
+import { updateSectionClipPlaneWorld } from './section-view.js?v=20260927-build236';
+import { setGpuComputeBackend, ensureGpuFilterDevice, gpuValidationScope, runGpuSourceFilters, gpuFilterRuntime } from './gpu-compute.js?v=20260927-build236';
+import { clearSegmentEditCache, clearAnalysisHighlight } from './segment-ui.js?v=20260927-build236';
+import { clearCutResultPreview, updateThreeEditUi, analysisRegionById, editTargetRegions, cutRunsFromVoxelStroke, cutWidthMm, updateAnalysisEditorControls } from './edit-tools.js?v=20260927-build236';
+import { sourceFilterStages, readMemoryRegion, sourceFilterRuntime, getFilteredSourcePlaneValues, getCachedSourceSlice } from './source-filters.js?v=20260927-build236';
+import { downloadBlob } from './data-load.js?v=20260927-build236';
+import { renderAnalysisResults, disposeAnalysisRegionMesh, setAnalysisFocusedRegion } from './analysis-results.js?v=20260927-build236';
+import { tr } from './i18n.js?v=20260927-build236';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260927-build236';
+import { renderAll } from './mpr-render.js?v=20260927-build236';
+import { makeVoxelProjector, polygonBounds, componentFullyInside } from './lasso.js?v=20260927-build236';
 export function clearThreeEditOverlay(){const ctx=threeEditOverlay?.getContext('2d');ctx?.clearRect(0,0,threeEditOverlay.width,threeEditOverlay.height)}
 export const ANALYSIS_REGION_COLORS=[0x00d8ff,0xff9f1c,0x7ae582,0xff4d8d,0xf4e409,0x9b5cff,0xff5a5f,0x2ec4b6];
 export function nextAnalysisColor(){
@@ -301,17 +301,32 @@ export async function rebuildEditedAnalysisForSegment(key,referenceRegions=null)
  }
  if(focusId!=null)setAnalysisFocusedRegion(focusId);else{renderAnalysisResults();renderAll()}
 }
+// Group the edit targets by segment: keep / delete apply per segment.
+function editTargetsBySegment(){
+ const byKey=new Map();for(const r of editTargetRegions()){const key=r.segmentKeys[0];if(!byKey.has(key))byKey.set(key,[]);byKey.get(key).push(r)}
+ return byKey;
+}
 export async function applyEditKeepSelected(){
- const region=analysisRegionById(analysisFocusedRegionId);if(!region||region.segmentKeys.length!==1)return;const key=region.segmentKeys[0],st=segmentEditState[key],refs=snapshotAnalysisRegionsForSegment(key).filter(r=>analysisRunsOverlap(r.runsBySlice,region.runsBySlice));pushEditUndo(key);st.keepRuns=region.runsBySlice;st.excludeRuns=null;st.finalRuns=null;st.revision++;
- if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key);await rebuildEditedAnalysisForSegment(key,refs)}footer.textContent=currentLanguage==='ja'?'選択領域だけを残しました':'Kept the selected region only';
+ const byKey=editTargetsBySegment();if(!byKey.size)return;const v=current3DVolume||volume;
+ const plans=[...byKey].map(([key,regions])=>{
+  const runs=regions.reduce((acc,r)=>acc?unionRunArrays(acc,r.runsBySlice,v.slices):r.runsBySlice,null);
+  return{key,runs,refs:snapshotAnalysisRegionsForSegment(key).filter(ref=>analysisRunsOverlap(ref.runsBySlice,runs))};
+ });
+ for(const {key,runs} of plans){const st=segmentEditState[key];pushEditUndo(key);st.keepRuns=runs;st.excludeRuns=null;st.finalRuns=null;st.revision++}
+ if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{for(const {key,refs} of plans){await refreshEditedSegmentSurface(key);await rebuildEditedAnalysisForSegment(key,refs)}}
+ footer.textContent=currentLanguage==='ja'?'選択領域だけを残しました':'Kept the selected region only';
  returnToNavigate();
 }
 export async function applyEditRemoveSelected(){
- const region=analysisRegionById(analysisFocusedRegionId);if(!region||region.segmentKeys.length!==1)return;const key=region.segmentKeys[0],st=segmentEditState[key],v=current3DVolume||volume,refs=snapshotAnalysisRegionsForSegment(key).filter(r=>!analysisRunsOverlap(r.runsBySlice,region.runsBySlice));
+ const byKey=editTargetsBySegment();if(!byKey.size)return;const v=current3DVolume||volume;
+ const plans=[...byKey].map(([key,regions])=>{
+  const runs=regions.reduce((acc,r)=>acc?unionRunArrays(acc,r.runsBySlice,v.slices):r.runsBySlice,null);
+  return{key,runs,refs:snapshotAnalysisRegionsForSegment(key).filter(ref=>!analysisRunsOverlap(ref.runsBySlice,runs))};
+ });
  set3DBusy(true,currentLanguage==='ja'?'選択領域を削除中…':'Deleting selected region…',false);await frameYield();
  try{
-  pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,region.runsBySlice,v.slices);st.finalRuns=null;st.revision++;
-  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs)}
+  for(const {key,runs} of plans){const st=segmentEditState[key];pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,runs,v.slices);st.finalRuns=null;st.revision++}
+  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);clearAnalysisHighlight()}else{for(const {key,refs} of plans){await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs)}}
   footer.textContent=currentLanguage==='ja'?'選択領域を削除しました':'Deleted the selected region';
   returnToNavigate();
  }finally{set3DBusy(false,'',false)}

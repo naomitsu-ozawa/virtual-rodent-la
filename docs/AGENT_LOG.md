@@ -38,6 +38,32 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (keep/delete all selected regions, build 236)
+
+**Agent:** Claude (Claude Code)
+**Task:** Owner report: with two or more regions selected in the volume
+analysis list, "keep selected" / "delete selected" applied to only one.
+
+### Cause
+- `applyEditKeepSelected` / `applyEditRemoveSelected` used only the focused
+  region (`analysisFocusedRegionId`); the list checkboxes (`region.selected`,
+  also used by "merge selected") were ignored. Pre-existing, not from the
+  module split.
+
+### What changed
+- `edit-tools.js`: `editTargetRegions()` — every ticked region, or the
+  focused one when none is ticked; regions merged across segments are
+  skipped (edits are per segment). The keep/delete buttons are enabled
+  from it.
+- `analysis-ops.js`: both operations group the targets by segment and apply
+  once per segment (keep = union of the targets' runs; delete = add the
+  union to `excludeRuns`), with one undo entry per segment. Undo/redo still
+  act on one segment at a time, so an edit that spanned two segments takes
+  two undos.
+- Build 235 → 236.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 5, build 235)
 
 **Agent:** Claude (Claude Code)

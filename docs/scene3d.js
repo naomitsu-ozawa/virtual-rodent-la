@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { sceneState, threeRenderMode, volume, setThreeDDirty, setThreeDApplying, volumeAnalysisMode, threeDCancelRequested } from './state.js?v=20260927-build235';
-import { threeFilterBadge, filter3DState, filterRebuild3D, volumeAnalysisToggle, sectionViewToggle, $, threeBusy, threeBusyLabel, threeBusyCancel } from './ui-shell.js?v=20260927-build235';
-import { currentFilterSignature } from './mpr-render.js?v=20260927-build235';
-import { tr } from './i18n.js?v=20260927-build235';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260927-build235';
-import { updateAnalysisEditorControls } from './edit-tools.js?v=20260927-build235';
+import { sceneState, threeRenderMode, volume, setThreeDDirty, setThreeDApplying, volumeAnalysisMode, threeDCancelRequested } from './state.js?v=20260927-build236';
+import { threeFilterBadge, filter3DState, filterRebuild3D, volumeAnalysisToggle, sectionViewToggle, $, threeBusy, threeBusyLabel, threeBusyCancel } from './ui-shell.js?v=20260927-build236';
+import { currentFilterSignature } from './mpr-render.js?v=20260927-build236';
+import { tr } from './i18n.js?v=20260927-build236';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260927-build236';
+import { updateAnalysisEditorControls } from './edit-tools.js?v=20260927-build236';
 export function request3DRender(){
  if(sceneState)sceneState.needsRender=true;
 }

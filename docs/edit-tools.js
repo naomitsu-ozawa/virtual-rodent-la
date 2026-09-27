@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20260927-build235';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20260927-build235';
-import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20260927-build235';
-import { tr } from './i18n.js?v=20260927-build235';
-import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20260927-build235';
-import { request3DRender } from './scene3d.js?v=20260927-build235';
+import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20260927-build236';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20260927-build236';
+import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20260927-build236';
+import { tr } from './i18n.js?v=20260927-build236';
+import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20260927-build236';
+import { request3DRender } from './scene3d.js?v=20260927-build236';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20260927-build235';
-import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20260927-build235';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20260927-build236';
+import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20260927-build236';
 export function analysisRegionById(id){return analysisRegions.find(r=>r.id===id)||null}
 export function configureCutControlRanges(v=current3DVolume||volume){
  if(!v||!analysisCutWidth)return;
@@ -370,6 +370,15 @@ export function updateThreeEditUi(message=null){
  if(analysisEditTool==='select')updateCutPreview(null);
  else if(sceneState?.editCutPreviewPoint)updateCutPreview(sceneState.editCutPreviewPoint);
 }
+// Regions that "keep selected" / "delete selected" act on: every region ticked
+// in the list, or the focused region when none is ticked (owner report, build
+// 236: with two or more ticked regions only the focused one was applied).
+// Regions merged across segments are skipped (edits are per segment).
+export function editTargetRegions(){
+ const ticked=analysisRegions.filter(r=>r.selected&&r.segmentKeys?.length===1);
+ if(ticked.length)return ticked;
+ const focused=analysisRegionById(analysisFocusedRegionId);return focused?.segmentKeys?.length===1?[focused]:[];
+}
 export function updateAnalysisEditorControls(){
  const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,regionKey=single?region.segmentKeys[0]:null;
  const surfaceUsable=!!sceneState?.obj&&SEGMENT_PRESET_ORDER.some(k=>segmentState[k].active&&segmentState[k].enabled)&&(threeRenderMode==='surface'||(threeRenderMode==='volume'&&!!sceneState?.medicalVolume?.active));
@@ -380,9 +389,10 @@ export function updateAnalysisEditorControls(){
  if(analysisLassoButton)analysisLassoButton.disabled=!surfaceUsable;
  if(analysisCutButton)analysisCutButton.disabled=!surfaceUsable;
  if(analysisLineCutButton)analysisLineCutButton.disabled=!surfaceUsable;
- if(analysisEditRemoveSelected)analysisEditRemoveSelected.disabled=!regionKey;
- if(analysisRemoveSelected)analysisRemoveSelected.disabled=!regionKey;
- if(analysisKeepSelected)analysisKeepSelected.disabled=!regionKey;
+ const hasEditTargets=editTargetRegions().length>0;
+ if(analysisEditRemoveSelected)analysisEditRemoveSelected.disabled=!hasEditTargets;
+ if(analysisRemoveSelected)analysisRemoveSelected.disabled=!hasEditTargets;
+ if(analysisKeepSelected)analysisKeepSelected.disabled=!hasEditTargets;
  if(analysisUndo)analysisUndo.disabled=!historyState?.undo?.length;
  if(analysisRedo)analysisRedo.disabled=!historyState?.redo?.length;
  if(analysisResetEdit)analysisResetEdit.disabled=!historyKey||!segmentEditActive(historyKey);
