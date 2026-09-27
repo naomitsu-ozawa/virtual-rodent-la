@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build240';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build240';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build240';
-import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build240';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build240';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build240';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build240';
-import { state } from './ui-shell.js?v=20260927-build240';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build241';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260927-build241';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260927-build241';
+import { ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260927-build241';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260927-build241';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260927-build241';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260927-build241';
+import { state } from './ui-shell.js?v=20260927-build241';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build240';
-import { frameYield } from './utils.js?v=20260927-build240';
-import { setProcessingBusy } from './busy.js?v=20260927-build240';
-import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build240';
+import { maskToAnalysisRuns, postprocessSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260927-build241';
+import { frameYield } from './utils.js?v=20260927-build241';
+import { setProcessingBusy } from './busy.js?v=20260927-build241';
+import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260927-build241';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
