@@ -38,6 +38,36 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 5, build 235)
+
+**Agent:** Claude (Claude Code)
+**Task:** Workspace UI and the volume-analysis / edit operations. Verbatim
+moves.
+
+### What changed
+- `applyLanguage` appended to `i18n.js` (app-wide language switch).
+- `docs/workspace-ui.js` (2): `initIPadWorkspaceUi`,
+  `initIPadGpuQualityControl`.
+- `docs/analysis-ops.js` (48): volume analysis from 3D/MPR clicks and the
+  lasso, connected components (GPU/CPU/source-backed), the analysis run
+  prewarm, the GPU-volume region overlay sync, edit operations (keep /
+  remove / undo / redo / reset / cut stroke apply / merge), cut raycast
+  acceleration (three-mesh-bvh), analysis region meshes (surface view and
+  STL), segment STL export and stats.
+- app.js 1601 → 1017 lines. `verify-split HEAD docs/app.js,docs/i18n.js
+  docs/app.js docs/i18n.js docs/workspace-ui.js docs/analysis-ops.js` → OK,
+  204 statements. Moved non-primitive consts: literals.
+- Exact commands: `tools/split-history/phase2d-part3-step5.sh`.
+- Build 234 → 235.
+
+### Left in app.js
+- `start3D` (291 lines) — needs a real refactor, device check required.
+- Event wiring (~92 top-level statements) and small UI glue (slider
+  precision drag, section view controls, file pickers, view swapping, MPR
+  touch). Keep as the composition root.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 4, build 234)
 
 **Agent:** Claude (Claude Code)

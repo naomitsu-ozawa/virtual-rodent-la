@@ -68,7 +68,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 
 ## Refactoring backlog
 
-Status as of build 234: `docs/app.js` is 1601 lines (5439 before the split
+Status as of build 235: `docs/app.js` is 1017 lines (5439 before the split
 began) with 378 top-level declarations and 90 top-level side-effect
 statements. Every move so far was mechanical and proven with
 `tools/verify-split.mjs`; keep that approach (`tools/closure.mjs` to size a
@@ -87,12 +87,12 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
         `surface-mesh.js`, `edit-tools.js`, `busy.js`, build 231; `surface-build.js`,
         build 232; next `rebuildCurrent3D`,
         `smoothIsosurfaceGeometry`)
-  - [ ] Analysis / edit / cut tools (`updateCutPreview`,
+  - [x] Analysis / edit / cut tools (`edit-tools.js`, `analysis-ops.js`, build 235; `updateCutPreview`,
         `cutRunsFromVoxelStroke`, `updateThreeEditUi`,
         `renderAnalysisResults`)
   - [x] Project load/save glue (`applyProject`) and demo loading (`data-load.js`, build 234)
         (`loadDemo`)
-  - [ ] iPad / Mac workspace UI (`initIPadWorkspaceUi`)
+  - [x] iPad / Mac workspace UI (`workspace-ui.js`, build 235)
 - [ ] Break up `start3D` (290 lines, the largest function) into scene
       setup, renderer selection (WebGPU/WebGL) and render loop. This is a
       real refactor, not a verbatim move: do it after its feature module is
