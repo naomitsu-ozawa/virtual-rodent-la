@@ -81,6 +81,10 @@ struct Uniforms{
 @group(0) @binding(7) var<storage,read> previewIntervals:array<u32>;
 @group(0) @binding(8) var<storage,read> appliedCutRows:array<u32>;
 @group(0) @binding(9) var<storage,read> appliedCutIntervals:array<u32>;
+// Volume-analysis regions drawn in the volume itself (no mesh). One buffer so
+// the fragment stage stays within 8 storage buffers: [0]=1 when non-empty,
+// [1..rowCount+1]=offsets into this array, then (x0|x1<<16, rgb|flags) pairs.
+@group(0) @binding(10) var<storage,read> analysisOverlay:array<u32>;
 
 struct VOut{@builtin(position) position:vec4<f32>};
 @vertex fn vs(@builtin(vertex_index) i:u32)->VOut{
@@ -156,6 +160,20 @@ fn previewContains(seg:u32,tc0:vec3<f32>)->bool{
   if(p.x<=x1){return true;}
  }
  return false;
+}
+fn analysisOverlayAt(tc0:vec3<f32>)->u32{
+ if(analysisOverlay[0]==0u){return 0u;}
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ let row=p.z*dims.y+p.y;
+ let start=analysisOverlay[1u+row];
+ let finish=analysisOverlay[2u+row];
+ for(var i=start;i<finish;i=i+2u){
+  let packed=analysisOverlay[i];
+  if(p.x>=(packed&65535u)&&p.x<=(packed>>16u)){return analysisOverlay[i+1u];}
+ }
+ return 0u;
 }
 fn appliedCutContains(seg:u32,tc0:vec3<f32>)->bool{
  let activeMask=appliedCutRows[0];
@@ -336,6 +354,13 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      var col=u.segments[u32(idx)*2u+1u].rgb;
      var alpha=clamp(a.z,0.03,1.0);
      var lit=col*diffuse+vec3<f32>(spec);
+     let overlay=select(0u,analysisOverlayAt(tc),!isCutPreview);
+     if(overlay!=0u){
+      col=vec3<f32>(f32((overlay>>16u)&255u),f32((overlay>>8u)&255u),f32(overlay&255u))/255.0;
+      let focused=(overlay&0x1000000u)!=0u;
+      alpha=max(alpha,select(0.72,0.96,focused));
+      lit=col*(0.3+0.7*diffuse)*select(1.0,1.18,focused)+vec3<f32>(spec);
+     }
      if(isCutPreview){
       col=vec3<f32>(1.0,0.16,0.055);
       alpha=max(alpha,0.94);
@@ -643,6 +668,7 @@ export class MedicalVolumeRenderer{
   this.editRowsBuffer=null;this.editIntervalsBuffer=null;this.editSignature='';this.clearEditRuns();
   this.previewRowsBuffer=null;this.previewIntervalsBuffer=null;this.previewSignature='';this.clearPreviewRuns();
   this.appliedCutRowsBuffer=null;this.appliedCutIntervalsBuffer=null;this.appliedCutSignature='';this.clearAppliedCutRuns();
+  this.analysisOverlayBuffer=null;this.analysisOverlaySignature='';this.clearAnalysisRuns();
   this.texture=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.previewVolume=null;this.previewPlaneBuffers={coronal:null,sagittal:null};this.active=false;this.interactive=false;this.interactionTier=0;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;this.textureDims=[1,1,1];this.reducedVolume=false;this.textureBytes=0;this.planSignature='';
   this.frameData=new Float32Array(88);this.tmpInv=new THREE.Matrix4();this.tmpOrigin=new THREE.Vector3();this.tmpQuat=new THREE.Quaternion();this.tmpRight=new THREE.Vector3();this.tmpUp=new THREE.Vector3();this.tmpForward=new THREE.Vector3();
  }
@@ -769,12 +795,13 @@ export class MedicalVolumeRenderer{
   this.bricksReady=true;this.onStatus('WEBGPU VOLUME READY');
  }
  rebuildBindGroup(){
-  if(!this.texture||!this.brickBuffer||!this.editRowsBuffer||!this.editIntervalsBuffer||!this.previewRowsBuffer||!this.previewIntervalsBuffer||!this.appliedCutRowsBuffer||!this.appliedCutIntervalsBuffer){this.bindGroup=null;return}
+  if(!this.texture||!this.brickBuffer||!this.editRowsBuffer||!this.editIntervalsBuffer||!this.previewRowsBuffer||!this.previewIntervalsBuffer||!this.appliedCutRowsBuffer||!this.appliedCutIntervalsBuffer||!this.analysisOverlayBuffer){this.bindGroup=null;return}
   this.bindGroup=this.device.createBindGroup({layout:this.pipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:this.texture.createView({dimension:'3d'})},
    {binding:2,resource:{buffer:this.editRowsBuffer}},{binding:3,resource:{buffer:this.brickBuffer}},{binding:4,resource:this.sampler},{binding:5,resource:{buffer:this.editIntervalsBuffer}},
    {binding:6,resource:{buffer:this.previewRowsBuffer}},{binding:7,resource:{buffer:this.previewIntervalsBuffer}},
-   {binding:8,resource:{buffer:this.appliedCutRowsBuffer}},{binding:9,resource:{buffer:this.appliedCutIntervalsBuffer}}
+   {binding:8,resource:{buffer:this.appliedCutRowsBuffer}},{binding:9,resource:{buffer:this.appliedCutIntervalsBuffer}},
+   {binding:10,resource:{buffer:this.analysisOverlayBuffer}}
   ]});
  }
  clearEditRuns(){
@@ -783,6 +810,34 @@ export class MedicalVolumeRenderer{
   this.editIntervalsBuffer=this.device.createBuffer({label:'VRL edit intervals empty',size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(this.editRowsBuffer,0,new Uint32Array([0,0]));this.device.queue.writeBuffer(this.editIntervalsBuffer,0,new Uint32Array([0]));
   this.editSignature='';if(this.texture&&this.brickBuffer)this.rebuildBindGroup();
+ }
+ clearAnalysisRuns(){
+  this.analysisOverlayBuffer?.destroy?.();
+  this.analysisOverlayBuffer=this.device.createBuffer({label:'VRL analysis overlay empty',size:8,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+  this.device.queue.writeBuffer(this.analysisOverlayBuffer,0,new Uint32Array([0,0]));
+  this.analysisOverlaySignature='';this.rebuildBindGroup();
+ }
+ // regions: [{runs (per-slice y,x0,x1 triples in source voxels), color (0xRRGGBB), focused}].
+ setAnalysisRuns(regions,v,signature=''){
+  if(signature&&signature===this.analysisOverlaySignature)return;
+  if(!v||!this.textureDims||!regions?.length){this.clearAnalysisRuns();this.analysisOverlaySignature=signature;return}
+  const sourceDims=[v.columns,v.rows,v.slices],gridDims=this.textureDims.slice(),[w,h,d]=gridDims;
+  if(w>65535)throw new Error('GPU analysis overlay requires width <= 65535');
+  const rowCount=h*d,counts=new Uint32Array(rowCount),grids=regions.map(r=>gpuRunsForTexture(r.runs,sourceDims,gridDims,{dilate:0}));
+  for(const g of grids)if(g)for(let z=0;z<d;z++){const rec=g[z];if(rec)for(let i=0;i<rec.length;i+=3)counts[z*h+rec[i]]++}
+  const header=2+rowCount;let total=0;for(let r=0;r<rowCount;r++)total+=counts[r];
+  if(!total){this.clearAnalysisRuns();this.analysisOverlaySignature=signature;return}
+  const data=new Uint32Array(header+total*2),cursor=new Uint32Array(rowCount);data[0]=1;let at=header;
+  for(let r=0;r<rowCount;r++){data[1+r]=at;cursor[r]=at;at+=counts[r]*2}
+  data[1+rowCount]=at;
+  for(let ri=0;ri<grids.length;ri++){
+   const g=grids[ri];if(!g)continue;const word=((regions[ri].color>>>0)&0xffffff)|(regions[ri].focused?0x1000000:0)|0x80000000;
+   for(let z=0;z<d;z++){const rec=g[z];if(rec)for(let i=0;i<rec.length;i+=3){const row=z*h+rec[i],c=cursor[row];data[c]=((rec[i+2]&65535)<<16)|(rec[i+1]&65535);data[c+1]=word>>>0;cursor[row]=c+2}}
+  }
+  if(data.byteLength>this.device.limits.maxStorageBufferBindingSize)throw new Error('GPU analysis overlay exceeds storage buffer limit');
+  const buffer=this.device.createBuffer({label:'VRL analysis overlay',size:data.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+  this.device.queue.writeBuffer(buffer,0,data);
+  this.analysisOverlayBuffer?.destroy?.();this.analysisOverlayBuffer=buffer;this.analysisOverlaySignature=signature;this.rebuildBindGroup();
  }
  clearPreviewRuns(){
   this.previewRowsBuffer?.destroy?.();this.previewIntervalsBuffer?.destroy?.();
@@ -1027,7 +1082,7 @@ export class MedicalVolumeRenderer{
   const result=await this.pickMany([{clientX,clientY}],camera,obj,segmentState,segmentOrder,preferredKey);return result[0]||null;
  }
  resetData(){this.setActive(false);this.texture?.destroy?.();this.brickBuffer?.destroy?.();this.texture=null;this.brickBuffer=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.previewVolume=null;this.previewPlaneBuffers={coronal:null,sagittal:null};this.volume=null;this.textureDims=[1,1,1];this.reducedVolume=false;this.textureBytes=0;this.planSignature='';this.clearEditRuns();this.clearPreviewRuns();this.clearAppliedCutRuns()}
- destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();this.previewRowsBuffer?.destroy?.();this.previewIntervalsBuffer?.destroy?.();this.appliedCutRowsBuffer?.destroy?.();this.appliedCutIntervalsBuffer?.destroy?.();this.mprUniformBuffer?.destroy?.();this.canvas.remove()}
+ destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();this.previewRowsBuffer?.destroy?.();this.previewIntervalsBuffer?.destroy?.();this.analysisOverlayBuffer?.destroy?.();this.appliedCutRowsBuffer?.destroy?.();this.appliedCutIntervalsBuffer?.destroy?.();this.mprUniformBuffer?.destroy?.();this.canvas.remove()}
 }
 
 

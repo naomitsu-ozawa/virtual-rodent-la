@@ -65,6 +65,30 @@ finishes and later clicks are fast): make the first analysis click fast too.
   pending entry (its result is then not stored).
 - Build 218 → 219.
 
+### Same PR, build 220: analysis regions drawn in the GPU volume (no mesh)
+- Owner: volume analysis must not use meshes either (meshes only for STL).
+  Before, every analysed region got a display mesh (`buildAnalysisRunsGroup`)
+  even in GPU volume view.
+- `medical-volume.js`: new storage buffer `analysisOverlay` (binding 10;
+  one buffer so the fragment stage stays at 8 storage buffers, the WebGPU
+  default limit — it already used 7). Layout: `[0]=1`, `[1..rows+1]` row
+  offsets, then `(x0|x1<<16, rgb|focused<<24|valid<<31)` pairs per texture
+  row. `analysisOverlayAt(tc)` in the raycast shader recolours a segment
+  surface hit that lies in a region (focused regions brighter/opaque); the
+  cut preview keeps priority. `setAnalysisRuns(regions, v, signature)`
+  packs runs (via `gpuRunsForTexture`, so reduced iPad textures work) and
+  skips the upload when the signature is unchanged; `clearAnalysisRuns()`.
+  Unit test: `tests/unit/volume-analysis-overlay.test.js`.
+- `app.js`: `attachAnalysisRegion` builds no mesh in GPU volume view;
+  `syncVolumeAnalysisOverlay()` runs at the start of each rendered frame:
+  in volume view it uploads visible regions (signature = series, texture
+  dims, id/colour/focus/voxels) and hides leftover region meshes; in surface
+  view it builds missing region meshes lazily. STL export of a region still
+  builds its mesh on demand (`attachAnalysisRegion(region, v, true)`). If the
+  GPU upload fails, falls back to region meshes (`volumeAnalysisOverlayFailed`).
+- Not verifiable in CI (no GPU): WGSL parses (wgsl-shaders test), packing is
+  unit-tested; colouring must be checked on a device.
+
 ### Follow-up
 - The GPU volume texture already holds the filtered volume
   (`gpuVolumeShowsCurrentFilters`); extracting runs from it would avoid
