@@ -66,6 +66,24 @@ analysis list, "keep selected" / "delete selected" applied to only one.
   ticked (`selected:true`), so "click the parts, then keep/delete selected"
   acts on all of them; untick a region to leave it out. "Merge selected"
   also uses the ticked regions.
+- Same PR, build 238 — owner asked why the first analysis after reopening
+  is not "from the cache". The GPU volume cache holds the reduced display
+  texture; analysis runs were only kept in memory. New device cache for the
+  per-segment filtered runs:
+  - `docs/run-pack.js`: `packRuns` / `unpackRuns` (one blob, format tag,
+    slice count check; unit-tested in `tests/unit/run-pack.test.js`).
+  - `docs/run-cache.js`: key = dataset fingerprint + filter signature +
+    segment settings (stable across sessions); stored in the GPU volume
+    cache DB as a 1-slice entry (`info.kind='segment-runs'`), same LRU
+    budget and "clear cache" button.
+  - `segment-runs.js` `ensureSegmentBaseRuns`: source-backed volumes try the
+    cache first (progress jumps to N/N on a hit), otherwise compute and
+    store in the background.
+- Module import cycles exist since the split appended functions to existing
+  modules (e.g. scene3d.js ↔ mpr-render.js, scene3d.js ↔ edit-tools.js; now
+  also via run-cache.js → gpu-volume-data.js → scene3d.js). They only
+  involve functions called after evaluation, so they work, but should be
+  untangled (follow-up).
 
 ---
 
