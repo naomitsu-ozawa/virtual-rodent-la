@@ -38,6 +38,24 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (3D keep mask, GPU air exclusion, builds 250-251)
+
+**Agent:** Claude
+**Task:** The owner's 3D screenshot showed the kept fat as streaks. The run was still too slow for device checks.
+
+### What changed
+- Build 250: `gpuRunsForTextureFootprint`, used for keep masks on reduced textures. A texel is kept
+  if any source voxel in its footprint is kept (tests in `tests/unit/keep-footprint.test.js`).
+- Build 251: new `airExclude` compute shader. It runs on the filtered block before the
+  analysis RLE and gives segment voxels with air (< segment min) within the ball a value
+  below min, so the RLE drops them. There is no body mask and no CPU pass for A. The block halo
+  grows by the ball's z radius, and the raw-DICOM RLE path is skipped when A is on. Results are memoized
+  per segment (`airRunsMemo`). If any block fails on the GPU, the CPU route (build 249) is used.
+- The status reads "処理完了 · Ns · GPU · …" on the GPU route.
+
+### Open questions / follow-up
+- Not checked on the device. B (thickness) is still CPU.
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region speed, build 249)
 
 **Agent:** Claude
