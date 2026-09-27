@@ -68,7 +68,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 
 ## Refactoring backlog
 
-Status as of build 231: `docs/app.js` is 2895 lines (5439 before the split
+Status as of build 232: `docs/app.js` is 2492 lines (5439 before the split
 began) with 378 top-level declarations and 90 top-level side-effect
 statements. Every move so far was mechanical and proven with
 `tools/verify-split.mjs`; keep that approach (`tools/closure.mjs` to size a
@@ -84,7 +84,8 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
   - [ ] Filter pipeline UI (`rebuildActiveFilters`; CPU filter kernels done:
         `cpu-filters.js`, build 230)
   - [ ] Segmentation UI and mesh building (done: `segment-runs.js`,
-        `surface-mesh.js`, `edit-tools.js`, `busy.js`, build 231; next `rebuildCurrent3D`,
+        `surface-mesh.js`, `edit-tools.js`, `busy.js`, build 231; `surface-build.js`,
+        build 232; next `rebuildCurrent3D`,
         `smoothIsosurfaceGeometry`)
   - [ ] Analysis / edit / cut tools (`updateCutPreview`,
         `cutRunsFromVoxelStroke`, `updateThreeEditUi`,
