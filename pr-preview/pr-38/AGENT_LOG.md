@@ -82,6 +82,12 @@ own modules first. Verbatim moves.
   rendered on release. Exact paths (unfiltered orthogonal planes cached as
   exact) keep refusing reduced textures.
 - CI has no GPU: WGSL parses; behaviour must be checked on the iPad.
+- Owner on build 223: still not following. Build 224 adds a diagnostic:
+  while a filtered slider moves, the footer shows the 2D image source
+  ("2D <plane> while sliding: filtered | filtered-gpu | filtered-preview |
+  original-preview | original | gpu N ms | gpu-read-empty | full-resolution
+  filter (GPU volume not used: <reason>)"). Use it to find the path on the
+  device before changing more.
 
 ### Next
 - Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
