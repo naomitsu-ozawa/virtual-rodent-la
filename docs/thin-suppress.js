@@ -1,8 +1,8 @@
 // Thin-region suppression for segments (IMPLEMENTATION_PLAN "Planned:
 // thin-region suppression"). Pure kernels, no module state.
 //
-// A. surfaceMm: drop segment voxels within this distance of air (below
-//    BODY_MIN_HU: outside the body, gut gas, lungs). Targets the partial-volume
+// A. surfaceMm: drop segment voxels within this distance of "air": values
+//    below the segment's lower bound (outside the body, gut gas, lungs). Targets the partial-volume
 //    rim at air boundaries (air + tissue averaging into the fat range).
 // B. thicknessMm: remove parts of the segment this thick or thinner
 //    (opening by a ball of radius thicknessMm/2, in mm, via distance fields).
@@ -175,8 +175,8 @@ export function* suppressThinStack(segSlice,bodySlice,w,h,d,spacing,opts,emit,{b
 
 // Full in-memory mask (Uint8 w*h*d) with source values for the body mask.
 export function suppressThinMask(mask,values,w,h,d,spacing,opts,tiling){
- const plane=w*h,out=new Uint8Array(mask.length);
- const bodySlice=z=>{const b=new Uint8Array(plane),base=z*plane;for(let i=0;i<plane;i++)b[i]=values[base+i]>=BODY_MIN_HU?1:0;return b};
+ const plane=w*h,out=new Uint8Array(mask.length),bodyMin=Number.isFinite(+opts.min)?+opts.min:BODY_MIN_HU;
+ const bodySlice=z=>{const b=new Uint8Array(plane),base=z*plane;for(let i=0;i<plane;i++)b[i]=values[base+i]>=bodyMin?1:0;return b};
  const it=suppressThinStack(z=>mask.subarray(z*plane,(z+1)*plane),bodySlice,w,h,d,spacing,opts,(z,s)=>out.set(s,z*plane),tiling);
  while(!it.next().done){}
  return out;

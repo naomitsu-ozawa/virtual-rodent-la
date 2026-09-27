@@ -62,7 +62,7 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Add size-limited hole filling and small-object removal
 - [ ] Add morphology tools where they materially improve bone continuity
 - [ ] Add manual brush / eraser correction
-- [x] Thin-region suppression for segments (builds 242-244; see
+- [x] Thin-region suppression for segments (builds 242-248; see
       "Thin-region suppression" below; check on a device)
 - [ ] Move heavy processing off the main UI thread where needed
 - [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module, UI shell, GPU compute, volume I/O; next: feature modules — see "Refactoring backlog")
@@ -158,11 +158,11 @@ As built (build 242, `thin-suppress.js`, unit-tested):
 
 - Both sliders exist on every segment and can be combined. Order: threshold,
   A, B, then Opening/Closing, Hole Filling and Min Component.
-- Air = voxels below -500 HU (`BODY_MIN_HU`). Since build 244, A uses all air.
-  Builds 242-243 used only air outside the body. The owner's data showed the same
-  1-voxel rim around gut gas, so enclosed air now counts too (fat right next
-  to the lungs is trimmed by the same depth). UI label: "空気との境界から除外".
-  Non-HU data: A has no effect.
+- Air = values below the segment's own lower bound (build 248). The fixed
+  -500 HU of builds 242-247 failed on the owner's data: the fat range lies below
+  -500 there, and the device diagnostics showed 0% of the fat inside that body mask,
+  so all fat was removed. Everything darker than the segment counts as air,
+  including the partial-volume voxels between air and fat.
 - CPU, block-wise (z blocks and 256² xy tiles, halo from the radii). Build
   243 replaced the distance transforms with exact ball stamping around
   boundary voxels, about 4× faster; the EDT is kept as the test reference.

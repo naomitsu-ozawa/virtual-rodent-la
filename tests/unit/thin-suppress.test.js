@@ -82,4 +82,14 @@ describe('thin-suppress', () => {
       for (const opts of [{ surfaceMm: sp[0] * 2.1, thicknessMm: 0 }, { surfaceMm: 0, thicknessMm: sp[0] * 3.1 }, { surfaceMm: sp[0] * 1.55, thicknessMm: sp[0] * 4.3 }])
         expect([...suppressThinBox(seg, ext, w, h, d, sp, opts)]).toEqual([...suppressThinBoxEdt(seg, ext, w, h, d, sp, opts)]);
   });
+
+  // owner's data: the fat range lies below -500, so a fixed HU air threshold
+  // put all fat on the air side (build 247); air is now "below the segment"
+  it('A uses the segment lower bound as the air threshold', () => {
+    const w = 12, h = 12, n = w * h, values = new Float32Array(n).fill(-1000);
+    for (let y = 2; y < 10; y++) for (let x = 2; x < 10; x++) values[y * w + x] = -700;
+    const seg = new Uint8Array(n); for (let i = 0; i < n; i++) seg[i] = values[i] >= -800 && values[i] <= -600 ? 1 : 0;
+    const out = suppressThinMask(seg, values, w, h, 1, [0.1, 0.1, 0.1], { min: -800, surfaceMm: 0.1, thicknessMm: 0 });
+    expect(count(out)).toBe(64 - 28);
+  });
 });
