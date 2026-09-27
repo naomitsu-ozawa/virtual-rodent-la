@@ -626,6 +626,24 @@ function gpuDilateRuns(runs,w,h,d,radius=1){
  }
  return rowsByZ.map(rows=>gpuRunRowMapToSlice(rows,w));
 }
+// Keep masks on a reduced texture: a texel is kept when any source voxel in its
+// footprint is kept (the nearest-sample mapping of gpuRunsForTexture reads one
+// source row per texel row, which dropped thin runs and drew kept voxels as streaks, build 248).
+export function gpuRunsForTextureFootprint(runs,sourceDims,textureDims){
+ const [sw,sh,sd]=sourceDims,[tw,th,td]=textureDims;
+ if(!runs)return null;
+ if(sw===tw&&sh===th&&sd===td)return runs;
+ const kx=tw<=1||sw<=1?0:(tw-1)/(sw-1),ky=th<=1||sh<=1?0:(th-1)/(sh-1),kz=td<=1||sd<=1?0:(td-1)/(sd-1);
+ const rowsByZ=Array.from({length:td},()=>new Map());
+ for(let z=0;z<sd;z++){
+  const rec=runs[z];if(!rec?.length)continue;const rows=rowsByZ[Math.min(td-1,Math.round(z*kz))];
+  for(let i=0;i<rec.length;i+=3){
+   const ty=Math.min(th-1,Math.round(rec[i]*ky)),tx0=Math.min(tw-1,Math.round(rec[i+1]*kx)),tx1=Math.min(tw-1,Math.round(rec[i+2]*kx));
+   let arr=rows.get(ty);if(!arr){arr=[];rows.set(ty,arr)}arr.push([tx0,tx1]);
+  }
+ }
+ return rowsByZ.map(rows=>gpuRunRowMapToSlice(rows,tw));
+}
 function gpuRunsForTexture(runs,sourceDims,textureDims,{dilate=0}={}){
  const [sw,sh,sd]=sourceDims,[tw,th,td]=textureDims;
  if(!runs)return null;
@@ -928,7 +946,7 @@ export class MedicalVolumeRenderer{
   const sourceDescs=segmentOrder.slice(0,4).map(key=>edits?.[key]||null);
   const descs=sourceDescs.map(desc=>{
    if(!desc?.runs)return null;
-   return{mode:desc.mode,runs:gpuRunsForTexture(desc.runs,sourceDims,gridDims,{dilate:this.reducedVolume&&desc.mode==='exclude'?1:0})};
+   return{mode:desc.mode,runs:desc.mode==='keep'?gpuRunsForTextureFootprint(desc.runs,sourceDims,gridDims):gpuRunsForTexture(desc.runs,sourceDims,gridDims,{dilate:this.reducedVolume&&desc.mode==='exclude'?1:0})};
   });
   const rowCount=h*d;let activeMask=0,keepMask=0,total=0;
   for(let si=0;si<descs.length;si++){
