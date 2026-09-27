@@ -38,6 +38,29 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region suppression, build 242)
+
+**Agent:** Claude
+**Task:** Owner asked for a way to ignore the thin membrane that the fat
+segment picks up over the body surface. Discussed and agreed: both A (exclude
+within N mm of the body surface) and B (remove parts N mm thick or thinner),
+selectable together, UI in mm.
+
+### What changed
+- New `docs/thin-suppress.js` (pure): exact EDT with spacing, per-slice exterior
+  air, box and block-wise stack kernels. Tests in `tests/unit/thin-suppress.test.js`.
+- Wired into `getProcessedSegmentMask` (in-memory) and `postprocessSourceRuns`
+  (source-backed, with body runs from `sourceBodyRuns`). Added to signatures,
+  the run-cache key, projects and the UI (2 sliders per segment card).
+- GPU volume view now shows post-processed segments as keep masks. This also
+  makes the existing Opening etc. visible in volume mode.
+
+### Open questions / follow-up
+- Not checked on a device (CI has no GPU). Check on the iPad with the owner's
+  1024×1024×1784 data: speed of the extra body pass and the EDT, and whether
+  the volume-view keep mask looks right on the reduced texture.
+- If CPU time is too slow, move the EDT to WebGPU (the plan's original idea).
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (hide slide diagnostic, build 241)
 
 **Agent:** Claude (Claude Code)

@@ -3,15 +3,15 @@
 // segment settings needs no re-filtering. Stored in the GPU volume cache
 // database (same LRU budget, cleared by the same "clear cache" button) as one
 // packed blob per entry. Browser storage can be evicted; this is only a cache.
-import { cacheKey } from './gpu-volume-cache.js?v=20260927-build241';
-import { datasetFingerprint } from './project-file.js?v=20260927-build241';
-import { volumeCache, volumeCacheBudget } from './gpu-volume-data.js?v=20260927-build241';
-import { RUNS_FORMAT, packRuns, unpackRuns } from './run-pack.js?v=20260927-build241';
+import { cacheKey } from './gpu-volume-cache.js?v=20260927-build242';
+import { datasetFingerprint } from './project-file.js?v=20260927-build242';
+import { volumeCache, volumeCacheBudget } from './gpu-volume-data.js?v=20260927-build242';
+import { RUNS_FORMAT, packRuns, unpackRuns } from './run-pack.js?v=20260927-build242';
 
 // Stable across sessions: dataset identity + filter + segment settings.
 export function segmentRunsCacheKey(series,filterSignature,seg){
  return cacheKey({kind:'segment-runs',runsFormat:RUNS_FORMAT,dataset:datasetFingerprint(series),filter:filterSignature||'',
-  segment:{min:seg.min,max:seg.max,opening:seg.opening,closing:seg.closing,minComponent:seg.minComponent,holeFill:!!seg.holeFill}});
+  segment:{min:seg.min,max:seg.max,opening:seg.opening,closing:seg.closing,minComponent:seg.minComponent,holeFill:!!seg.holeFill,surfaceMm:+seg.surfaceMm||0,thicknessMm:+seg.thicknessMm||0}});
 }
 export async function loadCachedSegmentRuns(key,slices){
  const cache=await volumeCache();if(!cache)return null;

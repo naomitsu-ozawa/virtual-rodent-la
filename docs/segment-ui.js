@@ -1,15 +1,15 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20260927-build241';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20260927-build241';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20260927-build241';
-import { dispose } from './surface-mesh.js?v=20260927-build241';
-import { request3DRender } from './scene3d.js?v=20260927-build241';
-import { renderAnalysisResults } from './analysis-results.js?v=20260927-build241';
-import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260927-build241';
-import { niceCtStep, formatCtValue } from './utils.js?v=20260927-build241';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260927-build241';
-import { renderAll } from './mpr-render.js?v=20260927-build241';
+import { mark3DStale } from './three-state.js?v=20260927-build242';
+import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20260927-build242';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20260927-build242';
+import { dispose } from './surface-mesh.js?v=20260927-build242';
+import { request3DRender } from './scene3d.js?v=20260927-build242';
+import { renderAnalysisResults } from './analysis-results.js?v=20260927-build242';
+import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260927-build242';
+import { niceCtStep, formatCtValue } from './utils.js?v=20260927-build242';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260927-build242';
+import { renderAll } from './mpr-render.js?v=20260927-build242';
 export function renderSegmentPresets(){
  const active=new Set(SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active));
  for(const key of SEGMENT_PRESET_ORDER){
@@ -29,6 +29,7 @@ export function addSegmentPreset(key){
  const enabled=$('[data-seg-enabled="'+key+'"]'),color=$('[data-seg-color="'+key+'"]'),min=$('[data-seg-min="'+key+'"]'),max=$('[data-seg-max="'+key+'"]'),opacity=$('[data-seg-opacity="'+key+'"]'),exportBtn=$('[data-seg-export="'+key+'"]'),removeBtn=$('[data-seg-remove="'+key+'"]'),opening=$('[data-seg-opening="'+key+'"]'),closing=$('[data-seg-closing="'+key+'"]'),minComponent=$('[data-seg-min-component="'+key+'"]'),holeFill=$('[data-seg-hole-fill="'+key+'"]');
  enabled.checked=true;enabled.disabled=false;color.disabled=false;min.disabled=false;max.disabled=false;opacity.disabled=false;
  opening.disabled=false;closing.disabled=false;minComponent.disabled=false;holeFill.disabled=false;
+ for(const [attr] of THIN_SLIDERS){const el=$('[data-seg-'+attr+'="'+key+'"]');if(el)el.disabled=false}
  if(exportBtn)exportBtn.disabled=true;if(removeBtn)removeBtn.disabled=false;
  renderSegmentPresets();renderAll();scheduleSegment3D();
 }
@@ -86,7 +87,26 @@ export function updateSegmentOutputs(key){
  $('[data-seg-min-out="'+key+'"]').value=formatCtValue(segmentState[key].min,+minEl?.step||1);
  $('[data-seg-max-out="'+key+'"]').value=formatCtValue(segmentState[key].max,+maxEl?.step||1);
  $('[data-seg-opacity-out="'+key+'"]').value=segmentState[key].opacity.toFixed(2);
+ for(const [attr,field] of THIN_SLIDERS){const out=$('[data-seg-'+attr+'-out="'+key+'"]');if(out)out.value=formatMmVoxels(segmentState[key][field])}
 }
+// Thin-region sliders hold mm; the step is one in-plane source voxel and the
+// output shows the voxel equivalent (see IMPLEMENTATION_PLAN).
+export const THIN_SLIDERS=[['surface-mm','surfaceMm',8],['thickness-mm','thicknessMm',16]];
+export function thinVoxelMm(v=volume){const s=v?.spacing||[1,1,1];return Math.max(1e-6,Math.min(+s[0]||1,+s[1]||1))}
+export function formatMmVoxels(mm){
+ mm=+mm||0;if(mm<=0)return '0';
+ const vox=thinVoxelMm(),digits=vox<.1?2:vox<1?1:0;
+ return mm.toFixed(digits+(vox<.01?1:0))+' mm ≈ '+Math.round(mm/vox)+' vox';
+}
+export function configureThinSliders(key,v){
+ const vox=thinVoxelMm(v),cfg=segmentState[key];
+ for(const [attr,field,maxVox] of THIN_SLIDERS){
+  const el=$('[data-seg-'+attr+'="'+key+'"]');if(!el)continue;
+  el.min='0';el.step=String(vox);el.max=String(vox*maxVox);
+  cfg[field]=Math.min(vox*maxVox,Math.max(0,+cfg[field]||0));el.value=String(cfg[field]);
+ }
+}
+export function thinSliderValue(el){const vox=thinVoxelMm();return Math.round((+el.value||0)/vox)*vox}
 export function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRenderTimer);incSourceRenderRevision(false);mark3DStale();if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){request3DRender();threeLabel.textContent=(sceneState.backend||'3D')+' · GPU volume'}}
 export function clearSegmentEditCache(key,clearEdits=false){
  const st=segmentEditState[key];if(!st)return;st.baseRuns=null;st.baseSignature='';st.finalRuns=null;st.pendingBase=null;

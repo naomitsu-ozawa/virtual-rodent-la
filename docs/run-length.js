@@ -1,7 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { morphMask } from './mask-ops.js?v=20260927-build241';
-import { frameYield } from './utils.js?v=20260927-build241';
+import { morphMask } from './mask-ops.js?v=20260927-build242';
+import { frameYield } from './utils.js?v=20260927-build242';
+import { thinSuppressActive, suppressThinStack } from './thin-suppress.js?v=20260927-build242';
 export class RunUnionFind{
  constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
  grow(){
@@ -240,9 +241,19 @@ export async function morphSourceRunArrays(runs,w,h,d,opening,closing){
  }
  return out;
 }
-export async function postprocessSourceRuns(runs,v,seg){
+// Thin-region suppression on runs, block-wise; bodyRuns (voxels at or above
+// BODY_MIN_HU) are needed only for the surface exclusion.
+export async function thinSuppressSourceRuns(runs,w,h,d,spacing,seg,bodyRuns){
+ const out=new Array(d),opts={surfaceMm:bodyRuns?seg.surfaceMm:0,thicknessMm:seg.thicknessMm};
+ if(!thinSuppressActive(opts))return runs;
+ const it=suppressThinStack(z=>runsSliceToMask(runs[z],w,h),z=>runsSliceToMask(bodyRuns[z],w,h),w,h,d,spacing,opts,(z,mask)=>{out[z]=maskToAnalysisRuns(mask,w,h,1)[0]},{blockDepth:navigator.maxTouchPoints>0?4:8});
+ while(!it.next().done)await frameYield();
+ return out;
+}
+export async function postprocessSourceRuns(runs,v,seg,bodyRuns=null){
  const w=v.columns,h=v.rows,d=v.slices;
- let out=await morphSourceRunArrays(runs,w,h,d,seg.opening,seg.closing);
+ let out=thinSuppressActive(seg)?await thinSuppressSourceRuns(runs,w,h,d,v.spacing||[1,1,1],seg,bodyRuns):runs;
+ out=await morphSourceRunArrays(out,w,h,d,seg.opening,seg.closing);
  if(seg.holeFill){
   const background=complementRunArrays(out,w,h,d),holes=componentsFromRuns(background,w,h,d).filter(comp=>!componentTouchesVolumeBoundary(comp,w,h,d));
   if(holes.length){const holeRuns=unionAnalysisRuns(holes,d);out=unionRunArrays(out,holeRuns,d)}
