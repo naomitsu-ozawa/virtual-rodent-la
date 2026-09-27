@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build269';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build270';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build269';
-import { isDesktopMac, frameYield } from './utils.js?v=20260927-build269';
-import { runsSliceToMask } from './run-length.js?v=20260927-build269';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build269';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build269';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build270';
+import { isDesktopMac, frameYield } from './utils.js?v=20260927-build270';
+import { runsSliceToMask } from './run-length.js?v=20260927-build270';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build270';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build270';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -173,7 +173,9 @@ export async function ensureGpuFilterDevice(){
 }
 const GPU_MAX_GROUPS=65535;
 // step-time accumulator for ?debug status lines (segment-runs.js resets and reads it)
-export const gpuStepTimes=new Map();
+export const gpuStepTimes=new Map(),gpuRunInfo={};
+// ?debug: wait for the GPU after the filter and distance passes to time them separately
+const GPU_TIMING_DEBUG=typeof location!=='undefined'&&/[?&]debug(\b|=|&|$)/.test(location.search);
 export function addGpuStepTime(name,ms){gpuStepTimes.set(name,(gpuStepTimes.get(name)||0)+ms)}
 export function gpuDispatch1D(pass,groups){pass.dispatchWorkgroups(Math.min(groups,GPU_MAX_GROUPS),Math.max(1,Math.ceil(groups/GPU_MAX_GROUPS)))}
 export async function gpuFilterPipeline(kind){
@@ -269,6 +271,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   const mb=gpuSmallBuffer(device,meta),counter=device.createBuffer({size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});small.push(mb);
   const countPipeline=await gpuFilterPipeline('analysisRunCount'),writePipeline=await gpuFilterPipeline('analysisRunWrite'),groups=Math.ceil(targetCount/gpuFilterRuntime.workgroupSize);
   const maxOut=Math.min(device.limits.maxStorageBufferBindingSize,device.limits.maxBufferSize||device.limits.maxStorageBufferBindingSize);
+  if(GPU_TIMING_DEBUG){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('gpu filters',performance.now()-t);encoder=device.createCommandEncoder({label:'VRL analysis after filters'})}
   const itemsList=[];let enc=encoder;
   // optional distance-to-air field (airLayers): the segments are then ranges of
   // squared distance, read from the field instead of the CT values
@@ -282,6 +285,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
    for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,open.n[axis],1],[0,1,open.spacing[axis],open.r2]);
    for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,open.n[axis],2],[0,1,open.spacing[axis],open.r2]);
   }
+  if(GPU_TIMING_DEBUG&&(airl||open)){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('gpu distance',performance.now()-t);encoder=device.createCommandEncoder({label:'VRL analysis after distance'});enc=encoder}
   const firstSrc=current;
   // distance layers: one class RLE pass for all layers instead of a count/write
   // round trip per layer (the ranges are consecutive: layer k = (max[k-1], max[k]])
