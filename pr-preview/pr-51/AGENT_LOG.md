@@ -38,6 +38,22 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region status and all-air rim, build 244)
+
+**Agent:** Claude
+**Task:** Owner, on the iPad with build 243: could not tell whether processing was running
+at all, and the 1-pixel rim was still there (in 2D also around gut gas). Asked for real
+progress reporting.
+
+### What changed
+- Per-segment status line in each segment card, fed by `ensureSegmentBaseRuns`
+  with phase-tagged progress (threshold / air mask / thin-region removal).
+- A now uses all air (skin, gut gas, lungs, holder), not only exterior air.
+
+### Open questions / follow-up
+- Still need the owner's timing on device. If it is minutes, move the kernels
+  to WebGPU.
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region suppression fix, build 243)
 
 **Agent:** Claude
