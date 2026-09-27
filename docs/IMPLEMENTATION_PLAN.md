@@ -191,6 +191,16 @@ As built (build 242, `thin-suppress.js`, unit-tested):
 
 ## Architecture rules
 
+- **No meshes in the GPU volume view.** The owner works in the volume view; a surface
+  mesh is built only on an explicit request ("メッシュで確認", STL export). In volume mode,
+  results reach the view through the volume shader (edit/keep/exclude masks,
+  the analysis overlay, the cut preview runs), never through a mesh fallback. Guard every
+  mesh-building call with the render mode. A run surface built in the background in
+  volume mode showed up as streaks (builds 248-253).
+- **Device checks are expensive** (large data, a reload resets everything). Trace the whole
+  code path before asking for one, and when the cause is unknown, ship
+  one diagnostics build instead of guessed fixes.
+
 - See `docs/AGENT_LOG.md` for a running record of AI-agent work sessions;
   read it before starting new work and append to it when finishing.
 - Do not commit per-build preview snapshot directories (`docs/preview-*`)
