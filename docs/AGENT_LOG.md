@@ -38,6 +38,42 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (untangle import cycles, build 239)
+
+**Agent:** Claude (Claude Code)
+**Task:** Remove the module import cycles noted in build 238.
+
+### Cause
+- One strongly connected component of 7 modules (scene3d, mpr-render,
+  mpr3d-overlay, edit-tools, segment-runs, run-cache, gpu-volume-data). Root:
+  the 3D status helpers appended to `scene3d.js` in build 232 import
+  `currentFilterSignature` (mpr-render.js) and `updateAnalysisEditorControls`
+  (edit-tools.js), while those modules import `request3DRender` from
+  scene3d.js.
+
+### What changed (verbatim moves; only import lists changed)
+- `scene3d.js` is a leaf again: `request3DRender` only.
+- New `three-status.js`: `gpuVolumeRefresh`, `updateVolumeFilterBadge`,
+  `set3DBusy` (no edit-tools dependency).
+- New `three-state.js`: `set3DState`, `mark3DStale`, `mark3DCurrent` (these
+  call `updateAnalysisEditorControls`; only high-level modules import them).
+- `currentFilterSignature` moved from mpr-render.js to source-filters.js.
+- New `tools/retarget-imports.mjs`: after moving exported declarations,
+  points every other module's import of them at the new module.
+  (`extract-module.mjs` refuses sources that already export.)
+- `verify-split HEAD docs/scene3d.js,docs/mpr-render.js,docs/source-filters.js
+  <all 5 files>` → OK, 67 statements.
+- New test `tests/static/no-import-cycles.test.js`: the docs/*.js module
+  graph must be a DAG and no module may import app.js.
+- Build 238 → 239.
+
+### Rule going forward
+- Keep leaf modules (state, ui-shell, scene3d, three-status, source-filters,
+  segments, …) free of imports from feature modules; the test enforces no
+  cycles.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (keep/delete all selected regions, build 236)
 
 **Agent:** Claude (Claude Code)
