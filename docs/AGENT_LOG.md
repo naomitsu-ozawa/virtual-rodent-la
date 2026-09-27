@@ -38,6 +38,20 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (hide slide diagnostic, build 241)
+
+**Agent:** Claude (Claude Code)
+**Task:** Hide the "2D <plane> while sliding: …" footer diagnostic added in
+builds 224–227.
+
+### What changed
+- `mpr-render.js` `reportSlidePath` writes the footer only when the page is
+  opened with `?debug` (`SLIDE_PATH_DEBUG`). Kept rather than removed so the
+  2D image source can still be checked on a device.
+- Build 240 → 241.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (break up start3D, build 240)
 
 **Agent:** Claude (Claude Code)
