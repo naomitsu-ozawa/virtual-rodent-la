@@ -1,5 +1,5 @@
 // Bump the deployed build marker everywhere it appears, in one step:
-//   docs/app.js (APP_VERSION / APP_BUILD), docs/version.json, and every
+//   docs/version.js (APP_VERSION / APP_BUILD), docs/version.json, and every
 //   `?v=YYYYMMDD-buildN` cache-busting query in docs/*.js and docs/index.html.
 //
 //   node tools/bump-build.mjs          # next build number, today's date
@@ -8,8 +8,8 @@
 // tests/static/build-consistency.test.js fails if any marker is left behind.
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 
-const app = readFileSync('docs/app.js', 'utf8');
-const current = app.match(/const APP_BUILD='([^']+)'/)[1];
+const versionJs = readFileSync('docs/version.js', 'utf8');
+const current = versionJs.match(/const APP_BUILD='([^']+)'/)[1];
 const build = process.argv[2] || String(Math.floor(Number(current)) + 1);
 const d = new Date();
 const ymd = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')];
@@ -20,7 +20,7 @@ for (const f of files) {
   let s = readFileSync(f, 'utf8');
   const before = s;
   s = s.replace(/\?v=[0-9]+-build[^'"&\s)]*/g, `?v=${tag}`); // includes free-form suffixes like -groupedcut1
-  if (f === 'docs/app.js') s = s.replace(/const APP_VERSION='[^']+';const APP_BUILD='[^']+';/, `const APP_VERSION='${version}';const APP_BUILD='${build}';`);
+  if (f === 'docs/version.js') s = s.replace(/const APP_VERSION='[^']+';/, `const APP_VERSION='${version}';`).replace(/const APP_BUILD='[^']+';/, `const APP_BUILD='${build}';`);
   if (s !== before) { writeFileSync(f, s); console.log('updated', f); }
 }
 writeFileSync('docs/version.json', JSON.stringify({ build, version }, null, 2) + '\n');
