@@ -62,6 +62,8 @@ This file reflects the current deployed DICOM viewer in `docs/app.js`.
 - [ ] Add size-limited hole filling and small-object removal
 - [ ] Add morphology tools where they materially improve bone continuity
 - [ ] Add manual brush / eraser correction
+- [ ] Thin-region suppression for segments (planned, not started; see
+      "Planned: thin-region suppression" below)
 - [ ] Move heavy processing off the main UI thread where needed
 - [ ] Split `docs/app.js` into modules (done: pure helpers, GPU shaders, state module, UI shell, GPU compute, volume I/O; next: feature modules — see "Refactoring backlog")
 - [x] Compressed DICOM Transfer Syntax support (implemented but untested on real
@@ -113,6 +115,44 @@ cluster, `tools/extract-module.mjs` to move it, one script per PR under
 - [ ] Look into `state.js` grouping: the 64 flat `let`s + setters work, but
       could later be grouped per feature once the feature modules exist
       (optional, low priority).
+
+## Planned: thin-region suppression
+
+Problem: fat (and other soft-tissue) segments often pick up a thin
+membrane over the whole body surface. Cause: partial volume at the
+skin/air boundary, where a voxel mixing air (about -1000 HU) and soft tissue
+(about +50 HU) averages into the fat range (about -100 HU).
+
+Two non-destructive per-segment settings, each one slider:
+
+- [ ] **A. Exclude near body surface (mm)**: build a body mask
+      (non-air), compute each voxel's distance inward from the body
+      surface, and drop segment voxels closer than the set distance
+      (e.g. 0.3 mm). This targets the cause, keeps internal thin fat such as
+      mesentery, and only trims subcutaneous fat by the same small depth.
+      Default on for the fat preset.
+- [ ] **B. Minimum thickness (mm)**: distance transform inside the
+      segment; remove parts where a ball of the given radius does not fit
+      (opening by a ball in mm, which does not round corners the way repeated
+      voxel Opening does). Removes thin structures anywhere, including
+      real thin tissue. Available on every segment.
+
+Design decisions:
+
+- The UI value is in mm; the kernels work in voxels. Reasons: the
+  "iPad GPU 512" reduced texture makes one display voxel equal about two source
+  voxels, so a voxel setting would differ between the volume view and the
+  full-resolution STL export; voxels are often anisotropic (slice spacing
+  is not pixel spacing), so one voxel is a different thickness per axis;
+  mm values carry across datasets, projects and presets.
+- Show the voxel equivalent next to the slider (for example "≈ 2 voxels").
+  The slider step is one source voxel.
+- Volume-only, following the owner workflow: GPU distance computation,
+  applied to the volume view and to volume analysis without meshes. Cache
+  the distance field per segment signature so moving the slider does
+  not recompute it. STL export uses the same setting.
+- Relation to the existing Opening: B is the mm-based, shape-preserving
+  version of it.
 
 ## Architecture rules
 
