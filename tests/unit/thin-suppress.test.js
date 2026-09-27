@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { edtSq, exteriorAirSlice, suppressThinBox, suppressThinMask, BODY_MIN_HU } from '../../docs/thin-suppress.js';
+import { suppressThinBoxEdt, edtSq, exteriorAirSlice, suppressThinBox, suppressThinMask, BODY_MIN_HU } from '../../docs/thin-suppress.js';
 
 const count = m => m.reduce((a, b) => a + b, 0);
 
@@ -69,5 +69,16 @@ describe('thin-suppress', () => {
       ext.set(exteriorAirSlice(b, w, h), z * plane);
     }
     expect([...tiled]).toEqual([...suppressThinBox(seg, ext, w, h, d, sp, opts)]);
+  });
+
+  // radii off the voxel lattice: the float32 reference rounds exact ties
+  it('boundary stamping equals the distance-transform reference', () => {
+    const w = 24, h = 20, d = 16, n = w * h * d;
+    let s = 11; const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const seg = new Uint8Array(n), ext = new Uint8Array(n);
+    for (let i = 0; i < n; i++) { const v = rnd(); ext[i] = v < 0.1 ? 1 : 0; seg[i] = !ext[i] && v < 0.75 ? 1 : 0; }
+    for (const sp of [[1, 1, 1], [0.05, 0.05, 0.08], [0.2, 0.3, 0.5]])
+      for (const opts of [{ surfaceMm: sp[0] * 2.1, thicknessMm: 0 }, { surfaceMm: 0, thicknessMm: sp[0] * 3.1 }, { surfaceMm: sp[0] * 1.55, thicknessMm: sp[0] * 4.3 }])
+        expect([...suppressThinBox(seg, ext, w, h, d, sp, opts)]).toEqual([...suppressThinBoxEdt(seg, ext, w, h, d, sp, opts)]);
   });
 });

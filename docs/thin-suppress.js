@@ -10,7 +10,8 @@
 // Settings are in mm, kernels work in voxels using the voxel spacing, so the
 // result is the same for reduced display textures and full-resolution export,
 // and on anisotropic voxels. Processing is block-wise (z blocks, xy tiles)
-// so memory stays bounded on large source-backed volumes.
+// so memory stays bounded on large source-backed volumes. The work is done by
+// stamping balls around boundary voxels (exact; see stampBoundary).
 
 // Voxels at or above this value count as body; air outside the body is below.
 export const BODY_MIN_HU=-500;
@@ -58,11 +59,11 @@ function dt1(f,n,s2,g,v,z){
 // Enclosed air (lungs, trachea, gut gas) is not exterior, so fat next to
 // the lungs is not trimmed.
 export function exteriorAirSlice(body,w,h){
- const out=new Uint8Array(w*h),stack=[];
- const push=i=>{if(!body[i]&&!out[i]){out[i]=1;stack.push(i)}};
+ const out=new Uint8Array(w*h),stack=new Int32Array(w*h);let top=0;
+ const push=i=>{if(!body[i]&&!out[i]){out[i]=1;stack[top++]=i}};
  for(let x=0;x<w;x++){push(x);push((h-1)*w+x)}
  for(let y=0;y<h;y++){push(y*w);push(y*w+w-1)}
- while(stack.length){const i=stack.pop(),y=(i/w)|0,x=i-y*w;if(x>0)push(i-1);if(x<w-1)push(i+1);if(y>0)push(i-w);if(y<h-1)push(i+w)}
+ while(top){const i=stack[--top],y=(i/w)|0,x=i-y*w;if(x>0)push(i-1);if(x<w-1)push(i+1);if(y>0)push(i-w);if(y<h-1)push(i+w)}
  return out;
 }
 
@@ -73,8 +74,56 @@ export function thinSuppressHalo(spacing,seg){
  return[axis(sx),axis(sy),axis(sz)];
 }
 
+// Row spans of an ellipsoid ball (squared radius r2 in mm²): [dy,dz,hx]
+// means x offsets -hx..hx on row (dy,dz).
+export function ballSpans(r2,sx,sy,sz){
+ const out=[],r=Math.sqrt(r2),ny=Math.floor(r/sy+1e-9),nz=Math.floor(r/sz+1e-9);
+ for(let dz=-nz;dz<=nz;dz++)for(let dy=-ny;dy<=ny;dy++){
+  const rest=r2-(dy*sy)**2-(dz*sz)**2;if(rest<-1e-9)continue;
+  out.push(dy,dz,Math.floor(Math.sqrt(Math.max(0,rest))/sx+1e-9));
+ }
+ return out;
+}
+// Write val over the ball around every feature voxel that has a non-feature
+// 6-neighbour in the box. The nearest feature voxel to any non-feature voxel
+// is such a boundary voxel, so this marks exactly the voxels within the ball
+// radius of the feature set (the same result as a distance transform, at a
+// cost proportional to the boundary, not the volume).
+function stampBoundary(feature,target,w,h,d,spans,val){
+ const plane=w*h;
+ for(let z=0;z<d;z++)for(let y=0;y<h;y++){
+  const row=z*plane+y*w;
+  for(let x=0;x<w;x++){
+   const i=row+x;if(!feature[i])continue;
+   if(!((x>0&&!feature[i-1])||(x<w-1&&!feature[i+1])||(y>0&&!feature[i-w])||(y<h-1&&!feature[i+w])||(z>0&&!feature[i-plane])||(z<d-1&&!feature[i+plane])))continue;
+   for(let k=0;k<spans.length;k+=3){
+    const yy=y+spans[k],zz=z+spans[k+1];if(yy<0||yy>=h||zz<0||zz>=d)continue;
+    const hx=spans[k+2],base=zz*plane+yy*w;target.fill(val,base+Math.max(0,x-hx),base+Math.min(w-1,x+hx)+1);
+   }
+  }
+ }
+}
 // One box: seg and exterior are box-sized Uint8 arrays. Returns a new mask.
+// A: drop voxels within surfaceMm of exterior air. B: opening by a ball of
+// radius thicknessMm/2 (erode, then dilate back, within the original).
 export function suppressThinBox(seg,exterior,w,h,d,spacing,opts){
+ const [sx,sy,sz]=spacing,a=Math.max(0,+opts.surfaceMm||0),r=Math.max(0,+opts.thicknessMm||0)/2,n=w*h*d;
+ const m=new Uint8Array(seg);
+ if(a>0&&exterior){
+  for(let i=0;i<n;i++)if(exterior[i])m[i]=0;
+  stampBoundary(exterior,m,w,h,d,ballSpans(a*a,sx,sy,sz),0);
+ }
+ if(r>0){
+  const spans=ballSpans(r*r,sx,sy,sz),inv=new Uint8Array(n);
+  for(let i=0;i<n;i++)inv[i]=m[i]?0:1;
+  const core=new Uint8Array(m);stampBoundary(inv,core,w,h,d,spans,0);
+  const open=new Uint8Array(core);stampBoundary(core,open,w,h,d,spans,1);
+  for(let i=0;i<n;i++)if(m[i]&&!open[i])m[i]=0;
+ }
+ return m;
+}
+// Reference implementation with exact distance transforms (tests only).
+export function suppressThinBoxEdt(seg,exterior,w,h,d,spacing,opts){
  const [sx,sy,sz]=spacing,a=Math.max(0,+opts.surfaceMm||0),r=Math.max(0,+opts.thicknessMm||0)/2,n=w*h*d;
  const m=new Uint8Array(seg);
  if(a>0&&exterior){

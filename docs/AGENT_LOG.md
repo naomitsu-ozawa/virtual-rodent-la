@@ -38,6 +38,26 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region suppression fix, build 243)
+
+**Agent:** Claude
+**Task:** On the iPad with the owner's large data, build 242 did not remove the
+surface shell, and the browser crashed.
+
+### What changed
+- Measured in node on 1024² slices: memory was fine (about 100 MB extra), but the
+  EDT kernels took 170-560 ms per slice (about 5-17 min for 1784 slices). Each
+  slider release started a new pass, and earlier passes kept running.
+- Kernels now stamp balls around boundary voxels. The result is exactly the same as
+  the EDT (tested against it) and it is about 4× faster. The exterior flood uses a typed stack.
+- Base-run computations stop at block boundaries once the segment signature
+  changes (`alive` passed through `sourceRunsForSegment` and `postprocessSourceRuns`).
+- Thickness slider max 16 → 8 voxels.
+
+### Open questions / follow-up
+- Still CPU: roughly minutes on the iPad for the full volume. If that is too slow,
+  move A to the GPU (per-slice work suits compute shaders).
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-region suppression, build 242)
 
 **Agent:** Claude
