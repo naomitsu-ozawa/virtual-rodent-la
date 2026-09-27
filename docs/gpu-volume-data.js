@@ -1,16 +1,16 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260927-build252';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260927-build252';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260927-build252';
-import { request3DRender } from './scene3d.js?v=20260927-build252';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260927-build252';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260927-build252';
-import { tr } from './i18n.js?v=20260927-build252';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260927-build252';
-import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build252';
-import { datasetFingerprint } from './project-file.js?v=20260927-build252';
-import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260927-build252';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260927-build253';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260927-build253';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260927-build253';
+import { request3DRender } from './scene3d.js?v=20260927-build253';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260927-build253';
+import { subtractRunArrays, intersectRunArrays, unionRunArrays } from './run-length.js?v=20260927-build253';
+import { tr } from './i18n.js?v=20260927-build253';
+import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260927-build253';
+import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build253';
+import { datasetFingerprint } from './project-file.js?v=20260927-build253';
+import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260927-build253';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
@@ -71,8 +71,13 @@ export function gpuVolumeEditDescriptors(v=sourceVolume||volume){
  const out={};if(!v)return out;
  for(const key of SEGMENT_PRESET_ORDER){
   const st=segmentEditState[key],seg=segmentState[key];if(!st)continue;
-  // post-processed segments (Opening, thin-region suppression, ...): the
-  // volume shader only thresholds, so show the processed voxels as a keep mask
+  // post-processed segments: hide only the voxels the processing removed
+  // (exclude mask, small). A keep mask of the whole segment cut the interior
+  // along the reduced texture's texels and drew it as streaks (build 252).
+  if(seg?.active&&seg.enabled&&segmentNeedsGlobalMask(seg)&&!st.keepRuns&&st.removedRuns?.length===v.slices){
+   out[key]={mode:'exclude',runs:st.excludeRuns?unionRunArrays(st.removedRuns,st.excludeRuns,v.slices):st.removedRuns,cutRuns:st.cutRuns};continue;
+  }
+  // otherwise (user keep edits, or no unprocessed runs known): keep mask
   if(seg?.active&&seg.enabled&&segmentNeedsGlobalMask(seg)&&st.baseRuns?.length===v.slices){
    let runs=st.keepRuns?intersectRunArrays(st.baseRuns,st.keepRuns,v.slices):st.baseRuns;
    if(st.excludeRuns)runs=subtractRunArrays(runs,st.excludeRuns,v.slices);

@@ -3,10 +3,10 @@
 // segment settings needs no re-filtering. Stored in the GPU volume cache
 // database (same LRU budget, cleared by the same "clear cache" button) as one
 // packed blob per entry. Browser storage can be evicted; this is only a cache.
-import { cacheKey } from './gpu-volume-cache.js?v=20260927-build252';
-import { datasetFingerprint } from './project-file.js?v=20260927-build252';
-import { volumeCache, volumeCacheBudget } from './gpu-volume-data.js?v=20260927-build252';
-import { RUNS_FORMAT, packRuns, unpackRuns } from './run-pack.js?v=20260927-build252';
+import { cacheKey } from './gpu-volume-cache.js?v=20260927-build253';
+import { datasetFingerprint } from './project-file.js?v=20260927-build253';
+import { volumeCache, volumeCacheBudget } from './gpu-volume-data.js?v=20260927-build253';
+import { RUNS_FORMAT, packRuns, unpackRuns } from './run-pack.js?v=20260927-build253';
 
 // Stable across sessions: dataset identity + filter + segment settings.
 export function segmentRunsCacheKey(series,filterSignature,seg){
