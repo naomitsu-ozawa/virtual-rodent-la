@@ -102,6 +102,13 @@ own modules first. Verbatim moves.
   step by step. Build 226: when the GPU volume holds the current filters,
   every drag step uses only the GPU read (latest-only per plane); the other
   instant sources are used only when it is unavailable.
+- Build 226 on the iPad: occasional flicker while sliding; jerky only in the
+  2D-only layout after the section view was shown in 3D (split layout is
+  smooth); slider thumb and finger/pen drift apart (open question: also on
+  build 221? slower than the finger, or lagging?). Build 227: the 3D render
+  loop skips frames while the 3D viewport has no size (2D-only layout) and
+  keeps the request until it is shown; footer now shows "gpu read N ms ·
+  paint M ms" to measure the 2D path on the device.
 
 ### Next
 - Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
