@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { wc, ww, planes, footer, state } from './ui-shell.js?v=20260927-build224';
-import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build224';
-import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane } from './state.js?v=20260927-build224';
-import { analysisRunsContain } from './run-length.js?v=20260927-build224';
-import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast } from './mpr3d-overlay.js?v=20260927-build224';
-import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20260927-build224';
-import { request3DRender } from './scene3d.js?v=20260927-build224';
-import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet } from './source-filters.js?v=20260927-build224';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20260927-build224';
-import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20260927-build224';
-import { hexRgb } from './utils.js?v=20260927-build224';
+import { wc, ww, planes, footer, state } from './ui-shell.js?v=20260927-build225';
+import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build225';
+import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane } from './state.js?v=20260927-build225';
+import { analysisRunsContain } from './run-length.js?v=20260927-build225';
+import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast } from './mpr3d-overlay.js?v=20260927-build225';
+import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20260927-build225';
+import { request3DRender } from './scene3d.js?v=20260927-build225';
+import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet } from './source-filters.js?v=20260927-build225';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20260927-build225';
+import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20260927-build225';
+import { hexRgb } from './utils.js?v=20260927-build225';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { latestOnlyRunner } from './latest-runner.js?v=20260927-build224';
+import { latestOnlyRunner } from './latest-runner.js?v=20260927-build225';
 export function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
 export function drawAnalysisOverlay(p,idx,ctx){
  if(!volumeAnalysisMode||!analysisRegions.length||!ctx)return;
@@ -114,7 +114,10 @@ export const gpuSlidePreviewRunners=Object.fromEntries(['axial','coronal','sagit
  if(revision!==planeRenderRevision[p])return;
  paintSourcePlane(planes[p],result.dims,result.values,p,idx);reportSlidePath(p,'gpu '+Math.round(performance.now()-t0)+' ms');
 },e=>{if(String(e.message||e)!=='__SUPERSEDED__')console.warn('GPU slide preview failed.',e)})]));
-function gpuSlidePreviewAvailable(){const target=sourceVolume||volume;return!!target?.sourceBacked&&gpuVolumeShowsCurrentFilters()&&residentGpuMprAvailable(target)}
+// Not gated on residentGpuMprAvailable: that flag is also set on purpose for
+// reduced textures (exact readback must not use them), which is exactly the
+// iPad case this preview is for; it never caches its values as exact.
+function gpuSlidePreviewAvailable(){const target=sourceVolume||volume;return!!target?.sourceBacked&&gpuVolumeShowsCurrentFilters()&&!!sceneState?.medicalVolume?.hasResident?.(target)}
 // Diagnostic for device checks (CI has no GPU): while a filtered slider moves,
 // the footer names the source of the 2D image, or why the GPU volume was not used.
 function gpuSlideUnavailableReason(){
@@ -123,7 +126,6 @@ function gpuSlideUnavailableReason(){
  if(!mv?.texture)return'no GPU volume';
  if(!mv.hasResident?.(target))return'GPU volume is another series';
  if((mv.dataSignature||'')!==currentFilterSignature())return'GPU volume filters differ ('+(mv.dataSignature?'other filters':'unfiltered')+')';
- if(!residentGpuMprAvailable(target))return'GPU readback disabled after an error';
  return'?';
 }
 function reportSlidePath(p,path){footer.textContent='2D '+p+' while sliding: '+path}
