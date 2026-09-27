@@ -1,15 +1,15 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20260927-build255';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20260927-build255';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20260927-build255';
-import { dispose } from './surface-mesh.js?v=20260927-build255';
-import { request3DRender } from './scene3d.js?v=20260927-build255';
-import { renderAnalysisResults } from './analysis-results.js?v=20260927-build255';
-import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260927-build255';
-import { niceCtStep, formatCtValue } from './utils.js?v=20260927-build255';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260927-build255';
-import { renderAll } from './mpr-render.js?v=20260927-build255';
+import { mark3DStale } from './three-state.js?v=20260927-build256';
+import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20260927-build256';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20260927-build256';
+import { dispose } from './surface-mesh.js?v=20260927-build256';
+import { request3DRender } from './scene3d.js?v=20260927-build256';
+import { renderAnalysisResults } from './analysis-results.js?v=20260927-build256';
+import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260927-build256';
+import { niceCtStep, formatCtValue } from './utils.js?v=20260927-build256';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260927-build256';
+import { renderAll } from './mpr-render.js?v=20260927-build256';
 export function renderSegmentPresets(){
  const active=new Set(SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active));
  for(const key of SEGMENT_PRESET_ORDER){
@@ -111,7 +111,7 @@ export function scheduleSegment3D(){if(!volume)return;clearTimeout(segmentRender
 export function clearSegmentEditCache(key,clearEdits=false){
  const st=segmentEditState[key];if(!st)return;
  // a removed or reset segment must not leave its run surface in the scene
- if(clearEdits&&st.surfaceGroup){const old=st.surfaceGroup;if(old.parent)old.parent.remove(old);dispose(old);st.surfaceGroup=null;request3DRender()}st.baseRuns=null;st.baseSignature='';st.finalRuns=null;st.pendingBase=null;st.removedRuns=null;
+ if(clearEdits&&st.surfaceGroup){const old=st.surfaceGroup;if(old.parent)old.parent.remove(old);dispose(old);st.surfaceGroup=null;request3DRender()}st.baseRuns=null;st.baseSignature='';st.finalRuns=null;st.pendingBase=null;
  if(clearEdits){st.keepRuns=null;st.excludeRuns=null;st.cutRuns=null;st.rawCutSurface=false;st.undo=[];st.redo=[];st.revision=0}
 }
 export function clearAnalysisHighlight(){
