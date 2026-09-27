@@ -38,6 +38,25 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (no mesh in volume view; revert 250/253, builds 254-256)
+
+**Agent:** Claude
+**Task:** The 3D "streaks" were a run-surface mesh built in the background in the volume
+view (`prepareSourceSegmentPostprocess` → `refreshEditedSegmentSurface`), and it stayed after
+the segment was removed. Builds 250 (keep-mask footprint mapping) and 253 (exclude mask of
+removed voxels, GPU failure reason) were aimed at the wrong cause. The owner asked for them to be removed.
+
+### What changed
+- Build 254: no run surface in volume mode; a removed segment's surface group is disposed.
+- Build 255: the analysis overlay no longer falls back to meshes in volume mode (it reports the error).
+  The no-mesh rule and the device-check rule were added to the architecture rules.
+- Build 256: reverted builds 250 and 253, including build 252's tweak of the footprint mapping.
+  Build 252's run sorting, resync and "3D反映済み" status stay.
+
+### Lesson
+- Follow the owner's rules (no meshes in the volume view). Trace every path before asking
+  for a device check (large data; a reload resets everything).
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (3D keep mask, GPU air exclusion, builds 250-251)
 
 **Agent:** Claude
