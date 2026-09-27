@@ -63,6 +63,26 @@ own modules first. Verbatim moves.
 - Exact commands: `tools/split-history/phase2d-part2-step3.sh`.
 - Build 221 → 222.
 
+### Same PR, build 223: 2D slices lag behind the slider with filters (iPad)
+- Owner (pre-existing, same on build 221; reported before): with filters on,
+  2D slices do not follow the slider, update only a while after release,
+  and sometimes not at all; the 3D view follows in real time.
+- Cause: the instant image while sliding (`paintInstantPlaneWhileSliding`)
+  uses the GPU volume only through its CPU preview copy, which the reduced
+  iPad texture plan does not have, and `extractPlane` refused reduced
+  textures because `mprPlaneShader` read source voxel coordinates directly.
+  So on iPad each drag step fell back to filtering a full-resolution slice.
+- Fix: `mprPlaneShader.huAt` maps source voxels to the nearest texel of the
+  texture (`textureDimensions`; identity at full resolution).
+  `extractPlane(..., {allowReduced})` reads reduced textures only when asked.
+  `gpuSlidePreviewRunners` (mpr-render.js): while a filtered plane's slider
+  moves and nothing instant is cached, read the plane from the GPU volume
+  when it holds the current filters (`gpuVolumeShowsCurrentFilters`), one
+  latest-only read per plane; the full-resolution filtered slice is still
+  rendered on release. Exact paths (unfiltered orthogonal planes cached as
+  exact) keep refusing reduced textures.
+- CI has no GPU: WGSL parses; behaviour must be checked on the iPad.
+
 ### Next
 - Remaining feature areas in app.js (see the plan's "Refactoring backlog"):
   filter pipeline UI, segmentation UI + mesh building, analysis/edit/cut

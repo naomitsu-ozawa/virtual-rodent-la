@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { wc, ww, planes, footer, state } from './ui-shell.js?v=20260927-build222';
-import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build222';
-import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane } from './state.js?v=20260927-build222';
-import { analysisRunsContain } from './run-length.js?v=20260927-build222';
-import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast } from './mpr3d-overlay.js?v=20260927-build222';
-import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20260927-build222';
-import { request3DRender } from './scene3d.js?v=20260927-build222';
-import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet } from './source-filters.js?v=20260927-build222';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20260927-build222';
-import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20260927-build222';
-import { hexRgb } from './utils.js?v=20260927-build222';
+import { wc, ww, planes, footer, state } from './ui-shell.js?v=20260927-build223';
+import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260927-build223';
+import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane } from './state.js?v=20260927-build223';
+import { analysisRunsContain } from './run-length.js?v=20260927-build223';
+import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast } from './mpr3d-overlay.js?v=20260927-build223';
+import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20260927-build223';
+import { request3DRender } from './scene3d.js?v=20260927-build223';
+import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet } from './source-filters.js?v=20260927-build223';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20260927-build223';
+import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20260927-build223';
+import { hexRgb } from './utils.js?v=20260927-build223';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { latestOnlyRunner } from './latest-runner.js?v=20260927-build222';
+import { latestOnlyRunner } from './latest-runner.js?v=20260927-build223';
 export function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
 export function drawAnalysisOverlay(p,idx,ctx){
  if(!volumeAnalysisMode||!analysisRegions.length||!ctx)return;
@@ -103,6 +103,17 @@ export function perSliceFilteredActive(){return!!sourceFilterStages().length&&(m
 export const filteredPlaneRunners=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,latestOnlyRunner(async()=>{
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];await renderPlane(p,revision,idx);
 },e=>{if(String(e.message||e)!=='__SUPERSEDED__')console.warn('MPR render failed.',e)})]));
+// While a filtered plane's slider moves and nothing instant is cached, read the
+// plane from the GPU volume when its texture holds the current filters (the
+// same data the 3D view shows; reduced resolution on iPad). One latest-only
+// read per plane; the full-resolution filtered slice is rendered on release.
+export const gpuSlidePreviewRunners=Object.fromEntries(['axial','coronal','sagittal'].map(p=>[p,latestOnlyRunner(async()=>{
+ const idx=+planes[p].slider.value,revision=++planeRenderRevision[p],target=sourceVolume||volume,mv=sceneState?.medicalVolume;
+ const result=await mv?.extractPlane?.(target,p,idx,{allowReduced:true});
+ if(!result?.values||revision!==planeRenderRevision[p])return;
+ paintSourcePlane(planes[p],result.dims,result.values,p,idx);
+},e=>{if(String(e.message||e)!=='__SUPERSEDED__')console.warn('GPU slide preview failed.',e)})]));
+function gpuSlidePreviewAvailable(){const target=sourceVolume||volume;return!!target?.sourceBacked&&gpuVolumeShowsCurrentFilters()&&residentGpuMprAvailable(target)}
 export function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value;planes[p].label.textContent=idx+1;syncMpr3DSliceSliders();
@@ -115,7 +126,7 @@ export function schedulePlaneRender(p,immediate=false){
  if(!immediate&&perSliceFilteredActive()){
   // an instant image supersedes any older slice still being filtered (bumping
   // the revision makes that render skip its paint)
-  if(paintInstantPlaneWhileSliding(p,idx))planeRenderRevision[p]++;else filteredPlaneRunners[p]();
+  if(paintInstantPlaneWhileSliding(p,idx))planeRenderRevision[p]++;else if(gpuSlidePreviewAvailable())gpuSlidePreviewRunners[p]();else filteredPlaneRunners[p]();
   return;
  }
  const revision=++planeRenderRevision[p];
