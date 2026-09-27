@@ -38,6 +38,37 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (phase 2d part 3, step 1, build 231)
+
+**Agent:** Claude (Claude Code)
+**Task:** Segmentation/mesh area. Verbatim moves.
+
+### Finding
+- `set3DState` (called by `mark3DCurrent`/`mark3DStale` from every 3D
+  build) ends with `updateAnalysisEditorControls()`, whose closure (37 decls)
+  is the hub that tied the 3D build and the filter UI to the edit/cut tools.
+  Moving that cluster out first shrinks the rest.
+
+### What changed
+- `docs/busy.js`: `setProcessingBusy`.
+- `docs/segment-runs.js` (11): per-segment runs for source-backed and
+  in-memory volumes (`ensureSegmentBaseRuns`, `getFinalSegmentRuns`,
+  `sourceRunsForSegment`, GPU/CPU block extraction, `segmentBaseSignature`).
+- `docs/surface-mesh.js` (8): isosurface smoothing, Taubin, geometry from
+  positions, editable runs group, strong-smoothing consolidation, `dispose`.
+- `docs/edit-tools.js` (17): edit/cut UI (`updateAnalysisEditorControls`,
+  `updateThreeEditUi`, cut preview/result preview, cut stroke geometry,
+  control readouts, `analysisRegionById`).
+- app.js 3621 → 2895 lines. `verify-split HEAD docs/app.js docs/app.js
+  docs/busy.js docs/segment-runs.js docs/surface-mesh.js docs/edit-tools.js`
+  → OK, 368 statements verbatim; no non-primitive consts moved.
+- Closures after the move: `render3D` 69 → 32 decls, `rebuildCurrent3D`
+  100 → 63, `rebuildActiveFilters` 112 → 59.
+- Exact commands: `tools/split-history/phase2d-part3-step1.sh`.
+- Build 230 → 231.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (CPU filter kernels, build 230)
 
 **Agent:** Claude (Claude Code)
