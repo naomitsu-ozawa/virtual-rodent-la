@@ -52,6 +52,8 @@ export async function openVolumeCache({indexedDB=globalThis.indexedDB,now=()=>Da
    };
   },
   remove,
+  // all entries (settings > cache list, auto-prune of old filter settings)
+  list:entries,
   async usage(){return(await entries()).reduce((a,e)=>a+(e.bytes||0),0)},
   // drop stale incomplete entries, then least recently used ones over budget
   async prune(budgetBytes,{keep=null,staleMs=10*60*1000}={}){
@@ -87,4 +89,13 @@ export async function textureCacheHandle(cache,key,{slices,bytesPerSlice,info}){
   async commit(){if(broken)return false;try{await writer.commit();return true}catch{broken=true;await writer.abort();return false}},
   async abort(){if(writer)await writer.abort()},
  };
+}
+
+// settings > cache > auto-prune (build 296): entries of the same dataset (and
+// the same 3D resolution for volumes) made with another filter setting are
+// dropped when a new one is stored. Entries without this info (older builds)
+// are left to the LRU budget.
+export async function pruneOtherFilterSettings(cache,{kind,dataset,plan=null,filter},keep){
+ if(globalThis.__vrlSettings?.get?.('cacheAutoPrune')===false)return;
+ try{for(const e of await cache.list()){const i=e.info||{};if(e.key!==keep&&i.kind===kind&&i.dataset===dataset&&(plan==null||i.plan===plan)&&i.filter!=null&&i.filter!==filter)await cache.remove(e.key)}}catch(e){console.warn('Cache auto-prune failed.',e)}
 }
