@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { currentLanguage, setCurrentLanguage } from './state.js?v=20260928-build295';
+import { currentLanguage, setCurrentLanguage } from './state.js?v=20260928-build296';
 export const I18N={
  ja:{
   subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
@@ -8,7 +8,7 @@ export const I18N={
   demo:'公開マウスCTデモ',openFolder:'DICOMフォルダを開く',
   dataset:'データセット',series:'DICOMシリーズ',selectData:'データを選択してください',
   selectDataHelp:'ローカルフォルダ、または約20.8MBの公開マウスPET/CTデモを利用できます。',
-  settingsTitle:'設定',setInterp:'補間',iNone:'なし（画素そのまま）',iLinear:'線形',iSmooth:'なめらか',iSmoother:'よりなめらか',settingsTabRender:'描画',settingsTabDebug:'デバッグ',setGpuSide:'3D解像度',setDrag:'操作中の画質',setRest:'止めたときの画質',setStep:'描画の細かさ',setShowPerf:'描画時間・fpsを表示',setDebug:'デバッグモード（?debug と同じ）',setDebugNote:'処理時間の内訳などをステータスに表示します。',qLow:'低',qStandard:'標準',qHigh:'高',qMax:'最高（制限なし）',qCoarse:'粗い（速い）',qFine:'細かい（重い）',setSaved:'設定はこの端末に保存されます。',volumeCacheClear:'キャッシュ削除',volumeCacheConfirm:'この端末に保存したGPUボリュームのキャッシュを削除しますか？',volumeCacheLoaded:'GPUボリューム: キャッシュから読み込みました',volumeCacheCleared:'GPUボリュームのキャッシュを削除しました',
+  settingsTitle:'設定',settingsTabCache:'キャッシュ',setCacheAuto:'今のフィルター設定のキャッシュだけ残す（同じデータ・解像度の古い設定は自動削除）',setCacheLimit:'キャッシュの上限',cacheAuto:'自動（最大4GB）',cacheEmpty:'キャッシュはありません',cacheDelete:'削除',cacheVolume:'3Dデータ',cacheRuns:'セグメント結果',cacheTotal:'合計',setInterp:'補間',iNone:'なし（画素そのまま）',iLinear:'線形',iSmooth:'なめらか',iSmoother:'よりなめらか',settingsTabRender:'描画',settingsTabDebug:'デバッグ',setGpuSide:'3D解像度',setDrag:'操作中の画質',setRest:'止めたときの画質',setStep:'描画の細かさ',setShowPerf:'描画時間・fpsを表示',setDebug:'デバッグモード（?debug と同じ）',setDebugNote:'処理時間の内訳などをステータスに表示します。',qLow:'低',qStandard:'標準',qHigh:'高',qMax:'最高（制限なし）',qCoarse:'粗い（速い）',qFine:'細かい（重い）',setSaved:'設定はこの端末に保存されます。',volumeCacheClear:'キャッシュ削除',volumeCacheConfirm:'この端末に保存したGPUボリュームのキャッシュを削除しますか？',volumeCacheLoaded:'GPUボリューム: キャッシュから読み込みました',volumeCacheCleared:'GPUボリュームのキャッシュを削除しました',
   mprPlaneOpacity:'不透明度',
   projectSave:'プロジェクト保存',projectOpen:'プロジェクトを開く',
   volumeFilterPending:'ボリュームはフィルター未反映 ·「3D再構築」で反映',
@@ -35,7 +35,7 @@ export const I18N={
   demo:'Public mouse CT demo',openFolder:'Open DICOM folder',
   dataset:'DATASET',series:'DICOM Series',selectData:'Select data',
   selectDataHelp:'Use a local folder or the approximately 20.8 MB public mouse PET/CT demo.',
-  settingsTitle:'Settings',setInterp:'Interpolation',iNone:'None (nearest)',iLinear:'Linear',iSmooth:'Smooth',iSmoother:'Smoother',settingsTabRender:'Rendering',settingsTabDebug:'Debug',setGpuSide:'3D resolution',setDrag:'Quality while dragging',setRest:'Quality at rest',setStep:'Ray step',setShowPerf:'Show frame time / fps',setDebug:'Debug mode (same as ?debug)',setDebugNote:'Shows timing breakdowns in the status lines.',qLow:'Low',qStandard:'Standard',qHigh:'High',qMax:'Max (no limit)',qCoarse:'Coarse (fast)',qFine:'Fine (slow)',setSaved:'Settings are saved on this device.',volumeCacheClear:'Clear cache',volumeCacheConfirm:'Delete the GPU volume cache stored on this device?',volumeCacheLoaded:'GPU volume: loaded from cache',volumeCacheCleared:'GPU volume cache cleared',
+  settingsTitle:'Settings',settingsTabCache:'Cache',setCacheAuto:'Keep only the current filter setting (older settings of the same data and resolution are removed)',setCacheLimit:'Cache limit',cacheAuto:'Auto (up to 4 GB)',cacheEmpty:'No cached data',cacheDelete:'Delete',cacheVolume:'3D data',cacheRuns:'Segment results',cacheTotal:'Total',setInterp:'Interpolation',iNone:'None (nearest)',iLinear:'Linear',iSmooth:'Smooth',iSmoother:'Smoother',settingsTabRender:'Rendering',settingsTabDebug:'Debug',setGpuSide:'3D resolution',setDrag:'Quality while dragging',setRest:'Quality at rest',setStep:'Ray step',setShowPerf:'Show frame time / fps',setDebug:'Debug mode (same as ?debug)',setDebugNote:'Shows timing breakdowns in the status lines.',qLow:'Low',qStandard:'Standard',qHigh:'High',qMax:'Max (no limit)',qCoarse:'Coarse (fast)',qFine:'Fine (slow)',setSaved:'Settings are saved on this device.',volumeCacheClear:'Clear cache',volumeCacheConfirm:'Delete the GPU volume cache stored on this device?',volumeCacheLoaded:'GPU volume: loaded from cache',volumeCacheCleared:'GPU volume cache cleared',
   mprPlaneOpacity:'Opacity',
   projectSave:'Save project',projectOpen:'Open project',
   volumeFilterPending:'Volume not updated to filters · press “Rebuild 3D”',

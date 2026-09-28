@@ -1995,3 +1995,13 @@ full. Swap is not acceptable. 256 MB blocks keep the block, two GPU buffers,
 the readback and copies alive at once (unified memory). volumeBlockBudget is
 now 96 MB on every device (~15 kept 1024x1024 slices, untiled). Build 294:
 41.8 s, read 12.4, gaussian 23.5. Check for swap in Activity Monitor.
+
+## Build 296 — cache management
+
+Owner: the GPU volume cache grew (one entry per filter setting). Settings >
+キャッシュ: (1) auto-prune on by default: storing a filtered volume removes
+entries of the same dataset + 3D resolution with another filter; segment
+results likewise per dataset (main segment runs only); (2) list of entries with
+per-entry delete and clear-all; (3) limit auto (old rule, up to 4 GB) or
+0.5/1/2/4 GB. Entries from older builds carry no dataset info, so only the
+list / LRU removes them.
