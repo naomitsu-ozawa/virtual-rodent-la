@@ -2011,3 +2011,11 @@ list / LRU removes them.
 Owner: changing the limit did not remove anything. Lowering it now asks to
 delete least recently used entries over the limit; a "上限に合わせて整理"
 button does the same on demand.
+
+## Build 298 — resize diagnostics + "lower resolution while dragging" switch
+
+Owner: swap jumps when zooming/dragging the 3D view. Each interaction tier
+change (and wheel zoom changes the tier) resizes the volume canvas and the
+three.js canvas, reallocating their buffers. Status bar now shows
+"resize volume/three" counts; settings 描画 has 操作中に解像度を下げる (default
+on). Off = no resizes during drags (slower drags) - a test to confirm the cause.

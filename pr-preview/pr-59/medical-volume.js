@@ -1050,7 +1050,7 @@ export class MedicalVolumeRenderer{
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
   const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;if(globalThis.__vrlSettings?.get?.('showPerf')===false){el.textContent='';return}
   const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
-  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+this.canvas.width+'×'+this.canvas.height+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+this.canvas.width+'×'+this.canvas.height+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
  }
  resize(force=false){
   const hostW=this.host.clientWidth,hostH=this.host.clientHeight;if(hostW<8||hostH<8)return;
@@ -1060,11 +1060,12 @@ export class MedicalVolumeRenderer{
   // zoomed in, build 276). Same ratios everywhere plus a pixel budget
   // near an iPad Air's 3D view (build 278: owner asked for the iPad size).
   const interactiveRatios=[0.72,0.58,0.46],cfg=globalThis.__vrlSettings,budgets=this.interactive?[0,1,2].map(t=>cfg?.dragBudget?.(t)??[0.25e6,0.18e6,0.12e6][t]):[cfg?.restBudget?.()??1.0e6];
-  let ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5);
-  const budget=budgets[this.interactive?this.interactionTier:0]||budgets[0];
+  const lowered=this.interactive&&cfg?.get?.('dragLowerRes')!==false;
+  let ratio=lowered?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5);
+  const budget=lowered?(budgets[this.interactionTier]||budgets[0]):(cfg?.restBudget?.()??1.0e6);
   if(hostW*hostH*ratio*ratio>budget)ratio=Math.sqrt(budget/(hostW*hostH));
   const w=Math.max(1,Math.floor(hostW*ratio)),h=Math.max(1,Math.floor(hostH*ratio));
-  if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h}
+  if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;this.resizeCount=(this.resizeCount||0)+1}
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
   if(!this.active||!this.texture||!this.bindGroup||!obj)return;

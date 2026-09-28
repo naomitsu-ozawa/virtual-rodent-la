@@ -8,7 +8,8 @@ export const SETTINGS_DEFAULTS={
  dragQuality:'standard', // pixel budget while dragging
  restQuality:'standard', // pixel budget at rest
  stepQuality:'standard', // ray-march step
- interp:'linear',      // 3D sampling: none / linear / smooth / smoother
+ interp:'linear',
+ dragLowerRes:true,    // lower the 3D resolution while dragging (resizes the canvas)      // 3D sampling: none / linear / smooth / smoother
  showPerf:true,        // frame time / fps in the status bar
  debug:false,          // same as ?debug
  cacheAutoPrune:true,  // keep only the current filter setting per dataset + 3D resolution
