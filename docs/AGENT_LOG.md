@@ -1847,3 +1847,11 @@ are inside error scopes). Only unguarded path found: set3DInteraction setSize
 with the hidden 3D viewport (0x0 in 2D mode) -> guarded like resize(). Cause
 not proven, so createTexture is wrapped to record label/size/caller of any
 zero-size request; it is appended to the error in the status bar.
+
+## Build 276 — 3D pixel budget
+
+Owner: Mac 3D slow even with one segment when zoomed in; iPad fine (36 ms).
+Volume ray casting cost ~ pixels covered. Desktop used ratios 0.9/0.7/0.52
+(touch 0.72/0.58/0.46) on a larger window. Now the same ratios everywhere and
+a budget: 0.45/0.32/0.22 MP while dragging, 1.8 MP at rest. iPad sizes are
+below the budget, so unchanged there. Mac memory reload: cause unknown.

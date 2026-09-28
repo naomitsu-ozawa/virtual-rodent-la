@@ -1030,9 +1030,15 @@ export class MedicalVolumeRenderer{
  }
  resize(force=false){
   const hostW=this.host.clientWidth,hostH=this.host.clientHeight;if(hostW<8||hostH<8)return;
-  const dpr=window.devicePixelRatio||1,touch=(navigator.maxTouchPoints||0)>0;
-  const interactiveRatios=touch?[0.72,0.58,0.46]:[0.9,0.7,0.52];
-  const ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5),w=Math.max(1,Math.floor(hostW*ratio)),h=Math.max(1,Math.floor(hostH*ratio));
+  const dpr=window.devicePixelRatio||1;
+  // Mac GPUs are no faster than an iPad Air but the window is larger, so the
+  // desktop used ~2.6x the iPad's pixels while dragging (owner: slow when
+  // zoomed in, build 276). Same ratios everywhere plus a pixel budget.
+  const interactiveRatios=[0.72,0.58,0.46],budgets=this.interactive?[0.45e6,0.32e6,0.22e6]:[1.8e6];
+  let ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5);
+  const budget=budgets[this.interactive?this.interactionTier:0]||budgets[0];
+  if(hostW*hostH*ratio*ratio>budget)ratio=Math.sqrt(budget/(hostW*hostH));
+  const w=Math.max(1,Math.floor(hostW*ratio)),h=Math.max(1,Math.floor(hostH*ratio));
   if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h}
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
