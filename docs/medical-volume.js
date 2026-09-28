@@ -1091,7 +1091,10 @@ export class MedicalVolumeRenderer{
   }
   put(19,active?mode:0,coord,section.reverse?-1:1,0);
   put(20,section.capEnabled?1:0,Number.isFinite(+section.capOpacity)?Math.max(0,Math.min(1,+section.capOpacity)):.85,section.hatch?1:0,28);
-  put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],this.reducedVolume?1:0);
+  // w=1: trilinear sampling. It was on for reduced textures only, so the full-size
+  // volume used nearest voxels and showed staircases (owner, build 282). rg8 lo/hi
+  // bytes interpolate linearly, so lo+hi*256 is the interpolated u16 value.
+  put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],1);
   this.device.queue.writeBuffer(this.uniformBuffer,0,data);
   const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();
