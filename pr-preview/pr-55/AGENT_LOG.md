@@ -1875,3 +1875,12 @@ Mac: 640x343 took 207 ms (1516x813: 137 ms), so the time is not pixel-bound.
 Status bar now splits: 3D = volume pass after earlier queued GPU work,
 待ち = GPU work queued before the frame, three = three.js render() CPU time,
 間隔 = time between volume frames (real fps).
+
+## Build 280 — settings dialog
+
+⚙ 設定 in the top bar opens a tabbed dialog (描画 / デバッグ; add a tab button
++ panel in ui-shell.js to extend). Stored per device in localStorage
+(vrl.settings.v1, docs/app-settings.js; docs/settings.js is an unrelated
+older module). 描画: 3D resolution (moved from the toolbar chip), quality while
+dragging / at rest (pixel budgets), ray step, frame-time display. デバッグ:
+same as ?debug, switchable without reload (the *_DEBUG flags are functions).
