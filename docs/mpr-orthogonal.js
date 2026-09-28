@@ -1,10 +1,10 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { sourceVolume, volume, sceneState, residentMprEpoch, setResidentMprReadbackDisabled, residentMprReadbackDisabled, setSourceOrthogonalPlaneCacheBytes, sourceOrthogonalPlaneCacheBytes } from './state.js?v=20260928-build299';
-import { state } from './ui-shell.js?v=20260928-build299';
-import { sourceFilterStages } from './source-filters.js?v=20260928-build299';
-import { frameYield, isIPhoneRuntime, isIPadRuntime } from './utils.js?v=20260928-build299';
-import { readSourceRows, readSourceColumn } from './volume-io.js?v=20260928-build299';
+import { sourceVolume, volume, sceneState, residentMprEpoch, setResidentMprReadbackDisabled, residentMprReadbackDisabled, setSourceOrthogonalPlaneCacheBytes, sourceOrthogonalPlaneCacheBytes } from './state.js?v=20260928-build298';
+import { state } from './ui-shell.js?v=20260928-build298';
+import { sourceFilterStages } from './source-filters.js?v=20260928-build298';
+import { frameYield, isIPhoneRuntime, isIPadRuntime } from './utils.js?v=20260928-build298';
+import { readSourceRows, readSourceColumn } from './volume-io.js?v=20260928-build298';
 export const residentMprJobs={axial:{running:false,current:null,pending:null},coronal:{running:false,current:null,pending:null},sagittal:{running:false,current:null,pending:null}};
 export function residentGpuMprAvailable(v=sourceVolume||volume){
  const mv=sceneState?.medicalVolume;return !!(!residentMprReadbackDisabled&&mv?.hasResident?.(v));
@@ -42,7 +42,7 @@ export function readResidentGpuMprPlane(p,idx,series,{maxSide=0}={}){
  });
 }
 export const sourceOrthogonalPlaneCache=new Map(),sourceOrthogonalPlanePending=new Map();
-export function sourceOrthogonalCacheLimit(){const v=isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?256*1024*1024:512*1024*1024;return (globalThis.__vrlSettings?.memCap?.(0.2,v)??v)}
+export function sourceOrthogonalCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?256*1024*1024:512*1024*1024}
 export function sourceOrthogonalCacheGet(p,idx){
  const key=p+':'+idx,v=sourceOrthogonalPlaneCache.get(key);if(!v)return null;sourceOrthogonalPlaneCache.delete(key);sourceOrthogonalPlaneCache.set(key,v);return v;
 }

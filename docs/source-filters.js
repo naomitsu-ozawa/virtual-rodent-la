@@ -1,15 +1,15 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build299';
-import { sourceVolume, filterOrder } from './state.js?v=20260928-build299';
-import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build299';
-import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build299';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build299';
-import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build299';
-import { cacheKey } from './gpu-volume-cache.js?v=20260928-build299';
+import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build298';
+import { sourceVolume, filterOrder } from './state.js?v=20260928-build298';
+import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build298';
+import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build298';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build298';
+import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build298';
+import { cacheKey } from './gpu-volume-cache.js?v=20260928-build298';
 export const memoryFilterPreviewCache={map:new Map(),bytes:0};
 export const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
-export function sourceSliceCacheLimit(){const v=isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024;return (globalThis.__vrlSettings?.memCap?.(0.12,v)??v)}
+export function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024}
 // parallel read-ahead (build 294): one decode per slice even if requested twice
 const sliceInflight=new Map();
 export async function getCachedSourceSlice(meta){
@@ -72,7 +72,7 @@ export function sourceFilterHalo(stages){
 }
 export function sourceFilterSignature(stages=sourceFilterStages()){return JSON.stringify(stages)}
 export function sourceFilterCacheLimit(){
- const touch=navigator.maxTouchPoints>0,v=touch?48*1024*1024:128*1024*1024;return (globalThis.__vrlSettings?.memCap?.(0.06,v)??v);
+ const touch=navigator.maxTouchPoints>0;return touch?48*1024*1024:128*1024*1024;
 }
 export function sourceFilterCacheGet(key){
  const hit=sourceFilterRuntime.cache.get(key);if(!hit)return null;
@@ -228,7 +228,7 @@ export function volumeBlockBudget(){
  // build 295: 256 MB blocks made the owner's Mac swap heavily (block, two GPU
  // buffers, readback and copies are alive at once; Mac GPU memory is system
  // RAM). 96 MB everywhere: ~15 kept slices of 1024x1024, no xy tiling.
- return Math.min(cap,(globalThis.__vrlSettings?.memCap?.(0.05,96*1024*1024)??96*1024*1024));
+ return Math.min(cap,96*1024*1024);
 }
 export function volumeBlockDepth(series){
  const halo=sourceFilterHalo(sourceFilterStages()),plane=series.columns*series.rows*4;
@@ -264,7 +264,7 @@ export async function processMemoryRegion(v,target,stages){
  if(!(result instanceof Float32Array))throw new Error('__GPU_UNAVAILABLE__');
  return result;
 }
-export function memoryPreviewCacheLimit(){const v=navigator.maxTouchPoints>0?24*1024*1024:64*1024*1024;return (globalThis.__vrlSettings?.memCap?.(0.03,v)??v)}
+export function memoryPreviewCacheLimit(){return navigator.maxTouchPoints>0?24*1024*1024:64*1024*1024}
 export function memoryFilterPreviewGet(key){
  const hit=memoryFilterPreviewCache.map.get(key);if(!hit)return null;
  memoryFilterPreviewCache.map.delete(key);memoryFilterPreviewCache.map.set(key,hit);return hit;
