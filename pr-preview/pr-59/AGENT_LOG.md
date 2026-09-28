@@ -2020,11 +2020,11 @@ three.js canvas, reallocating their buffers. Status bar now shows
 "resize volume/three" counts; settings 描画 has 操作中に解像度を下げる (default
 on). Off = no resizes during drags (slower drags) - a test to confirm the cause.
 
-## Build 299 — one memory budget for the app caches
+## Build 300 — fixed-size 3D canvases while dragging
 
-Owner: cap the total memory instead of chasing allocations. Settings > 描画 >
-メモリ上限: auto (Mac 1.5 GB, iPad 1 GB, iPhone 0.5 GB) or 1-4 GB. Shares:
-slice cache 12%, orthogonal MPR 20%, GPU buffer pool 8%, filter cache 6%,
-memory preview 3%, 3D MPR preview 8%, full-volume MPR cache 50% (only without
-a GPU volume), filtered block 5%; each never above its old limit. The GPU
-volume texture (3D resolution) and browser internals are not covered.
+Build 299 (memory limit) reverted: it capped caches unrelated to the swap
+the owner sees while dragging/zooming the 3D view. The volume canvas now
+keeps its at-rest size; drags render into cached lower-resolution textures
+(one per drag size, dropped when the canvas size changes) that are scaled
+onto it. In the volume view the three.js canvas no longer changes pixel ratio
+during drags. Status bar: "resize volume/three" and "drag targets" counts.

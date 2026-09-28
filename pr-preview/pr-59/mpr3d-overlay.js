@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260928-build299';
-import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260928-build299';
-import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260928-build299';
-import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260928-build299';
-import { frameYield } from './utils.js?v=20260928-build299';
-import { request3DRender } from './scene3d.js?v=20260928-build299';
+import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260928-build300';
+import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260928-build300';
+import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260928-build300';
+import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260928-build300';
+import { frameYield } from './utils.js?v=20260928-build300';
+import { request3DRender } from './scene3d.js?v=20260928-build300';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 export const mpr3DVisibility={axes:true,axial:false,coronal:false,sagittal:false};
 export function restoreSectionAutoPlane(){
@@ -56,7 +56,7 @@ export function syncMpr3DSliceSliders(){
 export function mpr3DOpacitySource(){return threeRenderMode==='volume'&&sceneState?.medicalVolume?.active?mprVolumeOpacity:mprSurfaceOpacity}
 export const mpr3DPreviewCache={token:0,signature:'',buildingSignature:'',building:false,min:0,max:1,planes:{axial:null,coronal:null,sagittal:null},dims:{axial:null,coronal:null,sagittal:null}};
 export function mpr3DPreviewPlan(v){
- const touch=navigator.maxTouchPoints>0,target=touch?448:640,budget=(globalThis.__vrlSettings?.memCap?.(0.08,(touch?128:256)*1024*1024)??(touch?128:256)*1024*1024),w=v.columns,h=v.rows,d=v.slices;
+ const touch=navigator.maxTouchPoints>0,target=touch?448:640,budget=(touch?128:256)*1024*1024,w=v.columns,h=v.rows,d=v.slices;
  const bytesFor=side=>{
   const cw=Math.min(w,side),ch=Math.min(d,side),sw=Math.min(h,side),sh=Math.min(d,side);
   return h*cw*ch+w*sw*sh;

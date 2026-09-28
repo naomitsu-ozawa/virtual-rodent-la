@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build299';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build300';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build299';
-import { isDesktopMac, frameYield } from './utils.js?v=20260928-build299';
-import { runsSliceToMask } from './run-length.js?v=20260928-build299';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build299';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build299';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build300';
+import { isDesktopMac, frameYield } from './utils.js?v=20260928-build300';
+import { runsSliceToMask } from './run-length.js?v=20260928-build300';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build300';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build300';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -99,7 +99,7 @@ export const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp'
 export function gpuStagesSupported(stages){
  return stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
 }
-export function gpuPoolLimit(){const v=navigator.maxTouchPoints>0?64*1024*1024:(isDesktopMac()?256:192)*1024*1024;return (globalThis.__vrlSettings?.memCap?.(0.08,v)??v)}
+export function gpuPoolLimit(){return navigator.maxTouchPoints>0?64*1024*1024:(isDesktopMac()?256:192)*1024*1024}
 export function gpuBufferBucketSize(bytes){
  let size=4096;while(size<bytes)size*=2;return size;
 }
