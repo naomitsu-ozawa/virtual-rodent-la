@@ -18,7 +18,7 @@ test('public mouse CT demo loads, decodes and becomes ready', async ({ page }) =
       `stage: ${stage}`,
       `series cards: ${await page.locator('#series-list .series-card').count()}`,
       `ready badge: ${await text('.ready-badge')}`,
-      `gpu status: ${await text('#gpu-status')}`,
+      `gpu status: ${await text('#gpu-status-bar')}`,
       `footer: ${await text('footer')}`,
       `page errors: ${JSON.stringify(errors.slice(0, 5))}`,
       `console: ${JSON.stringify(consoleLines.slice(-8))}`,

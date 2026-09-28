@@ -1834,3 +1834,8 @@ Not verified on a device yet.
 
 The green top chip truncates; a bar above the footer now shows the full
 Render/Compute/adapter text (and the last GPU error). Top chip unchanged.
+
+## Build 274 — top GPU chip hidden
+
+Owner: the bar above the footer replaces it. #gpu-status stays in the DOM
+(hidden) as the text source; the renderer-error path also writes the bar.
