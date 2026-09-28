@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260928-build302';
-import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260928-build302';
-import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260928-build302';
-import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260928-build302';
-import { frameYield } from './utils.js?v=20260928-build302';
-import { request3DRender } from './scene3d.js?v=20260928-build302';
+import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260928-build304';
+import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260928-build304';
+import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260928-build304';
+import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260928-build304';
+import { frameYield } from './utils.js?v=20260928-build304';
+import { request3DRender } from './scene3d.js?v=20260928-build304';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 export const mpr3DVisibility={axes:true,axial:false,coronal:false,sagittal:false};
 export function restoreSectionAutoPlane(){
@@ -83,8 +83,12 @@ export async function ensureMpr3DPreviewCache(){
  const coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
  let fullSagittal16=null;
  if(canSource&&!stages.length&&!v.mprSagittalAll&&!v.mprSagittalDisplayAll){
-  const bytes=w*h*d*2,touchHardLimit=1024*1024*1024;
-  if((navigator.maxTouchPoints||0)===0||bytes<=touchHardLimit)try{fullSagittal16=new Uint16Array(w*h*d)}catch{}
+  // build 304: this full 16-bit sagittal copy had no limit on desktops; for the
+  // owner's 1024x1024x1784 data it was 3.5 GB (memory ledger 'mpr 3568MB', swap).
+  // Only build it when small; sagittal planes otherwise come from the
+  // orthogonal plane cache as on iPad.
+  const bytes=w*h*d*2,limit=(navigator.maxTouchPoints||0)>0?1024*1024*1024:512*1024*1024;
+  if(bytes<=limit)try{fullSagittal16=new Uint16Array(w*h*d)}catch{}
  }
  const corX=Array.from({length:dims.coronal[0]},(_,i)=>mpr3DPreviewMap(i,w,dims.coronal[0])),sagY=Array.from({length:dims.sagittal[0]},(_,i)=>mpr3DPreviewMap(i,h,dims.sagittal[0]));
  const corRows=new Map(),sagRows=new Map();
