@@ -2125,3 +2125,35 @@ gpu distance was 7.2 s (Mac, fat + air boundary). airDist now visits offsets
 by increasing |k| and stops once (k*s)^2 >= g (all later terms are >= that),
 so air voxels read 1 value and voxels near air a few, instead of 2n+1 per axis.
 Applies to the thin-part opening passes too. Unit test: pruned == full scan.
+
+## Build 315 — per-axis airDist timing (diagnostics)
+
+With ?debug&stagetimes the segment status shows pre-dist (work queued before
+the distance passes) and dist:x/y/z(n=..) GPU times, to decide how to speed up
+the remaining 5.7 s of gpu distance.
+
+## Build 316 — airDist x pass through workgroup memory
+
+Owner measurement (build 315, Mac): dist:x(n=8) 3.8 s, dist:y 1.1 s, dist:z 0.9 s.
+The x pass never hits the early break for body voxels with no air within n,
+so each read 2n+1 storage values. New kernel 'airDistX' loads the workgroup's
+span [base-n, base+WG+n) into shared memory once and scans it; same result
+(JS mirror test vs the untiled pass, modes 0/1/2, unaligned widths). Used for
+axis 0 when n <= 64, otherwise the old kernel.
+
+## Build 317 — diagnostics: first-write cost before the x pass
+
+Build 316 (tiled x pass) moved dist:x only 3.8 → 3.6 s, so storage reads were
+not the cost. With ?debug&stagetimes the output buffer is now cleared first and
+timed as 'dist:touch', to tell a first-write cost of that buffer apart from the
+x pass itself.
+
+## Build 318 — keep the block work buffers between segment blocks
+
+Build 317: dist:touch 2.2 s (a clear of the output buffer), x then 2.9 s. A
+1024²×38 block lands in the 256 MB bucket, above half the Mac pool limit, so
+both work buffers were destroyed and re-created every block and WebGPU
+zero-filled each new buffer on first use. thresholdSourceRuns now wraps its
+block loop in begin/endGpuBufferRetention: released work buffers stay pooled
+(max 2 per size) until the loop ends, then the pool is trimmed back to its
+limit. Peak memory is unchanged (the buffers exist during each block anyway).
