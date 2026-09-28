@@ -1,19 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260928-build275';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260928-build275';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260928-build275';
-import { gpuOpenRuns, gpuStepTimes, gpuRunInfo, addGpuStepTime, ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260928-build275';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build275';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260928-build275';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260928-build275';
-import { state } from './ui-shell.js?v=20260928-build275';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260928-build280';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260928-build280';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260928-build280';
+import { gpuOpenRuns, gpuStepTimes, gpuRunInfo, addGpuStepTime, ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260928-build280';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build280';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260928-build280';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260928-build280';
+import { state } from './ui-shell.js?v=20260928-build280';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, thinSuppressSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260928-build275';
-import { frameYield } from './utils.js?v=20260928-build275';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20260928-build275';
-import { setProcessingBusy } from './busy.js?v=20260928-build275';
-import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260928-build275';
+import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, thinSuppressSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260928-build280';
+import { frameYield } from './utils.js?v=20260928-build280';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20260928-build280';
+import { setProcessingBusy } from './busy.js?v=20260928-build280';
+import { segmentRunsCacheKey, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260928-build280';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -289,7 +289,8 @@ export function setSegmentStatus(key,text,kind=''){
  const el=document.querySelector('[data-seg-status="'+key+'"]');if(!el)return;
  el.textContent=text||'';el.classList.toggle('is-hidden',!text);el.classList.toggle('is-error',kind==='error');el.classList.toggle('is-done',kind==='done');
 }
-const STATUS_DEBUG=typeof location!=='undefined'&&/[?&]debug(\b|=|&|$)/.test(location.search);
+// ?debug or the settings dialog's debug switch (build 280)
+const STATUS_DEBUG=()=>!!globalThis.__vrlSettings?.debugOn?.()||(typeof location!=='undefined'&&/[?&]debug(\b|=|&|$)/.test(location.search));
 function timingText(key){const list=segmentTimings.get(key),steps=[...gpuStepTimes];return (list?.length?' · '+list.map(([n,ms])=>n+' '+(ms/1000).toFixed(1)+'s').join(', '):'')+(steps.length?' · ['+steps.map(([n,ms])=>n+' '+(ms/1000).toFixed(1)+'s').join(', ')+']':'')+(gpuRunInfo.core?' · core '+gpuRunInfo.core+' halo '+gpuRunInfo.halo+' · '+gpuRunInfo.filters:'')}
 function segmentStatusProgress(key,seg){
  const ja=currentLanguage==='ja',labels=PHASE_LABELS[ja?'ja':'en'],t0=performance.now();
@@ -328,7 +329,7 @@ export async function ensureSegmentBaseRuns(key,v=current3DVolume||volume,onProg
     const stats=postprocessStats.get(key),pct=(a,b)=>(100*a/Math.max(1,b)).toFixed(1)+'%',sec=Math.round((performance.now()-t0)/1000)+(ja?'秒':'s');
     let text=(ja?'処理完了 · ':'Done · ')+sec+(stats?.before?' · '+(ja?'残り ':'kept ')+pct(stats.after,stats.before):'');
     // device-check numbers only with ?debug (builds 246-262 diagnostics)
-    if(STATUS_DEBUG&&stats){
+    if(STATUS_DEBUG()&&stats){
      text+=' · '+stats.after+'/'+stats.before+' vox'+(stats.gpuAir?' · GPU':'')
       +(stats.body!=null?' · '+(ja?'体 ':'body ')+pct(stats.body,stats.total)+' · '+(ja?'体内 ':'in body ')+(stats.insideBody==null?'—':pct(stats.insideBody,stats.before)):'')
       +(stats.spacing?' · '+stats.spacing.map(s=>(+s).toPrecision(3)).join('×')+' mm':'')+(stats.dims?' · '+stats.dims.join('×'):'')

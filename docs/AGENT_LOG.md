@@ -1847,3 +1847,40 @@ are inside error scopes). Only unguarded path found: set3DInteraction setSize
 with the hidden 3D viewport (0x0 in 2D mode) -> guarded like resize(). Cause
 not proven, so createTexture is wrapped to record label/size/caller of any
 zero-size request; it is appended to the error in the status bar.
+
+## Build 276 — 3D pixel budget
+
+Owner: Mac 3D slow even with one segment when zoomed in; iPad fine (36 ms).
+Volume ray casting cost ~ pixels covered. Desktop used ratios 0.9/0.7/0.52
+(touch 0.72/0.58/0.46) on a larger window. Now the same ratios everywhere and
+a budget: 0.45/0.32/0.22 MP while dragging, 1.8 MP at rest. iPad sizes are
+below the budget, so unchanged there. Mac memory reload: cause unknown.
+
+## Build 277 — 3D frame time always in the status bar
+
+Owner noticed the GPU draw time was not shown: the ?debug footer text only
+updated on opacity/slice changes. The GPU frame time (onSubmittedWorkDone),
+fps and ray-cast canvas size now show in the bottom bar after each frame
+(max 4/s), without ?debug; cleared when the volume view is off.
+
+## Build 278 — iPad-sized 3D budget
+
+Mac M1 at rest 1516x813 = 137 ms; iPad M2 8 ms. Owner: make it the same as
+the iPad. Budgets now 0.25/0.18/0.12 MP dragging, 1.0 MP at rest (estimated
+iPad Air 3D view size; confirm with the iPad status-bar size).
+
+## Build 279 — 3D frame diagnostics
+
+Mac: 640x343 took 207 ms (1516x813: 137 ms), so the time is not pixel-bound.
+Status bar now splits: 3D = volume pass after earlier queued GPU work,
+待ち = GPU work queued before the frame, three = three.js render() CPU time,
+間隔 = time between volume frames (real fps).
+
+## Build 280 — settings dialog
+
+⚙ 設定 in the top bar opens a tabbed dialog (描画 / デバッグ; add a tab button
++ panel in ui-shell.js to extend). Stored per device in localStorage
+(vrl.settings.v1, docs/app-settings.js; docs/settings.js is an unrelated
+older module). 描画: 3D resolution (moved from the toolbar chip), quality while
+dragging / at rest (pixel budgets), ray step, frame-time display. デバッグ:
+same as ?debug, switchable without reload (the *_DEBUG flags are functions).
