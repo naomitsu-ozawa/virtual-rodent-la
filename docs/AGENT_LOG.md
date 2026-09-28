@@ -2140,3 +2140,10 @@ so each read 2n+1 storage values. New kernel 'airDistX' loads the workgroup's
 span [base-n, base+WG+n) into shared memory once and scans it; same result
 (JS mirror test vs the untiled pass, modes 0/1/2, unaligned widths). Used for
 axis 0 when n <= 64, otherwise the old kernel.
+
+## Build 317 — diagnostics: first-write cost before the x pass
+
+Build 316 (tiled x pass) moved dist:x only 3.8 → 3.6 s, so storage reads were
+not the cost. With ?debug&stagetimes the output buffer is now cleared first and
+timed as 'dist:touch', to tell a first-write cost of that buffer apart from the
+x pass itself.
