@@ -1,17 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260928-build307';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build307';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build307';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build307';
-import { request3DRender } from './scene3d.js?v=20260928-build307';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build307';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build307';
-import { tr } from './i18n.js?v=20260928-build307';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build307';
-import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260928-build307';
-import { datasetFingerprint } from './project-file.js?v=20260928-build307';
-import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260928-build307';
+import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20260928-build308';
+import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260928-build308';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build308';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build308';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build308';
+import { request3DRender } from './scene3d.js?v=20260928-build308';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build308';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build308';
+import { tr } from './i18n.js?v=20260928-build308';
+import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build308';
+import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260928-build308';
+import { datasetFingerprint } from './project-file.js?v=20260928-build308';
+import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260928-build308';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
@@ -20,7 +21,7 @@ export function gpuVolumeDataSignature(){
 // build 305: the next block is started while the current one is used, so its
 // file reads overlap this block's GPU filtering and upload (one block ahead:
 // ~2 blocks of memory, within the swap-safe block budget)
-export function filteredSourceSliceProvider(series,blockDepth=null){
+export function filteredSourceSliceProvider(series,blockDepth=null,onBlock=null){
  let block=null,start=-1,depth=blockDepth;const pending=new Map(),total=series.slices.length;
  const request=s=>{if(s<0||s>=total)return null;let p=pending.get(s);if(!p){p=getFilteredSourceAxialBlock(s,depth,series,'gpu-volume',volumeBlockBudget());p.catch(()=>{});pending.set(s,p)}return p};
  return async z=>{
@@ -30,6 +31,7 @@ export function filteredSourceSliceProvider(series,blockDepth=null){
    for(const k of [...pending.keys()])if(k<start)pending.delete(k);
    const current=request(start);request(start+depth);
    block=await current;pending.delete(start);
+   if(onBlock&&block){const n=series.rows*series.columns;for(let k=0;k<block.coreDepth;k++)onBlock(start+k,block.data.subarray(k*n,(k+1)*n))}
   }
   const n=series.rows*series.columns,off=(z-start)*n;return block.data.subarray(off,off+n);
  };
@@ -78,16 +80,19 @@ export async function refreshGpuVolumeData(){
  const wanted=gpuVolumeDataSignature();
  if((mv.dataSignature||'')===wanted||gpuVolumeRefresh.running===wanted){updateVolumeFilterBadge();return}
  const token=++gpuVolumeRefresh.token,target={...gpuVolumeTarget(),isCancelled:()=>token!==gpuVolumeRefresh.token};
+ // build 308: the 3D C/S preview is filled from these filtered blocks
+ const preview=target.sliceData&&target.series?beginSharedMpr3DPreview():null;
+ if(preview)target.sliceData=filteredSourceSliceProvider(target.series,null,(z,src)=>preview.feed(z,src));
  gpuVolumeRefresh.running=wanted;updateVolumeFilterBadge();
  // debug (build 285): total time and per-filter GPU times of the 3D rebuild
  const t0=performance.now();gpuStepTimes.clear();gpuCounts.clear();const errBefore=gpuFilterRuntime.lastError||'';footer.textContent=currentLanguage==='ja'?'3D再構築中…':'Rebuilding 3D…';
- try{await mv.ensure(target,gpuVolumePlanOptions());syncGpuVolumeEdits(target);request3DRender();if(mv.lastCacheHit)footer.textContent=tr('volumeCacheLoaded');void updateVolumeCacheControl()
+ try{await mv.ensure(target,gpuVolumePlanOptions());preview?.finish(true);syncGpuVolumeEdits(target);request3DRender();if(mv.lastCacheHit)footer.textContent=tr('volumeCacheLoaded');void updateVolumeCacheControl()
   // build 306: always replace the start message (it stayed as '3D再構築中…' when debug was off)
   if(!mv.lastCacheHit)footer.textContent=(currentLanguage==='ja'?'3D再構築 完了 ':'3D rebuild done ')+((performance.now()-t0)/1000).toFixed(1)+'s';
   if(globalThis.__vrlSettings?.debugOn?.()&&!mv.lastCacheHit){const steps=[...gpuStepTimes].map(([n,ms])=>n+' '+(ms/1000).toFixed(1)+'s').join(', ');footer.textContent=(currentLanguage==='ja'?'3D再構築 ':'3D rebuild ')+((performance.now()-t0)/1000).toFixed(1)+'s'+(steps?' · ['+steps+']':'')+(gpuCounts.size?' · '+[...gpuCounts].map(([n,c])=>n+' '+c).join(', '):'')}
   // build 291: a GPU filter failure falls back to the CPU worker silently; say so
   const errNow=gpuFilterRuntime.lastError||'';if(errNow&&errNow!==errBefore)footer.textContent+=(currentLanguage==='ja'?' · GPUフィルター失敗→CPU: ':' · GPU filter failed -> CPU: ')+errNow}
- catch(e){if(String(e.message||e)==='__SUPERSEDED__')footer.textContent=currentLanguage==='ja'?'3D再構築: 新しい設定でやり直し中':'3D rebuild: restarted with newer settings';if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('GPU volume filter refresh failed.',e);
+ catch(e){preview?.finish(false);if(String(e.message||e)==='__SUPERSEDED__')footer.textContent=currentLanguage==='ja'?'3D再構築: 新しい設定でやり直し中':'3D rebuild: restarted with newer settings';if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('GPU volume filter refresh failed.',e);
   // build 291: show it (it was console-only; owner saw a half-rewritten volume)
   footer.textContent=(currentLanguage==='ja'?'3D再構築エラー（表示は途中まで更新）: ':'3D rebuild error (volume partly updated): ')+String(e?.message||e)+(gpuFilterRuntime.lastError?' · GPU: '+gpuFilterRuntime.lastError:'')}}
  finally{if(token===gpuVolumeRefresh.token){gpuVolumeRefresh.running=null;set3DBusy(false)}updateVolumeFilterBadge()}
