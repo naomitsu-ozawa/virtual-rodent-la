@@ -256,7 +256,9 @@ fn brickExitDistance(p:vec3<f32>,dir:vec3<f32>)->f32{
  return best;
 }
 fn gradientAt(tc:vec3<f32>)->vec3<f32>{
- let d=vec3<f32>(1.0/max(u.textureDims.x,1.0),1.0/max(u.textureDims.y,1.0),1.0/max(u.textureDims.z,1.0));
+ // textureDims.w: 0 nearest, 1 trilinear, 2/3 trilinear + normals from a
+ // wider (2/3 voxel) difference, which smooths the shading of voxel steps
+ let d=max(u.textureDims.w,1.0)*vec3<f32>(1.0/max(u.textureDims.x,1.0),1.0/max(u.textureDims.y,1.0),1.0/max(u.textureDims.z,1.0));
  let gx=huAt(tc+vec3<f32>(d.x,0.0,0.0))-huAt(tc-vec3<f32>(d.x,0.0,0.0));
  let gy=huAt(tc+vec3<f32>(0.0,d.y,0.0))-huAt(tc-vec3<f32>(0.0,d.y,0.0));
  let gz=huAt(tc+vec3<f32>(0.0,0.0,d.z))-huAt(tc-vec3<f32>(0.0,0.0,d.z));
@@ -625,6 +627,20 @@ function gpuDilateRuns(runs,w,h,d,radius=1){
  }
  return rowsByZ.map(rows=>gpuRunRowMapToSlice(rows,w));
 }
+// area-average a packed rg8 (little-endian u16) slice into tw x th; xs/ys are
+// source span boundaries per target column/row
+export function reduceSliceArea(packed,sw,xs,ys,tw,th,rowStride,out,rowSum=new Float64Array(tw),rowCnt=new Uint32Array(tw)){
+ for(let y=0;y<th;y++){
+  rowSum.fill(0);rowCnt.fill(0);
+  for(let sy=ys[y];sy<ys[y+1];sy++){
+   const src=sy*sw*2;
+   for(let x=0;x<tw;x++){let acc=0;const a=xs[x],b=xs[x+1];for(let sx=a;sx<b;sx++){const o=src+sx*2;acc+=packed[o]|(packed[o+1]<<8)}rowSum[x]+=acc;rowCnt[x]+=b-a}
+  }
+  const dst=y*rowStride;
+  for(let x=0;x<tw;x++){const v=rowCnt[x]?Math.round(rowSum[x]/rowCnt[x]):0;out[dst+x*2]=v&255;out[dst+x*2+1]=v>>8}
+ }
+ return out;
+}
 function gpuRunsForTexture(runs,sourceDims,textureDims,{dilate=0}={}){
  const [sw,sh,sd]=sourceDims,[tw,th,td]=textureDims;
  if(!runs)return null;
@@ -713,7 +729,7 @@ export class MedicalVolumeRenderer{
   const reducedRowStride=Math.ceil(tw*2/256)*256;
   let cache=null;
   if(dataSignature&&typeof v.textureCache==='function'){
-   try{cache=await v.textureCache({planSignature,reduced:!!plan.reduced,slices:plan.reduced?td:s.slices.length,bytesPerSlice:plan.reduced?reducedRowStride*th:s.columns*2*s.rows})}catch{cache=null}
+   try{cache=await v.textureCache({planSignature:plan.reduced?planSignature+'-avg':planSignature,reduced:!!plan.reduced,slices:plan.reduced?td:s.slices.length,bytesPerSlice:plan.reduced?reducedRowStride*th:s.columns*2*s.rows})}catch{cache=null}
   }
   this.lastCacheHit=!!cache?.hit;
   let preview=null,previewSourceZ=null,previewX=null,previewY=null;
@@ -738,15 +754,16 @@ export class MedicalVolumeRenderer{
     for(let y=0;y<th;y++)yMap[y]=th<=1?0:Math.round(y*(s.rows-1)/(th-1));
     for(let z=0;z<td;z++)zMap[z]=td<=1?0:Math.round(z*(s.slices.length-1)/(td-1));
     const rowBytes=tw*2,rowStride=Math.ceil(rowBytes/256)*256,reducedSlice=new Uint8Array(rowStride*th);
+    // in-plane area average instead of picking one source voxel: 768 of 1024
+    // picks an irregular 1,1,2 pattern that looked jagged (owner, build 281)
+    const spans=(n,t)=>{const a=new Uint32Array(t+1);for(let i=0;i<=t;i++)a[i]=Math.min(n,Math.round(i*n/t));for(let i=0;i<t;i++)if(a[i+1]<=a[i])a[i+1]=Math.min(n,a[i]+1);return a};
+    const xs=spans(s.columns,tw),ys=spans(s.rows,th),rowSum=new Float64Array(tw),rowCnt=new Uint32Array(tw);
     for(let tz=0;tz<td;tz++){
      let upload=reducedSlice;
      if(cache?.hit){cancelled();upload=await cache.read(tz)}
      else{
       const packed=await sliceBytes(zMap[tz]);reducedSlice.fill(0);
-      for(let y=0;y<th;y++){
-       const srcRow=yMap[y]*s.columns*2,dstRow=y*rowStride;
-       for(let x=0;x<tw;x++){const so=srcRow+xMap[x]*2,doff=dstRow+x*2;reducedSlice[doff]=packed[so];reducedSlice[doff+1]=packed[so+1]}
-      }
+      reduceSliceArea(packed,s.columns,xs,ys,tw,th,rowStride,reducedSlice,rowSum,rowCnt);
       if(cache)await cache.write(tz,reducedSlice.slice());
      }
      this.device.queue.writeTexture({texture,origin:{x:0,y:0,z:tz}},upload,{bytesPerRow:rowStride,rowsPerImage:th},{width:tw,height:th,depthOrArrayLayers:1});
@@ -1076,7 +1093,10 @@ export class MedicalVolumeRenderer{
   }
   put(19,active?mode:0,coord,section.reverse?-1:1,0);
   put(20,section.capEnabled?1:0,Number.isFinite(+section.capOpacity)?Math.max(0,Math.min(1,+section.capOpacity)):.85,section.hatch?1:0,28);
-  put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],this.reducedVolume?1:0);
+  // w=1: trilinear sampling. It was on for reduced textures only, so the full-size
+  // volume used nearest voxels and showed staircases (owner, build 282). rg8 lo/hi
+  // bytes interpolate linearly, so lo+hi*256 is the interpolated u16 value.
+  put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],globalThis.__vrlSettings?.interpLevel?.()??1);
   this.device.queue.writeBuffer(this.uniformBuffer,0,data);
   const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();

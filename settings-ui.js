@@ -1,8 +1,8 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20260928-build280';
-import { request3DRender } from './scene3d.js?v=20260928-build280';
-import { updateGpuStatus } from './gpu-compute.js?v=20260928-build280';
+import { settings } from './app-settings.js?v=20260928-build283';
+import { request3DRender } from './scene3d.js?v=20260928-build283';
+import { updateGpuStatus } from './gpu-compute.js?v=20260928-build283';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
@@ -13,9 +13,9 @@ export function initSettingsDialog(){
   for(const p of dlg.querySelectorAll('[data-settings-panel]'))p.hidden=p.dataset.settingsPanel!==tab.dataset.settingsTab;
  };
  const bind=(id,key,rerender=true)=>{const el=document.getElementById(id);if(!el)return;el.onchange=()=>{settings.set(key,el.type==='checkbox'?el.checked:el.value);if(rerender)request3DRender();if(key==='debug'||key==='showPerf')updateGpuStatus()}};
- bind('set-drag-quality','dragQuality');bind('set-rest-quality','restQuality');bind('set-step-quality','stepQuality');bind('set-show-perf','showPerf');bind('set-debug','debug');
+ bind('set-drag-quality','dragQuality');bind('set-rest-quality','restQuality');bind('set-step-quality','stepQuality');bind('set-interp','interp');bind('set-show-perf','showPerf');bind('set-debug','debug');
  function sync(){
   const v=settings.all(),put=(id,val)=>{const el=document.getElementById(id);if(!el)return;if(el.type==='checkbox')el.checked=!!val;else el.value=String(val)};
-  put('set-drag-quality',v.dragQuality);put('set-rest-quality',v.restQuality);put('set-step-quality',v.stepQuality);put('set-show-perf',v.showPerf);put('set-debug',v.debug);
+  put('set-drag-quality',v.dragQuality);put('set-rest-quality',v.restQuality);put('set-step-quality',v.stepQuality);put('set-interp',v.interp);put('set-show-perf',v.showPerf);put('set-debug',v.debug);
  }
 }
