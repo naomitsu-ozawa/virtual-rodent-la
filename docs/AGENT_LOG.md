@@ -1868,3 +1868,10 @@ fps and ray-cast canvas size now show in the bottom bar after each frame
 Mac M1 at rest 1516x813 = 137 ms; iPad M2 8 ms. Owner: make it the same as
 the iPad. Budgets now 0.25/0.18/0.12 MP dragging, 1.0 MP at rest (estimated
 iPad Air 3D view size; confirm with the iPad status-bar size).
+
+## Build 279 — 3D frame diagnostics
+
+Mac: 640x343 took 207 ms (1516x813: 137 ms), so the time is not pixel-bound.
+Status bar now splits: 3D = volume pass after earlier queued GPU work,
+待ち = GPU work queued before the frame, three = three.js render() CPU time,
+間隔 = time between volume frames (real fps).

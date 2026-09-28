@@ -1032,7 +1032,8 @@ export class MedicalVolumeRenderer{
  showFrameTime(){
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
   const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;
-  const ms=this.lastFrameMs;el.textContent=' · 3D '+Math.round(ms)+' ms ('+Math.min(999,Math.round(1000/Math.max(ms,1)))+' fps) · '+this.canvas.width+'×'+this.canvas.height+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+  const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
+  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+this.canvas.width+'×'+this.canvas.height+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
  }
  resize(force=false){
   const hostW=this.host.clientWidth,hostH=this.host.clientHeight;if(hostW<8||hostH<8)return;
@@ -1078,9 +1079,15 @@ export class MedicalVolumeRenderer{
   put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],this.reducedVolume?1:0);
   this.device.queue.writeBuffer(this.uniformBuffer,0,data);
   const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
-  pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();this.device.queue.submit([encoder.finish()]);
-  // diagnostic: GPU time of one volume frame (submit to completion), one measurement at a time
-  if(!this._frameTimerPending&&this.device.queue.onSubmittedWorkDone){const t0=performance.now();this._frameTimerPending=true;this.device.queue.onSubmittedWorkDone().then(()=>{this.lastFrameMs=performance.now()-t0;this._frameTimerPending=false;this.showFrameTime()},()=>{this._frameTimerPending=false})}
+  pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();
+  // diagnostics (build 279: 640x343 took longer than 1516x813, so the time is
+  // not the ray casting alone): wait = GPU work queued before this frame,
+  // lastFrameMs = this volume pass after that, gap = time between frames
+  const fq=this.device.queue,measure=!this._frameTimerPending&&fq.onSubmittedWorkDone,now=performance.now();
+  if(this._lastRenderAt)this.frameGapMs=now-this._lastRenderAt;this._lastRenderAt=now;
+  let before=null;if(measure){this._frameTimerPending=true;before=fq.onSubmittedWorkDone().then(()=>performance.now())}
+  fq.submit([encoder.finish()]);
+  if(measure){const t0=now;Promise.all([before,fq.onSubmittedWorkDone().then(()=>performance.now())]).then(([tb,te])=>{this.queueWaitMs=Math.max(0,tb-t0);this.lastFrameMs=te-Math.max(t0,tb);this._frameTimerPending=false;this.showFrameTime()},()=>{this._frameTimerPending=false})}
  }
  async pickMany(points,camera,obj,segmentState,segmentOrder,preferredKey=null){
   if(!this.active||!this.texture||!this.bindGroup||!obj||!points?.length)return points?.map(()=>null)||[];
