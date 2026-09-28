@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20260928-build315';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build315';
+import { installGpuLedger } from './mem-ledger.js?v=20260928-build316';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build316';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build315';
-import { isDesktopMac, frameYield } from './utils.js?v=20260928-build315';
-import { runsSliceToMask } from './run-length.js?v=20260928-build315';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build315';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build315';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20260928-build316';
+import { isDesktopMac, frameYield } from './utils.js?v=20260928-build316';
+import { runsSliceToMask } from './run-length.js?v=20260928-build316';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build316';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build316';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -310,14 +310,14 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   // build 315 diagnostics (?debug&stagetimes): GPU time of each airDist axis pass
   const axisSync=GPU_TIMING_DEBUG()&&/[?&]stagetimes/.test(location.search);
   if(axisSync){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('pre-dist',performance.now()-t);encoder=device.createCommandEncoder({label:'VRL airDist axes'})}
-  if(airl)for(let axis=0;axis<3;axis++){await dispatch('airDist',[axis,airl.n[axis],0],[airl.min,airl.max,airl.spacing[axis]]);if(axisSync){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('dist:'+'xyz'[axis]+'(n='+airl.n[axis]+')',performance.now()-t);encoder=device.createCommandEncoder({label:'VRL airDist axes'})}}
+  if(airl)for(let axis=0;axis<3;axis++){await dispatch(axis===0&&airl.n[0]<=AIRDIST_X_MAX_N?'airDistX':'airDist',[axis,airl.n[axis],0],[airl.min,airl.max,airl.spacing[axis]]);if(axisSync){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('dist:'+'xyz'[axis]+'(n='+airl.n[axis]+')',performance.now()-t);encoder=device.createCommandEncoder({label:'VRL airDist axes'})}}
   // opening by a ball (thin-region removal B) on a 0/1 mask: erosion distance
   // (mode 1), then distance to the eroded core (mode 2); segment[0] then reads
   // the kept voxels as [0, r²]
   const open=faceContext.openBall;
   if(open){
-   for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,open.n[axis],1],[0,1,open.spacing[axis],open.r2]);
-   for(let axis=0;axis<3;axis++)await dispatch('airDist',[axis,open.n[axis],2],[0,1,open.spacing[axis],open.r2]);
+   for(let axis=0;axis<3;axis++)await dispatch(axis===0&&open.n[0]<=AIRDIST_X_MAX_N?'airDistX':'airDist',[axis,open.n[axis],1],[0,1,open.spacing[axis],open.r2]);
+   for(let axis=0;axis<3;axis++)await dispatch(axis===0&&open.n[0]<=AIRDIST_X_MAX_N?'airDistX':'airDist',[axis,open.n[axis],2],[0,1,open.spacing[axis],open.r2]);
   }
   if(GPU_TIMING_DEBUG()&&(airl||open)){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('gpu distance',performance.now()-t);encoder=device.createCommandEncoder({label:'VRL analysis after distance'});enc=encoder}
   const firstSrc=current;
