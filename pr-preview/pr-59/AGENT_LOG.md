@@ -1977,3 +1977,13 @@ Debug timings now split read into read:file (File.slice().arrayBuffer),
 read:decode (u16 -> HU float loop), read:yield (frameYield every 2 slices)
 and count slice-cache hits/misses, in the 3D rebuild line and the segment
 status. Build 292 baseline: 3D rebuild 54.0 s, read 28.9 s.
+
+## Build 294 — faster source reads
+
+Build 293 on the Mac: 3D rebuild 40.1 s; read 26.6 s = file 8.7, decode 6.9,
+yield 7.0; gaussian 20.9; slice cache miss 2070 (1784 slices). Changes:
+readSourceRegion reads 4 slices ahead in parallel, copies whole-width boxes
+straight from the cached slice, and yields by time (30 ms) instead of every 2
+slices; decodeSourceSlice uses a Uint16/Int16Array view for little-endian
+16-bit data (test: equal to the DataView path); concurrent misses share one
+decode. Not measured on a device yet.
