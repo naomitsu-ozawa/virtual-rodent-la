@@ -1,8 +1,8 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20260928-build290';
-import { request3DRender } from './scene3d.js?v=20260928-build290';
-import { updateGpuStatus } from './gpu-compute.js?v=20260928-build290';
+import { settings } from './app-settings.js?v=20260928-build291';
+import { request3DRender } from './scene3d.js?v=20260928-build291';
+import { updateGpuStatus } from './gpu-compute.js?v=20260928-build291';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
