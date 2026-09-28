@@ -1912,3 +1912,9 @@ With debug on, the segment status lists f:<filter> GPU time per stage
 (median, gaussian, bilateral, nlm, anisotropic, tv, sigmoid, spikeHole,
 unsharp) to pick which filters to optimise. Reads per voxel from the
 shaders: nlm (2s+1)^3*(2p+1)^3, bilateral up to 7^3, median 27 + sort.
+
+## Build 285 — timings for the 3D rebuild too
+
+Owner asked where the timings are: they were only in the segment status. With
+debug on, the footer now shows "3D再構築 Ns · [read, f:<filter> ...]" after a
+filtered GPU volume rebuild (not on a cache hit).
