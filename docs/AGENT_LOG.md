@@ -1987,3 +1987,11 @@ straight from the cached slice, and yields by time (30 ms) instead of every 2
 slices; decodeSourceSlice uses a Uint16/Int16Array view for little-endian
 16-bit data (test: equal to the DataView path); concurrent misses share one
 decode. Not measured on a device yet.
+
+## Build 295 — no swap: 96 MB filtered blocks
+
+Owner (Mac, 3D 512): the filtered 3D rebuild swapped heavily, disk nearly
+full. Swap is not acceptable. 256 MB blocks keep the block, two GPU buffers,
+the readback and copies alive at once (unified memory). volumeBlockBudget is
+now 96 MB on every device (~15 kept 1024x1024 slices, untiled). Build 294:
+41.8 s, read 12.4, gaussian 23.5. Check for swap in Activity Monitor.

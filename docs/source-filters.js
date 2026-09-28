@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build294';
-import { sourceVolume, filterOrder } from './state.js?v=20260928-build294';
-import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build294';
-import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build294';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build294';
-import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build294';
-import { cacheKey } from './gpu-volume-cache.js?v=20260928-build294';
+import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build295';
+import { sourceVolume, filterOrder } from './state.js?v=20260928-build295';
+import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build295';
+import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build295';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build295';
+import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build295';
+import { cacheKey } from './gpu-volume-cache.js?v=20260928-build295';
 export const memoryFilterPreviewCache={map:new Map(),bytes:0};
 export const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
 export function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024}
@@ -225,7 +225,10 @@ export async function getFilteredSourcePlaneValues(p,idx,series,keyPrefix='mpr',
 // each halo (gaussian x4: 16 slices read per 8 kept, 24 tiles per block).
 export function volumeBlockBudget(){
  const cap=Number(gpuFilterRuntime.device?.limits?.maxStorageBufferBindingSize)||128*1024*1024;
- return Math.min(cap,isIPadRuntime()||isIPhoneRuntime()?64*1024*1024:256*1024*1024);
+ // build 295: 256 MB blocks made the owner's Mac swap heavily (block, two GPU
+ // buffers, readback and copies are alive at once; Mac GPU memory is system
+ // RAM). 96 MB everywhere: ~15 kept slices of 1024x1024, no xy tiling.
+ return Math.min(cap,96*1024*1024);
 }
 export function volumeBlockDepth(series){
  const halo=sourceFilterHalo(sourceFilterStages()),plane=series.columns*series.rows*4;

@@ -1,9 +1,9 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20260928-build294';
-import { hexRgb } from './utils.js?v=20260928-build294';
-import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20260928-build294';
-import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20260928-build294';
+import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20260928-build295';
+import { hexRgb } from './utils.js?v=20260928-build295';
+import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20260928-build295';
+import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20260928-build295';
 export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
 export const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
 export const segmentState={
