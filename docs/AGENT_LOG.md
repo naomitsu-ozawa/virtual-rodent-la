@@ -2042,3 +2042,11 @@ Build 301: still resize 43, drag targets 23, 3 fps (GPU 9 ms, interval 344 ms),
 page 5.1 GB. setInteractive() called resize(true), which re-assigned the canvas
 size (a full canvas reset and a drop of the drag targets) on every drag
 start/stop and tier change. It now resizes only when the size changes.
+
+## Build 303 — memory ledger (diagnostics)
+
+Build 302: drag resizes gone (resize 1/0, 3 drag targets, 4 ms interval), but
+the page still holds ~4.75 GB and swap rose a little at one peak. With debug
+on, the status bar lists every 2 s: GPU textures/buffers created on the shared
+device (live bytes, top labels; destroy() and GC subtract) and the app caches
+(slice, orthogonal, filter, preview, GPU pool, in-memory MPR arrays).
