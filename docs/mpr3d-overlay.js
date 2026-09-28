@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260928-build310';
-import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260928-build310';
-import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260928-build310';
-import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260928-build310';
-import { frameYield } from './utils.js?v=20260928-build310';
-import { request3DRender } from './scene3d.js?v=20260928-build310';
+import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260928-build311';
+import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260928-build311';
+import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260928-build311';
+import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260928-build311';
+import { frameYield } from './utils.js?v=20260928-build311';
+import { request3DRender } from './scene3d.js?v=20260928-build311';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 export const mpr3DVisibility={axes:true,axial:false,coronal:false,sagittal:false};
 export function restoreSectionAutoPlane(){
@@ -262,7 +262,7 @@ export function beginSharedMpr3DPreview(){
  for(let py=0;py<dims.coronal[1];py++){const z=d-1-mpr3DPreviewMap(py,d,dims.coronal[1]);if(!corRows.has(z))corRows.set(z,[]);corRows.get(z).push(py)}
  for(let py=0;py<dims.sagittal[1];py++){const z=d-1-mpr3DPreviewMap(py,d,dims.sagittal[1]);if(!sagRows.has(z))sagRows.set(z,[]);sagRows.get(z).push(py)}
  const q=value=>Math.max(0,Math.min(255,Math.round((value-min)*scale))),need=new Set([...corRows.keys(),...sagRows.keys()]),done=new Set();
- sharedPreview={signature,
+ sharedPreview={signature,needZ:need,
   feed(z,src){
    if(done.has(z)||!need.has(z))return;done.add(z);
    const cr=corRows.get(z);if(cr){const cw=dims.coronal[0],ch=dims.coronal[1];for(const py of cr)for(let y=0;y<h;y++){const row=y*cw*ch+py*cw,sy=y*w;for(let px=0;px<cw;px++)coronal[row+px]=q(src[sy+corX[px]])}}

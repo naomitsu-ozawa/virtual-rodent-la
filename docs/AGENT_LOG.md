@@ -2099,3 +2099,15 @@ every 60 ms instead of 30 ms.
 
 Same build 309, Mac: ahead=4 20.6 s (read 8.3), ahead=8 23.3 s (read 7.3 but
 longer overall). Default back to 4; the 60 ms UI yield stays (23.1 -> 20.6 s).
+
+## Build 311 — GPU packing/reduction for the filtered 512/768 volume
+
+Build 310 Mac (filtered, 512): 20.6 s incl. gpu:copy 3.1, block:copy 0.6,
+tex:pack 1.8, tex:reduce 2.2 (7.5 GB of float blocks read back). With a
+reduced plan the filter pass now also runs packReduce (area average + CT->u16 +
+rg8 packing, rows padded to 256 B) and reads back only the packed texture
+slices (~0.45 GB total) plus full-res float planes for the z the 3D C/S
+preview needs (option B: preview detail unchanged). Upload waits every 64
+instead of 16 slices. Full resolution keeps the float path; CPU fallback keeps
+the old path. Small rounding differences vs the CPU path (average before vs
+after u16 rounding, <=0.5 raw). Not measured on a device yet.
