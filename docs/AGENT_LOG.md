@@ -2125,3 +2125,9 @@ gpu distance was 7.2 s (Mac, fat + air boundary). airDist now visits offsets
 by increasing |k| and stops once (k*s)^2 >= g (all later terms are >= that),
 so air voxels read 1 value and voxels near air a few, instead of 2n+1 per axis.
 Applies to the thin-part opening passes too. Unit test: pruned == full scan.
+
+## Build 315 — per-axis airDist timing (diagnostics)
+
+With ?debug&stagetimes the segment status shows pre-dist (work queued before
+the distance passes) and dist:x/y/z(n=..) GPU times, to decide how to speed up
+the remaining 5.7 s of gpu distance.
