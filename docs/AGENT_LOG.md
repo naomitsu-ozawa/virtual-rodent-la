@@ -1938,3 +1938,35 @@ message is now a second bar under the GPU bar: 12px, light text, bordered, wraps
 Owner: filter UI was cut off (title wrapped, type select and sliders clipped).
 Title on its own row, reorder/remove buttons + type select below, sliders
 shrink to the card width.
+
+## Build 289 — bigger filtered GPU-volume blocks
+
+Build 288 measurement: 3D rebuild 75.5 s = read 53.4, f:gaussian 50.3,
+upload 4.8. The rebuild used 8-slice blocks in 384x128 tiles, so gaussian x4
+read 16 slices per 8 kept and ran 24 tiles per block. Blocks are now whole
+slices, as deep as volumeBlockBudget() allows (desktop 256 MB, iPad 64 MB,
+capped by maxStorageBufferBindingSize): 1024x1024 -> ~55 core slices on a Mac,
+8 (untiled) on iPad. Not verified on a device.
+
+## Build 290 — region STL uses the segment surface settings
+
+Owner: the region STL was raw voxel faces, unlike the screen. Region export
+now builds its mesh with buildEditableRunsGroup (the segment surface path:
+surface smoothing / smooth isosurface when feasible), ignoring the segment cut
+faces, only for the export (disposed after, nothing added to the scene).
+Not verified on a device.
+
+## Build 291 — 3D rebuild errors visible
+
+Owner: build 289 showed a broken volume; footer still said "Full-resolution
+filters", so the rebuild never reported. refreshGpuVolumeData now shows start
+("3D再構築中…"), superseded restarts, errors (volume partly updated) and a
+GPU filter -> CPU fallback in the status bar. Diagnostics only.
+
+## Build 292 — 2D dispatch for extract / mesh passes
+
+Build 291 showed the cause: "x(229376) > dimensionMax(65535)". The filter
+result extract pass (and the mesh count/corner/write passes) dispatched
+workgroups in 1D; with ~56-slice 1024x1024 blocks that is 229376 groups. They
+now use gpuDispatch1D like the filter passes (shaders already get the gid
+rewrite). Static test forbids raw size-dependent dispatches in gpu-compute.js.
