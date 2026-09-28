@@ -2147,3 +2147,13 @@ Build 316 (tiled x pass) moved dist:x only 3.8 → 3.6 s, so storage reads were
 not the cost. With ?debug&stagetimes the output buffer is now cleared first and
 timed as 'dist:touch', to tell a first-write cost of that buffer apart from the
 x pass itself.
+
+## Build 318 — keep the block work buffers between segment blocks
+
+Build 317: dist:touch 2.2 s (a clear of the output buffer), x then 2.9 s. A
+1024²×38 block lands in the 256 MB bucket, above half the Mac pool limit, so
+both work buffers were destroyed and re-created every block and WebGPU
+zero-filled each new buffer on first use. thresholdSourceRuns now wraps its
+block loop in begin/endGpuBufferRetention: released work buffers stay pooled
+(max 2 per size) until the loop ends, then the pool is trimmed back to its
+limit. Peak memory is unchanged (the buffers exist during each block anyway).
