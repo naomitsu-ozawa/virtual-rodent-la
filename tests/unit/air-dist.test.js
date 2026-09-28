@@ -98,3 +98,60 @@ describe('GPU opening (thin-part removal) mirror', () => {
   });
 });
 
+
+// JS mirror of 'airDistX' (build 316): the axis-0 pass reading its neighbours
+// from a per-workgroup tile [base-n, base+WG+n) of the flat buffer instead of
+// the storage buffer. Must equal the axis-0 pass of airDist for any WG / width.
+function airDistXTiled(src, w, h, d, min, max, s, n, WG, mode = 0, r2 = 0) {
+  const N = w * h * d, out = new Float32Array(N);
+  for (let base = 0; base < N; base += WG) {
+    const tile = new Float32Array(WG + 2 * n);
+    for (let j = 0; j < WG + 2 * n; j++) { const p = base - n + j; tile[j] = p >= 0 && p < N ? src[p] : 0; }
+    for (let l = 0; l < WG; l++) {
+      const i = base + l; if (i >= N) break;
+      const cx = i % w, own = tile[l + n];
+      const inSeg = mode === 0 ? own >= min && own <= max : mode === 1 ? own > 0.5 : own >= 0;
+      let g = 1e30;
+      for (let m = 0; m <= 2 * n; m++) {
+        const k = m % 2 === 0 ? m / 2 : -(m + 1) / 2, dd = k * s;
+        if (dd * dd >= g) break;
+        const qx = cx + k; if (qx < 0 || qx >= w) continue;
+        const e = tile[l + n + k];
+        const feature = mode === 0 ? e < min : mode === 1 ? e <= 0.5 : e >= 0 && e > r2;
+        if (feature) g = Math.min(g, dd * dd);
+      }
+      out[i] = inSeg ? g : -(g + 1);
+    }
+  }
+  return out;
+}
+function airDistAxis0(src, w, h, d, min, max, s, n, mode = 0, r2 = 0) {
+  const N = w * h * d, out = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const cx = i % w, v = src[i];
+    const inSeg = mode === 0 ? v >= min && v <= max : mode === 1 ? v > 0.5 : v >= 0;
+    let g = 1e30;
+    for (let m = 0; m <= 2 * n; m++) {
+      const k = m % 2 === 0 ? m / 2 : -(m + 1) / 2, dd = k * s;
+      if (dd * dd >= g) break;
+      const qx = cx + k; if (qx < 0 || qx >= w) continue;
+      const e = src[i + k];
+      const feature = mode === 0 ? e < min : mode === 1 ? e <= 0.5 : e >= 0 && e > r2;
+      if (feature) g = Math.min(g, dd * dd);
+    }
+    out[i] = inSeg ? g : -(g + 1);
+  }
+  return out;
+}
+describe('airDistX tiled x pass (build 316)', () => {
+  it.each([[16, 64, 4], [37, 64, 8], [100, 128, 8], [13, 256, 64], [300, 64, 30]])('w=%i WG=%i n=%i equals the untiled pass', (w, WG, n) => {
+    const h = 5, d = 3, N = w * h * d;
+    let s = 7; const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const ct = new Float32Array(N); for (let i = 0; i < N; i++) { const r = rnd(); ct[i] = r < 0.1 ? -1000 : r < 0.8 ? -600 : 50; }
+    expect([...airDistXTiled(ct, w, h, d, -700, -500, 0.04, n, WG)]).toEqual([...airDistAxis0(ct, w, h, d, -700, -500, 0.04, n)]);
+    const mask = ct.map(v => (v > -700 ? 1 : 0));
+    expect([...airDistXTiled(mask, w, h, d, 0, 1, 0.04, n, WG, 1)]).toEqual([...airDistAxis0(mask, w, h, d, 0, 1, 0.04, n, 1)]);
+    const enc = ct.map((v, i) => (v > -700 ? (i % 7) * 0.001 : -1 - (i % 5) * 0.001));
+    expect([...airDistXTiled(enc, w, h, d, 0, 1, 0.04, n, WG, 2, 0.003)]).toEqual([...airDistAxis0(enc, w, h, d, 0, 1, 0.04, n, 2, 0.003)]);
+  });
+});
