@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build285';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build286';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260928-build285';
-import { isDesktopMac, frameYield } from './utils.js?v=20260928-build285';
-import { runsSliceToMask } from './run-length.js?v=20260928-build285';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build285';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build285';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build286';
+import { isDesktopMac, frameYield } from './utils.js?v=20260928-build286';
+import { runsSliceToMask } from './run-length.js?v=20260928-build286';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build286';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build286';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -246,7 +246,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
  const dispatch=async(kind,extraU32=[],paramsF32=[],extraEntries=[])=>{
   const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
   const meta=new Uint32Array(8);meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=n;for(let i=0;i<extraU32.length&&i<4;i++)meta[4+i]=extraU32[i]>>>0;
-  const params=new Float32Array(8);for(let i=0;i<paramsF32.length&&i<8;i++)params[i]=paramsF32[i];
+  const params=new Float32Array(Math.max(8,paramsF32.length));params.set(paramsF32);
   const mb=gpuSmallBuffer(device,meta),pb=gpuSmallBuffer(device,params);small.push(mb,pb);
   const bind=pipeline.getBindGroupLayout(0);
   const group=device.createBindGroup({layout:bind,entries:[
@@ -261,7 +261,9 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
    if(p.mode==='median'){
     for(let round=0;round<Math.max(1,Math.round(p.passes));round++)await dispatch('median',[],[p.strength]);
    }else{
-    for(let round=0;round<Math.max(1,Math.round(p.passes));round++)for(let axis=0;axis<3;axis++)await dispatch('gaussian',[axis],[p.strength]);
+    // fused: one (2n+1)-tap pass per axis instead of n 3-tap passes
+    const kernel=gaussianPassKernel(p.strength,p.passes),kr=(kernel.length-1)/2;
+    for(let axis=0;axis<3;axis++)await dispatch('gaussianK',[axis,kr],kernel);
    }
   }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[minv,maxv,p.strength,p.center]);
   else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[minv,maxv,p.strength,p.threshold]);

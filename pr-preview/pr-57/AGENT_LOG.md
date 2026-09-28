@@ -1918,3 +1918,12 @@ shaders: nlm (2s+1)^3*(2p+1)^3, bilateral up to 7^3, median 27 + sort.
 Owner asked where the timings are: they were only in the segment status. With
 debug on, the footer now shows "3D再構築 Ns · [read, f:<filter> ...]" after a
 filtered GPU volume rebuild (not on a cache hit).
+
+## Build 286 — fused gaussian
+
+Owner measurement (build 285, Mac, gaussian 0.60 x4, full volume): 3D rebuild
+88.4 s = f:gaussian 63.8 s, read 58.0 s, upload 5.1 s (read and GPU overlap).
+Gaussian ran passes x 3 axes = 12 full-block dispatches. Now one (2n+1)-tap
+pass per axis (gaussianK, weights from gaussianPassKernel = the 3-tap kernel
+convolved n times): 3 dispatches. Same result except within n voxels of the
+volume edge (clamp once instead of per pass). Read is the next target.
