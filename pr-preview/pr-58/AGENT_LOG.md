@@ -1955,3 +1955,10 @@ now builds its mesh with buildEditableRunsGroup (the segment surface path:
 surface smoothing / smooth isosurface when feasible), ignoring the segment cut
 faces, only for the export (disposed after, nothing added to the scene).
 Not verified on a device.
+
+## Build 291 — 3D rebuild errors visible
+
+Owner: build 289 showed a broken volume; footer still said "Full-resolution
+filters", so the rebuild never reported. refreshGpuVolumeData now shows start
+("3D再構築中…"), superseded restarts, errors (volume partly updated) and a
+GPU filter -> CPU fallback in the status bar. Diagnostics only.

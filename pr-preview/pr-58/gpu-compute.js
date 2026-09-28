@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build290';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build291';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build290';
-import { isDesktopMac, frameYield } from './utils.js?v=20260928-build290';
-import { runsSliceToMask } from './run-length.js?v=20260928-build290';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build290';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build290';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build291';
+import { isDesktopMac, frameYield } from './utils.js?v=20260928-build291';
+import { runsSliceToMask } from './run-length.js?v=20260928-build291';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build291';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build291';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
