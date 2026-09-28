@@ -1855,3 +1855,10 @@ Volume ray casting cost ~ pixels covered. Desktop used ratios 0.9/0.7/0.52
 (touch 0.72/0.58/0.46) on a larger window. Now the same ratios everywhere and
 a budget: 0.45/0.32/0.22 MP while dragging, 1.8 MP at rest. iPad sizes are
 below the budget, so unchanged there. Mac memory reload: cause unknown.
+
+## Build 277 — 3D frame time always in the status bar
+
+Owner noticed the GPU draw time was not shown: the ?debug footer text only
+updated on opacity/slice changes. The GPU frame time (onSubmittedWorkDone),
+fps and ray-cast canvas size now show in the bottom bar after each frame
+(max 4/s), without ?debug; cleared when the volume view is off.
