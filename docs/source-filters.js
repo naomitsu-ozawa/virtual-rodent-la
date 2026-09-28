@@ -1,20 +1,26 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build293';
-import { sourceVolume, filterOrder } from './state.js?v=20260928-build293';
-import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build293';
-import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build293';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build293';
-import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build293';
-import { cacheKey } from './gpu-volume-cache.js?v=20260928-build293';
+import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build294';
+import { sourceVolume, filterOrder } from './state.js?v=20260928-build294';
+import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build294';
+import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build294';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build294';
+import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build294';
+import { cacheKey } from './gpu-volume-cache.js?v=20260928-build294';
 export const memoryFilterPreviewCache={map:new Map(),bytes:0};
 export const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
 export function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024}
+// parallel read-ahead (build 294): one decode per slice even if requested twice
+const sliceInflight=new Map();
 export async function getCachedSourceSlice(meta){
  const hit=sourceSliceCache.map.get(meta);
  if(hit){sourceSliceCache.map.delete(meta);sourceSliceCache.map.set(meta,hit);globalThis.__vrlCount?.('slice cache hit');return hit}
+ const inflight=sliceInflight.get(meta);if(inflight)return inflight;
  globalThis.__vrlCount?.('slice cache miss');
- const data=await decodeSourceSlice(meta);sourceSliceCache.map.set(meta,data);sourceSliceCache.bytes+=data.byteLength;
+ const promise=decodeSourceSlice(meta);sliceInflight.set(meta,promise);
+ let data;try{data=await promise}finally{sliceInflight.delete(meta)}
+ if(sourceSliceCache.map.has(meta))return sourceSliceCache.map.get(meta);
+ sourceSliceCache.map.set(meta,data);sourceSliceCache.bytes+=data.byteLength;
  const limit=sourceSliceCacheLimit();
  while(sourceSliceCache.bytes>limit&&sourceSliceCache.map.size>1){
   const key=sourceSliceCache.map.keys().next().value,item=sourceSliceCache.map.get(key);sourceSliceCache.map.delete(key);sourceSliceCache.bytes-=item.byteLength;
@@ -134,11 +140,22 @@ export async function readSourceSubregion(meta,x0,y0,width,height,preferFullSlic
 }
 export async function readSourceRegion(series,box,revision,preferFullSliceCache=false){
  const out=new Float32Array(box.width*box.height*box.depth),plane=box.width*box.height;
- for(let z=0;z<box.depth;z++){
-  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
-  const part=await readSourceSubregion(series.slices[box.z+z],box.x,box.y,box.width,box.height,preferFullSliceCache);out.set(part,z*plane);
-  if((z&1)===1){const ty=performance.now();await frameYield();globalThis.__vrlTime?.('read:yield',performance.now()-ty)}
- }
+ // build 294 (measured build 293: read 26.6 s = file 8.7 + decode 6.9 + yield 7.0):
+ // - up to 4 slices are read ahead in parallel so file reads overlap
+ // - whole-width boxes copy straight from the cached slice (one memcpy)
+ // - yield to the UI by time (every ~30 ms), not every 2 slices
+ const fullWidth=preferFullSliceCache&&box.x===0&&box.width===series.columns,AHEAD=4,pending=new Map();
+ const fetch=z=>{if(z>=box.depth||pending.has(z))return;const meta=series.slices[box.z+z];pending.set(z,fullWidth?getCachedSourceSlice(meta):readSourceSubregion(meta,box.x,box.y,box.width,box.height,preferFullSliceCache))};
+ let lastYield=performance.now();
+ try{
+  for(let z=0;z<box.depth;z++){
+   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
+   for(let k=z;k<z+AHEAD;k++)fetch(k);
+   const part=await pending.get(z);pending.delete(z);
+   if(fullWidth)out.set(part.subarray(box.y*series.columns,(box.y+box.height)*series.columns),z*plane);else out.set(part,z*plane);
+   if(performance.now()-lastYield>30){const ty=performance.now();await frameYield();lastYield=performance.now();globalThis.__vrlTime?.('read:yield',lastYield-ty)}
+  }
+ }finally{for(const p of pending.values())p.catch(()=>{})}
  return out;
 }
 export async function processSourceRegion(series,target,stages,key,revision,preferFullSliceCache=false){

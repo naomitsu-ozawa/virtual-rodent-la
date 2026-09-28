@@ -1,8 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260928-build293';
-import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build293';
-import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260928-build293';
+import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260928-build294';
+import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build294';
+import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260928-build294';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 export function sourceMprCacheLimit(){
  if(isIPhoneRuntime())return 512*1024*1024;
@@ -113,6 +113,12 @@ export async function decodeSourceSlice(meta){
   if(!el)throw new Error('Pixel Data missing');bytes=all;offset=el.dataOffset;
  }
  const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=meta.rows*meta.columns,out=new Float32Array(n),td=performance.now();
+ // build 294: typed-array fast path (DataView per pixel was 6.9 s per rebuild)
+ if(meta.bits===16&&little&&((bytes.byteOffset+offset)&1)===0&&bytes.byteLength-offset>=n*2){
+  const a=meta.signed?new Int16Array(bytes.buffer,bytes.byteOffset+offset,n):new Uint16Array(bytes.buffer,bytes.byteOffset+offset,n),sl=meta.slope,ic=meta.intercept;
+  for(let i=0;i<n;i++)out[i]=a[i]*sl+ic;
+  globalThis.__vrlTime?.('read:decode',performance.now()-td);return out;
+ }
  try{for(let i=0;i<n;i++){
   let raw;
   if(meta.bits===8){raw=bytes[offset+i];if(meta.signed&&raw>127)raw-=256}
