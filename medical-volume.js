@@ -1043,14 +1043,33 @@ export class MedicalVolumeRenderer{
  setInteractive(active,tier=0){
   const next=!!active,nextTier=next?Math.max(0,Math.min(2,Math.round(+tier||0))):0;
   if(this.interactive===next&&this.interactionTier===nextTier)return;
-  this.interactive=next;this.interactionTier=nextTier;this.resize(true);
+  this.interactive=next;this.interactionTier=nextTier;this.resize();
  }
  // GPU frame time + canvas size in the status bar (4 updates/s at most)
  showFrameTime(){
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
   const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;if(globalThis.__vrlSettings?.get?.('showPerf')===false){el.textContent='';return}
   const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
-  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+this.canvas.width+'×'+this.canvas.height+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+ }
+ dropLowTargets(){for(const t of (this.lowTargets||new Map()).values())t.texture.destroy?.();this.lowTargets=new Map()}
+ // one texture per drag size, kept until the canvas size changes
+ lowTarget(w,h){
+  this.lowTargets=this.lowTargets||new Map();const key=w+'x'+h;let t=this.lowTargets.get(key);
+  if(!t){
+   const texture=this.device.createTexture({label:'VRL volume drag target',size:{width:w,height:h},format:this.format,usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});
+   if(!this.blitPipeline){
+    const module=this.device.createShaderModule({label:'VRL volume blit',code:`@group(0) @binding(0) var t:texture_2d<f32>;@group(0) @binding(1) var s:sampler;
+struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
+@vertex fn vs(@builtin(vertex_index) i:u32)->O{var P=array<vec2<f32>,3>(vec2<f32>(-1.0,-1.0),vec2<f32>(3.0,-1.0),vec2<f32>(-1.0,3.0));let q=P[i];var o:O;o.p=vec4<f32>(q,0.0,1.0);o.uv=vec2<f32>((q.x+1.0)*0.5,(1.0-q.y)*0.5);return o;}
+@fragment fn fs(i:O)->@location(0) vec4<f32>{return textureSampleLevel(t,s,i.uv,0.0);}`});
+    this.blitPipeline=this.device.createRenderPipeline({label:'VRL volume blit',layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
+    this.blitSampler=this.device.createSampler({magFilter:'linear',minFilter:'linear'});
+   }
+   const group=this.device.createBindGroup({layout:this.blitPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:texture.createView()},{binding:1,resource:this.blitSampler}]});
+   t={texture,view:texture.createView(),group};this.lowTargets.set(key,t);this.lowTargetCount=(this.lowTargetCount||0)+1;
+  }
+  return t;
  }
  resize(force=false){
   const hostW=this.host.clientWidth,hostH=this.host.clientHeight;if(hostW<8||hostH<8)return;
@@ -1060,11 +1079,15 @@ export class MedicalVolumeRenderer{
   // zoomed in, build 276). Same ratios everywhere plus a pixel budget
   // near an iPad Air's 3D view (build 278: owner asked for the iPad size).
   const interactiveRatios=[0.72,0.58,0.46],cfg=globalThis.__vrlSettings,budgets=this.interactive?[0,1,2].map(t=>cfg?.dragBudget?.(t)??[0.25e6,0.18e6,0.12e6][t]):[cfg?.restBudget?.()??1.0e6];
-  let ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5);
-  const budget=budgets[this.interactive?this.interactionTier:0]||budgets[0];
-  if(hostW*hostH*ratio*ratio>budget)ratio=Math.sqrt(budget/(hostW*hostH));
-  const w=Math.max(1,Math.floor(hostW*ratio)),h=Math.max(1,Math.floor(hostH*ratio));
-  if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h}
+  const lowered=this.interactive&&cfg?.get?.('dragLowerRes')!==false;
+  const fit=(r,b)=>{if(hostW*hostH*r*r>b)r=Math.sqrt(b/(hostW*hostH));return[Math.max(1,Math.floor(hostW*r)),Math.max(1,Math.floor(hostH*r))]};
+  // build 300: the canvas keeps the at-rest size; a drag renders into a
+  // cached lower-resolution texture that is scaled up onto it. Resizing the
+  // canvas per drag/zoom reallocated its buffers (swap on the owner's Mac).
+  const [w,h]=fit(Math.min(dpr,1.5),cfg?.restBudget?.()??1.0e6);
+  if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;this.resizeCount=(this.resizeCount||0)+1;this.dropLowTargets()}
+  const [rw,rh]=lowered?fit(Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]),budgets[this.interactionTier]||budgets[0]):[w,h];
+  this.renderW=Math.min(rw,w);this.renderH=Math.min(rh,h);
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
   if(!this.active||!this.texture||!this.bindGroup||!obj)return;
@@ -1074,7 +1097,7 @@ export class MedicalVolumeRenderer{
   const data=this.frameData,put=(slot,a,b,c,d)=>{const i=slot*4;data[i]=a;data[i+1]=b;data[i+2]=c;data[i+3]=d};
   put(0,origin.x,origin.y,origin.z,0);put(1,right.x,right.y,right.z,Math.tan(THREE.MathUtils.degToRad(camera.fov*.5)));put(2,up.x,up.y,up.z,camera.aspect);put(3,forward.x,forward.y,forward.z,0);
   const interactionStep=this.interactive?[1.65,2.0,2.5][this.interactionTier]||1.65:1;put(4,this.halfExtents[0],this.halfExtents[1],this.halfExtents[2],this.step*interactionStep*(globalThis.__vrlSettings?.stepScale?.()??1));
-  put(5,this.volume.columns,this.volume.rows,this.volume.slices,this.calibration.slope);put(6,this.calibration.intercept,this.calibration.signedBias,this.brickDims[0],this.brickDims[1]);put(7,this.canvas.width,this.canvas.height,this.brickDims[2],this.brickSize);
+  put(5,this.volume.columns,this.volume.rows,this.volume.slices,this.calibration.slope);put(6,this.calibration.intercept,this.calibration.signedBias,this.brickDims[0],this.brickDims[1]);put(7,this.renderW||this.canvas.width,this.renderH||this.canvas.height,this.brickDims[2],this.brickSize);
   for(let s=0;s<4;s++){
    const key=segmentOrder[s],seg=segmentState[key],enabled=seg?.active&&seg?.enabled?1:0,color=new THREE.Color(seg?.color||'#ffffff');
    put(8+s*2,seg?.min||0,seg?.max||0,seg?.opacity??1,enabled);put(9+s*2,color.r,color.g,color.b,1);
@@ -1098,8 +1121,10 @@ export class MedicalVolumeRenderer{
   // bytes interpolate linearly, so lo+hi*256 is the interpolated u16 value.
   put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],globalThis.__vrlSettings?.interpLevel?.()??1);
   this.device.queue.writeBuffer(this.uniformBuffer,0,data);
-  const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
+  const low=(this.renderW&&(this.renderW!==this.canvas.width||this.renderH!==this.canvas.height))?this.lowTarget(this.renderW,this.renderH):null;
+  const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),canvasView=this.context.getCurrentTexture().createView(),view=low?low.view:canvasView,pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();
+  if(low){const bp=encoder.beginRenderPass({colorAttachments:[{view:canvasView,loadOp:'clear',clearValue:{r:0,g:0,b:0,a:1},storeOp:'store'}]});bp.setPipeline(this.blitPipeline);bp.setBindGroup(0,low.group);bp.draw(3);bp.end()}
   // diagnostics (build 279: 640x343 took longer than 1516x813, so the time is
   // not the ray casting alone): wait = GPU work queued before this frame,
   // lastFrameMs = this volume pass after that, gap = time between frames
@@ -1114,7 +1139,7 @@ export class MedicalVolumeRenderer{
   this.render(camera,obj,segmentState,segmentOrder);const count=points.length;this.ensurePickCapacity(count);
   const rect=this.rendererCanvas.getBoundingClientRect(),data=new Float32Array((count+1)*4);data[0]=count;
   const preferred=preferredKey?segmentOrder.indexOf(preferredKey):-1;
-  for(let i=0;i<count;i++){const p=points[i],base=(i+1)*4;data[base]=(p.clientX-rect.left)/Math.max(rect.width,1)*this.canvas.width;data[base+1]=(p.clientY-rect.top)/Math.max(rect.height,1)*this.canvas.height;data[base+2]=preferred>=0?preferred+1:0}
+  for(let i=0;i<count;i++){const p=points[i],base=(i+1)*4;data[base]=(p.clientX-rect.left)/Math.max(rect.width,1)*(this.renderW||this.canvas.width);data[base+1]=(p.clientY-rect.top)/Math.max(rect.height,1)*(this.renderH||this.canvas.height);data[base+2]=preferred>=0?preferred+1:0}
   this.device.queue.writeBuffer(this.pickBuffer,0,data);
   const zero=new Uint32Array(count*4);this.device.queue.writeBuffer(this.pickOutput,0,zero);
   const group=this.device.createBindGroup({layout:this.pickPipeline.getBindGroupLayout(0),entries:[

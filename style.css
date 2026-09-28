@@ -829,3 +829,16 @@ footer #footer:empty{display:none}
 .filter-control-head .filter-select{flex:1 1 0;min-width:0;max-width:100%}
 .filter-control-card .segment-range{min-width:0}
 .filter-control-card .segment-range input[type=range]{width:100%;min-width:0;box-sizing:border-box}
+
+/* settings > cache (build 296) */
+.settings-cache-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0}
+.settings-cache-list{display:grid;gap:6px;max-height:40vh;overflow:auto}
+.settings-cache-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #2a3439;border-radius:8px;padding:6px 8px}
+.settings-cache-text{min-width:0;font-size:12px;overflow-wrap:anywhere}
+.settings-cache-text small{color:#8fa1a8}
+/* build 301: the status lines changed height as their text changed (frame
+   times 4x/s), which resized the 3D view and its canvas on every update
+   (98 resizes in one drag on the owner's Mac). Fixed heights, scroll inside. */
+.gpu-status-bar{height:calc(1.45em * 2 + 10px);overflow-y:auto;box-sizing:border-box}
+footer #footer{height:calc(1.5em * 2 + 10px);overflow-y:auto;box-sizing:border-box}
+footer #footer:empty{display:block}

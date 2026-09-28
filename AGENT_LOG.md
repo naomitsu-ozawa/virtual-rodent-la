@@ -1970,3 +1970,75 @@ result extract pass (and the mesh count/corner/write passes) dispatched
 workgroups in 1D; with ~56-slice 1024x1024 blocks that is 229376 groups. They
 now use gpuDispatch1D like the filter passes (shaders already get the gid
 rewrite). Static test forbids raw size-dependent dispatches in gpu-compute.js.
+
+## Build 293 — read breakdown (diagnostics)
+
+Debug timings now split read into read:file (File.slice().arrayBuffer),
+read:decode (u16 -> HU float loop), read:yield (frameYield every 2 slices)
+and count slice-cache hits/misses, in the 3D rebuild line and the segment
+status. Build 292 baseline: 3D rebuild 54.0 s, read 28.9 s.
+
+## Build 294 — faster source reads
+
+Build 293 on the Mac: 3D rebuild 40.1 s; read 26.6 s = file 8.7, decode 6.9,
+yield 7.0; gaussian 20.9; slice cache miss 2070 (1784 slices). Changes:
+readSourceRegion reads 4 slices ahead in parallel, copies whole-width boxes
+straight from the cached slice, and yields by time (30 ms) instead of every 2
+slices; decodeSourceSlice uses a Uint16/Int16Array view for little-endian
+16-bit data (test: equal to the DataView path); concurrent misses share one
+decode. Not measured on a device yet.
+
+## Build 295 — no swap: 96 MB filtered blocks
+
+Owner (Mac, 3D 512): the filtered 3D rebuild swapped heavily, disk nearly
+full. Swap is not acceptable. 256 MB blocks keep the block, two GPU buffers,
+the readback and copies alive at once (unified memory). volumeBlockBudget is
+now 96 MB on every device (~15 kept 1024x1024 slices, untiled). Build 294:
+41.8 s, read 12.4, gaussian 23.5. Check for swap in Activity Monitor.
+
+## Build 296 — cache management
+
+Owner: the GPU volume cache grew (one entry per filter setting). Settings >
+キャッシュ: (1) auto-prune on by default: storing a filtered volume removes
+entries of the same dataset + 3D resolution with another filter; segment
+results likewise per dataset (main segment runs only); (2) list of entries with
+per-entry delete and clear-all; (3) limit auto (old rule, up to 4 GB) or
+0.5/1/2/4 GB. Entries from older builds carry no dataset info, so only the
+list / LRU removes them.
+
+## Build 297 — trim cache to the new limit
+
+Owner: changing the limit did not remove anything. Lowering it now asks to
+delete least recently used entries over the limit; a "上限に合わせて整理"
+button does the same on demand.
+
+## Build 298 — resize diagnostics + "lower resolution while dragging" switch
+
+Owner: swap jumps when zooming/dragging the 3D view. Each interaction tier
+change (and wheel zoom changes the tier) resizes the volume canvas and the
+three.js canvas, reallocating their buffers. Status bar now shows
+"resize volume/three" counts; settings 描画 has 操作中に解像度を下げる (default
+on). Off = no resizes during drags (slower drags) - a test to confirm the cause.
+
+## Build 300 — fixed-size 3D canvases while dragging
+
+Build 299 (memory limit) reverted: it capped caches unrelated to the swap
+the owner sees while dragging/zooming the 3D view. The volume canvas now
+keeps its at-rest size; drags render into cached lower-resolution textures
+(one per drag size, dropped when the canvas size changes) that are scaled
+onto it. In the volume view the three.js canvas no longer changes pixel ratio
+during drags. Status bar: "resize volume/three" and "drag targets" counts.
+
+## Build 301 — status lines no longer resize the 3D view
+
+Build 300 on the Mac: resize 98/0, drag targets 37, 3 fps while dragging,
+swap still grew, page ~5-6 GB. The canvas size kept changing because the two
+status lines (updated 4x/s) wrapped to different heights and the 3D view
+filled the rest. Both lines now have a fixed 2-line height and scroll.
+
+## Build 302 — no forced canvas reset on drag start/stop
+
+Build 301: still resize 43, drag targets 23, 3 fps (GPU 9 ms, interval 344 ms),
+page 5.1 GB. setInteractive() called resize(true), which re-assigned the canvas
+size (a full canvas reset and a drop of the drag targets) on every drag
+start/stop and tier change. It now resizes only when the size changes.
