@@ -1892,3 +1892,10 @@ The reduced texture picked one source voxel per texel (nearest); 1024->768
 picks an irregular 1,1,2 pattern. Now each texel is the in-plane area average
 of its source footprint (z still picks slices). Cache key gains "-avg" so old
 nearest-picked caches are not reused. Not verified on a device.
+
+## Build 282 — trilinear sampling for the full-size volume
+
+Owner: Full looked jagged. huAt used textureSampleLevel (linear) only when
+textureDims.w=1, which was set for reduced textures; full size used
+textureLoad (nearest). Now always 1. rg8 lo/hi bytes interpolate linearly, so
+the combined u16 is the trilinear value.
