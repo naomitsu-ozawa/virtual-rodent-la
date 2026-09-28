@@ -1039,8 +1039,9 @@ export class MedicalVolumeRenderer{
   const dpr=window.devicePixelRatio||1;
   // Mac GPUs are no faster than an iPad Air but the window is larger, so the
   // desktop used ~2.6x the iPad's pixels while dragging (owner: slow when
-  // zoomed in, build 276). Same ratios everywhere plus a pixel budget.
-  const interactiveRatios=[0.72,0.58,0.46],budgets=this.interactive?[0.45e6,0.32e6,0.22e6]:[1.8e6];
+  // zoomed in, build 276). Same ratios everywhere plus a pixel budget
+  // near an iPad Air's 3D view (build 278: owner asked for the iPad size).
+  const interactiveRatios=[0.72,0.58,0.46],budgets=this.interactive?[0.25e6,0.18e6,0.12e6]:[1.0e6];
   let ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5);
   const budget=budgets[this.interactive?this.interactionTier:0]||budgets[0];
   if(hostW*hostH*ratio*ratio>budget)ratio=Math.sqrt(budget/(hostW*hostH));
