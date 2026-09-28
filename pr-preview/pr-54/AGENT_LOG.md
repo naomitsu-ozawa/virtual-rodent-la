@@ -1829,3 +1829,8 @@ Owner: the Mac has more memory but its GPU is no faster than the iPad Air, so
 full-size 3D was sluggish. The iPad 512/768 selector now shows on desktop as
 "GPU" with 512 (default) / 768 / Full; Full is desktop-only. iPhone unchanged.
 Not verified on a device yet.
+
+## Build 273 — full GPU status bar
+
+The green top chip truncates; a bar above the footer now shows the full
+Render/Compute/adapter text (and the last GPU error). Top chip unchanged.
