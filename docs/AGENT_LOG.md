@@ -2131,3 +2131,12 @@ Applies to the thin-part opening passes too. Unit test: pruned == full scan.
 With ?debug&stagetimes the segment status shows pre-dist (work queued before
 the distance passes) and dist:x/y/z(n=..) GPU times, to decide how to speed up
 the remaining 5.7 s of gpu distance.
+
+## Build 316 — airDist x pass through workgroup memory
+
+Owner measurement (build 315, Mac): dist:x(n=8) 3.8 s, dist:y 1.1 s, dist:z 0.9 s.
+The x pass never hits the early break for body voxels with no air within n,
+so each read 2n+1 storage values. New kernel 'airDistX' loads the workgroup's
+span [base-n, base+WG+n) into shared memory once and scans it; same result
+(JS mirror test vs the untiled pass, modes 0/1/2, unaligned widths). Used for
+axis 0 when n <= 64, otherwise the old kernel.

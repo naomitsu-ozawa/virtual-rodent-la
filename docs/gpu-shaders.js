@@ -1,5 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
+export const AIRDIST_X_MAX_N=64;
 export function gpuFilterShader(kind,workgroupSize){
  const header=`
 @group(0) @binding(0) var<storage, read> src: array<f32>;
@@ -60,6 +61,38 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
    if(mode==0u){feature=e<params[0];}else if(mode==1u){feature=e<=0.5;}else{feature=e>=0.0&&e>params[3];}
    if(feature){g=min(g,d*d);}
   }else{g=min(g,decodeG(e)+d*d);}
+ }
+ dst[i]=select(-(g+1.0),g,inSeg);
+}`;
+ // build 316: the x pass of airDist (axis 0) with the row neighbours staged in
+ // workgroup memory. The x pass was the slowest (3.8 s of 5.8 s): body voxels
+ // with no air within n along x never hit the early break, so each read all
+ // 2n+1 values from the storage buffer. Each workgroup now loads its span
+ // [base-n, base+WG+n) once; the scan and the result are the same as airDist.
+ // Needs n <= AIRDIST_X_MAX_N (the caller falls back to airDist otherwise).
+ if(kind==='airDistX')return header+`
+var<workgroup> tile: array<f32, ${workgroupSize+2*AIRDIST_X_MAX_N}>;
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid:vec3<u32>,@builtin(local_invocation_id) lid:vec3<u32>){
+ let i=gid.x;let total=meta[3];let n=i32(meta[5]);let s=params[2];let mode=meta[6];
+ let base=i32(i)-i32(lid.x);
+ for(var j=i32(lid.x);j<${workgroupSize}+2*n;j=j+${workgroupSize}){
+  let p=base-n+j;var v=0.0;if(p>=0&&p<i32(total)){v=src[u32(p)];}tile[j]=v;
+ }
+ workgroupBarrier();
+ if(i>=total){return;}
+ let c=vec3<i32>(coord(i));let w=i32(meta[0]);let own=tile[i32(lid.x)+n];
+ var inSeg=false;
+ if(mode==0u){inSeg=own>=params[0]&&own<=params[1];}else if(mode==1u){inSeg=own>0.5;}else{inSeg=own>=0.0;}
+ var g=1.0e30;
+ for(var m=0;m<=2*n;m++){
+  let k=select(-((m+1)/2),m/2,(m&1)==0);let d=f32(k)*s;
+  if(d*d>=g){break;}
+  let qx=c.x+k;if(qx<0||qx>=w){continue;}
+  let e=tile[i32(lid.x)+n+k];
+  var feature=false;
+  if(mode==0u){feature=e<params[0];}else if(mode==1u){feature=e<=0.5;}else{feature=e>=0.0&&e>params[3];}
+  if(feature){g=min(g,d*d);}
  }
  dst[i]=select(-(g+1.0),g,inSeg);
 }`;
@@ -605,7 +638,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','gaussianK','packReduce','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite','boxMean','unsharpCombine'];
+export const GPU_PREWARM_KINDS=['gaussian','gaussianK','packReduce','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','airDistX','classRunCount','classRunWrite','boxMean','unsharpCombine'];
 
 // weights of n passes of out=b*(1-s)+s*(a+2b+c)/4, i.e. the 3-tap kernel
 // [s/4, 1-s/2, s/4] convolved with itself n times (length 2n+1). Equal to the
