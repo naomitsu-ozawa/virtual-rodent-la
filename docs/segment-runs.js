@@ -1,19 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260928-build311';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260928-build311';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260928-build311';
-import { gpuOpenRuns, gpuCounts, gpuStepTimes, gpuRunInfo, addGpuStepTime, ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260928-build311';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build311';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20260928-build311';
-import { valuesToSegmentBits } from './mask-ops.js?v=20260928-build311';
-import { state } from './ui-shell.js?v=20260928-build311';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20260928-build314';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20260928-build314';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20260928-build314';
+import { gpuOpenRuns, gpuCounts, gpuStepTimes, gpuRunInfo, addGpuStepTime, ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20260928-build314';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build314';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20260928-build314';
+import { valuesToSegmentBits } from './mask-ops.js?v=20260928-build314';
+import { state } from './ui-shell.js?v=20260928-build314';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, thinSuppressSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260928-build311';
-import { frameYield } from './utils.js?v=20260928-build311';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20260928-build311';
-import { setProcessingBusy } from './busy.js?v=20260928-build311';
-import { segmentRunsCacheKey, segmentRunsCacheInfo, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260928-build311';
+import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, thinSuppressSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20260928-build314';
+import { frameYield } from './utils.js?v=20260928-build314';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20260928-build314';
+import { setProcessingBusy } from './busy.js?v=20260928-build314';
+import { segmentRunsCacheKey, segmentRunsCacheInfo, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20260928-build314';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -72,6 +72,7 @@ export function sourceAnalysisBlockDepth(w,h){
  const preferred=navigator.maxTouchPoints>0?4:16,maxGroups=65535,workgroupSize=256,plane=Math.max(1,w*h),safe=Math.max(1,Math.floor(maxGroups*workgroupSize/plane));
  return Math.max(1,Math.min(preferred,safe));
 }
+const segmentReadAhead=new Map();
 async function timedRead(series,box,revision){const t=performance.now(),data=await readSourceRegion(series,box,revision,true);addGpuStepTime('read',performance.now()-t);return data}
 export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRevision,extraSegs=[],airLayers=null){
  const series=v.series,stages=sourceFilterStages(),coreDepth=Math.min(depth,series.slices.length-zStart),device=await ensureGpuFilterDevice();if(!device)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
@@ -87,7 +88,12 @@ export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRe
    }
   }catch(e){rawError=e;console.warn('Raw DICOM GPU RLE unavailable; retrying decoded CT on WebGPU.',e)}
  }
- const halo=sourceFilterHalo(stages)+(airLayers?airLayers.n[2]:0),z0=Math.max(0,zStart-halo),z1=Math.min(series.slices.length,zStart+coreDepth+halo),box={x:0,y:0,z:z0,width:series.columns,height:series.rows,depth:z1-z0},data=await timedRead(series,box,analysisRevision);
+ const halo=sourceFilterHalo(stages)+(airLayers?airLayers.n[2]:0),boxFor=zs=>{const c=Math.min(depth,series.slices.length-zs),a=Math.max(0,zs-halo),b=Math.min(series.slices.length,zs+c+halo);return{x:0,y:0,z:a,width:series.columns,height:series.rows,depth:b-a}},box=boxFor(zStart),z0=box.z;
+ // build 312: the next block's slices are read while this block runs on the GPU
+ const keyOf=bx=>series.id+'|'+analysisRevision+'|'+bx.z+'|'+bx.depth;let data;
+ const ahead=segmentReadAhead.get(keyOf(box));segmentReadAhead.clear();
+ data=ahead?await ahead:await timedRead(series,box,analysisRevision);
+ const nextStart=zStart+coreDepth;if(nextStart<series.slices.length){const nb=boxFor(nextStart),p=timedRead(series,nb,analysisRevision);p.catch(()=>{});segmentReadAhead.set(keyOf(nb),p)}
  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  const target={x:0,y:0,z:zStart-z0,width:series.columns,height:series.rows,depth:coreDepth};
  try{
