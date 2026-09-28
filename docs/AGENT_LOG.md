@@ -1905,3 +1905,36 @@ the combined u16 is the trilinear value.
 Settings > 描画 > 補間: なし (nearest) / 線形 (default) / なめらか / よりなめらか.
 Passed as textureDims.w; 2/3 also widen the gradient difference to 2/3
 voxels for smoother shading of voxel steps.
+
+## Build 284 — per-filter GPU timing (diagnostics)
+
+With debug on, the segment status lists f:<filter> GPU time per stage
+(median, gaussian, bilateral, nlm, anisotropic, tv, sigmoid, spikeHole,
+unsharp) to pick which filters to optimise. Reads per voxel from the
+shaders: nlm (2s+1)^3*(2p+1)^3, bilateral up to 7^3, median 27 + sort.
+
+## Build 285 — timings for the 3D rebuild too
+
+Owner asked where the timings are: they were only in the segment status. With
+debug on, the footer now shows "3D再構築 Ns · [read, f:<filter> ...]" after a
+filtered GPU volume rebuild (not on a cache hit).
+
+## Build 286 — fused gaussian
+
+Owner measurement (build 285, Mac, gaussian 0.60 x4, full volume): 3D rebuild
+88.4 s = f:gaussian 63.8 s, read 58.0 s, upload 5.1 s (read and GPU overlap).
+Gaussian ran passes x 3 axes = 12 full-block dispatches. Now one (2n+1)-tap
+pass per axis (gaussianK, weights from gaussianPassKernel = the 3-tap kernel
+convolved n times): 3 dispatches. Same result except within n voxels of the
+volume edge (clamp once instead of per pass). Read is the next target.
+
+## Build 287 — readable status lines
+
+Owner could not find the timing line (11px grey footer text). The footer
+message is now a second bar under the GPU bar: 12px, light text, bordered, wraps.
+
+## Build 288 — filter cards fit the side panel
+
+Owner: filter UI was cut off (title wrapped, type select and sliders clipped).
+Title on its own row, reorder/remove buttons + type select below, sliders
+shrink to the card width.

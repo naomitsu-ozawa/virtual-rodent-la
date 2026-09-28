@@ -58,6 +58,20 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  }
  dst[i]=select(-(g+1.0),g,inSeg);
 }`;
+ // n passes of the 3-tap gaussian along one axis fused into one (2n+1)-tap
+ // pass (build 286: 4 passes x 3 axes were 12 full-volume dispatches); weights
+ // come from gaussianPassKernel(), meta[4]=axis, meta[5]=radius n
+ if(kind==='gaussianK')return header+`
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[3]){return;}let c=vec3<i32>(coord(i));let axis=meta[4];let r=i32(meta[5]);
+ var acc=0.0;
+ for(var k=-r;k<=r;k=k+1){
+  var p=c;if(axis==0u){p.x=p.x+k;}else if(axis==1u){p.y=p.y+k;}else{p.z=p.z+k;}
+  acc=acc+params[u32(k+r)]*src[cidx(p.x,p.y,p.z)];
+ }
+ dst[i]=acc;
+}`;
  if(kind==='median')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
@@ -559,4 +573,13 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite','boxMean','unsharpCombine'];
+export const GPU_PREWARM_KINDS=['gaussian','gaussianK','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite','boxMean','unsharpCombine'];
+
+// weights of n passes of out=b*(1-s)+s*(a+2b+c)/4, i.e. the 3-tap kernel
+// [s/4, 1-s/2, s/4] convolved with itself n times (length 2n+1). Equal to the
+// repeated passes away from the volume edge (edges clamp once instead of per pass).
+export function gaussianPassKernel(strength,passes){
+ const s=Math.max(0,Math.min(1,+strength||0)),base=[s/4,1-s/2,s/4];let k=[1];
+ for(let p=0;p<Math.max(1,Math.round(passes));p++){const o=new Array(k.length+2).fill(0);for(let i=0;i<k.length;i++)for(let j=0;j<3;j++)o[i+j]+=k[i]*base[j];k=o}
+ return k;
+}
