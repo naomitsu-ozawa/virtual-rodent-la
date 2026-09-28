@@ -1970,3 +1970,10 @@ result extract pass (and the mesh count/corner/write passes) dispatched
 workgroups in 1D; with ~56-slice 1024x1024 blocks that is 229376 groups. They
 now use gpuDispatch1D like the filter passes (shaders already get the gid
 rewrite). Static test forbids raw size-dependent dispatches in gpu-compute.js.
+
+## Build 293 — read breakdown (diagnostics)
+
+Debug timings now split read into read:file (File.slice().arrayBuffer),
+read:decode (u16 -> HU float loop), read:yield (frameYield every 2 slices)
+and count slice-cache hits/misses, in the 3D rebuild line and the segment
+status. Build 292 baseline: 3D rebuild 54.0 s, read 28.9 s.

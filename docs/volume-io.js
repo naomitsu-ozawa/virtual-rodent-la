@@ -1,8 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260928-build292';
-import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build292';
-import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260928-build292';
+import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260928-build293';
+import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build293';
+import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260928-build293';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 export function sourceMprCacheLimit(){
  if(isIPhoneRuntime())return 512*1024*1024;
@@ -106,19 +106,19 @@ export async function decodeSourceSlice(meta){
  if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
  let bytes,offset=meta.pixelOffset;
  if(offset!=null){
-  bytes=new Uint8Array(await meta.file.slice(offset,offset+meta.rows*meta.columns*bpp).arrayBuffer());
+  const tf=performance.now();bytes=new Uint8Array(await meta.file.slice(offset,offset+meta.rows*meta.columns*bpp).arrayBuffer());globalThis.__vrlTime?.('read:file',performance.now()-tf);
   offset=0;
  }else{
   const all=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(all),el=ds.elements.x7fe00010;
   if(!el)throw new Error('Pixel Data missing');bytes=all;offset=el.dataOffset;
  }
- const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=meta.rows*meta.columns,out=new Float32Array(n);
- for(let i=0;i<n;i++){
+ const little=meta.ts!=='1.2.840.10008.1.2.2',view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),n=meta.rows*meta.columns,out=new Float32Array(n),td=performance.now();
+ try{for(let i=0;i<n;i++){
   let raw;
   if(meta.bits===8){raw=bytes[offset+i];if(meta.signed&&raw>127)raw-=256}
   else raw=meta.signed?view.getInt16(offset+i*2,little):view.getUint16(offset+i*2,little);
   out[i]=raw*meta.slope+meta.intercept;
- }
+ }}finally{globalThis.__vrlTime?.('read:decode',performance.now()-td)}
  return out;
 }
 export async function readSourceRow(meta,row){

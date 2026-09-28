@@ -1,18 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build292';
-import { sourceVolume, filterOrder } from './state.js?v=20260928-build292';
-import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build292';
-import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build292';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build292';
-import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build292';
-import { cacheKey } from './gpu-volume-cache.js?v=20260928-build292';
+import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build293';
+import { sourceVolume, filterOrder } from './state.js?v=20260928-build293';
+import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build293';
+import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build293';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build293';
+import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build293';
+import { cacheKey } from './gpu-volume-cache.js?v=20260928-build293';
 export const memoryFilterPreviewCache={map:new Map(),bytes:0};
 export const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
 export function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024}
 export async function getCachedSourceSlice(meta){
  const hit=sourceSliceCache.map.get(meta);
- if(hit){sourceSliceCache.map.delete(meta);sourceSliceCache.map.set(meta,hit);return hit}
+ if(hit){sourceSliceCache.map.delete(meta);sourceSliceCache.map.set(meta,hit);globalThis.__vrlCount?.('slice cache hit');return hit}
+ globalThis.__vrlCount?.('slice cache miss');
  const data=await decodeSourceSlice(meta);sourceSliceCache.map.set(meta,data);sourceSliceCache.bytes+=data.byteLength;
  const limit=sourceSliceCacheLimit();
  while(sourceSliceCache.bytes>limit&&sourceSliceCache.map.size>1){
@@ -136,7 +137,7 @@ export async function readSourceRegion(series,box,revision,preferFullSliceCache=
  for(let z=0;z<box.depth;z++){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   const part=await readSourceSubregion(series.slices[box.z+z],box.x,box.y,box.width,box.height,preferFullSliceCache);out.set(part,z*plane);
-  if((z&1)===1)await frameYield();
+  if((z&1)===1){const ty=performance.now();await frameYield();globalThis.__vrlTime?.('read:yield',performance.now()-ty)}
  }
  return out;
 }
