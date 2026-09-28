@@ -1899,3 +1899,9 @@ Owner: Full looked jagged. huAt used textureSampleLevel (linear) only when
 textureDims.w=1, which was set for reduced textures; full size used
 textureLoad (nearest). Now always 1. rg8 lo/hi bytes interpolate linearly, so
 the combined u16 is the trilinear value.
+
+## Build 283 — interpolation setting
+
+Settings > 描画 > 補間: なし (nearest) / 線形 (default) / なめらか / よりなめらか.
+Passed as textureDims.w; 2/3 also widen the gradient difference to 2/3
+voxels for smoother shading of voxel steps.

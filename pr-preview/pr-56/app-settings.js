@@ -8,6 +8,7 @@ export const SETTINGS_DEFAULTS={
  dragQuality:'standard', // pixel budget while dragging
  restQuality:'standard', // pixel budget at rest
  stepQuality:'standard', // ray-march step
+ interp:'linear',      // 3D sampling: none / linear / smooth / smoother
  showPerf:true,        // frame time / fps in the status bar
  debug:false           // same as ?debug
 };
@@ -24,6 +25,7 @@ const api={
  dragBudget:tier=>(DRAG_BUDGETS[values.dragQuality]||DRAG_BUDGETS.standard)[tier]??DRAG_BUDGETS.standard[0],
  restBudget:()=>REST_BUDGETS[values.restQuality]??REST_BUDGETS.standard,
  stepScale:()=>STEP_SCALES[values.stepQuality]??1,
+ interpLevel:()=>({none:0,linear:1,smooth:2,smoother:3})[values.interp]??1,
  debugOn:()=>debugEnabled()
 };
 globalThis.__vrlSettings=api;

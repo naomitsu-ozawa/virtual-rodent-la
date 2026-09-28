@@ -256,7 +256,9 @@ fn brickExitDistance(p:vec3<f32>,dir:vec3<f32>)->f32{
  return best;
 }
 fn gradientAt(tc:vec3<f32>)->vec3<f32>{
- let d=vec3<f32>(1.0/max(u.textureDims.x,1.0),1.0/max(u.textureDims.y,1.0),1.0/max(u.textureDims.z,1.0));
+ // textureDims.w: 0 nearest, 1 trilinear, 2/3 trilinear + normals from a
+ // wider (2/3 voxel) difference, which smooths the shading of voxel steps
+ let d=max(u.textureDims.w,1.0)*vec3<f32>(1.0/max(u.textureDims.x,1.0),1.0/max(u.textureDims.y,1.0),1.0/max(u.textureDims.z,1.0));
  let gx=huAt(tc+vec3<f32>(d.x,0.0,0.0))-huAt(tc-vec3<f32>(d.x,0.0,0.0));
  let gy=huAt(tc+vec3<f32>(0.0,d.y,0.0))-huAt(tc-vec3<f32>(0.0,d.y,0.0));
  let gz=huAt(tc+vec3<f32>(0.0,0.0,d.z))-huAt(tc-vec3<f32>(0.0,0.0,d.z));
@@ -1094,7 +1096,7 @@ export class MedicalVolumeRenderer{
   // w=1: trilinear sampling. It was on for reduced textures only, so the full-size
   // volume used nearest voxels and showed staircases (owner, build 282). rg8 lo/hi
   // bytes interpolate linearly, so lo+hi*256 is the interpolated u16 value.
-  put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],1);
+  put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],globalThis.__vrlSettings?.interpLevel?.()??1);
   this.device.queue.writeBuffer(this.uniformBuffer,0,data);
   const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();
