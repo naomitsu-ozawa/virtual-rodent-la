@@ -1043,7 +1043,7 @@ export class MedicalVolumeRenderer{
  setInteractive(active,tier=0){
   const next=!!active,nextTier=next?Math.max(0,Math.min(2,Math.round(+tier||0))):0;
   if(this.interactive===next&&this.interactionTier===nextTier)return;
-  this.interactive=next;this.interactionTier=nextTier;this.resize(true);
+  this.interactive=next;this.interactionTier=nextTier;this.resize();
  }
  // GPU frame time + canvas size in the status bar (4 updates/s at most)
  showFrameTime(){

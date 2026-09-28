@@ -2035,3 +2035,10 @@ Build 300 on the Mac: resize 98/0, drag targets 37, 3 fps while dragging,
 swap still grew, page ~5-6 GB. The canvas size kept changing because the two
 status lines (updated 4x/s) wrapped to different heights and the 3D view
 filled the rest. Both lines now have a fixed 2-line height and scroll.
+
+## Build 302 — no forced canvas reset on drag start/stop
+
+Build 301: still resize 43, drag targets 23, 3 fps (GPU 9 ms, interval 344 ms),
+page 5.1 GB. setInteractive() called resize(true), which re-assigned the canvas
+size (a full canvas reset and a drop of the drag targets) on every drag
+start/stop and tier change. It now resizes only when the size changes.
