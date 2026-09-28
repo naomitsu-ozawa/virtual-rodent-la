@@ -1020,13 +1020,19 @@ export class MedicalVolumeRenderer{
   };
   return run();
  }
- setActive(active){
+ setActive(active){if(!active&&typeof document!=='undefined'){const el=document.getElementById('gpu-frame-time');if(el)el.textContent=''}
   this.active=!!active;this.canvas.style.display=this.active?'block':'none';
  }
  setInteractive(active,tier=0){
   const next=!!active,nextTier=next?Math.max(0,Math.min(2,Math.round(+tier||0))):0;
   if(this.interactive===next&&this.interactionTier===nextTier)return;
   this.interactive=next;this.interactionTier=nextTier;this.resize(true);
+ }
+ // GPU frame time + canvas size in the status bar (4 updates/s at most)
+ showFrameTime(){
+  const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
+  const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;
+  const ms=this.lastFrameMs;el.textContent=' · 3D '+Math.round(ms)+' ms ('+Math.min(999,Math.round(1000/Math.max(ms,1)))+' fps) · '+this.canvas.width+'×'+this.canvas.height+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
  }
  resize(force=false){
   const hostW=this.host.clientWidth,hostH=this.host.clientHeight;if(hostW<8||hostH<8)return;
@@ -1073,7 +1079,7 @@ export class MedicalVolumeRenderer{
   const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),view=this.context.getCurrentTexture().createView(),pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();this.device.queue.submit([encoder.finish()]);
   // diagnostic: GPU time of one volume frame (submit to completion), one measurement at a time
-  if(!this._frameTimerPending&&this.device.queue.onSubmittedWorkDone){const t0=performance.now();this._frameTimerPending=true;this.device.queue.onSubmittedWorkDone().then(()=>{this.lastFrameMs=performance.now()-t0;this._frameTimerPending=false},()=>{this._frameTimerPending=false})}
+  if(!this._frameTimerPending&&this.device.queue.onSubmittedWorkDone){const t0=performance.now();this._frameTimerPending=true;this.device.queue.onSubmittedWorkDone().then(()=>{this.lastFrameMs=performance.now()-t0;this._frameTimerPending=false;this.showFrameTime()},()=>{this._frameTimerPending=false})}
  }
  async pickMany(points,camera,obj,segmentState,segmentOrder,preferredKey=null){
   if(!this.active||!this.texture||!this.bindGroup||!obj||!points?.length)return points?.map(()=>null)||[];
