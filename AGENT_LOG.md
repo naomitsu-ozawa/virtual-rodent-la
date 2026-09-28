@@ -2111,3 +2111,17 @@ preview needs (option B: preview detail unchanged). Upload waits every 64
 instead of 16 slices. Full resolution keeps the float path; CPU fallback keeps
 the old path. Small rounding differences vs the CPU path (average before vs
 after u16 rounding, <=0.5 raw). Not measured on a device yet.
+
+## Build 312 — segment processing reads the next block ahead
+
+Mac, fat + air boundary, no filter: 20 s = read 6.7, gpu distance 7.2, sort
+1.6, filters 1.6, upload 1.2 - all sequential per block. sourceSegmentRunBlockGpu
+now starts reading the next block (same box rules) before this block goes to
+the GPU (one block ahead, ~150 MB).
+
+## Build 313 — pruned airDist
+
+gpu distance was 7.2 s (Mac, fat + air boundary). airDist now visits offsets
+by increasing |k| and stops once (k*s)^2 >= g (all later terms are >= that),
+so air voxels read 1 value and voxels near air a few, instead of 2n+1 per axis.
+Applies to the thin-part opening passes too. Unit test: pruned == full scan.
