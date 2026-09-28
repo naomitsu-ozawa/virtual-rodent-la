@@ -1905,3 +1905,10 @@ the combined u16 is the trilinear value.
 Settings > 描画 > 補間: なし (nearest) / 線形 (default) / なめらか / よりなめらか.
 Passed as textureDims.w; 2/3 also widen the gradient difference to 2/3
 voxels for smoother shading of voxel steps.
+
+## Build 284 — per-filter GPU timing (diagnostics)
+
+With debug on, the segment status lists f:<filter> GPU time per stage
+(median, gaussian, bilateral, nlm, anisotropic, tv, sigmoid, spikeHole,
+unsharp) to pick which filters to optimise. Reads per voxel from the
+shaders: nlm (2s+1)^3*(2p+1)^3, bilateral up to 7^3, median 27 + sort.
