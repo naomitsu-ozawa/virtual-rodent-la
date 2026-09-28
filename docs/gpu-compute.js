@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build292';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build302';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build292';
-import { isDesktopMac, frameYield } from './utils.js?v=20260928-build292';
-import { runsSliceToMask } from './run-length.js?v=20260928-build292';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build292';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build292';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build302';
+import { isDesktopMac, frameYield } from './utils.js?v=20260928-build302';
+import { runsSliceToMask } from './run-length.js?v=20260928-build302';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build302';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build302';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -189,6 +189,10 @@ export const gpuStepTimes=new Map(),gpuRunInfo={};
 // ?debug or the settings dialog's debug switch (build 280)
 const GPU_TIMING_DEBUG=()=>!!globalThis.__vrlSettings?.debugOn?.()||(typeof location!=='undefined'&&/[?&]debug(\b|=|&|$)/.test(location.search));
 export function addGpuStepTime(name,ms){gpuStepTimes.set(name,(gpuStepTimes.get(name)||0)+ms)}
+// build 293 read diagnostics: modules without a gpu-compute import report here;
+// counts (cache hits/misses) are kept apart from the times
+export const gpuCounts=new Map();
+globalThis.__vrlTime=(name,ms)=>addGpuStepTime(name,ms);globalThis.__vrlCount=name=>gpuCounts.set(name,(gpuCounts.get(name)||0)+1);
 export function gpuDispatch1D(pass,groups){pass.dispatchWorkgroups(Math.min(groups,GPU_MAX_GROUPS),Math.max(1,Math.ceil(groups/GPU_MAX_GROUPS)))}
 export async function gpuFilterPipeline(kind){
  const device=await ensureGpuFilterDevice();if(!device)return null;
