@@ -19,7 +19,7 @@ test('app boots and renders the main UI', async ({ page }) => {
   await expect(page.locator('#app')).not.toBeEmpty();
   await expect(page.locator('#demo-button')).toBeVisible();
   await expect(page.locator('#open-folder')).toBeVisible();
-  await expect(page.locator('#gpu-status')).toBeVisible();
+  await expect(page.locator('#gpu-status-bar')).toBeVisible(); // top chip hidden since build 274
   // project file buttons: save needs loaded data, open is always available
   await expect(page.locator('#project-save')).toBeDisabled();
   await expect(page.locator('#project-open')).toBeEnabled();

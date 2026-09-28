@@ -1,16 +1,16 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260927-build271';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260927-build271';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260927-build271';
-import { request3DRender } from './scene3d.js?v=20260927-build271';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260927-build271';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260927-build271';
-import { tr } from './i18n.js?v=20260927-build271';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260927-build271';
-import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260927-build271';
-import { datasetFingerprint } from './project-file.js?v=20260927-build271';
-import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260927-build271';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build275';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build275';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build275';
+import { request3DRender } from './scene3d.js?v=20260928-build275';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build275';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build275';
+import { tr } from './i18n.js?v=20260928-build275';
+import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build275';
+import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260928-build275';
+import { datasetFingerprint } from './project-file.js?v=20260928-build275';
+import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260928-build275';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
@@ -96,7 +96,8 @@ export function syncGpuVolumeEdits(v=sourceVolume||volume){
  catch(e){console.error(e);footer.textContent=(currentLanguage==='ja'?'GPU編集マスク更新エラー: ':'GPU edit mask error: ')+String(e.message||e);for(const key of processed)noteSegment3D(key,(currentLanguage==='ja'?'3D反映エラー: ':'3D error: ')+String(e.message||e),true)}
 }
 export function gpuVolumePlanOptions(){
- if(isIPadRuntime())return{maxTextureBytes:0,targetInPlane:ipadGpuTargetSide};
  if(isIPhoneRuntime())return{maxTextureBytes:96*1024*1024,targetInPlane:0};
- return{maxTextureBytes:0,targetInPlane:0};
+ // iPad and desktop: 512 by default (Mac GPUs are no faster than an iPad Air
+ // for 3D); 768 or full size (0, desktop only) are explicit choices
+ return{maxTextureBytes:0,targetInPlane:ipadGpuTargetSide};
 }
