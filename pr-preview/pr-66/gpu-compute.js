@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20260928-build317';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build317';
+import { installGpuLedger } from './mem-ledger.js?v=20260928-build318';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build318';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20260928-build317';
-import { isDesktopMac, frameYield } from './utils.js?v=20260928-build317';
-import { runsSliceToMask } from './run-length.js?v=20260928-build317';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build317';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build317';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20260928-build318';
+import { isDesktopMac, frameYield } from './utils.js?v=20260928-build318';
+import { runsSliceToMask } from './run-length.js?v=20260928-build318';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build318';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build318';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -110,10 +110,21 @@ export function acquireGpuWorkBuffer(device,bytes){
  if(bucket?.length){const buffer=bucket.pop();gpuFilterRuntime.bufferPoolBytes-=size;return{buffer,size}}
  return{buffer:device.createBuffer({size,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST}),size};
 }
+// build 318: during a block loop (segment processing) the two work buffers of a
+// block are kept for the next block even above the pool limit. Before, a 1024²×38
+// block (256 MB bucket on the Mac) was destroyed and re-created per block, and
+// WebGPU zero-fills every new buffer on first use: measured as dist:touch 2.2 s.
+// The buffers exist during the block anyway; retention ends with the loop.
+export function beginGpuBufferRetention(){gpuFilterRuntime.retainDepth=(gpuFilterRuntime.retainDepth||0)+1}
+export function endGpuBufferRetention(){
+ gpuFilterRuntime.retainDepth=Math.max(0,(gpuFilterRuntime.retainDepth||0)-1);if(gpuFilterRuntime.retainDepth)return;
+ const limit=gpuPoolLimit();
+ for(const[size,bucket]of gpuFilterRuntime.bufferPool){while(bucket.length&&(size>limit/2||gpuFilterRuntime.bufferPoolBytes>limit)){try{bucket.pop().destroy()}catch{};gpuFilterRuntime.bufferPoolBytes-=size}}
+}
 export function releaseGpuWorkBuffer(buffer,size){
  if(!buffer||gpuFilterRuntime.sharedRendererDevice&&gpuFilterRuntime.device?.lost===undefined){try{buffer?.destroy?.()}catch{};return}
- const limit=gpuPoolLimit();
- if(size>limit/2||gpuFilterRuntime.bufferPoolBytes+size>limit){try{buffer.destroy()}catch{};return}
+ const limit=gpuPoolLimit(),retain=gpuFilterRuntime.retainDepth>0;
+ if(!retain&&(size>limit/2||gpuFilterRuntime.bufferPoolBytes+size>limit)){try{buffer.destroy()}catch{};return}
  let bucket=gpuFilterRuntime.bufferPool.get(size);if(!bucket){bucket=[];gpuFilterRuntime.bufferPool.set(size,bucket)}
  if(bucket.length>=2){try{buffer.destroy()}catch{};return}
  bucket.push(buffer);gpuFilterRuntime.bufferPoolBytes+=size;
