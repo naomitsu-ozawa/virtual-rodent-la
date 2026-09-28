@@ -2019,3 +2019,12 @@ change (and wheel zoom changes the tier) resizes the volume canvas and the
 three.js canvas, reallocating their buffers. Status bar now shows
 "resize volume/three" counts; settings 描画 has 操作中に解像度を下げる (default
 on). Off = no resizes during drags (slower drags) - a test to confirm the cause.
+
+## Build 300 — fixed-size 3D canvases while dragging
+
+Build 299 (memory limit) reverted: it capped caches unrelated to the swap
+the owner sees while dragging/zooming the 3D view. The volume canvas now
+keeps its at-rest size; drags render into cached lower-resolution textures
+(one per drag size, dropped when the canvas size changes) that are scaled
+onto it. In the volume view the three.js canvas no longer changes pixel ratio
+during drags. Status bar: "resize volume/three" and "drag targets" counts.

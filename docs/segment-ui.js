@@ -1,15 +1,15 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20260928-build298';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20260928-build298';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20260928-build298';
-import { dispose } from './surface-mesh.js?v=20260928-build298';
-import { request3DRender } from './scene3d.js?v=20260928-build298';
-import { renderAnalysisResults } from './analysis-results.js?v=20260928-build298';
-import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260928-build298';
-import { niceCtStep, formatCtValue } from './utils.js?v=20260928-build298';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260928-build298';
-import { renderAll } from './mpr-render.js?v=20260928-build298';
+import { mark3DStale } from './three-state.js?v=20260928-build300';
+import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20260928-build300';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20260928-build300';
+import { dispose } from './surface-mesh.js?v=20260928-build300';
+import { request3DRender } from './scene3d.js?v=20260928-build300';
+import { renderAnalysisResults } from './analysis-results.js?v=20260928-build300';
+import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260928-build300';
+import { niceCtStep, formatCtValue } from './utils.js?v=20260928-build300';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20260928-build300';
+import { renderAll } from './mpr-render.js?v=20260928-build300';
 export function renderSegmentPresets(){
  const active=new Set(SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active));
  for(const key of SEGMENT_PRESET_ORDER){
