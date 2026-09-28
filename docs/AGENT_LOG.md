@@ -2065,3 +2065,9 @@ Build 304: 3D rebuild 32.5 s (gaussian 18.6, read 11.0), page ~1.5 GB, no swap.
 filteredSourceSliceProvider now starts block N+1 when block N is requested, so
 its reads overlap block N filtering/upload. At most two blocks in flight (about
 2 x the 96 MB block budget plus GPU buffers). Watch swap when measuring.
+
+## Build 306 — rebuild status when debug is off
+
+iPad (debug off): the footer stayed at "3D再構築中…" after the rebuild finished;
+only the debug branch replaced it. Now "3D再構築 完了 Ns" always (the cache-hit
+path already shows its own message).
