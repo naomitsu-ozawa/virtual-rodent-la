@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { set3DBusy } from './three-status.js?v=20260927-build271';
-import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20260927-build271';
-import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20260927-build271';
-import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20260927-build271';
-import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20260927-build271';
-import { request3DRender } from './scene3d.js?v=20260927-build271';
-import { applyLanguage } from './i18n.js?v=20260927-build271';
-import { isIPadRuntime, fmt } from './utils.js?v=20260927-build271';
+import { set3DBusy } from './three-status.js?v=20260928-build272';
+import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20260928-build272';
+import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20260928-build272';
+import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20260928-build272';
+import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20260928-build272';
+import { request3DRender } from './scene3d.js?v=20260928-build272';
+import { applyLanguage } from './i18n.js?v=20260928-build272';
+import { isIPadRuntime, isIPhoneRuntime, fmt } from './utils.js?v=20260928-build272';
 export function initIPadWorkspaceUi(){
  if(!useWorkspaceUi())return;
  const shell=document.querySelector('.app-shell'),workspace=document.querySelector('.workspace'),sidebar=document.querySelector('.sidebar'),sidebarScroll=document.querySelector('.sidebar-scroll'),viewer=document.querySelector('#viewer-grid'),topbar=document.querySelector('.topbar');
@@ -101,18 +101,21 @@ export function initIPadWorkspaceUi(){
 }
 export function initIPadGpuQualityControl(){
  if(!ipadGpuQualityControl||!ipadGpuQuality)return;
- if(!isIPadRuntime()){ipadGpuQualityControl.classList.add('is-hidden');ipadGpuQualityControl.style.display='none';return}
+ if(isIPhoneRuntime()){ipadGpuQualityControl.classList.add('is-hidden');ipadGpuQualityControl.style.display='none';return}
+ // full size only off iPad (memory); the label is the 3D volume resolution
+ if(isIPadRuntime())ipadGpuQuality.querySelector('option[value="0"]')?.remove();
+ const label=ipadGpuQualityControl.querySelector('span');if(label)label.textContent=isIPadRuntime()?'iPad GPU':'GPU';
  ipadGpuQualityControl.classList.remove('is-hidden');ipadGpuQualityControl.style.display='inline-flex';ipadGpuQuality.value=String(ipadGpuTargetSide);
  ipadGpuQuality.onchange=async()=>{
-  const next=+ipadGpuQuality.value===768?768:512;if(next===ipadGpuTargetSide)return;
+  const v=+ipadGpuQuality.value,next=v===768?768:v===0&&!isIPadRuntime()?0:512;if(next===ipadGpuTargetSide)return;
   setIpadGpuTargetSide(next);
   const mv=sceneState?.medicalVolume,target=sourceVolume||volume,wasVolume=threeRenderMode==='volume'&&!!mv?.active;
   if(!mv||!target?.sourceBacked){updateRenderModeControl(target);return}
   clearResidentMprJobs();setResidentMprReadbackDisabled(true);mv.resetData();
-  set3DBusy(true,'iPad GPU '+next+' 準備中…');
+  set3DBusy(true,'GPU '+(next||'full')+' 準備中…');
   const ok=await prepareResidentGpuVolume(target);
   if(ok&&wasVolume)await activateMedicalVolume();
   else if(ok){mv.setActive(false);setThreeRenderMode('surface');setThreeVolumeOverlay(false);updateRenderModeControl(target);request3DRender()}
-  if(ok)footer.textContent='iPad GPU '+next+' · '+(mv.textureDims||[]).join('×')+' · '+fmt(mv.textureBytes);
+  if(ok)footer.textContent='GPU '+(next||'full')+' · '+(mv.textureDims||[]).join('×')+' · '+fmt(mv.textureBytes);
  };
 }

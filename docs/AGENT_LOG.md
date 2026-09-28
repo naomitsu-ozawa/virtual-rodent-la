@@ -1822,3 +1822,10 @@ canonical `docs/` build.
 - Next priorities per the ranking discussion: (1) this cleanup — done, then
   (2) test infrastructure, (3) splitting `docs/app.js` into modules,
   (4) feature work from `IMPLEMENTATION_PLAN.md`'s "Next priorities".
+
+## Build 272 — 3D volume resolution selector on desktop too
+
+Owner: the Mac has more memory but its GPU is no faster than the iPad Air, so
+full-size 3D was sluggish. The iPad 512/768 selector now shows on desktop as
+"GPU" with 512 (default) / 768 / Full; Full is desktop-only. iPhone unchanged.
+Not verified on a device yet.
