@@ -2058,3 +2058,10 @@ filtered rebuild 6.22 GB with "mpr 3568MB". buildMpr3DPreview allocated a full
 Uint16 sagittal copy (w*h*d*2) with no limit when maxTouchPoints===0 (iPad: <=1
 GB only). Desktop limit is now 512 MB (iPad unchanged); larger data uses the
 orthogonal plane cache for sagittal planes like iPad.
+
+## Build 305 — filtered 3D rebuild: next block in flight
+
+Build 304: 3D rebuild 32.5 s (gaussian 18.6, read 11.0), page ~1.5 GB, no swap.
+filteredSourceSliceProvider now starts block N+1 when block N is requested, so
+its reads overlap block N filtering/upload. At most two blocks in flight (about
+2 x the 96 MB block budget plus GPU buffers). Watch swap when measuring.
