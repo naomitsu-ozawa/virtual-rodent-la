@@ -2050,3 +2050,11 @@ the page still holds ~4.75 GB and swap rose a little at one peak. With debug
 on, the status bar lists every 2 s: GPU textures/buffers created on the shared
 device (live bytes, top labels; destroy() and GC subtract) and the app caches
 (slice, orthogonal, filter, preview, GPU pool, in-memory MPR arrays).
+
+## Build 304 — no 3.5 GB sagittal copy on desktops
+
+Memory ledger (build 303, Mac): after load the page held 2.78 GB; during the
+filtered rebuild 6.22 GB with "mpr 3568MB". buildMpr3DPreview allocated a full
+Uint16 sagittal copy (w*h*d*2) with no limit when maxTouchPoints===0 (iPad: <=1
+GB only). Desktop limit is now 512 MB (iPad unchanged); larger data uses the
+orthogonal plane cache for sagittal planes like iPad.
