@@ -793,3 +793,5 @@ html.vrl-ipad-ui .selected-series-overlay{
 .gpu-status-bar{margin-top:6px;padding:4px 10px;border:1px solid #2f5a3f;border-radius:7px;background:#12201a;color:#9fd9b3;font:11px/1.45 ui-monospace,Menlo,monospace;white-space:normal;overflow-wrap:anywhere}
 .gpu-status-bar:empty{display:none}
 .gpu-status-bar.is-warning{border-color:#6a5a2a;background:#211d10;color:#e3cf8f}
+/* the bar above the footer replaces the top chip (build 274) */
+#gpu-status{display:none!important}
