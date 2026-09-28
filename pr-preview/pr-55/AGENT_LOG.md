@@ -1862,3 +1862,9 @@ Owner noticed the GPU draw time was not shown: the ?debug footer text only
 updated on opacity/slice changes. The GPU frame time (onSubmittedWorkDone),
 fps and ray-cast canvas size now show in the bottom bar after each frame
 (max 4/s), without ?debug; cleared when the volume view is off.
+
+## Build 278 — iPad-sized 3D budget
+
+Mac M1 at rest 1516x813 = 137 ms; iPad M2 8 ms. Owner: make it the same as
+the iPad. Budgets now 0.25/0.18/0.12 MP dragging, 1.0 MP at rest (estimated
+iPad Air 3D view size; confirm with the iPad status-bar size).
