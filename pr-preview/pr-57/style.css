@@ -817,3 +817,15 @@ footer>a{flex:none}
 html:not(.vrl-ipad-ui) footer{padding-right:250px}
 footer #footer{flex:1;min-width:0;padding:5px 10px;border:1px solid #33434b;border-radius:7px;background:#11181b;color:#d4e1e6;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:normal;overflow-wrap:anywhere}
 footer #footer:empty{display:none}
+/* build 288: filter cards overflowed the narrow side panel (title wrapped,
+   type select and sliders cut off). Title on its own row, controls below,
+   everything shrinks to the panel width. */
+.filter-control-list,.filter-control-card{min-width:0;max-width:100%;box-sizing:border-box}
+.filter-control-card{overflow:hidden}
+.filter-control-head{flex-wrap:wrap;row-gap:6px}
+.filter-control-head .filter-enable-label{flex:1 1 100%;min-width:0}
+.filter-control-head strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filter-control-head .filter-reorder-controls{flex:none;display:inline-flex;gap:4px;align-items:center}
+.filter-control-head .filter-select{flex:1 1 0;min-width:0;max-width:100%}
+.filter-control-card .segment-range{min-width:0}
+.filter-control-card .segment-range input[type=range]{width:100%;min-width:0;box-sizing:border-box}
