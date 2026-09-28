@@ -1,11 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260928-build307';
-import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260928-build307';
-import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260928-build307';
-import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260928-build307';
-import { frameYield } from './utils.js?v=20260928-build307';
-import { request3DRender } from './scene3d.js?v=20260928-build307';
+import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260928-build308';
+import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260928-build308';
+import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260928-build308';
+import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260928-build308';
+import { frameYield } from './utils.js?v=20260928-build308';
+import { request3DRender } from './scene3d.js?v=20260928-build308';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 export const mpr3DVisibility={axes:true,axial:false,coronal:false,sagittal:false};
 export function restoreSectionAutoPlane(){
@@ -78,6 +78,8 @@ export async function ensureMpr3DPreviewCache(){
  const signature=mpr3DPreviewSignature(v,stages);
  if(mpr3DPreviewCache.signature===signature&&mpr3DPreviewCache.planes.coronal&&mpr3DPreviewCache.planes.sagittal)return true;
  if(mpr3DPreviewCache.building&&mpr3DPreviewCache.buildingSignature===signature)return false;
+ // build 308: a filtered 3D rebuild is filling this preview from its own blocks
+ if(stages.length&&sharedPreview&&sharedPreview.signature===signature)return false;
  const token=++mpr3DPreviewCache.token,plan=mpr3DPreviewPlan(v),maxSide=plan.side,w=v.columns,h=v.rows,d=v.slices,min=Number.isFinite(v.min)?v.min:-1024,max=Number.isFinite(v.max)&&v.max>min?v.max:min+1,scale=255/(max-min);
  const dims={axial:null,coronal:[Math.min(w,maxSide),Math.min(d,maxSide)],sagittal:[Math.min(h,maxSide),Math.min(d,maxSide)]};
  const coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
@@ -241,4 +243,36 @@ export function refreshMpr3DPlaneTexture(p){
  entry.fullTexture.needsUpdate=true;
  if(entry.mesh.material.map!==entry.fullTexture){entry.mesh.material.map=entry.fullTexture;entry.mesh.material.needsUpdate=true}
  request3DRender();
+}
+
+// build 308: build the filtered C/S preview from the filtered blocks the GPU
+// volume rebuild already makes (it used to filter the whole volume a second
+// time in small tiled blocks: 1564 GPU filter calls instead of ~120).
+let sharedPreview=null;
+export function beginSharedMpr3DPreview(){
+ const v=volume,stages=sourceFilterStages();if(!v||!stages.length||!v.sourceBacked)return null;
+ const signature=mpr3DPreviewSignature(v,stages);
+ if(mpr3DPreviewCache.signature===signature&&mpr3DPreviewCache.planes.coronal)return null;
+ mpr3DPreviewCache.token++;mpr3DPreviewCache.building=false;
+ const plan=mpr3DPreviewPlan(v),maxSide=plan.side,w=v.columns,h=v.rows,d=v.slices,min=Number.isFinite(v.min)?v.min:-1024,max=Number.isFinite(v.max)&&v.max>min?v.max:min+1,scale=255/(max-min);
+ const dims={axial:null,coronal:[Math.min(w,maxSide),Math.min(d,maxSide)],sagittal:[Math.min(h,maxSide),Math.min(d,maxSide)]};
+ const coronal=new Uint8Array(h*dims.coronal[0]*dims.coronal[1]),sagittal=new Uint8Array(w*dims.sagittal[0]*dims.sagittal[1]);
+ const corX=Array.from({length:dims.coronal[0]},(_,i)=>mpr3DPreviewMap(i,w,dims.coronal[0])),sagY=Array.from({length:dims.sagittal[0]},(_,i)=>mpr3DPreviewMap(i,h,dims.sagittal[0]));
+ const corRows=new Map(),sagRows=new Map();
+ for(let py=0;py<dims.coronal[1];py++){const z=d-1-mpr3DPreviewMap(py,d,dims.coronal[1]);if(!corRows.has(z))corRows.set(z,[]);corRows.get(z).push(py)}
+ for(let py=0;py<dims.sagittal[1];py++){const z=d-1-mpr3DPreviewMap(py,d,dims.sagittal[1]);if(!sagRows.has(z))sagRows.set(z,[]);sagRows.get(z).push(py)}
+ const q=value=>Math.max(0,Math.min(255,Math.round((value-min)*scale))),need=new Set([...corRows.keys(),...sagRows.keys()]),done=new Set();
+ sharedPreview={signature,
+  feed(z,src){
+   if(done.has(z)||!need.has(z))return;done.add(z);
+   const cr=corRows.get(z);if(cr){const cw=dims.coronal[0],ch=dims.coronal[1];for(const py of cr)for(let y=0;y<h;y++){const row=y*cw*ch+py*cw,sy=y*w;for(let px=0;px<cw;px++)coronal[row+px]=q(src[sy+corX[px]])}}
+   const sr=sagRows.get(z);if(sr){const sw=dims.sagittal[0],sh=dims.sagittal[1];for(const py of sr)for(let x=0;x<w;x++){const row=x*sw*sh+py*sw;for(let px=0;px<sw;px++)sagittal[row+px]=q(src[sagY[px]*w+x])}}
+  },
+  finish(ok){
+   const me=sharedPreview;sharedPreview=null;
+   if(!ok||!me||done.size<need.size||volume!==v)return false;
+   mpr3DPreviewCache.signature=signature;mpr3DPreviewCache.min=min;mpr3DPreviewCache.max=max;mpr3DPreviewCache.dims=dims;mpr3DPreviewCache.planes={axial:null,coronal,sagittal};
+   for(const p of ['coronal','sagittal'])refreshMpr3DPlaneTexture(p);request3DRender();return true;
+  }};
+ return sharedPreview;
 }

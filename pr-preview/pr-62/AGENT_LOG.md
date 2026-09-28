@@ -2079,3 +2079,12 @@ per-stage GPU syncs now need ?stagetimes (they serialise the GPU). New
 timings: gpu:wait (mapAsync = all GPU work of a block incl. upload), gpu:copy
 (result back to JS), block:copy, tex:wait (upload loop waiting for a block),
 tex:pack, tex:reduce (512/768 area average); count "filter blocks".
+
+## Build 308 — one filtering pass for the 3D volume and its C/S preview
+
+Build 307 Mac: 25.8 s, gpu:wait 26.1 s, filter blocks 1564 (expected ~120):
+the filtered 3D C/S preview filtered the whole volume again (4-slice blocks,
+384x128 tiles) in parallel with the GPU volume rebuild. refreshGpuVolumeData now
+opens a shared preview (beginSharedMpr3DPreview) fed by the rebuild blocks;
+ensureMpr3DPreviewCache waits for it instead of filtering. A cache hit (no
+blocks) falls back to the old preview path.
