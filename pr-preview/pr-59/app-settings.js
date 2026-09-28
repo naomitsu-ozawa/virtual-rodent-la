@@ -13,7 +13,8 @@ export const SETTINGS_DEFAULTS={
  showPerf:true,        // frame time / fps in the status bar
  debug:false,          // same as ?debug
  cacheAutoPrune:true,  // keep only the current filter setting per dataset + 3D resolution
- cacheLimit:'auto'     // GPU volume cache limit: auto / 0.5 / 1 / 2 / 4 (GB)
+ cacheLimit:'auto',    // GPU volume cache limit: auto / 0.5 / 1 / 2 / 4 (GB)
+ memLimit:'auto'       // memory for the app's own caches/work buffers: auto / 1 / 1.5 / 2 / 3 / 4 (GB)
 };
 // pixel budgets (MP) per interaction tier / at rest; 'max' = no budget
 export const DRAG_BUDGETS={low:[0.12e6,0.09e6,0.06e6],standard:[0.25e6,0.18e6,0.12e6],high:[0.45e6,0.32e6,0.22e6],max:[Infinity,Infinity,Infinity]};
@@ -29,6 +30,12 @@ const api={
  restBudget:()=>REST_BUDGETS[values.restQuality]??REST_BUDGETS.standard,
  stepScale:()=>STEP_SCALES[values.stepQuality]??1,
  interpLevel:()=>({none:0,linear:1,smooth:2,smoother:3})[values.interp]??1,
+ // build 299: one memory budget shared by the app's caches and work buffers
+ // (owner: cap the total instead of chasing each allocation). Each consumer
+ // gets a fixed share, never more than its own old limit. The GPU volume
+ // texture is sized by the 3D resolution setting and is not included.
+ memTotal(){const v=+values.memLimit;if(v>0)return v*2**30;const ua=globalThis.navigator?.userAgent||'',touch=(globalThis.navigator?.maxTouchPoints||0)>0;return(/iPhone|iPod/.test(ua)?0.5:touch?1:1.5)*2**30},
+ memCap(share,limit){return Math.max(8*2**20,Math.min(limit,Math.floor(api.memTotal()*share)))},
  debugOn:()=>debugEnabled()
 };
 globalThis.__vrlSettings=api;
