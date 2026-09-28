@@ -2028,3 +2028,10 @@ keeps its at-rest size; drags render into cached lower-resolution textures
 (one per drag size, dropped when the canvas size changes) that are scaled
 onto it. In the volume view the three.js canvas no longer changes pixel ratio
 during drags. Status bar: "resize volume/three" and "drag targets" counts.
+
+## Build 301 — status lines no longer resize the 3D view
+
+Build 300 on the Mac: resize 98/0, drag targets 37, 3 fps while dragging,
+swap still grew, page ~5-6 GB. The canvas size kept changing because the two
+status lines (updated 4x/s) wrapped to different heights and the 3D view
+filled the rest. Both lines now have a fixed 2-line height and scroll.
