@@ -1884,3 +1884,11 @@ Status bar now splits: 3D = volume pass after earlier queued GPU work,
 older module). 描画: 3D resolution (moved from the toolbar chip), quality while
 dragging / at rest (pixel budgets), ray step, frame-time display. デバッグ:
 same as ?debug, switchable without reload (the *_DEBUG flags are functions).
+
+## Build 281 — area-averaged reduced 3D texture
+
+Owner: switching 3D resolution from 512 looked jagged ("not smoothed").
+The reduced texture picked one source voxel per texel (nearest); 1024->768
+picks an irregular 1,1,2 pattern. Now each texel is the in-plane area average
+of its source footprint (z still picks slices). Cache key gains "-avg" so old
+nearest-picked caches are not reused. Not verified on a device.

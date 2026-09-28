@@ -625,6 +625,20 @@ function gpuDilateRuns(runs,w,h,d,radius=1){
  }
  return rowsByZ.map(rows=>gpuRunRowMapToSlice(rows,w));
 }
+// area-average a packed rg8 (little-endian u16) slice into tw x th; xs/ys are
+// source span boundaries per target column/row
+export function reduceSliceArea(packed,sw,xs,ys,tw,th,rowStride,out,rowSum=new Float64Array(tw),rowCnt=new Uint32Array(tw)){
+ for(let y=0;y<th;y++){
+  rowSum.fill(0);rowCnt.fill(0);
+  for(let sy=ys[y];sy<ys[y+1];sy++){
+   const src=sy*sw*2;
+   for(let x=0;x<tw;x++){let acc=0;const a=xs[x],b=xs[x+1];for(let sx=a;sx<b;sx++){const o=src+sx*2;acc+=packed[o]|(packed[o+1]<<8)}rowSum[x]+=acc;rowCnt[x]+=b-a}
+  }
+  const dst=y*rowStride;
+  for(let x=0;x<tw;x++){const v=rowCnt[x]?Math.round(rowSum[x]/rowCnt[x]):0;out[dst+x*2]=v&255;out[dst+x*2+1]=v>>8}
+ }
+ return out;
+}
 function gpuRunsForTexture(runs,sourceDims,textureDims,{dilate=0}={}){
  const [sw,sh,sd]=sourceDims,[tw,th,td]=textureDims;
  if(!runs)return null;
@@ -713,7 +727,7 @@ export class MedicalVolumeRenderer{
   const reducedRowStride=Math.ceil(tw*2/256)*256;
   let cache=null;
   if(dataSignature&&typeof v.textureCache==='function'){
-   try{cache=await v.textureCache({planSignature,reduced:!!plan.reduced,slices:plan.reduced?td:s.slices.length,bytesPerSlice:plan.reduced?reducedRowStride*th:s.columns*2*s.rows})}catch{cache=null}
+   try{cache=await v.textureCache({planSignature:plan.reduced?planSignature+'-avg':planSignature,reduced:!!plan.reduced,slices:plan.reduced?td:s.slices.length,bytesPerSlice:plan.reduced?reducedRowStride*th:s.columns*2*s.rows})}catch{cache=null}
   }
   this.lastCacheHit=!!cache?.hit;
   let preview=null,previewSourceZ=null,previewX=null,previewY=null;
@@ -738,15 +752,16 @@ export class MedicalVolumeRenderer{
     for(let y=0;y<th;y++)yMap[y]=th<=1?0:Math.round(y*(s.rows-1)/(th-1));
     for(let z=0;z<td;z++)zMap[z]=td<=1?0:Math.round(z*(s.slices.length-1)/(td-1));
     const rowBytes=tw*2,rowStride=Math.ceil(rowBytes/256)*256,reducedSlice=new Uint8Array(rowStride*th);
+    // in-plane area average instead of picking one source voxel: 768 of 1024
+    // picks an irregular 1,1,2 pattern that looked jagged (owner, build 281)
+    const spans=(n,t)=>{const a=new Uint32Array(t+1);for(let i=0;i<=t;i++)a[i]=Math.min(n,Math.round(i*n/t));for(let i=0;i<t;i++)if(a[i+1]<=a[i])a[i+1]=Math.min(n,a[i]+1);return a};
+    const xs=spans(s.columns,tw),ys=spans(s.rows,th),rowSum=new Float64Array(tw),rowCnt=new Uint32Array(tw);
     for(let tz=0;tz<td;tz++){
      let upload=reducedSlice;
      if(cache?.hit){cancelled();upload=await cache.read(tz)}
      else{
       const packed=await sliceBytes(zMap[tz]);reducedSlice.fill(0);
-      for(let y=0;y<th;y++){
-       const srcRow=yMap[y]*s.columns*2,dstRow=y*rowStride;
-       for(let x=0;x<tw;x++){const so=srcRow+xMap[x]*2,doff=dstRow+x*2;reducedSlice[doff]=packed[so];reducedSlice[doff+1]=packed[so+1]}
-      }
+      reduceSliceArea(packed,s.columns,xs,ys,tw,th,rowStride,reducedSlice,rowSum,rowCnt);
       if(cache)await cache.write(tz,reducedSlice.slice());
      }
      this.device.queue.writeTexture({texture,origin:{x:0,y:0,z:tz}},upload,{bytesPerRow:rowStride,rowsPerImage:th},{width:tw,height:th,depthOrArrayLayers:1});
