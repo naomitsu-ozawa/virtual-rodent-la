@@ -1031,7 +1031,7 @@ export class MedicalVolumeRenderer{
  // GPU frame time + canvas size in the status bar (4 updates/s at most)
  showFrameTime(){
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
-  const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;
+  const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;if(globalThis.__vrlSettings?.get?.('showPerf')===false){el.textContent='';return}
   const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
   el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+this.canvas.width+'×'+this.canvas.height+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
  }
@@ -1042,7 +1042,7 @@ export class MedicalVolumeRenderer{
   // desktop used ~2.6x the iPad's pixels while dragging (owner: slow when
   // zoomed in, build 276). Same ratios everywhere plus a pixel budget
   // near an iPad Air's 3D view (build 278: owner asked for the iPad size).
-  const interactiveRatios=[0.72,0.58,0.46],budgets=this.interactive?[0.25e6,0.18e6,0.12e6]:[1.0e6];
+  const interactiveRatios=[0.72,0.58,0.46],cfg=globalThis.__vrlSettings,budgets=this.interactive?[0,1,2].map(t=>cfg?.dragBudget?.(t)??[0.25e6,0.18e6,0.12e6][t]):[cfg?.restBudget?.()??1.0e6];
   let ratio=this.interactive?Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]):Math.min(dpr,1.5);
   const budget=budgets[this.interactive?this.interactionTier:0]||budgets[0];
   if(hostW*hostH*ratio*ratio>budget)ratio=Math.sqrt(budget/(hostW*hostH));
@@ -1056,7 +1056,7 @@ export class MedicalVolumeRenderer{
   const right=this.tmpRight.set(1,0,0).applyQuaternion(q).transformDirection(inv),up=this.tmpUp.set(0,1,0).applyQuaternion(q).transformDirection(inv),forward=this.tmpForward.set(0,0,-1).applyQuaternion(q).transformDirection(inv);
   const data=this.frameData,put=(slot,a,b,c,d)=>{const i=slot*4;data[i]=a;data[i+1]=b;data[i+2]=c;data[i+3]=d};
   put(0,origin.x,origin.y,origin.z,0);put(1,right.x,right.y,right.z,Math.tan(THREE.MathUtils.degToRad(camera.fov*.5)));put(2,up.x,up.y,up.z,camera.aspect);put(3,forward.x,forward.y,forward.z,0);
-  const interactionStep=this.interactive?[1.65,2.0,2.5][this.interactionTier]||1.65:1;put(4,this.halfExtents[0],this.halfExtents[1],this.halfExtents[2],this.step*interactionStep);
+  const interactionStep=this.interactive?[1.65,2.0,2.5][this.interactionTier]||1.65:1;put(4,this.halfExtents[0],this.halfExtents[1],this.halfExtents[2],this.step*interactionStep*(globalThis.__vrlSettings?.stepScale?.()??1));
   put(5,this.volume.columns,this.volume.rows,this.volume.slices,this.calibration.slope);put(6,this.calibration.intercept,this.calibration.signedBias,this.brickDims[0],this.brickDims[1]);put(7,this.canvas.width,this.canvas.height,this.brickDims[2],this.brickSize);
   for(let s=0;s<4;s++){
    const key=segmentOrder[s],seg=segmentState[key],enabled=seg?.active&&seg?.enabled?1:0,color=new THREE.Color(seg?.color||'#ffffff');
