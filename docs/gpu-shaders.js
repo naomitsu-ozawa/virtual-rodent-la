@@ -45,11 +45,16 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let dims=vec3<i32>(i32(meta[0]),i32(meta[1]),i32(meta[2]));
  let mode=meta[6];var inSeg=false;
  if(axis==0u&&mode==0u){let v=src[i];inSeg=v>=params[0]&&v<=params[1];}else if(axis==0u&&mode==1u){inSeg=src[i]>0.5;}else{inSeg=src[i]>=0.0;}
+ // build 313: visit offsets by increasing |k| and stop once (k*s)^2 >= g:
+ // every term is >= (k*s)^2, so the rest cannot lower g. Air voxels (g=0 at
+ // k=0) now read one value instead of 2n+1. Same result as the full scan.
  var g=1.0e30;
- for(var k=-n;k<=n;k++){
+ for(var m=0;m<=2*n;m++){
+  let k=select(-((m+1)/2),m/2,(m&1)==0);let d=f32(k)*s;
+  if(d*d>=g){break;}
   var q=c;if(axis==0u){q.x=c.x+k;}else if(axis==1u){q.y=c.y+k;}else{q.z=c.z+k;}
   if(q.x<0||q.y<0||q.z<0||q.x>=dims.x||q.y>=dims.y||q.z>=dims.z){continue;}
-  let e=src[idx(u32(q.x),u32(q.y),u32(q.z))];let d=f32(k)*s;
+  let e=src[idx(u32(q.x),u32(q.y),u32(q.z))];
   if(axis==0u){
    var feature=false;
    if(mode==0u){feature=e<params[0];}else if(mode==1u){feature=e<=0.5;}else{feature=e>=0.0&&e>params[3];}

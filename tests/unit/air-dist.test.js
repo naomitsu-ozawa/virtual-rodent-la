@@ -4,7 +4,7 @@ import { suppressThinBox } from '../../docs/thin-suppress.js';
 // JS mirror of the 'airDist' compute shader (gpu-shaders.js): three passes, one
 // axis each, compose the exact squared distance to the nearest air voxel within
 // the radius; segment voxels keep g >= 0, others store -(g+1) between passes.
-function airDistPasses(values, w, h, d, min, max, sp, n) {
+function airDistPasses(values, w, h, d, min, max, sp, n, pruned = true) {
   const idx = (x, y, z) => z * w * h + y * w + x, N = w * h * d;
   let src = Float32Array.from(values);
   for (let axis = 0; axis < 3; axis++) {
@@ -12,7 +12,10 @@ function airDistPasses(values, w, h, d, min, max, sp, n) {
     for (let z = 0; z < d; z++) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = idx(x, y, z), inSeg = axis === 0 ? (src[i] >= min && src[i] <= max) : src[i] >= 0;
       let g = 1e30;
-      for (let k = -n[axis]; k <= n[axis]; k++) {
+      // build 313 shader order: |k| ascending, stop once (k*s)^2 >= g
+      for (let m = 0; m <= 2 * n[axis]; m++) {
+        const k = m % 2 === 0 ? m / 2 : -(m + 1) / 2;
+        if (pruned && (k * sp[axis]) ** 2 >= g) break;
         const q = [x, y, z]; q[axis] += k;
         if (q[0] < 0 || q[1] < 0 || q[2] < 0 || q[0] >= w || q[1] >= h || q[2] >= d) continue;
         const e = src[idx(...q)], dd = k * sp[axis];
@@ -27,6 +30,13 @@ function airDistPasses(values, w, h, d, min, max, sp, n) {
 }
 
 describe('airDist separable distance field', () => {
+  it('pruned scan equals the full scan (build 313)', () => {
+    const w = 16, h = 13, d = 10, sp = [0.04, 0.04, 0.08], N = w * h * d;
+    let s = 9; const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const values = new Float32Array(N); for (let i = 0; i < N; i++) { const r = rnd(); values[i] = r < 0.25 ? -1000 : r < 0.75 ? -600 : 50; }
+    const n = [4, 4, 2];
+    expect([...airDistPasses(values, w, h, d, -700, -500, sp, n, true)]).toEqual([...airDistPasses(values, w, h, d, -700, -500, sp, n, false)]);
+  });
   it('equals brute force for segment voxels within the radius', () => {
     const w = 14, h = 12, d = 9, sp = [0.04, 0.04, 0.08], min = -700, max = -500, N = w * h * d;
     let s = 5; const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
