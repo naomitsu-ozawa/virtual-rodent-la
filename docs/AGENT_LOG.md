@@ -1839,3 +1839,11 @@ Render/Compute/adapter text (and the last GPU error). Top chip unchanged.
 
 Owner: the bar above the footer replaces it. #gpu-status stays in the DOM
 (hidden) as the text source; the renderer-error path also writes the bar.
+
+## Build 275 — zero-size texture error (owner: status showed "GPU FAIL · uncaptured: createTexture ... size is zero")
+
+Not a compute kernel (no shader kind in the message; medical-volume textures
+are inside error scopes). Only unguarded path found: set3DInteraction setSize
+with the hidden 3D viewport (0x0 in 2D mode) -> guarded like resize(). Cause
+not proven, so createTexture is wrapped to record label/size/caller of any
+zero-size request; it is appended to the error in the status bar.
