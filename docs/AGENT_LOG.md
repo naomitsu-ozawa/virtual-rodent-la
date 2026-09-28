@@ -1927,3 +1927,8 @@ Gaussian ran passes x 3 axes = 12 full-block dispatches. Now one (2n+1)-tap
 pass per axis (gaussianK, weights from gaussianPassKernel = the 3-tap kernel
 convolved n times): 3 dispatches. Same result except within n voxels of the
 volume edge (clamp once instead of per pass). Read is the next target.
+
+## Build 287 — readable status lines
+
+Owner could not find the timing line (11px grey footer text). The footer
+message is now a second bar under the GPU bar: 12px, light text, bordered, wraps.

@@ -809,3 +809,11 @@ html.vrl-ipad-ui .selected-series-overlay{
 .settings-check{justify-content:flex-start}
 .settings-check input{width:20px;height:20px}
 .settings-foot{margin-top:10px}
+/* build 287: the message line (timings, results) was 11px grey and easy to
+   miss; show it as a second status bar, same size as the GPU bar */
+.gpu-status-bar{font-size:12px}
+footer{display:flex!important;gap:10px;margin-top:6px!important;align-items:center!important}
+footer>a{flex:none}
+html:not(.vrl-ipad-ui) footer{padding-right:250px}
+footer #footer{flex:1;min-width:0;padding:5px 10px;border:1px solid #33434b;border-radius:7px;background:#11181b;color:#d4e1e6;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:normal;overflow-wrap:anywhere}
+footer #footer:empty{display:none}
