@@ -1938,3 +1938,12 @@ message is now a second bar under the GPU bar: 12px, light text, bordered, wraps
 Owner: filter UI was cut off (title wrapped, type select and sliders clipped).
 Title on its own row, reorder/remove buttons + type select below, sliders
 shrink to the card width.
+
+## Build 289 — bigger filtered GPU-volume blocks
+
+Build 288 measurement: 3D rebuild 75.5 s = read 53.4, f:gaussian 50.3,
+upload 4.8. The rebuild used 8-slice blocks in 384x128 tiles, so gaussian x4
+read 16 slices per 8 kept and ran 24 tiles per block. Blocks are now whole
+slices, as deep as volumeBlockBudget() allows (desktop 256 MB, iPad 64 MB,
+capped by maxStorageBufferBindingSize): 1024x1024 -> ~55 core slices on a Mac,
+8 (untiled) on iPad. Not verified on a device.

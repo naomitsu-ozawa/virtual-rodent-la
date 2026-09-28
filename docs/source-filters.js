@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build288';
-import { sourceVolume, filterOrder } from './state.js?v=20260928-build288';
-import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build288';
-import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build288';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build288';
-import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build288';
-import { cacheKey } from './gpu-volume-cache.js?v=20260928-build288';
+import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20260928-build289';
+import { sourceVolume, filterOrder } from './state.js?v=20260928-build289';
+import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20260928-build289';
+import { frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build289';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260928-build289';
+import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20260928-build289';
+import { cacheKey } from './gpu-volume-cache.js?v=20260928-build289';
 export const memoryFilterPreviewCache={map:new Map(),bytes:0};
 export const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
 export function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isIPadRuntime()?192*1024*1024:256*1024*1024}
@@ -167,8 +167,8 @@ export function sourceTileBudget(){
  if(isDesktopMac()&&gpuFilterRuntime.device){const cap=Number(gpuFilterRuntime.device.limits?.maxStorageBufferBindingSize)||128*1024*1024;return Math.max(16*1024*1024,Math.min(32*1024*1024,Math.floor(cap*.25)))}
  return 16*1024*1024;
 }
-export function fitSourceTile(a,b,fixed,halo,startA,startB){
- let ca=Math.max(1,Math.min(a,startA)),cb=Math.max(1,Math.min(b,startB)),budget=sourceTileBudget();
+export function fitSourceTile(a,b,fixed,halo,startA,startB,budget=sourceTileBudget()){
+ let ca=Math.max(1,Math.min(a,startA)),cb=Math.max(1,Math.min(b,startB));
  const bytes=()=>Math.min(a,ca+2*halo)*Math.min(b,cb+2*halo)*Math.max(1,fixed+2*halo)*4;
  while(bytes()>budget&&(ca>16||cb>16)){if(ca>=cb&&ca>16)ca=Math.max(16,Math.floor(ca/2));else if(cb>16)cb=Math.max(16,Math.floor(cb/2));else break}
  return[ca,cb];
@@ -202,10 +202,21 @@ export async function getFilteredSourcePlaneValues(p,idx,series,keyPrefix='mpr',
  }
  if(revision!==sourceFilterRuntime.revision||stale())throw new Error('__SUPERSEDED__');sourceFilterCacheSet(cacheKey,out);return out;
 }
-export async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d-block'){
+// Budget for one filtered GPU-volume block (build 289): whole slices, as deep
+// as fits. The old 8-slice blocks in 384x128 tiles re-read and re-filtered
+// each halo (gaussian x4: 16 slices read per 8 kept, 24 tiles per block).
+export function volumeBlockBudget(){
+ const cap=Number(gpuFilterRuntime.device?.limits?.maxStorageBufferBindingSize)||128*1024*1024;
+ return Math.min(cap,isIPadRuntime()||isIPhoneRuntime()?64*1024*1024:256*1024*1024);
+}
+export function volumeBlockDepth(series){
+ const halo=sourceFilterHalo(sourceFilterStages()),plane=series.columns*series.rows*4;
+ return Math.max(8,Math.floor(volumeBlockBudget()/plane)-2*halo-1);
+}
+export async function getFilteredSourceAxialBlock(zStart,coreDepth,series,keyPrefix='3d-block',budget=null){
  const stages=sourceFilterStages();if(!stages.length)return null;
  const revision=sourceFilterRuntime.revision,w=series.columns,h=series.rows,d=series.slices.length,halo=sourceFilterHalo(stages),outDepth=Math.min(d-zStart,coreDepth+(zStart+coreDepth<d?1:0));
- const out=new Float32Array(w*h*outDepth),[tx,ty]=fitSourceTile(w,h,outDepth,halo,384,128);
+ const out=new Float32Array(w*h*outDepth),[tx,ty]=budget?fitSourceTile(w,h,outDepth,halo,w,h,budget):fitSourceTile(w,h,outDepth,halo,384,128);
  for(let y=0;y<h;y+=ty)for(let x=0;x<w;x+=tx){
   if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
   const tw=Math.min(tx,w-x),th=Math.min(ty,h-y),tile=await processSourceRegion(series,{x,y,z:zStart,width:tw,height:th,depth:outDepth},stages,keyPrefix+':'+zStart,revision,true);

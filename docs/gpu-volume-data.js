@@ -1,26 +1,27 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStepTimes } from './gpu-compute.js?v=20260928-build288';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build288';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build288';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build288';
-import { request3DRender } from './scene3d.js?v=20260928-build288';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build288';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build288';
-import { tr } from './i18n.js?v=20260928-build288';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build288';
-import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260928-build288';
-import { datasetFingerprint } from './project-file.js?v=20260928-build288';
-import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260928-build288';
+import { gpuStepTimes } from './gpu-compute.js?v=20260928-build289';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build289';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build289';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build289';
+import { request3DRender } from './scene3d.js?v=20260928-build289';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build289';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build289';
+import { tr } from './i18n.js?v=20260928-build289';
+import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build289';
+import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260928-build289';
+import { datasetFingerprint } from './project-file.js?v=20260928-build289';
+import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260928-build289';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
  return applied&&applied===currentFilterSignature()?applied:'';
 }
-export function filteredSourceSliceProvider(series,blockDepth=8){
- let block=null,start=-1;
+export function filteredSourceSliceProvider(series,blockDepth=null){
+ let block=null,start=-1,depth=blockDepth;
  return async z=>{
-  if(!block||z<start||z>=start+block.coreDepth){start=Math.floor(z/blockDepth)*blockDepth;block=await getFilteredSourceAxialBlock(start,blockDepth,series,'gpu-volume')}
+  depth=depth||volumeBlockDepth(series);
+  if(!block||z<start||z>=start+block.coreDepth){start=Math.floor(z/depth)*depth;block=null;block=await getFilteredSourceAxialBlock(start,depth,series,'gpu-volume',volumeBlockBudget())}
   const n=series.rows*series.columns,off=(z-start)*n;return block.data.subarray(off,off+n);
  };
 }
