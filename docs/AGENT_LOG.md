@@ -1884,3 +1884,24 @@ Status bar now splits: 3D = volume pass after earlier queued GPU work,
 older module). 描画: 3D resolution (moved from the toolbar chip), quality while
 dragging / at rest (pixel budgets), ray step, frame-time display. デバッグ:
 same as ?debug, switchable without reload (the *_DEBUG flags are functions).
+
+## Build 281 — area-averaged reduced 3D texture
+
+Owner: switching 3D resolution from 512 looked jagged ("not smoothed").
+The reduced texture picked one source voxel per texel (nearest); 1024->768
+picks an irregular 1,1,2 pattern. Now each texel is the in-plane area average
+of its source footprint (z still picks slices). Cache key gains "-avg" so old
+nearest-picked caches are not reused. Not verified on a device.
+
+## Build 282 — trilinear sampling for the full-size volume
+
+Owner: Full looked jagged. huAt used textureSampleLevel (linear) only when
+textureDims.w=1, which was set for reduced textures; full size used
+textureLoad (nearest). Now always 1. rg8 lo/hi bytes interpolate linearly, so
+the combined u16 is the trilinear value.
+
+## Build 283 — interpolation setting
+
+Settings > 描画 > 補間: なし (nearest) / 線形 (default) / なめらか / よりなめらか.
+Passed as textureDims.w; 2/3 also widen the gradient difference to 2/3
+voxels for smoother shading of voxel steps.
