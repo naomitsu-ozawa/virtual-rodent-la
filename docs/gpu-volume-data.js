@@ -1,17 +1,17 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStepTimes } from './gpu-compute.js?v=20260928-build287';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build287';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build287';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build287';
-import { request3DRender } from './scene3d.js?v=20260928-build287';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build287';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build287';
-import { tr } from './i18n.js?v=20260928-build287';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build287';
-import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260928-build287';
-import { datasetFingerprint } from './project-file.js?v=20260928-build287';
-import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260928-build287';
+import { gpuStepTimes } from './gpu-compute.js?v=20260928-build288';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build288';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build288';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build288';
+import { request3DRender } from './scene3d.js?v=20260928-build288';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build288';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build288';
+import { tr } from './i18n.js?v=20260928-build288';
+import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build288';
+import { openVolumeCache, cacheKey, textureCacheHandle } from './gpu-volume-cache.js?v=20260928-build288';
+import { datasetFingerprint } from './project-file.js?v=20260928-build288';
+import { getFilteredSourceAxialBlock, currentFilterSignature } from './source-filters.js?v=20260928-build288';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';

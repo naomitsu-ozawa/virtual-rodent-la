@@ -1932,3 +1932,9 @@ volume edge (clamp once instead of per pass). Read is the next target.
 
 Owner could not find the timing line (11px grey footer text). The footer
 message is now a second bar under the GPU bar: 12px, light text, bordered, wraps.
+
+## Build 288 — filter cards fit the side panel
+
+Owner: filter UI was cut off (title wrapped, type select and sliders clipped).
+Title on its own row, reorder/remove buttons + type select below, sliders
+shrink to the card width.
