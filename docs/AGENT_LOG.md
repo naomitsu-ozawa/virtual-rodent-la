@@ -2157,3 +2157,12 @@ zero-filled each new buffer on first use. thresholdSourceRuns now wraps its
 block loop in begin/endGpuBufferRetention: released work buffers stay pooled
 (max 2 per size) until the loop ends, then the pool is trimmed back to its
 limit. Peak memory is unchanged (the buffers exist during each block anyway).
+
+## Build 319 — read test (diagnostics for the slice-file reads)
+
+The segment run reads 1784 × 2 MB slices at ~240 MB/s (read 15 s, first open),
+far below the SSD, and 8 reads in flight measured slower than 4. The reads
+already fetch only the pixel bytes. Settings → デバッグ → 読み込みテスト
+(docs/read-test.js) measures, on disjoint slice groups: the fixed cost of a
+1-byte read, MB/s with 1/4/8/16 reads in flight, and 4 Web Workers reading —
+to decide between fewer/larger reads and moving the reads off the main thread.
