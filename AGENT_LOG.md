@@ -1822,3 +1822,28 @@ canonical `docs/` build.
 - Next priorities per the ranking discussion: (1) this cleanup — done, then
   (2) test infrastructure, (3) splitting `docs/app.js` into modules,
   (4) feature work from `IMPLEMENTATION_PLAN.md`'s "Next priorities".
+
+## Build 272 — 3D volume resolution selector on desktop too
+
+Owner: the Mac has more memory but its GPU is no faster than the iPad Air, so
+full-size 3D was sluggish. The iPad 512/768 selector now shows on desktop as
+"GPU" with 512 (default) / 768 / Full; Full is desktop-only. iPhone unchanged.
+Not verified on a device yet.
+
+## Build 273 — full GPU status bar
+
+The green top chip truncates; a bar above the footer now shows the full
+Render/Compute/adapter text (and the last GPU error). Top chip unchanged.
+
+## Build 274 — top GPU chip hidden
+
+Owner: the bar above the footer replaces it. #gpu-status stays in the DOM
+(hidden) as the text source; the renderer-error path also writes the bar.
+
+## Build 275 — zero-size texture error (owner: status showed "GPU FAIL · uncaptured: createTexture ... size is zero")
+
+Not a compute kernel (no shader kind in the message; medical-volume textures
+are inside error scopes). Only unguarded path found: set3DInteraction setSize
+with the hidden 3D viewport (0x0 in 2D mode) -> guarded like resize(). Cause
+not proven, so createTexture is wrapped to record label/size/caller of any
+zero-size request; it is appended to the error in the status bar.

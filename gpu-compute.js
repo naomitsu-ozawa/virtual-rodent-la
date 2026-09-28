@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260927-build271';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build275';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260927-build271';
-import { isDesktopMac, frameYield } from './utils.js?v=20260927-build271';
-import { runsSliceToMask } from './run-length.js?v=20260927-build271';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260927-build271';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260927-build271';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260928-build275';
+import { isDesktopMac, frameYield } from './utils.js?v=20260928-build275';
+import { runsSliceToMask } from './run-length.js?v=20260928-build275';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build275';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build275';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -51,6 +51,9 @@ export function updateGpuStatus(){
  const computeGpu=compute.startsWith('WEBGPU'),gpuActive=render==='WEBGPU'||computeGpu;
  status.className=gpuActive?'status status-ok':'status status-warning';
  status.title=gpuFilterRuntime.lastError||'';
+ // the top chip is truncated; the bar under the views shows the full text
+ const bar=document.getElementById('gpu-status-bar');
+ if(bar){bar.textContent=status.textContent+(gpuFilterRuntime.lastError&&!failure?' · '+gpuFilterRuntime.lastError:'');bar.classList.toggle('is-warning',!gpuActive)}
 }
 export function setGpuComputeBackend(label,error=''){
  gpuFilterRuntime.lastBackend=label;
@@ -62,9 +65,17 @@ export function installGpuErrorListener(device){
  if(!device||device.__vrlErrorListenerInstalled)return;
  try{
   device.__vrlErrorListenerInstalled=true;
+  // diagnostics for "createTexture: size is zero" (owner, build 274): record
+  // which texture and caller asked for a zero size; shown in the status bar
+  const create=device.createTexture?.bind(device);
+  if(create)device.createTexture=desc=>{
+   const s=desc?.size,dims=Array.isArray(s)?s:[s?.width,s?.height??1,s?.depthOrArrayLayers??1];
+   if(dims.some(n=>!n)){const at=(new Error().stack||'').split('\n').slice(2,5).map(l=>l.trim().replace(/^at /,'').replace(/https?:[^ )]*\//g,'').replace(/\?v=[^:]*/,'')).join(' < ');gpuFilterRuntime.zeroTexture=(desc?.label||'unlabelled')+' '+dims.join('x')+' @ '+at;console.warn('zero-size texture',desc,at)}
+   return create(desc);
+  };
   device.addEventListener?.('uncapturederror',event=>{
    const message=String(event?.error?.message||event?.message||'uncaptured WebGPU error'),kind=gpuFilterRuntime.lastShaderKind?(' ['+gpuFilterRuntime.lastShaderKind+']'):'';
-   gpuFilterRuntime.lastError='uncaptured'+kind+': '+message;
+   gpuFilterRuntime.lastError='uncaptured'+kind+': '+message+(/zero/i.test(message)&&gpuFilterRuntime.zeroTexture?' ['+gpuFilterRuntime.zeroTexture+']':'');
    setGpuComputeBackend('WEBGPU GPU FAIL',gpuFilterRuntime.lastError);
    console.error('Virtual Rodent Lab WebGPU error:',event?.error||event);
   });
