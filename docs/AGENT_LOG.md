@@ -1947,3 +1947,11 @@ read 16 slices per 8 kept and ran 24 tiles per block. Blocks are now whole
 slices, as deep as volumeBlockBudget() allows (desktop 256 MB, iPad 64 MB,
 capped by maxStorageBufferBindingSize): 1024x1024 -> ~55 core slices on a Mac,
 8 (untiled) on iPad. Not verified on a device.
+
+## Build 290 — region STL uses the segment surface settings
+
+Owner: the region STL was raw voxel faces, unlike the screen. Region export
+now builds its mesh with buildEditableRunsGroup (the segment surface path:
+surface smoothing / smooth isosurface when feasible), ignoring the segment cut
+faces, only for the export (disposed after, nothing added to the scene).
+Not verified on a device.
