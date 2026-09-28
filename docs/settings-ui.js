@@ -1,11 +1,13 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20260928-build318';
-import { request3DRender } from './scene3d.js?v=20260928-build318';
-import { updateGpuStatus } from './gpu-compute.js?v=20260928-build318';
-import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20260928-build318';
-import { tr } from './i18n.js?v=20260928-build318';
-import { fmt } from './utils.js?v=20260928-build318';
+import { settings } from './app-settings.js?v=20260928-build319';
+import { request3DRender } from './scene3d.js?v=20260928-build319';
+import { updateGpuStatus } from './gpu-compute.js?v=20260928-build319';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20260928-build319';
+import { tr } from './i18n.js?v=20260928-build319';
+import { fmt } from './utils.js?v=20260928-build319';
+import { sourceVolume, currentLanguage } from './state.js?v=20260928-build319';
+import { runReadTest, formatReadTest } from './read-test.js?v=20260928-build319';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
@@ -21,6 +23,13 @@ export function initSettingsDialog(){
  const limitSel=document.getElementById('set-cache-limit'),limitChange=limitSel?.onchange;if(limitSel)limitSel.onchange=async()=>{limitChange?.();await pruneToLimit(true)};
  const pruneBtn=document.getElementById('set-cache-prune');if(pruneBtn)pruneBtn.onclick=()=>pruneToLimit(false);
  const clearBtn=document.getElementById('set-cache-clear');if(clearBtn)clearBtn.onclick=async()=>{if(!confirm(tr('volumeCacheConfirm')))return;const c=await volumeCache();if(c)await c.clear();void updateVolumeCacheControl();void renderCacheList()};
+ const readBtn=document.getElementById('set-read-test'),readOut=document.getElementById('set-read-test-out');
+ if(readBtn)readBtn.onclick=async()=>{
+  if(!sourceVolume?.series){readOut.textContent='—';return}
+  readBtn.disabled=true;readOut.textContent=tr('readTestRunning');
+  try{const r=await runReadTest(sourceVolume.series,step=>{readOut.textContent=tr('readTestRunning')+' '+step});readOut.textContent=formatReadTest(r,currentLanguage==='ja')}
+  catch(e){readOut.textContent='error: '+(e?.message||e)}finally{readBtn.disabled=false}
+ };
  function sync(){
   const v=settings.all(),put=(id,val)=>{const el=document.getElementById(id);if(!el)return;if(el.type==='checkbox')el.checked=!!val;else el.value=String(val)};
   put('set-drag-quality',v.dragQuality);put('set-rest-quality',v.restQuality);put('set-step-quality',v.stepQuality);put('set-interp',v.interp);put('set-drag-lowres',v.dragLowerRes);put('set-show-perf',v.showPerf);put('set-debug',v.debug);put('set-cache-autoprune',v.cacheAutoPrune);put('set-cache-limit',v.cacheLimit);
