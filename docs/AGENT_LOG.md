@@ -1962,3 +1962,11 @@ Owner: build 289 showed a broken volume; footer still said "Full-resolution
 filters", so the rebuild never reported. refreshGpuVolumeData now shows start
 ("3D再構築中…"), superseded restarts, errors (volume partly updated) and a
 GPU filter -> CPU fallback in the status bar. Diagnostics only.
+
+## Build 292 — 2D dispatch for extract / mesh passes
+
+Build 291 showed the cause: "x(229376) > dimensionMax(65535)". The filter
+result extract pass (and the mesh count/corner/write passes) dispatched
+workgroups in 1D; with ~56-slice 1024x1024 blocks that is 229376 groups. They
+now use gpuDispatch1D like the filter passes (shaders already get the gid
+rewrite). Static test forbids raw size-dependent dispatches in gpu-compute.js.
