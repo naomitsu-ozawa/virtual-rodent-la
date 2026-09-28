@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20260928-build310';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build310';
+import { installGpuLedger } from './mem-ledger.js?v=20260928-build311';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260928-build311';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build310';
-import { isDesktopMac, frameYield } from './utils.js?v=20260928-build310';
-import { runsSliceToMask } from './run-length.js?v=20260928-build310';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build310';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build310';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel } from './gpu-shaders.js?v=20260928-build311';
+import { isDesktopMac, frameYield } from './utils.js?v=20260928-build311';
+import { runsSliceToMask } from './run-length.js?v=20260928-build311';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260928-build311';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260928-build311';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -449,6 +449,30 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   counters.destroy();
   encoder=device.createCommandEncoder({label:'VRL compact face extraction'});
   // Oversized vertex output falls through to compact-face extraction using the already filtered GPU buffer.
+ }
+ // build 311: texture-ready output for the GPU volume (faceContext.pack):
+ // packed/reduced rg8 slices for pack.zList (box-local z) plus full-res float
+ // planes only for pack.previewZ (the 3D C/S preview), instead of reading the
+ // whole filtered block back as floats
+ if(faceContext?.pack&&!segments?.length&&w===target.width&&h===target.height&&target.x===0&&target.y===0){
+  const pk=faceContext.pack,rowWords=pk.rowStride/4,nz=pk.zList.length,words=rowWords*pk.th*nz;
+  const aux=new Uint32Array(pk.tw+1+pk.th+1+Math.max(1,nz));aux.set(pk.xs,0);aux.set(pk.ys,pk.tw+1);aux.set(pk.zList,pk.tw+1+pk.th+1);
+  const meta=new Uint32Array(8);meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=pk.tw;meta[4]=pk.th;meta[5]=nz;meta[6]=rowWords;meta[7]=words;
+  const params=new Float32Array([1/(pk.slope||1),pk.intercept||0,pk.bias||0,0]);
+  const mb=gpuSmallBuffer(device,meta),pb=gpuSmallBuffer(device,params),ab=gpuSmallBuffer(device,aux);small.push(mb,pb,ab);
+  const outBytes=Math.max(4,words*4),out=device.createBuffer({size:outBytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+  const pipe=await gpuFilterPipeline('packReduce');
+  const group=device.createBindGroup({layout:pipe.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:out}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}},{binding:4,resource:{buffer:ab}}]});
+  if(nz){const pass=encoder.beginComputePass();pass.setPipeline(pipe);pass.setBindGroup(0,group);gpuDispatch1D(pass,Math.ceil(words/gpuFilterRuntime.workgroupSize));pass.end()}
+  const plane=w*h*4,pz=pk.previewZ||[],readBytes=outBytes+pz.length*plane,readback=device.createBuffer({size:readBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+  encoder.copyBufferToBuffer(out,0,readback,0,outBytes);
+  pz.forEach((z,i)=>encoder.copyBufferToBuffer(current,z*plane,readback,outBytes+i*plane,plane));
+  device.queue.submit([encoder.finish()]);
+  const tWait=performance.now();await readback.mapAsync(GPUMapMode.READ);addGpuStepTime('gpu:wait',performance.now()-tWait);
+  const tCopy=performance.now(),bytes=readback.getMappedRange().slice(0);readback.unmap();addGpuStepTime('gpu:copy',performance.now()-tCopy);globalThis.__vrlCount?.('filter blocks');
+  releaseGpuWorkBuffer(a,aw.size);releaseGpuWorkBuffer(b,bw.size);out.destroy();readback.destroy();for(const buf of small)buf.destroy();
+  setGpuComputeBackend('WEBGPU COMPUTE');
+  return{packed:new Uint8Array(bytes,0,words*4),preview:new Float32Array(bytes,outBytes,pz.length*w*h),zList:pk.zList,previewZ:pz,sliceBytes:rowWords*4*pk.th};
  }
  const targetCount=target.width*target.height*target.depth,compactFaces=!!(segments?.length&&faceContext),targetBytes=targetCount*(compactFaces?8:4);
  const targetBuffer=device.createBuffer({size:Math.max(4,targetBytes),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
