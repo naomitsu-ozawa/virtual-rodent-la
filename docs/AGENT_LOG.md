@@ -2088,3 +2088,9 @@ the filtered 3D C/S preview filtered the whole volume again (4-slice blocks,
 opens a shared preview (beginSharedMpr3DPreview) fed by the rebuild blocks;
 ensureMpr3DPreviewCache waits for it instead of filtering. A cache hit (no
 blocks) falls back to the old preview path.
+
+## Build 309 — more parallel slice reads
+
+Build 308 Mac: read 9.9 s (file 21.8 s summed over 4 parallel reads, decode
+2.3, yield 1.6). Read-ahead 4 -> 8 slices (?ahead=N to try 1-32), UI yield
+every 60 ms instead of 30 ms.
