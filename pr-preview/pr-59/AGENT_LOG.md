@@ -2005,3 +2005,9 @@ results likewise per dataset (main segment runs only); (2) list of entries with
 per-entry delete and clear-all; (3) limit auto (old rule, up to 4 GB) or
 0.5/1/2/4 GB. Entries from older builds carry no dataset info, so only the
 list / LRU removes them.
+
+## Build 297 — trim cache to the new limit
+
+Owner: changing the limit did not remove anything. Lowering it now asks to
+delete least recently used entries over the limit; a "上限に合わせて整理"
+button does the same on demand.
