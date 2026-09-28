@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260928-build298';
-import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build298';
-import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260928-build298';
+import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260928-build299';
+import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build299';
+import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260928-build299';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 export function sourceMprCacheLimit(){
- if(isIPhoneRuntime())return 512*1024*1024;
- if(isIPadRuntime())return 1536*1024*1024;
- return Number.MAX_SAFE_INTEGER;
+ const v=isIPhoneRuntime()?512*1024*1024:isIPadRuntime()?1536*1024*1024:Number.MAX_SAFE_INTEGER;
+ // build 299: part of the app memory budget (settings > 描画 > メモリ上限)
+ return globalThis.__vrlSettings?.memCap?.(0.5,v)??v;
 }
 export function sourceMprDecodeConcurrency(){
  const hc=Math.max(2,Number(navigator.hardwareConcurrency)||4);
