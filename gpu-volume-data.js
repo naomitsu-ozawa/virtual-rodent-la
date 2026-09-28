@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20260928-build310';
-import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260928-build310';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build310';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build310';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build310';
-import { request3DRender } from './scene3d.js?v=20260928-build310';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build310';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build310';
-import { tr } from './i18n.js?v=20260928-build310';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build310';
-import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260928-build310';
-import { datasetFingerprint } from './project-file.js?v=20260928-build310';
-import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260928-build310';
+import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20260928-build311';
+import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260928-build311';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260928-build311';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260928-build311';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260928-build311';
+import { request3DRender } from './scene3d.js?v=20260928-build311';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260928-build311';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260928-build311';
+import { tr } from './i18n.js?v=20260928-build311';
+import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260928-build311';
+import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260928-build311';
+import { datasetFingerprint } from './project-file.js?v=20260928-build311';
+import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260928-build311';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
@@ -34,6 +34,35 @@ export function filteredSourceSliceProvider(series,blockDepth=null,onBlock=null)
    if(onBlock&&block){const n=series.rows*series.columns;for(let k=0;k<block.coreDepth;k++)onBlock(start+k,block.data.subarray(k*n,(k+1)*n))}
   }
   const n=series.rows*series.columns,off=(z-start)*n;return block.data.subarray(off,off+n);
+ };
+}
+// build 311: reduced GPU volume upload straight from GPU-packed blocks.
+// plan: {tw,th,xs,ys,zMap,rowStride,slope,intercept,bias}; returns tz -> packed
+// texture slice (or null to fall back to the float path). preview (optional)
+// gets full-res float planes for the z it needs.
+export function filteredPackedSliceProvider(series,plan,preview=null){
+ const depth=volumeBlockDepth(series),total=series.slices.length,pending=new Map(),need=preview?.needZ||new Set();
+ let block=null,start=-1,failed=false;
+ const request=s=>{
+  if(s<0||s>=total)return null;let p=pending.get(s);if(p)return p;
+  const core=Math.min(depth,total-s),tzs=[],rel=[],pz=[];
+  for(let tz=0;tz<plan.zMap.length;tz++){const z=plan.zMap[tz];if(z>=s&&z<s+core){tzs.push(tz);rel.push(z-s)}}
+  for(let z=s;z<s+core;z++)if(need.has(z))pz.push(z-s);
+  p=getFilteredSourceAxialBlock(s,depth,series,'gpu-volume',volumeBlockBudget(),{tw:plan.tw,th:plan.th,xs:plan.xs,ys:plan.ys,rowStride:plan.rowStride,slope:plan.slope,intercept:plan.intercept,bias:plan.bias,zList:rel,previewZ:pz}).then(b=>b&&b.packed?{...b,tzs,pzRel:pz}:null);
+  p.catch(()=>{});pending.set(s,p);return p;
+ };
+ return async tz=>{
+  if(failed)return null;
+  const z=plan.zMap[tz];
+  if(!block||z<start||z>=start+block.coreDepth){
+   start=Math.floor(z/depth)*depth;block=null;
+   for(const k of [...pending.keys()])if(k<start)pending.delete(k);
+   const cur=request(start);request(start+depth);block=await cur;pending.delete(start);
+   if(!block){failed=true;return null}
+   if(preview){const n=series.rows*series.columns;block.pzRel.forEach((lz,i)=>preview.feed(start+lz,block.preview.subarray(i*n,(i+1)*n)))}
+  }
+  const i=block.tzs.indexOf(tz);if(i<0)return null;
+  return block.packed.subarray(i*block.sliceBytes,(i+1)*block.sliceBytes);
  };
 }
 export const volumeCacheState={cache:null,failed:false,persistAsked:false};
@@ -83,6 +112,8 @@ export async function refreshGpuVolumeData(){
  // build 308: the 3D C/S preview is filled from these filtered blocks
  const preview=target.sliceData&&target.series?beginSharedMpr3DPreview():null;
  if(preview)target.sliceData=filteredSourceSliceProvider(target.series,null,(z,src)=>preview.feed(z,src));
+ // build 311: reduced plans upload GPU-packed slices (falls back to sliceData)
+ if(target.sliceData&&target.series)target.packedSliceProvider=plan=>filteredPackedSliceProvider(target.series,plan,preview);
  gpuVolumeRefresh.running=wanted;updateVolumeFilterBadge();
  // debug (build 285): total time and per-filter GPU times of the 3D rebuild
  const t0=performance.now();gpuStepTimes.clear();gpuCounts.clear();const errBefore=gpuFilterRuntime.lastError||'';footer.textContent=currentLanguage==='ja'?'3D再構築中…':'Rebuilding 3D…';

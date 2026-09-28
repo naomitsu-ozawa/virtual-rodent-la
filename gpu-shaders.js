@@ -72,6 +72,33 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  }
  dst[i]=acc;
 }`;
+ // build 311: filtered block -> packed rg8 (u16) volume texture slices on the
+ // GPU: in-plane area average over xs/ys spans, CT value -> raw u16, two texels
+ // per u32 word; rows padded to meta[6] words (256-byte copy alignment)
+ if(kind==='packReduce')return `
+@group(0) @binding(0) var<storage, read> src: array<f32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<u32>;
+@group(0) @binding(2) var<storage, read> meta: array<u32>;
+@group(0) @binding(3) var<storage, read> params: array<f32>;
+@group(0) @binding(4) var<storage, read> aux: array<u32>;
+fn texel(x:u32,y:u32,z:u32)->u32{
+ let w=meta[0];let h=meta[1];let tw=meta[3];let th=meta[4];
+ if(x>=tw){return 0u;}
+ let x0=aux[x];let x1=aux[x+1u];let y0=aux[tw+1u+y];let y1=aux[tw+1u+y+1u];
+ var acc=0.0;var n=0.0;
+ for(var sy=y0;sy<y1;sy=sy+1u){for(var sx=x0;sx<x1;sx=sx+1u){acc=acc+src[(z*h+sy)*w+sx];n=n+1.0;}}
+ let v=acc/max(n,1.0);
+ let raw=clamp(round((v-params[1])*params[0])+params[2],0.0,65535.0);
+ return u32(raw);
+}
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid:vec3<u32>){
+ let i=gid.x;if(i>=meta[7]){return;}
+ let rowWords=meta[6];let th=meta[4];let per=rowWords*th;
+ let k=i/per;let rem=i%per;let y=rem/rowWords;let wx=rem%rowWords;
+ let z=aux[meta[3]+1u+th+1u+k];
+ dst[i]=texel(2u*wx,y,z)|(texel(2u*wx+1u,y,z)<<16u);
+}`;
  if(kind==='median')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
@@ -573,7 +600,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','gaussianK','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite','boxMean','unsharpCombine'];
+export const GPU_PREWARM_KINDS=['gaussian','gaussianK','packReduce','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','classRunCount','classRunWrite','boxMean','unsharpCombine'];
 
 // weights of n passes of out=b*(1-s)+s*(a+2b+c)/4, i.e. the 3-tap kernel
 // [s/4, 1-s/2, s/4] convolved with itself n times (length 2n+1). Equal to the

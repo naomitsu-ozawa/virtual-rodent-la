@@ -758,16 +758,20 @@ export class MedicalVolumeRenderer{
     // picks an irregular 1,1,2 pattern that looked jagged (owner, build 281)
     const spans=(n,t)=>{const a=new Uint32Array(t+1);for(let i=0;i<=t;i++)a[i]=Math.min(n,Math.round(i*n/t));for(let i=0;i<t;i++)if(a[i+1]<=a[i])a[i+1]=Math.min(n,a[i]+1);return a};
     const xs=spans(s.columns,tw),ys=spans(s.rows,th),rowSum=new Float64Array(tw),rowCnt=new Uint32Array(tw);
+    // build 311: slices packed and reduced on the GPU by the filter pass
+    const packedSlice=!cache?.hit&&dataSignature&&typeof v.packedSliceProvider==='function'?v.packedSliceProvider({tw,th,xs,ys,zMap,rowStride,slope:first.slope||1,intercept:first.intercept||0,bias:signed?32768:0}):null;
     for(let tz=0;tz<td;tz++){
      let upload=reducedSlice;
+     const gpuPacked=packedSlice?(cancelled(),await packedSlice(tz)):null;
      if(cache?.hit){cancelled();upload=await cache.read(tz)}
+     else if(gpuPacked){upload=gpuPacked;if(cache)await cache.write(tz,gpuPacked.slice())}
      else{
       const packed=await sliceBytes(zMap[tz]);reducedSlice.fill(0);
       {const tr=performance.now();reduceSliceArea(packed,s.columns,xs,ys,tw,th,rowStride,reducedSlice,rowSum,rowCnt);globalThis.__vrlTime?.('tex:reduce',performance.now()-tr)}
       if(cache)await cache.write(tz,reducedSlice.slice());
      }
      this.device.queue.writeTexture({texture,origin:{x:0,y:0,z:tz}},upload,{bytesPerRow:rowStride,rowsPerImage:th},{width:tw,height:th,depthOrArrayLayers:1});
-     if((tz&15)===15||tz===td-1){this.onProgress(tz+1,td);try{await this.device.queue.onSubmittedWorkDone()}catch{}await new Promise(requestAnimationFrame)}
+     if((tz&63)===63||tz===td-1){this.onProgress(tz+1,td);try{await this.device.queue.onSubmittedWorkDone()}catch{}await new Promise(requestAnimationFrame)}
     }
    }else{
     for(let z=0;z<s.slices.length;z++){
