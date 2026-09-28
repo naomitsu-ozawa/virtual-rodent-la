@@ -37,5 +37,5 @@ export function debugEnabled(){
  if(values.debug)return true;
  return typeof location!=='undefined'&&/[?&]debug(\b|=|&|$)/.test(location.search);
 }
-// build 309: ?ahead=N sets how many slices are read in parallel (default 8)
+// build 309: ?ahead=N sets how many slices are read in parallel (default 4)
 try{const n=+new URLSearchParams(globalThis.location?.search||'').get('ahead');if(n>=1&&n<=32)globalThis.__vrlReadAhead=Math.round(n)}catch{}

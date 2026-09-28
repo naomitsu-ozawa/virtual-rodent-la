@@ -2094,3 +2094,8 @@ blocks) falls back to the old preview path.
 Build 308 Mac: read 9.9 s (file 21.8 s summed over 4 parallel reads, decode
 2.3, yield 1.6). Read-ahead 4 -> 8 slices (?ahead=N to try 1-32), UI yield
 every 60 ms instead of 30 ms.
+
+## Build 310 — read-ahead back to 4
+
+Same build 309, Mac: ahead=4 20.6 s (read 8.3), ahead=8 23.3 s (read 7.3 but
+longer overall). Default back to 4; the 60 ms UI yield stays (23.1 -> 20.6 s).
