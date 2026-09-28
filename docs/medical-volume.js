@@ -720,7 +720,7 @@ export class MedicalVolumeRenderer{
   const first=s.slices[0],signed=!!first.signed;let texture,popped=false;
   // v.isCancelled(): lets the caller stop an upload superseded by a newer one
   const cancelled=()=>{if(typeof v.isCancelled==='function'&&v.isCancelled())throw new Error('__SUPERSEDED__')};
-  const sliceBytes=dataSignature?(async z=>{cancelled();return packCtSlice(await v.sliceData(z),first)}):(z=>{cancelled();return packedRgSlice(s.slices[z])});
+  const sliceBytes=dataSignature?(async z=>{cancelled();const tw0=performance.now(),vals=await v.sliceData(z);globalThis.__vrlTime?.('tex:wait',performance.now()-tw0);const tp=performance.now(),b=packCtSlice(vals,first);globalThis.__vrlTime?.('tex:pack',performance.now()-tp);return b}):(z=>{cancelled();return packedRgSlice(s.slices[z])});
   if(inPlace)this.dataSignature='partial';
   // v.textureCache(info) -> handle (see gpu-volume-cache.js): on a hit the
   // stored texture slices are uploaded as-is (no filtering, packing or
@@ -763,7 +763,7 @@ export class MedicalVolumeRenderer{
      if(cache?.hit){cancelled();upload=await cache.read(tz)}
      else{
       const packed=await sliceBytes(zMap[tz]);reducedSlice.fill(0);
-      reduceSliceArea(packed,s.columns,xs,ys,tw,th,rowStride,reducedSlice,rowSum,rowCnt);
+      {const tr=performance.now();reduceSliceArea(packed,s.columns,xs,ys,tw,th,rowStride,reducedSlice,rowSum,rowCnt);globalThis.__vrlTime?.('tex:reduce',performance.now()-tr)}
       if(cache)await cache.write(tz,reducedSlice.slice());
      }
      this.device.queue.writeTexture({texture,origin:{x:0,y:0,z:tz}},upload,{bytesPerRow:rowStride,rowsPerImage:th},{width:tw,height:th,depthOrArrayLayers:1});
