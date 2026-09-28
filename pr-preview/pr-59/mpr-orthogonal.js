@@ -1,10 +1,10 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { sourceVolume, volume, sceneState, residentMprEpoch, setResidentMprReadbackDisabled, residentMprReadbackDisabled, setSourceOrthogonalPlaneCacheBytes, sourceOrthogonalPlaneCacheBytes } from './state.js?v=20260928-build294';
-import { state } from './ui-shell.js?v=20260928-build294';
-import { sourceFilterStages } from './source-filters.js?v=20260928-build294';
-import { frameYield, isIPhoneRuntime, isIPadRuntime } from './utils.js?v=20260928-build294';
-import { readSourceRows, readSourceColumn } from './volume-io.js?v=20260928-build294';
+import { sourceVolume, volume, sceneState, residentMprEpoch, setResidentMprReadbackDisabled, residentMprReadbackDisabled, setSourceOrthogonalPlaneCacheBytes, sourceOrthogonalPlaneCacheBytes } from './state.js?v=20260928-build295';
+import { state } from './ui-shell.js?v=20260928-build295';
+import { sourceFilterStages } from './source-filters.js?v=20260928-build295';
+import { frameYield, isIPhoneRuntime, isIPadRuntime } from './utils.js?v=20260928-build295';
+import { readSourceRows, readSourceColumn } from './volume-io.js?v=20260928-build295';
 export const residentMprJobs={axial:{running:false,current:null,pending:null},coronal:{running:false,current:null,pending:null},sagittal:{running:false,current:null,pending:null}};
 export function residentGpuMprAvailable(v=sourceVolume||volume){
  const mv=sceneState?.medicalVolume;return !!(!residentMprReadbackDisabled&&mv?.hasResident?.(v));
