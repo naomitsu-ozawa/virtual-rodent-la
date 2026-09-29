@@ -2306,3 +2306,14 @@ per frame, the offscreen and XR target sizes and eye count, and the holder
 scale. New diagnostics row: normal / box only (no marching) / loop-count heat
 map (blue few iterations → red ≥1024). All three shader modes compiled and
 drew in headless Chromium.
+
+## Build 340 — VR: automatic volume resolution
+
+Owner, build 339 (bone, enlarged): box only 90 fps; normal and loop-count
+modes drop; loop-count map blue (iterations well under 1024); 100 % slower
+than 50 %. So the cost is marched pixels × per-ray work, and 50 % is still too
+many pixels when the volume fills both eyes. New default 自動: every 0.5 s the
+XR frame interval is compared with the target rate; over budget lowers the
+factor (down to 25 %), within budget raises it (up to 80 %). One offscreen
+target at 80 %, only the viewports change, so no reallocation. Manual 100 /
+70 / 50 % stay. Settings key renamed (old saved indices no longer match).

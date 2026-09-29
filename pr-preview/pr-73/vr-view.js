@@ -8,10 +8,10 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build339';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build339';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build339';
-import { tr } from './i18n.js?v=20260929-build339';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build340';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build340';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build340';
+import { tr } from './i18n.js?v=20260929-build340';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -168,15 +168,19 @@ async function buildVolumeData(maxDim,onProgress){
 }
 
 // VR settings kept per browser (resolution only applies when a session starts)
-const SETTINGS_KEY='vrl-vr-settings';
-const DEFAULTS={quality:0,vres:2,foveation:2,rate:0};
+const SETTINGS_KEY='vrl-vr-settings-2';
+const DEFAULTS={quality:0,vres:0,foveation:2,rate:0};
 function loadSettings(){try{return{...DEFAULTS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
 // smaller per axis and scaled up where the volume box covers the view. Owner,
 // build 337: fps fell from 30 to 16 when the volume was enlarged, so the cost
 // follows the covered pixels.
-const VRES=[1,0.7,0.5],STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+// 0 = auto (build 340). Owner, build 339: box only keeps 90 fps, marching
+// drops to 15 when the volume fills the view, 100 % is slower than 50 %: the
+// cost follows the marched pixels, so auto keeps the frame time by lowering
+// the resolution while the volume is large and raising it when small.
+const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=0.8,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
 
 // upscales the offscreen volume image; drawn with the volume box so only the
 // covered pixels are touched
@@ -186,7 +190,7 @@ void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position*halfExt,1
 const compositeFragment=`
 precision highp float;
 uniform sampler2D img;
-uniform vec2 invSize; // 1 / XR framebuffer size
+uniform vec2 invSize; // resolution factor / offscreen target size
 out highp vec4 outColor;
 void main(){outColor=texture(img,gl_FragCoord.xy*invSize);}`;
 
@@ -275,6 +279,8 @@ export async function startVrView({language='ja'}={}){
   c.addEventListener('selectend',up);
  }
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
+ const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
+ let autoF=0.5,autoFrames=0,autoAt=performance.now();
  const applyQuality=()=>{
   if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
@@ -283,12 +289,12 @@ export async function startVrView({language='ja'}={}){
  };
  // fps per setting, so the owner can report which combination is smooth
  let frames=0,fpsAt=performance.now(),fps=0,info='';
- const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',d:'診断',dv:['通常','箱のみ','ループ数'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
-  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',d:'Diagnostics',dv:['Normal','Box only','Loop count'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
+ const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',auto:'自動',d:'診断',dv:['通常','箱のみ','ループ数'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
+  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',auto:'Auto',d:'Diagnostics',dv:['Normal','Box only','Loop count'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
  menu.onDraw(()=>{
-  const b=[],row=(y,label,values,key,resetFps=true)=>{values.forEach((v,i)=>b.push({x:32+i*200,y,w:188,h:64,label:v,on:settings[key]===i,action:()=>{settings[key]=i;applyQuality();if(resetFps){frames=0;fpsAt=performance.now()}}}));b.push({x:640,y,w:360,h:64,label,on:false})};
+  const b=[],row=(y,label,values,key,resetFps=true)=>{const bw=values.length>3?140:188;values.forEach((v,i)=>b.push({x:32+i*(bw+12),y,w:bw,h:64,label:v,on:settings[key]===i,action:()=>{settings[key]=i;applyQuality();if(resetFps){frames=0;fpsAt=performance.now()}}}));b.push({x:640,y,w:360,h:64,label,on:false})};
   // row labels are drawn as inert buttons on the right
-  row(180,L.r,VRES.map(r=>Math.round(r*100)+'%'),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');row(500,L.d,L.dv,'diag');
+  row(180,L.r,VRES.map(r=>r?Math.round(r*100)+'%':L.auto),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');row(500,L.d,L.dv,'diag');
   SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;b.push({x:32+i*240,y:580,w:228,h:64,label:tr(key),color:seg.color||'#888',on:!hidden.has(key),action:()=>{hidden.has(key)?hidden.delete(key):hidden.add(key)}})});
   b.push({x:32,y:680,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
   b.push({x:700,y:680,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
@@ -328,14 +334,26 @@ export async function startVrView({language='ja'}={}){
     color.set(seg?.color||'#ffffff');material.uniforms.segC.value[i].set(color.r,color.g,color.b);
    }
   }
-  const f=VRES[settings.vres]??1;
+  // auto: frame interval from the XR loop, checked twice a second
+  const auto=!VRES[settings.vres];
+  if(auto){
+   autoFrames++;const nowA=performance.now();
+   if(nowA-autoAt>=500){
+    const interval=(nowA-autoAt)/autoFrames,budget=1000/(targetRate()||72);
+    if(interval>budget*1.12)autoF=Math.max(AUTO_MIN,autoF*Math.min(0.92,Math.sqrt(budget/interval)));
+    else if(interval<budget*1.04)autoF=Math.min(AUTO_MAX,autoF*1.06);
+    autoFrames=0;autoAt=nowA;
+   }
+  }
+  const f=auto?autoF:(VRES[settings.vres]??1);
   if(mesh){
    if(f<1){
     // own pass per eye into the small target, then the composite material
     // on the same box upscales it inside the main XR render
     const xrTarget=renderer.getRenderTarget(),w=xrTarget?.width||1,h=xrTarget?.height||1;
     renderer.xr.updateCamera(camera);const xrCam=renderer.xr.getCamera();
-    const tw=Math.max(1,Math.ceil(w*f)),th=Math.max(1,Math.ceil(h*f));
+    // auto: one target at the largest factor, only the viewports shrink
+    const fmax=auto?AUTO_MAX:f,tw=Math.max(1,Math.ceil(w*fmax)),th=Math.max(1,Math.ceil(h*fmax));
     if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw,th,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
     else if(lowTarget.width!==tw||lowTarget.height!==th)lowTarget.setSize(tw,th);
     scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);
@@ -346,9 +364,9 @@ export async function startVrView({language='ja'}={}){
      lowTarget.viewport.set(x,y,vw,vh);lowTarget.scissor.set(x,y,vw,vh);lowTarget.scissorTest=true;
      renderer.setRenderTarget(lowTarget);renderer.render(volScene,sub);
     }});
-    sizes=(ja?'縮小描画 ':'low ')+tw+'×'+th+' / XR '+w+'×'+h+' ('+xrCam.cameras.length+(ja?'眼':' eyes')+')';
+    sizes=(ja?'縮小描画 ':'low ')+Math.round(f*100)+'% '+Math.ceil(w*f)+'×'+Math.ceil(h*f)+' / XR '+w+'×'+h+' ('+xrCam.cameras.length+(ja?'眼':' eyes')+')';
     lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(BG,1);
-    compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(1/w,1/h);
+    compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(f/tw,f/th);
     mesh.material=compMaterial;
    }else{mesh.material=material;const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
   }
