@@ -1,8 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260928-build318';
-import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build318';
-import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260928-build318';
+import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260929-build331';
+import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopRuntime } from './utils.js?v=20260929-build331';
+import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260929-build331';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 export function sourceMprCacheLimit(){
  if(isIPhoneRuntime())return 512*1024*1024;
@@ -20,7 +20,7 @@ export async function prepareSourceMprCache(v,onProgress){
  let data,coronalAll=null,sagittalAll=null;
  try{
   data=new Ctor(count);
-  if(isDesktopMac()||volumeBytes*2<=limit)sagittalAll=new Ctor(count);
+  if(isDesktopRuntime()||volumeBytes*2<=limit)sagittalAll=new Ctor(count);
   if(volumeBytes*3<=limit)coronalAll=new Ctor(count);
  }catch{
   try{

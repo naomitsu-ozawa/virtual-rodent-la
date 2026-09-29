@@ -54,8 +54,8 @@ test('language toggle switches between Japanese and English', async ({ page }) =
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
 });
 
-// Workspace UI (iPad layout, also used on desktop Mac). CI runs on Linux, so
-// force it with ?ui=workspace; ?ui=classic must keep the old desktop layout.
+// Workspace UI (iPad layout, used on every desktop since build 331);
+// ?ui=classic must keep the old desktop layout.
 test('workspace UI boots with its toolbar and drawer', async ({ page }) => {
   await page.goto('/?ui=workspace');
   await expect(page.locator('html')).toHaveClass(/vrl-ipad-ui/);
@@ -64,11 +64,12 @@ test('workspace UI boots with its toolbar and drawer', async ({ page }) => {
   await expect(page.locator('#open-folder')).toBeVisible();
 });
 
-test('classic UI can be forced and is the default on non-Apple desktops', async ({ page }) => {
+// build 331: the workspace UI is the default on every desktop OS (CI: Linux)
+test('workspace UI is the default on desktops; classic can be forced', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveClass(/vrl-ipad-ui/);
   await page.goto('/?ui=classic');
   await expect(page.locator('html')).not.toHaveClass(/vrl-ipad-ui/);
-  await page.goto('/');
-  await expect(page.locator('html')).not.toHaveClass(/vrl-ipad-ui/); // CI: Linux
 });
 
 // iPadOS Safari may not reopen a cancelled picker on the same <input>; the

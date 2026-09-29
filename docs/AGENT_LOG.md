@@ -2187,3 +2187,17 @@ Other filters (PR #68, builds 327–329) — no gain, closed
   for timing (workgroup memory is emulated on the CPU).
 
 Held (owner): read-only prefetch to lower the 3D rebuild memory peak (~3.5 GB).
+
+## Build 331 — no per-OS branches: every desktop behaves like the Mac
+
+Owner: Windows must behave like the Mac/iPad, without model detection, and
+nothing that works on the Mac/iPad may change. isDesktopMac() (Mac + no touch)
+is replaced by isDesktopRuntime() (no touch, not iPhone): Windows and Linux now
+get the Mac's budgets (GPU buffer pool 256 MB, mesh blocks/tiles, source tiles,
+filter tiles, resident surface draws, sagittal MPR copy) and the workspace UI
+(default everywhere but the iPhone; ?ui=classic still works). For a Mac or an
+iPad every branch evaluates exactly as before. Touch devices keep the touch
+budgets. PR #70 (a non-Apple texture cap) was closed: it was a model branch and
+Full is an explicit heavy option, 512 is the default.
+Local e2e cannot boot the app in this container (main fails the same tests);
+CI runs them.
