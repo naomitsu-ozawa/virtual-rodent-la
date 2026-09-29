@@ -2157,3 +2157,21 @@ zero-filled each new buffer on first use. thresholdSourceRuns now wraps its
 block loop in begin/endGpuBufferRetention: released work buffers stay pooled
 (max 2 per size) until the loop ends, then the pool is trimmed back to its
 limit. Peak memory is unchanged (the buffers exist during each block anyway).
+
+## Builds 319–326 (closed PR #67) — summary
+
+A slice-file read test (319) and a raw slice cache on disk (320–325) were tried
+and dropped: the cache slowed opening and the 2D slider, and the owner decided
+the OS/browser file cache is enough (a disk cache only for data larger than the
+browser can hold). Findings kept: 1-byte file read ≈ 3.1 ms on the Mac; the
+read-ahead of 4 is the fastest in the real run (1: 26 s, 2: 20 s, 4: 14–16 s).
+
+## Build 327 — NLM: read the centre patch once
+
+The NLM kernel re-read the centre voxel's patch (1 + 6·pr values) for every
+neighbour in the search cube. It is now read once into a private array (pr is
+clamped to 2, the UI maximum). Bit-identical output on SwiftShader WebGPU for
+search 1–2 × patch 0–2 (tools/gpu-shader-compare.mjs); SwiftShader time
+(search 1, patch 1, 48×48×24) ~50 → ~42 ms, real-GPU gain to be measured
+with ?debug&stagetimes (f:nlm). A bilateral spatial-weight table was also
+tried: bit-identical but not faster on SwiftShader, so not shipped.

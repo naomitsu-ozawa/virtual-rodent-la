@@ -263,6 +263,13 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
  let sr=i32(meta[4]);let pr=i32(meta[5]);let range=max(1.0,params[1]-params[0]);let hp=range*(0.018+0.11*params[2]);let h2=max(hp*hp,0.000001);
  var weighted=center;var weightSum=1.0;
+ // build 327: the centre patch is the same for every neighbour: read it once
+ // (pr <= 2 -> 13 values) instead of once per neighbour; same values, same order
+ var cp:array<f32,13>;let cx=i32(c.x);let cy=i32(c.y);let cz=i32(c.z);
+ cp[0]=src[cidx(cx,cy,cz)];
+ for(var r:i32=1;r<=pr;r=r+1){let b=u32(1+6*(r-1));
+  cp[b]=src[cidx(cx+r,cy,cz)];cp[b+1u]=src[cidx(cx-r,cy,cz)];cp[b+2u]=src[cidx(cx,cy+r,cz)];
+  cp[b+3u]=src[cidx(cx,cy-r,cz)];cp[b+4u]=src[cidx(cx,cy,cz+r)];cp[b+5u]=src[cidx(cx,cy,cz-r)];}
  for(var dz:i32=-sr;dz<=sr;dz=dz+1){
   let nz=i32(c.z)+dz;if(nz<0){continue;}if(nz>=i32(meta[2])){continue;}
   for(var dy:i32=-sr;dy<=sr;dy=dy+1){
@@ -270,14 +277,14 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
    for(var dx:i32=-sr;dx<=sr;dx=dx+1){
     let nx=i32(c.x)+dx;if(nx<0){continue;}if(nx>=i32(meta[0])){continue;}if(dx==0){if(dy==0){if(dz==0){continue;}}}
     var dist2=0.0;var samples=1.0;
-    var dv=src[cidx(i32(c.x),i32(c.y),i32(c.z))]-src[cidx(nx,ny,nz)];dist2+=dv*dv;
-    for(var r:i32=1;r<=pr;r=r+1){
-     dv=src[cidx(i32(c.x)+r,i32(c.y),i32(c.z))]-src[cidx(nx+r,ny,nz)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x)-r,i32(c.y),i32(c.z))]-src[cidx(nx-r,ny,nz)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x),i32(c.y)+r,i32(c.z))]-src[cidx(nx,ny+r,nz)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x),i32(c.y)-r,i32(c.z))]-src[cidx(nx,ny-r,nz)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x),i32(c.y),i32(c.z)+r)]-src[cidx(nx,ny,nz+r)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x),i32(c.y),i32(c.z)-r)]-src[cidx(nx,ny,nz-r)];dist2+=dv*dv;
+    var dv=cp[0]-src[cidx(nx,ny,nz)];dist2+=dv*dv;
+    for(var r:i32=1;r<=pr;r=r+1){let b=u32(1+6*(r-1));
+     dv=cp[b]-src[cidx(nx+r,ny,nz)];dist2+=dv*dv;
+     dv=cp[b+1u]-src[cidx(nx-r,ny,nz)];dist2+=dv*dv;
+     dv=cp[b+2u]-src[cidx(nx,ny+r,nz)];dist2+=dv*dv;
+     dv=cp[b+3u]-src[cidx(nx,ny-r,nz)];dist2+=dv*dv;
+     dv=cp[b+4u]-src[cidx(nx,ny,nz+r)];dist2+=dv*dv;
+     dv=cp[b+5u]-src[cidx(nx,ny,nz-r)];dist2+=dv*dv;
      samples+=6.0;
     }
     dist2/=samples;let weight=exp(-dist2/h2);let j=idx(u32(nx),u32(ny),u32(nz));weighted+=weight*src[j];weightSum+=weight;
