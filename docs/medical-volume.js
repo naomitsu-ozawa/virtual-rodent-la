@@ -747,13 +747,7 @@ export class MedicalVolumeRenderer{
   }
   this.device.pushErrorScope?.('validation');
   try{
-   texture=inPlace?this.texture:this.device.createTexture({label:plan.reduced?'VRL mobile reduced DICOM volume':'VRL DICOM volume',size:{width:tw,height:th,depthOrArrayLayers:td},dimension:'3d',format:'rg8unorm',
-    // build 332: RENDER_ATTACHMENT lets the browser zero-fill the new texture on the GPU.
-    // Without it, Chrome on Windows (Dawn/D3D12) zero-filled the whole Full texture
-    // through one staging buffer on the first slice write and failed: "Buffer size
-    // (3741319168) exceeds the max buffer size limit (2147483648) …
-    // Dawn_DynamicUploaderStaging … WriteTexture". Same usage on every device.
-    usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT});
+   texture=inPlace?this.texture:this.device.createTexture({label:plan.reduced?'VRL mobile reduced DICOM volume':'VRL DICOM volume',size:{width:tw,height:th,depthOrArrayLayers:td},dimension:'3d',format:'rg8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
    if(plan.reduced){
     const xMap=new Uint32Array(tw),yMap=new Uint32Array(th),zMap=new Uint32Array(td);
     for(let x=0;x<tw;x++)xMap[x]=tw<=1?0:Math.round(x*(s.columns-1)/(tw-1));
