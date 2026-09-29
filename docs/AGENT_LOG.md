@@ -2157,3 +2157,33 @@ zero-filled each new buffer on first use. thresholdSourceRuns now wraps its
 block loop in begin/endGpuBufferRetention: released work buffers stay pooled
 (max 2 per size) until the loop ends, then the pool is trimmed back to its
 limit. Peak memory is unchanged (the buffers exist during each block anyway).
+
+## Record: builds 319–329 (closed PRs #67 and #68, not merged)
+
+Disk cache of the slice bytes (PR #67, builds 319–326) — dropped by the owner
+- Read test (Mac, 1024×1024×1784, 2 MB slices): 1-byte file read 3.1 ms;
+  1 read in flight 428 MB/s, 4: 352, 8: 219, 16: 108; 4 Web Workers 254 MB/s.
+  In the real segment run the read-ahead of 4 is fastest (ahead=1 26 s,
+  2 20 s, 4 14–16 s), so it stays 4.
+- A raw slice cache in IndexedDB (builds 320–325) made opening slower and the
+  2D slice slider laggy, and never showed a speed-up; it was reverted.
+  Container Chromium: IDB/OPFS reads were not clearly cheaper than file reads.
+- Owner's decision: the OS/browser file cache covers repeated reads (2nd run
+  read 15 s -> 7 s); a disk cache only for data larger than the browser can hold.
+- Lessons: never put chunked cache reads on the random 2D path; nothing may run
+  in the background while data loads; the owner's cache limit is 2 GB.
+
+Other filters (PR #68, builds 327–329) — no gain, closed
+- NLM centre patch read once: bit-identical, but on the Mac main 24.9 s /
+  f:nlm 15.9 s vs 26.6 s / 17.6 s (no gain).
+- NLM workgroup-memory tile kernel: bit-identical, 3× slower on the Mac
+  (f:nlm(tile) 57.3 s).
+- Bilateral spatial-weight table: bit-identical, not faster on SwiftShader.
+- Median/sigmoid/spike/anisotropic/TV are 7-point stencils; unsharp and
+  gaussian were optimised earlier. No exact speed-up left.
+- SwiftShader WebGPU works in this container (localhost page, flags
+  --enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader
+  --use-webgpu-adapter=swiftshader): good for bit-exact shader checks, not
+  for timing (workgroup memory is emulated on the CPU).
+
+Held (owner): read-only prefetch to lower the 3D rebuild memory peak (~3.5 GB).
