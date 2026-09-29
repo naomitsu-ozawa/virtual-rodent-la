@@ -2328,3 +2328,12 @@ diagnostic 陰影なし; empty-space test per step → スキップなし (expec
 slower; shows how much skipping saves); texture reads of the 512³ volume →
 data 256³ (2×2×2 average built on first use, same step so the loop count
 stays comparable).
+
+## Build 342 — VR: 256³ default, per-segment simple display
+
+Owner, build 341: no skipping very slow; 256³ data comfortable (also without
+enlarging) and its smoothing looks fine for observation; no shading unsuitable
+for the segment being looked at but acceptable for the others. So texture
+reads of 512³ were the main per-ray cost. Data 256³ (2×2×2 average of the
+512 plan) is now the saved default, 512³ selectable. Segment buttons cycle
+normal → simple (no hit refinement, no gradient; segC.w) → hidden, VR only.
