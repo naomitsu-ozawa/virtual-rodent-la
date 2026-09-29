@@ -293,66 +293,6 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  }
  dst[i]=weighted/weightSum;
 }`;
- // build 328: NLM with the neighbourhood staged in workgroup memory. One workgroup
- // = an 8×8 tile of one slice; it loads the (8+2R)²×(2R+1) box (R = search + patch
- // radius <= 4, coordinates clamped like cidx) once, then every patch read comes
- // from that box instead of the storage buffer (~26 reads × 125 neighbours per
- // voxel at search 2 / patch 2). Same arithmetic as 'nlm' in the same order.
- // Dispatch: (ceil(w/8), ceil(h/8), d) with workgroup_size(8,8,1); meta[4]=search,
- // meta[5]=patch. Uses no gid (the 2D-grid gid.x rewrite does not apply).
- if(kind==='nlmTile')return header+`
-const T=8;const RMAX=4;const S=T+2*RMAX;
-var<workgroup> tile: array<f32, ${(8+2*4)*(8+2*4)*(2*4+1)}>;
-fn tix(x:i32,y:i32,z:i32)->u32{return u32((z*S+y)*S+x);}
-@compute @workgroup_size(8,8,1)
-fn main(@builtin(workgroup_id) wg:vec3<u32>,@builtin(local_invocation_id) lid:vec3<u32>,@builtin(local_invocation_index) li:u32){
- let w=i32(meta[0]);let h=i32(meta[1]);let d=i32(meta[2]);
- let sr=i32(meta[4]);let pr=i32(meta[5]);let R=sr+pr;
- let x0=i32(wg.x)*T;let y0=i32(wg.y)*T;let z=i32(wg.z);
- // box origin in volume coordinates: (x0-RMAX, y0-RMAX, z-RMAX); tile index (tx,ty,tz)
- for(var k=i32(li);k<S*S*(2*RMAX+1);k=k+T*T){
-  let tx=k%S;let ty=(k/S)%S;let tz=k/(S*S);
-  let dz=tz-RMAX;
-  if(dz<-R||dz>R){continue;}
-  tile[u32(k)]=src[cidx(x0-RMAX+tx,y0-RMAX+ty,z+dz)];
- }
- workgroupBarrier();
- let cxg=x0+i32(lid.x);let cyg=y0+i32(lid.y);
- if(cxg>=w||cyg>=h){return;}
- let i=idx(u32(cxg),u32(cyg),u32(z));let center=src[i];
- let range=max(1.0,params[1]-params[0]);let hp=range*(0.018+0.11*params[2]);let h2=max(hp*hp,0.000001);
- // local coordinates of the centre in the tile
- let lx=i32(lid.x)+RMAX;let ly=i32(lid.y)+RMAX;let lz=RMAX;
- var weighted=center;var weightSum=1.0;
- var cp:array<f32,13>;
- cp[0]=tile[tix(lx,ly,lz)];
- for(var r:i32=1;r<=pr;r=r+1){let b=u32(1+6*(r-1));
-  cp[b]=tile[tix(lx+r,ly,lz)];cp[b+1u]=tile[tix(lx-r,ly,lz)];cp[b+2u]=tile[tix(lx,ly+r,lz)];
-  cp[b+3u]=tile[tix(lx,ly-r,lz)];cp[b+4u]=tile[tix(lx,ly,lz+r)];cp[b+5u]=tile[tix(lx,ly,lz-r)];}
- for(var dz:i32=-sr;dz<=sr;dz=dz+1){
-  let nz=z+dz;if(nz<0){continue;}if(nz>=d){continue;}
-  for(var dy:i32=-sr;dy<=sr;dy=dy+1){
-   let ny=cyg+dy;if(ny<0){continue;}if(ny>=h){continue;}
-   for(var dx:i32=-sr;dx<=sr;dx=dx+1){
-    let nx=cxg+dx;if(nx<0){continue;}if(nx>=w){continue;}if(dx==0){if(dy==0){if(dz==0){continue;}}}
-    let ax=lx+dx;let ay=ly+dy;let az=lz+dz;
-    var dist2=0.0;var samples=1.0;
-    var dv=cp[0]-tile[tix(ax,ay,az)];dist2+=dv*dv;
-    for(var r:i32=1;r<=pr;r=r+1){let b=u32(1+6*(r-1));
-     dv=cp[b]-tile[tix(ax+r,ay,az)];dist2+=dv*dv;
-     dv=cp[b+1u]-tile[tix(ax-r,ay,az)];dist2+=dv*dv;
-     dv=cp[b+2u]-tile[tix(ax,ay+r,az)];dist2+=dv*dv;
-     dv=cp[b+3u]-tile[tix(ax,ay-r,az)];dist2+=dv*dv;
-     dv=cp[b+4u]-tile[tix(ax,ay,az+r)];dist2+=dv*dv;
-     dv=cp[b+5u]-tile[tix(ax,ay,az-r)];dist2+=dv*dv;
-     samples+=6.0;
-    }
-    dist2/=samples;let weight=exp(-dist2/h2);weighted+=weight*tile[tix(ax,ay,az)];weightSum+=weight;
-   }
-  }
- }
- dst[i]=weighted/weightSum;
-}`;
  if(kind==='meshCount')return `
 struct Counters{values:array<atomic<u32>,4>};
 @group(0) @binding(0) var<storage, read> src:array<f32>;
@@ -705,7 +645,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','gaussianK','packReduce','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','nlmTile','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','airDistX','classRunCount','classRunWrite','boxMean','unsharpCombine'];
+export const GPU_PREWARM_KINDS=['gaussian','gaussianK','packReduce','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','airDistX','classRunCount','classRunWrite','boxMean','unsharpCombine'];
 
 // weights of n passes of out=b*(1-s)+s*(a+2b+c)/4, i.e. the 3-tap kernel
 // [s/4, 1-s/2, s/4] convolved with itself n times (length 2n+1). Equal to the

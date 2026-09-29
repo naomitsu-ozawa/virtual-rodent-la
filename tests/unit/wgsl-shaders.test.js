@@ -21,8 +21,7 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
   it.each(FILTER_KINDS)('%s parses and exposes a compute main()', kind => {
     const src = normalizeVrlWgsl(gpuFilterShader(kind, 64));
     expect(src).not.toMatch(/undefined|NaN/);
-    // nlmTile is a fixed 8×8 tile kernel (build 328)
-    expect(src).toContain(kind === 'nlmTile' ? '@workgroup_size(8,8,1)' : '@workgroup_size(64)');
+    expect(src).toContain('@workgroup_size(64)');
     const r = parse(src);
     expect(r.entry.compute.map(e => e.name)).toContain('main');
   });
