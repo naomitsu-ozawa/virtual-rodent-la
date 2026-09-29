@@ -18,7 +18,7 @@ async function rawPixelBytes(meta){
  return all.slice(el.dataOffset,el.dataOffset+bytesNeeded);
 }
 
-async function packedRgSlice(meta){
+export async function packedRgSlice(meta){
  const src=await rawPixelBytes(meta),little=meta.ts!=='1.2.840.10008.1.2.2';
  const signed=!!meta.signed,bitsStored=Math.max(1,Math.min(16,meta.bitsStored||16)),highBit=Number.isFinite(meta.highBit)?meta.highBit:bitsStored-1,lowBit=Math.max(0,highBit-bitsStored+1);
  const fastUnsigned=little&&!signed&&lowBit===0;

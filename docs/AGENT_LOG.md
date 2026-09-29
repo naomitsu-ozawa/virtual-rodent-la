@@ -2252,3 +2252,19 @@ fetch of index.json and the slices (6 in flight), then the usual inspect()
 path. For the Quest: no URL typing or folder picker needed. The container
 cannot boot the app (esm.sh / jsDelivr blocked), so only index.json and a
 slice were fetched locally; the button needs a device check.
+
+## Build 336 — VR prototype (WebXR + WebGL2)
+
+New module docs/vr-view.js and button VRで見る (shown only when
+navigator.xr supports immersive-vr). WebGL2 because Quest has no XRGPUBinding
+(build 335 check: WebGL2 + XRWebGLLayer reached 90 fps). VR-specific: the
+three.js WebGLRenderer with renderer.xr, a GLSL3 port of volumeShader()
+(same segment test, 6-step hit refinement, gradient normal, shading
+constants, background), CPU brick min/max (8³) for empty-space skipping,
+controller grab (grip or trigger: move/rotate; both hands: scale) and an fps
+panel. Shared with the other platforms: gpuVolumeTarget() (filters applied
+when the 3D view has them), volumeTexturePlan (512 per side), reduceSliceArea,
+packedRgSlice (now exported) / packCtSlice, segmentState (read every frame).
+Not shown yet: processed edits, cuts, section view, MPR planes.
+Checked in the container: lint, unit tests, boot-check, and the shader
+compiled and drew a lit volume in headless Chromium WebGL2. Needs a Quest test.
