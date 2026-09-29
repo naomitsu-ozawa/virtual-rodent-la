@@ -1,13 +1,13 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20260929-build323';
-import { request3DRender } from './scene3d.js?v=20260929-build323';
-import { updateGpuStatus } from './gpu-compute.js?v=20260929-build323';
-import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20260929-build323';
-import { tr } from './i18n.js?v=20260929-build323';
-import { fmt } from './utils.js?v=20260929-build323';
-import { sourceVolume, currentLanguage } from './state.js?v=20260929-build323';
-import { runReadTest, formatReadTest } from './read-test.js?v=20260929-build323';
+import { settings } from './app-settings.js?v=20260929-build324';
+import { request3DRender } from './scene3d.js?v=20260929-build324';
+import { updateGpuStatus } from './gpu-compute.js?v=20260929-build324';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20260929-build324';
+import { tr } from './i18n.js?v=20260929-build324';
+import { fmt } from './utils.js?v=20260929-build324';
+import { sourceVolume, currentLanguage } from './state.js?v=20260929-build324';
+import { runReadTest, formatReadTest } from './read-test.js?v=20260929-build324';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
@@ -39,14 +39,14 @@ export function initSettingsDialog(){
 // settings > cache: list the stored entries with a delete button each (build 296)
 async function renderCacheList(){
  const box=document.getElementById('set-cache-list'),total=document.getElementById('set-cache-total');if(!box)return;
- const cache=await volumeCache();const all=cache?(await cache.list()).filter(e=>e.complete).sort((a,b)=>b.lastUsed-a.lastUsed):[];
+ const cache=await volumeCache();const all=cache?(await cache.list()).filter(e=>e.complete||e.info?.kind==='raw').sort((a,b)=>b.lastUsed-a.lastUsed):[];
  if(total)total.textContent=tr('cacheTotal')+' '+fmt(all.reduce((a,e)=>a+(e.bytes||0),0));
  box.replaceChildren();
  if(!all.length){const p=document.createElement('p');p.className='hint';p.textContent=tr('cacheEmpty');box.append(p);return}
  for(const e of all){
   const i=e.info||{},row=document.createElement('div');row.className='settings-cache-row';
   const text=document.createElement('div');text.className='settings-cache-text';
-  const kind=i.kind==='segment-runs'?tr('cacheRuns'):i.kind==='raw'?tr('cacheRaw'):tr('cacheVolume');
+  const kind=(i.kind==='segment-runs'?tr('cacheRuns'):i.kind==='raw'?tr('cacheRaw'):tr('cacheVolume'))+(e.complete?'':' · '+tr('cacheFilling'));
   const filter=i.filter?String(i.filter).slice(0,60):'';
   text.textContent=kind+(i.description?' · '+i.description:'')+(i.plan?' · '+i.plan:'')+' · '+fmt(e.bytes||0)+' · '+new Date(e.lastUsed).toLocaleString();
   if(filter){const f=document.createElement('small');f.textContent=filter;text.append(document.createElement('br'),f)}

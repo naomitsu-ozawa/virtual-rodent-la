@@ -2202,3 +2202,13 @@ from the segment cache (2 s) and read no slice files, so the entry never
 completed. Attach now starts a backfill 3 s later: the missing slices are read
 from the files one at a time (queue kept under half of 32) and stored; it stops
 when another series is attached, the entry completes, or a write fails.
+
+## Build 324 — raw cache: commit after the writes finish; backfill yields
+
+Build 323 on the Mac: "commit: cache entry incomplete (1771/1784)" — the
+commit ran when every slice had been queued, with 13 writes still in flight,
+and the failure aborted (deleted) the entry. Now: a slice counts once its write
+finished (ctx.stored), commit waits for inflight 0, and a failed commit or write
+keeps the stored slices (resume next session). The backfill waited for nothing
+and the segment run with it took 36 s: it now pauses while the app read a
+slice file in the last 2 s. Settings → cache lists the filling raw entry.

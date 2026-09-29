@@ -16,13 +16,13 @@ const metaCtx=new WeakMap(),BACKFILL_DELAY_MS=3000;let activeBackfill=null;
 export async function attachRawSliceCache(series,{cache,key,info,sliceBytes,budget}){
  const n=series?.slices?.length||0;if(!cache||!n||!sliceBytes)return null;
  activeBackfill=null;
- const ctx={series,cache,key,sliceBytes,n,state:'off',writer:null,written:new Set(),inflight:0,loaded:new Map()};
+ const ctx={series,cache,key,sliceBytes,n,state:'off',writer:null,written:new Set(),stored:new Set(),inflight:0,committing:false,lastForeground:0,error:'',loaded:new Map()};
  try{
   const hit=await cache.lookup(key);
   if(hit&&hit.slices===n&&hit.bytesPerSlice===sliceBytes)ctx.state='hit';
-  else if(n*sliceBytes<=budget){ctx.writer=await cache.begin(key,{slices:n,bytesPerSlice:sliceBytes,info},{resume:true});for(const i of ctx.writer.have||[])ctx.written.add(i);ctx.state='writing'}
+  else if(n*sliceBytes<=budget){ctx.writer=await cache.begin(key,{slices:n,bytesPerSlice:sliceBytes,info},{resume:true});for(const i of ctx.writer.have||[]){ctx.written.add(i);ctx.stored.add(i)}ctx.state='writing'}
  }catch(e){console.warn('Raw slice cache unavailable.',e);return null}
- if(ctx.state==='writing'&&ctx.written.size===n){try{await ctx.writer.commit();ctx.state='hit'}catch(e){ctx.state='off';ctx.error='commit: '+String(e?.message||e)}}
+ if(ctx.state==='writing'&&ctx.stored.size===n)await maybeCommit(ctx);
  series.slices.forEach((meta,i)=>metaCtx.set(meta,{ctx,i}));
  series.rawSliceCache=ctx;
  if(ctx.state==='writing')setTimeout(()=>void backfill(ctx),BACKFILL_DELAY_MS);
@@ -38,11 +38,13 @@ async function backfill(ctx){
  for(let i=0;i<ctx.n;i++){
   if(activeBackfill!==ctx||ctx.state!=='writing')return;
   if(ctx.written.has(i))continue;
-  while(ctx.inflight>=MAX_INFLIGHT/2){await pause(50);if(activeBackfill!==ctx||ctx.state!=='writing')return}
+  // build 324: stay out of the way of the app's own reads (build 323: a segment run
+  // with the backfill running took 36 s instead of 14 s)
+  while(ctx.inflight>=MAX_INFLIGHT/2||performance.now()-ctx.lastForeground<2000){await pause(250);if(activeBackfill!==ctx||ctx.state!=='writing')return}
   const meta=ctx.series.slices[i];
   try{
    const bytes=new Uint8Array(await meta.file.slice(meta.pixelOffset,meta.pixelOffset+ctx.sliceBytes).arrayBuffer());
-   if(bytes.byteLength===ctx.sliceBytes)putRawSlice(meta,bytes);
+   if(bytes.byteLength===ctx.sliceBytes)store(meta,bytes,true);
   }catch(e){ctx.error='backfill: '+String(e?.message||e);return}
   await pause(0);
  }
@@ -51,7 +53,7 @@ export function rawSliceCacheState(series){return series?.rawSliceCache?.state||
 // debug status text, e.g. "writing 1500/1784", "hit", "off (limit 2 GB < 3.6 GB)"
 export function rawSliceCacheSummary(series){
  const c=series?.rawSliceCache;if(!c)return'off'+(series?.rawCacheReason?' ('+series.rawCacheReason+')':'');
- return c.state==='writing'?'writing '+c.written.size+'/'+c.n:c.state+(c.error?' ('+c.error+')':'');
+ return c.state==='writing'?'writing '+c.stored.size+'/'+c.n+(c.error?' ('+c.error+')':''):c.state+(c.error?' ('+c.error+')':'');
 }
 
 function chunkOf(ctx,c){
@@ -75,16 +77,26 @@ export async function getRawSlice(meta){
  }catch(e){console.warn('Raw slice cache read failed; reading the files.',e);ctx.state='off';ctx.error='read: '+String(e?.message||e);ctx.loaded.clear();try{await ctx.cache.remove(ctx.key)}catch{};return null}
 }
 // store the bytes read from the file on the first pass; the entry is published
-// (and used from then on) once every slice has been stored
-export function putRawSlice(meta,bytes){
+// (and used from then on) once every slice has been stored.
+// build 324: publish only after every write has finished (stored, not queued:
+// build 323 committed with 13 writes still in flight and the commit failed), and a
+// failed commit or write keeps the stored slices for a later session.
+export function putRawSlice(meta,bytes){store(meta,bytes,false)}
+function store(meta,bytes,background){
  const m=metaCtx.get(meta);if(!m||m.ctx.state!=='writing'||m.ctx.written.has(m.i))return;
- const ctx=m.ctx;if(bytes.byteLength!==ctx.sliceBytes||ctx.inflight>=MAX_INFLIGHT)return;
+ const ctx=m.ctx;if(!background)ctx.lastForeground=performance.now();
+ if(bytes.byteLength!==ctx.sliceBytes||ctx.inflight>=MAX_INFLIGHT)return;
  ctx.written.add(m.i);ctx.inflight++;
  const copy=bytes.byteOffset===0&&bytes.byteLength===bytes.buffer.byteLength?bytes:bytes.slice();
- ctx.writer.write(m.i,copy).finally(()=>{ctx.inflight--}).then(async()=>{
-  if(ctx.state==='writing'&&ctx.written.size===ctx.n){
-   try{await ctx.writer.commit();ctx.state='hit';globalThis.__vrlCount?.('raw cache stored')}
-   catch(e){ctx.state='off';ctx.error='commit: '+String(e?.message||e);try{await ctx.writer.abort()}catch{}}
-  }
- },async e=>{ctx.written.delete(m.i);if(ctx.state!=='writing')return;ctx.state='off';ctx.error=String(e?.message||e);console.warn('Raw slice cache write failed (quota?); caching stopped.',e);try{await ctx.writer.abort()}catch{}});
+ ctx.writer.write(m.i,copy).then(()=>{ctx.inflight--;ctx.stored.add(m.i);return maybeCommit(ctx)},e=>{
+  ctx.inflight--;ctx.written.delete(m.i);if(ctx.state!=='writing')return;
+  ctx.state='off';ctx.error=String(e?.message||e);console.warn('Raw slice cache write failed (quota?); caching stopped for this session.',e);
+ });
+}
+async function maybeCommit(ctx){
+ if(ctx.state!=='writing'||ctx.committing||ctx.inflight>0||ctx.stored.size<ctx.n)return;
+ ctx.committing=true;
+ try{await ctx.writer.commit();ctx.state='hit';ctx.error='';globalThis.__vrlCount?.('raw cache stored')}
+ catch(e){ctx.error='commit: '+String(e?.message||e)}
+ finally{ctx.committing=false}
 }
