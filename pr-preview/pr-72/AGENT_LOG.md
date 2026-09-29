@@ -2240,3 +2240,15 @@ Result (owner, borrowed Meta Quest, /xr/ page): no XRGPUBinding (WebGPU cannot
 draw into VR there); the WebGL2 VR session ran at 90 fps. -> a VR mode needs its
 own WebGL2 renderer (volume raycast in WebGL2 + XRWebGLLayer), fed by the same
 data as the WebGPU view.
+
+## Build 335 — practice dataset on the site + button
+
+Owner uploaded a practice DICOM series to docs/demo/sample1/ (branch demo-data,
+merged here): Rigaku R_mCT2, 512 × 512 × 512 slices, 0.148 mm isotropic,
+16-bit uncompressed, 259 MB. Header check: PatientName "Sample", ID "1", no
+institution/physician/operator/serial. index.json lists the 512 files.
+New button 練習データ（512³） (all devices) runs loadSampleDemo(): same-origin
+fetch of index.json and the slices (6 in flight), then the usual inspect()
+path. For the Quest: no URL typing or folder picker needed. The container
+cannot boot the app (esm.sh / jsDelivr blocked), so only index.json and a
+slice were fetched locally; the button needs a device check.
