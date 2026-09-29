@@ -19,10 +19,10 @@ export function withTimeout(promise,ms,timeoutValue){
 }
 export function isIPhoneRuntime(){return /iPhone|iPod/i.test(navigator.userAgent||'')}
 export function isIPadRuntime(){return /iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||''))}
-export function isDesktopMac(){
- const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent||'';
- return /mac/i.test(platform)&&(navigator.maxTouchPoints||0)===0;
-}
+// build 331: one desktop behaviour for every OS (owner: no per-model branches;
+// Windows/Linux behave like the Mac). A desktop is a device without touch input.
+// Before, only a Mac counted, so Windows and Linux got smaller budgets and the old UI.
+export function isDesktopRuntime(){return (navigator.maxTouchPoints||0)===0&&!isIPhoneRuntime()}
 export const frameYield=()=>new Promise(resolve=>setTimeout(resolve,0));
 export function niceCtStep(span){
  const target=Math.max(Math.abs(span)/700,1e-6),power=10**Math.floor(Math.log10(target)),scaled=target/power;

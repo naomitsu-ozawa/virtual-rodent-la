@@ -747,7 +747,13 @@ export class MedicalVolumeRenderer{
   }
   this.device.pushErrorScope?.('validation');
   try{
-   texture=inPlace?this.texture:this.device.createTexture({label:plan.reduced?'VRL mobile reduced DICOM volume':'VRL DICOM volume',size:{width:tw,height:th,depthOrArrayLayers:td},dimension:'3d',format:'rg8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
+   texture=inPlace?this.texture:this.device.createTexture({label:plan.reduced?'VRL mobile reduced DICOM volume':'VRL DICOM volume',size:{width:tw,height:th,depthOrArrayLayers:td},dimension:'3d',format:'rg8unorm',
+    // build 334: RENDER_ATTACHMENT so Dawn (Chrome) lazy-clears the new texture with a
+    // render-target clear. Without it, Dawn's D3D12 backend (Windows) clears a color texture
+    // by uploading a zero buffer the size of the whole subresource (d3d12/TextureD3D12.cpp
+    // ClearTexture): 3.74 GB for Full here, over the 2 GB maxBufferSize -> "Buffer size
+    // (3741319168) exceeds the max buffer size limit … Dawn_DynamicUploaderStaging".
+    usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT});
    if(plan.reduced){
     const xMap=new Uint32Array(tw),yMap=new Uint32Array(th),zMap=new Uint32Array(td);
     for(let x=0;x<tw;x++)xMap[x]=tw<=1?0:Math.round(x*(s.columns-1)/(tw-1));
