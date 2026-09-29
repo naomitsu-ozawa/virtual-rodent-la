@@ -2217,3 +2217,9 @@ Design constraints learned
 - fill only during full sequential passes, with backpressure so the entry completes
   in one pass; publish after every write finished; never delete stored slices on a
   failed commit; count toward the cache limit (owner's limit is 2 GB -> tell them).
+
+## Decision (owner): disk cache dropped
+
+The OS/browser file cache already covers repeated reads; a disk cache would only
+make sense for data larger than the browser can handle. The raw slice cache is
+not to be pursued; tools/wip/read-test-cache-storage.patch removed.
