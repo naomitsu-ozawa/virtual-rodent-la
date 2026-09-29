@@ -2202,14 +2202,10 @@ Full is an explicit heavy option, 512 is the default.
 Local e2e cannot boot the app in this container (main fails the same tests);
 CI runs them.
 
-## Build 332 — GPU volume texture gets RENDER_ATTACHMENT (all devices)
+## Build 334 — build 332 reverted (RENDER_ATTACHMENT did not help)
 
-Build 331 on Windows (Full selected, saved from an earlier test) still failed:
-"Buffer size (3741319168) exceeds the max buffer size limit (2147483648) …
-Dawn_DynamicUploaderStaging … WriteTexture". Uploads are one slice each; the
-size is the whole texture, so this is Dawn's lazy zero-fill of the 3D texture.
-Hypothesis (to be verified on Windows): with RENDER_ATTACHMENT usage Dawn/D3D12
-clears it on the GPU instead of through a staging buffer. Added to the volume
-texture's usage on every device (no branch); a 3D rg8unorm texture with that
-usage + per-slice writes validated on SwiftShader. Mac/iPad must be re-checked
-(3D display, Full/768/512) before merging.
+Owner (Windows, build 332): Full still fails with the same Dawn staging error;
+512/768 work. The extra texture usage is removed again so the Mac/iPad texture
+is exactly as before. Remaining options: split the volume texture along z into
+parts that each fit maxBufferSize (one shader path for all devices), or keep
+Full unavailable where it does not fit.
