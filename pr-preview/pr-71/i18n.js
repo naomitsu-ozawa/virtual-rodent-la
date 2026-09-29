@@ -1,6 +1,10 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { currentLanguage, setCurrentLanguage } from './state.js?v=20260929-build333';
+<<<<<<< HEAD
+import { currentLanguage, setCurrentLanguage } from './state.js?v=20260929-build334';
+=======
+import { currentLanguage, setCurrentLanguage } from './state.js?v=20260929-build334';
+>>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 export const I18N={
  ja:{
   subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',

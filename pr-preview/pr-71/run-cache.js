@@ -3,10 +3,17 @@
 // segment settings needs no re-filtering. Stored in the GPU volume cache
 // database (same LRU budget, cleared by the same "clear cache" button) as one
 // packed blob per entry. Browser storage can be evicted; this is only a cache.
-import { cacheKey } from './gpu-volume-cache.js?v=20260929-build333';
-import { datasetFingerprint } from './project-file.js?v=20260929-build333';
-import { volumeCache, volumeCacheBudget, pruneOtherFilterSettings } from './gpu-volume-data.js?v=20260929-build333';
-import { RUNS_FORMAT, packRuns, unpackRuns } from './run-pack.js?v=20260929-build333';
+<<<<<<< HEAD
+import { cacheKey } from './gpu-volume-cache.js?v=20260929-build334';
+import { datasetFingerprint } from './project-file.js?v=20260929-build334';
+import { volumeCache, volumeCacheBudget, pruneOtherFilterSettings } from './gpu-volume-data.js?v=20260929-build334';
+import { RUNS_FORMAT, packRuns, unpackRuns } from './run-pack.js?v=20260929-build334';
+=======
+import { cacheKey } from './gpu-volume-cache.js?v=20260929-build334';
+import { datasetFingerprint } from './project-file.js?v=20260929-build334';
+import { volumeCache, volumeCacheBudget, pruneOtherFilterSettings } from './gpu-volume-data.js?v=20260929-build334';
+import { RUNS_FORMAT, packRuns, unpackRuns } from './run-pack.js?v=20260929-build334';
+>>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 
 // Stable across sessions: dataset identity + filter + segment settings.
 export function segmentRunsCacheInfo(series,filterSignature){return{kind:'segment-runs',dataset:datasetFingerprint(series),filter:filterSignature||''}}

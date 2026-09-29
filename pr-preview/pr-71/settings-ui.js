@@ -1,11 +1,20 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20260929-build333';
-import { request3DRender } from './scene3d.js?v=20260929-build333';
-import { updateGpuStatus } from './gpu-compute.js?v=20260929-build333';
-import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20260929-build333';
-import { tr } from './i18n.js?v=20260929-build333';
-import { fmt } from './utils.js?v=20260929-build333';
+<<<<<<< HEAD
+import { settings } from './app-settings.js?v=20260929-build334';
+import { request3DRender } from './scene3d.js?v=20260929-build334';
+import { updateGpuStatus } from './gpu-compute.js?v=20260929-build334';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20260929-build334';
+import { tr } from './i18n.js?v=20260929-build334';
+import { fmt } from './utils.js?v=20260929-build334';
+=======
+import { settings } from './app-settings.js?v=20260929-build334';
+import { request3DRender } from './scene3d.js?v=20260929-build334';
+import { updateGpuStatus } from './gpu-compute.js?v=20260929-build334';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20260929-build334';
+import { tr } from './i18n.js?v=20260929-build334';
+import { fmt } from './utils.js?v=20260929-build334';
+>>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};

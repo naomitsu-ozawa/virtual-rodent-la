@@ -2202,6 +2202,7 @@ Full is an explicit heavy option, 512 is the default.
 Local e2e cannot boot the app in this container (main fails the same tests);
 CI runs them.
 
+<<<<<<< HEAD
 ## Build 333 — build 332 reverted (RENDER_ATTACHMENT did not help)
 
 Owner (Windows, build 332): Full still fails with the same Dawn staging error;
@@ -2209,3 +2210,27 @@ Owner (Windows, build 332): Full still fails with the same Dawn staging error;
 is exactly as before. Remaining options: split the volume texture along z into
 parts that each fit maxBufferSize (one shader path for all devices), or keep
 Full unavailable where it does not fit.
+=======
+## Build 332 — GPU volume texture gets RENDER_ATTACHMENT (all devices)
+
+Build 331 on Windows (Full selected, saved from an earlier test) still failed:
+"Buffer size (3741319168) exceeds the max buffer size limit (2147483648) …
+Dawn_DynamicUploaderStaging … WriteTexture". Uploads are one slice each; the
+size is the whole texture, so this is Dawn's lazy zero-fill of the 3D texture.
+Hypothesis (to be verified on Windows): with RENDER_ATTACHMENT usage Dawn/D3D12
+clears it on the GPU instead of through a staging buffer. Added to the volume
+texture's usage on every device (no branch); a 3D rg8unorm texture with that
+usage + per-slice writes validated on SwiftShader. Mac/iPad must be re-checked
+(3D display, Full/768/512) before merging.
+>>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
+
+## Build 334 — test: RENDER_ATTACHMENT on the volume texture again
+
+Dawn d3d12/TextureD3D12.cpp ClearTexture: a color texture without
+D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET is lazy-cleared by uploading a
+zero-filled buffer the size of the whole subresource through the
+DynamicUploader (3.74 GB for Full here -> over the 2 GB maxBufferSize); with
+RenderAttachment usage it is cleared with ClearRenderTargetView instead. So
+build 332's change should avoid the staging buffer; its Windows test may have
+run a stale page. Re-deployed as build 334 for a check with the build number
+visible. Owner's Chrome: 154.0.8037.58 Stable (Windows).

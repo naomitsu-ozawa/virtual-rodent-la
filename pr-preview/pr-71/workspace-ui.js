@@ -1,14 +1,26 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { set3DBusy } from './three-status.js?v=20260929-build333';
-import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20260929-build333';
-import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20260929-build333';
-import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20260929-build333';
-import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20260929-build333';
-import { request3DRender } from './scene3d.js?v=20260929-build333';
-import { applyLanguage } from './i18n.js?v=20260929-build333';
-import { isIPadRuntime, isIPhoneRuntime, fmt } from './utils.js?v=20260929-build333';
-import { settings } from './app-settings.js?v=20260929-build333';
+<<<<<<< HEAD
+import { set3DBusy } from './three-status.js?v=20260929-build334';
+import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20260929-build334';
+import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20260929-build334';
+import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20260929-build334';
+import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20260929-build334';
+import { request3DRender } from './scene3d.js?v=20260929-build334';
+import { applyLanguage } from './i18n.js?v=20260929-build334';
+import { isIPadRuntime, isIPhoneRuntime, fmt } from './utils.js?v=20260929-build334';
+import { settings } from './app-settings.js?v=20260929-build334';
+=======
+import { set3DBusy } from './three-status.js?v=20260929-build334';
+import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20260929-build334';
+import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20260929-build334';
+import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20260929-build334';
+import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20260929-build334';
+import { request3DRender } from './scene3d.js?v=20260929-build334';
+import { applyLanguage } from './i18n.js?v=20260929-build334';
+import { isIPadRuntime, isIPhoneRuntime, fmt } from './utils.js?v=20260929-build334';
+import { settings } from './app-settings.js?v=20260929-build334';
+>>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 export function initIPadWorkspaceUi(){
  if(!useWorkspaceUi())return;
  const shell=document.querySelector('.app-shell'),workspace=document.querySelector('.workspace'),sidebar=document.querySelector('.sidebar'),sidebarScroll=document.querySelector('.sidebar-scroll'),viewer=document.querySelector('#viewer-grid'),topbar=document.querySelector('.topbar');

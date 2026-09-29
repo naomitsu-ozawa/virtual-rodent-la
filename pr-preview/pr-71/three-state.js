@@ -2,12 +2,21 @@
 // including the edit tools; kept apart from scene3d.js/three-status.js so
 // low-level modules never import edit-tools.js (no import cycles).
 // Depends only on the imports below; never imports from app.js.
-import { sceneState, threeRenderMode, volume, setThreeDDirty, setThreeDApplying, volumeAnalysisMode } from './state.js?v=20260929-build333';
-import { filter3DState, filterRebuild3D, volumeAnalysisToggle, sectionViewToggle, $ } from './ui-shell.js?v=20260929-build333';
-import { tr } from './i18n.js?v=20260929-build333';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build333';
-import { updateAnalysisEditorControls } from './edit-tools.js?v=20260929-build333';
-import { updateVolumeFilterBadge } from './three-status.js?v=20260929-build333';
+<<<<<<< HEAD
+import { sceneState, threeRenderMode, volume, setThreeDDirty, setThreeDApplying, volumeAnalysisMode } from './state.js?v=20260929-build334';
+import { filter3DState, filterRebuild3D, volumeAnalysisToggle, sectionViewToggle, $ } from './ui-shell.js?v=20260929-build334';
+import { tr } from './i18n.js?v=20260929-build334';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build334';
+import { updateAnalysisEditorControls } from './edit-tools.js?v=20260929-build334';
+import { updateVolumeFilterBadge } from './three-status.js?v=20260929-build334';
+=======
+import { sceneState, threeRenderMode, volume, setThreeDDirty, setThreeDApplying, volumeAnalysisMode } from './state.js?v=20260929-build334';
+import { filter3DState, filterRebuild3D, volumeAnalysisToggle, sectionViewToggle, $ } from './ui-shell.js?v=20260929-build334';
+import { tr } from './i18n.js?v=20260929-build334';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build334';
+import { updateAnalysisEditorControls } from './edit-tools.js?v=20260929-build334';
+import { updateVolumeFilterBadge } from './three-status.js?v=20260929-build334';
+>>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 export function set3DState(mode){
  setThreeDDirty(mode==='stale');setThreeDApplying(mode==='updating');
  updateVolumeFilterBadge();

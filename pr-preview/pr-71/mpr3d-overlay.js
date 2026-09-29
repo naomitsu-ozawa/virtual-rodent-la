@@ -1,11 +1,20 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260929-build333';
-import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260929-build333';
-import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260929-build333';
-import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260929-build333';
-import { frameYield } from './utils.js?v=20260929-build333';
-import { request3DRender } from './scene3d.js?v=20260929-build333';
+<<<<<<< HEAD
+import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260929-build334';
+import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260929-build334';
+import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260929-build334';
+import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260929-build334';
+import { frameYield } from './utils.js?v=20260929-build334';
+import { request3DRender } from './scene3d.js?v=20260929-build334';
+=======
+import { volume, mpr3DWindowLutKey, mpr3DWindowLutTable, setMpr3DWindowLutKey, residentGpuUploadSeriesId, sceneState, threeRenderMode, mpr3DSurfaceOpacity, sectionViewOpen, sectionViewPlane, sectionAutoPlane, setSectionAutoPlane } from './state.js?v=20260929-build334';
+import { wc, ww, planes, mpr3DSliceSliders, $, mprVolumeOpacity, mprSurfaceOpacity } from './ui-shell.js?v=20260929-build334';
+import { sourceFilterStages, getFilteredSourceAxialBlock, getCachedSourceSlice, sourceFilterSignature } from './source-filters.js?v=20260929-build334';
+import { residentGpuMprAvailable } from './mpr-orthogonal.js?v=20260929-build334';
+import { frameYield } from './utils.js?v=20260929-build334';
+import { request3DRender } from './scene3d.js?v=20260929-build334';
+>>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 export const mpr3DVisibility={axes:true,axial:false,coronal:false,sagittal:false};
 export function restoreSectionAutoPlane(){
