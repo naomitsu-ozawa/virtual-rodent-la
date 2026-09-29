@@ -2221,3 +2221,34 @@ build 332's change should avoid the staging buffer; its Windows test may have
 run a stale page. Re-deployed as build 334 for a check with the build number
 visible. Owner's Chrome: 154.0.8037.58 Stable (Windows).
 (aa55710 was pushed with cherry-pick conflict markers; fixed in the next commit.)
+
+## Build 334+ — VR feasibility page (docs/xr/index.html; open as /xr/)
+
+Owner: target Meta Quest 3 / 3S; wants to "hold" the current 3D view in VR
+(volume preferred, to be decided on the device). Standalone page, no app code:
+reports WebGPU + limits, WebXR immersive-vr/ar, XRGPUBinding (WebGPU inside
+WebXR) and XRWebGLLayer, and two buttons that open a 5 s VR session clearing
+the view with WebGL2 or with WebGPU (XRGPUBinding projection layer) and report
+the frame rate. Result decides: WebGPU renderer straight into VR, or a WebGL2
+volume path for VR only.
+Also noted: on dual-GPU Windows laptops Chrome uses the integrated GPU
+(powerPreference is ignored); set Chrome to "High performance" in Windows
+Settings > System > Display > Graphics (chrome://flags may be blocked by policy).
+Owner's RTX laptop: Full 28 ms after the switch (Intel: 202 ms).
+
+Result (owner, borrowed Meta Quest, /xr/ page): no XRGPUBinding (WebGPU cannot
+draw into VR there); the WebGL2 VR session ran at 90 fps. -> a VR mode needs its
+own WebGL2 renderer (volume raycast in WebGL2 + XRWebGLLayer), fed by the same
+data as the WebGPU view.
+
+## Build 335 — practice dataset on the site + button
+
+Owner uploaded a practice DICOM series to docs/demo/sample1/ (branch demo-data,
+merged here): Rigaku R_mCT2, 512 × 512 × 512 slices, 0.148 mm isotropic,
+16-bit uncompressed, 259 MB. Header check: PatientName "Sample", ID "1", no
+institution/physician/operator/serial. index.json lists the 512 files.
+New button 練習データ（512³） (all devices) runs loadSampleDemo(): same-origin
+fetch of index.json and the slices (6 in flight), then the usual inspect()
+path. For the Quest: no URL typing or folder picker needed. The container
+cannot boot the app (esm.sh / jsDelivr blocked), so only index.json and a
+slice were fetched locally; the button needs a device check.
