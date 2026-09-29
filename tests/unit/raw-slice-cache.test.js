@@ -64,3 +64,17 @@ describe('raw slice cache resume (build 322)', () => {
     for (const i of [0, 11, 12, 19]) expect([...await getRawSlice(s3.slices[i])]).toEqual([...bytes(4, i)]);
   });
 });
+describe('raw slice cache backfill (build 323)', () => {
+  it('reads and stores the missing slices in the background', async () => {
+    const cache = await openVolumeCache({ indexedDB: idb });
+    const mk = () => ({ slices: Array.from({ length: 10 }, (_, i) => ({ i, pixelOffset: 2, file: new Blob([new Uint8Array([9, 9, i, i, i, i])]) })) });
+    const s = mk();
+    await attachRawSliceCache(s, { cache, key: 'k', sliceBytes: 4, budget: 1e9, info: {} });
+    putRawSlice(s.slices[3], bytes(4, 3));
+    await new Promise(r => setTimeout(r, 4000));
+    expect(rawSliceCacheState(s)).toBe('hit');
+    const s2 = mk();
+    await attachRawSliceCache(s2, { cache, key: 'k', sliceBytes: 4, budget: 1e9, info: {} });
+    expect([...await getRawSlice(s2.slices[7])]).toEqual([7, 7, 7, 7]);
+  }, 10000);
+});
