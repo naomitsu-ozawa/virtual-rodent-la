@@ -8,10 +8,10 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build337';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build337';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build337';
-import { tr } from './i18n.js?v=20260929-build337';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build338';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build338';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build338';
+import { tr } from './i18n.js?v=20260929-build338';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -163,9 +163,26 @@ async function buildVolumeData(maxDim,onProgress){
 
 // VR settings kept per browser (resolution only applies when a session starts)
 const SETTINGS_KEY='vrl-vr-settings';
-function loadSettings(){try{return{res:1,quality:0,foveation:1,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{res:1,quality:0,foveation:1}}}
+const DEFAULTS={quality:0,vres:2,foveation:2,rate:0};
+function loadSettings(){try{return{...DEFAULTS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
-const RES=[1,0.8,0.6],STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+// VRES: the ray-marched volume is drawn into an offscreen target this much
+// smaller per axis and scaled up where the volume box covers the view. Owner,
+// build 337: fps fell from 30 to 16 when the volume was enlarged, so the cost
+// follows the covered pixels.
+const VRES=[1,0.7,0.5],STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+
+// upscales the offscreen volume image; drawn with the volume box so only the
+// covered pixels are touched
+const compositeVertex=`
+uniform vec3 halfExt;
+void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position*halfExt,1.0);}`;
+const compositeFragment=`
+precision highp float;
+uniform sampler2D img;
+uniform vec2 invSize; // 1 / XR framebuffer size
+out highp vec4 outColor;
+void main(){outColor=texture(img,gl_FragCoord.xy*invSize);}`;
 
 // background: a dark gradient dome and a floor grid (a few triangles, no
 // cost next to the ray marching)
@@ -187,7 +204,7 @@ function makeMenu(ja){
  const render=()=>{
   ctx.clearRect(0,0,W,H);ctx.fillStyle='rgba(12,18,24,.88)';ctx.beginPath();ctx.roundRect(0,0,W,H,28);ctx.fill();
   ctx.fillStyle='#fff';ctx.font='bold 40px system-ui,sans-serif';ctx.fillText('Virtual Rodent Lab VR',32,60);
-  ctx.font='30px system-ui,sans-serif';ctx.fillStyle='#cfe3f0';lines.forEach((l,i)=>ctx.fillText(l,32,108+i*40));
+  ctx.font='28px system-ui,sans-serif';ctx.fillStyle='#cfe3f0';lines.forEach((l,i)=>ctx.fillText(l,32,100+i*36));
   buttons.forEach((bt,i)=>{
    ctx.fillStyle=bt.on?(bt.color||'#2d6cdf'):(i===hover?'#3a4652':'#26313b');ctx.beginPath();ctx.roundRect(bt.x,bt.y,bt.w,bt.h,14);ctx.fill();
    if(bt.color&&!bt.on){ctx.strokeStyle=bt.color;ctx.lineWidth=4;ctx.stroke()}
@@ -213,7 +230,6 @@ export async function startVrView({language='ja'}={}){
  const ja=language==='ja',settings=loadSettings();
  const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
- renderer.xr.setFramebufferScaleFactor(RES[settings.res]??1);
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
  document.body.appendChild(renderer.domElement);
  // requestSession must run inside the click; the texture is built afterwards
@@ -229,7 +245,7 @@ export async function startVrView({language='ja'}={}){
  menu.setLines([ja?'VRボリューム準備中…':'Preparing VR volume…']);
  const HOME=new THREE.Vector3(0,1.3,-0.6);
  const holder=new THREE.Group();holder.position.copy(HOME);scene.add(holder);
- let mesh=null,material=null,volTex=null,brickTex=null,baseStep=0.002,baseScale=0.3/3.3;
+ let mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3;
  const hidden=new Set();
  // controller rays: short when idle, long and bright when pointing at the menu
  const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
@@ -252,15 +268,21 @@ export async function startVrView({language='ja'}={}){
   c.addEventListener('selectstart',()=>{const h=menuHit(c);if(h){const i=menu.hit(h.uv);if(i>=0)menu.press(i);return}down()});
   c.addEventListener('selectend',up);
  }
- const applyQuality=()=>{if(material)material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);saveSettings(settings)};
+ const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
+ const applyQuality=()=>{
+  if(material)material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);
+  renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
+  if(rates.length&&session.updateTargetFrameRate)session.updateTargetFrameRate(rates[Math.min(settings.rate,rates.length-1)]).catch(()=>{});
+  saveSettings(settings);
+ };
  // fps per setting, so the owner can report which combination is smooth
  let frames=0,fpsAt=performance.now(),fps=0,info='';
- const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'解像度（次回から）',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
-  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Resolution (next entry)',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
+ const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
+  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
  menu.onDraw(()=>{
   const b=[],row=(y,label,values,key,resetFps=true)=>{values.forEach((v,i)=>b.push({x:32+i*200,y,w:188,h:64,label:v,on:settings[key]===i,action:()=>{settings[key]=i;applyQuality();if(resetFps){frames=0;fpsAt=performance.now()}}}));b.push({x:640,y,w:360,h:64,label,on:false})};
   // row labels are drawn as inert buttons on the right
-  row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');row(420,L.r,RES.map(r=>Math.round(r*100)+'%'),'res',false);
+  row(180,L.r,VRES.map(r=>Math.round(r*100)+'%'),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');
   SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;b.push({x:32+i*240,y:520,w:228,h:64,label:tr(key),color:seg.color||'#888',on:!hidden.has(key),action:()=>{hidden.has(key)?hidden.delete(key):hidden.add(key)}})});
   b.push({x:32,y:620,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
   b.push({x:700,y:620,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
@@ -281,13 +303,36 @@ export async function startVrView({language='ja'}={}){
     color.set(seg?.color||'#ffffff');material.uniforms.segC.value[i].set(color.r,color.g,color.b);
    }
   }
+  const f=VRES[settings.vres]??1;
+  if(mesh){
+   if(f<1){
+    // own pass per eye into the small target, then the composite material
+    // on the same box upscales it inside the main XR render
+    const xrTarget=renderer.getRenderTarget(),w=xrTarget?.width||1,h=xrTarget?.height||1;
+    renderer.xr.updateCamera(camera);const xrCam=renderer.xr.getCamera();
+    const tw=Math.max(1,Math.ceil(w*f)),th=Math.max(1,Math.ceil(h*f));
+    if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw,th,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+    else if(lowTarget.width!==tw||lowTarget.height!==th)lowTarget.setSize(tw,th);
+    scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);
+    renderer.xr.enabled=false;renderer.setRenderTarget(lowTarget);
+    renderer.setClearColor(0x000000,0);lowTarget.scissorTest=false;renderer.clear(true,false,false);
+    for(const sub of xrCam.cameras){
+     const v=sub.viewport,x=Math.floor(v.x*f),y=Math.floor(v.y*f),vw=Math.ceil(v.z*f),vh=Math.ceil(v.w*f);
+     lowTarget.viewport.set(x,y,vw,vh);lowTarget.scissor.set(x,y,vw,vh);lowTarget.scissorTest=true;
+     renderer.setRenderTarget(lowTarget);renderer.render(volScene,sub);
+    }
+    lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(BG,1);
+    compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(1/w,1/h);
+    mesh.material=compMaterial;
+   }else mesh.material=material;
+  }
   renderer.render(scene,camera);
   frames++;const now=performance.now();
   if(now-fpsAt>=1000){fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;if(mesh)menu.setLines([fps.toFixed(0)+' fps · '+info,L.help])}
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  volTex?.dispose();brickTex?.dispose();material?.dispose();mesh?.geometry.dispose();menu.dispose();
+  volTex?.dispose();brickTex?.dispose();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});
   renderer.dispose();renderer.domElement.remove();running=null;
  };
@@ -307,6 +352,12 @@ export async function startVrView({language='ja'}={}){
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;
   // app units (longest side 3.3) -> 0.3 m in VR
+  compMaterial=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:compositeVertex,fragmentShader:compositeFragment,side:THREE.BackSide,toneMapped:false,depthWrite:false,transparent:true,
+   blending:THREE.CustomBlending,blendSrc:THREE.OneFactor,blendDst:THREE.OneMinusSrcAlphaFactor,uniforms:{img:{value:null},invSize:{value:new THREE.Vector2(1,1)},halfExt:{value:new THREE.Vector3(...vd.halfExt)}}});
+  // the offscreen target is cleared to 0 and written with plain premultiplied
+  // colour (no blending needed inside the volume pass)
+  rayMesh=new THREE.Mesh(mesh.geometry,material.clone());rayMesh.material.uniforms=material.uniforms;rayMesh.material.blending=THREE.NoBlending;rayMesh.material.transparent=false;
+  rayMesh.matrixAutoUpdate=false;rayMesh.matrixWorldAutoUpdate=false;rayMesh.frustumCulled=false;volScene.add(rayMesh);
   mesh.renderOrder=1;holder.scale.setScalar(baseScale);holder.add(mesh);baseStep=vd.step;applyQuality();
   info=vd.dims.join('×')+(vd.filtered?(ja?' フィルター適用':' filtered'):'');
   menu.setLines([info,L.help]);
