@@ -2337,3 +2337,11 @@ for the segment being looked at but acceptable for the others. So texture
 reads of 512³ were the main per-ray cost. Data 256³ (2×2×2 average of the
 512 plan) is now the saved default, 512³ selectable. Segment buttons cycle
 normal → simple (no hit refinement, no gradient; segC.w) → hidden, VR only.
+
+## Build 343 — AR (passthrough) view
+
+Owner: wants a transparent background; two buttons, VRで見る and ARで見る.
+ARで見る starts an immersive-ar session (Quest passthrough): alpha WebGL
+context, no scene background, dome and grid not added, transparent clears.
+Everything else (data, volume pass, menu, grab) is the same code. Each button
+shows only when isSessionSupported says so.

@@ -8,18 +8,18 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build342';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build342';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build342';
-import { tr } from './i18n.js?v=20260929-build342';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build343';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build343';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build343';
+import { tr } from './i18n.js?v=20260929-build343';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
 // 512 per side, like the default 3D plan (owner: 30 fps flat view at 512)
 const VR_TARGET_SIDE=512;
 
-export async function vrSupported(){
- try{return !!navigator.xr&&await navigator.xr.isSessionSupported('immersive-vr')}catch{return false}
+export async function vrSupported(mode='immersive-vr'){
+ try{return !!navigator.xr&&await navigator.xr.isSessionSupported(mode)}catch{return false}
 }
 
 const vertexShader=`
@@ -253,21 +253,23 @@ function makeMenu(ja){
 }
 
 let running=null;
-export async function startVrView({language='ja'}={}){
+// mode 'vr': own background; 'ar' (build 343): immersive-ar passthrough on
+// Quest, no background drawn and the clear is transparent
+export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
  const ja=language==='ja',settings=loadSettings();settings.diag=0;
- const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false});
+ const ar=mode==='ar',renderer=new THREE.WebGLRenderer({antialias:false,alpha:ar});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
  document.body.appendChild(renderer.domElement);
  // requestSession must run inside the click; the texture is built afterwards
  // while the headset shows progress
  let session;
- try{session=await navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor']})}
+ try{session=await navigator.xr.requestSession(ar?'immersive-ar':'immersive-vr',{optionalFeatures:['local-floor']})}
  catch(e){renderer.dispose();renderer.domElement.remove();throw e}
  running={session};
- const scene=new THREE.Scene();scene.background=BG.clone();
- const background=makeBackground();scene.add(background);
+ const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
+ const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const menu=makeMenu(ja);menu.mesh.position.set(-0.5,1.3,-0.55);menu.mesh.rotation.set(-0.15,0.6,0);scene.add(menu.mesh);
  menu.setLines([ja?'VRボリューム準備中…':'Preparing VR volume…']);
@@ -386,7 +388,7 @@ export async function startVrView({language='ja'}={}){
      renderer.setRenderTarget(lowTarget);renderer.render(volScene,sub);
     }});
     sizes=(ja?'縮小描画 ':'low ')+Math.round(f*100)+'% '+Math.ceil(w*f)+'×'+Math.ceil(h*f)+' / XR '+w+'×'+h+' ('+xrCam.cameras.length+(ja?'眼':' eyes')+')';
-    lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(BG,1);
+    lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(ar?0x000000:BG,ar?0:1);
     compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(f/tw,f/th);
     mesh.material=compMaterial;
    }else{mesh.material=material;const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
