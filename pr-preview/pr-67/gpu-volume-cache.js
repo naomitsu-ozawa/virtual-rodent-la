@@ -34,6 +34,8 @@ export async function openVolumeCache({indexedDB=globalThis.indexedDB,now=()=>Da
    e.lastUsed=now();store.put(e);await done(tx);return e;
   },
   async read(key,index){const tx=db.transaction('slices');return req(tx.objectStore('slices').get([key,index]))},
+  // slices a..b (inclusive) in one request, index order (raw slice cache, build 320)
+  async readRange(key,a,b){const tx=db.transaction('slices');return req(tx.objectStore('slices').getAll(IDBKeyRange.bound([key,a],[key,b])))},
   // start (or restart) an entry; it becomes visible to lookup() only after commit()
   async begin(key,{slices,bytesPerSlice,info={}}){
    await remove(key);
@@ -46,7 +48,7 @@ export async function openVolumeCache({indexedDB=globalThis.indexedDB,now=()=>Da
     async commit(){
      if(written!==slices)throw new Error(`cache entry incomplete (${written}/${slices})`);
      const t=db.transaction('entries','readwrite'),s=t.objectStore('entries'),e=await req(s.get(key));
-     if(e){e.complete=true;e.lastUsed=now();s.put(e)}await done(t);
+     if(!e){await done(t);throw new Error('cache entry was removed')}e.complete=true;e.lastUsed=now();s.put(e);await done(t);
     },
     async abort(){try{await remove(key)}catch{}},
    };
@@ -58,7 +60,8 @@ export async function openVolumeCache({indexedDB=globalThis.indexedDB,now=()=>Da
   // drop stale incomplete entries, then least recently used ones over budget
   async prune(budgetBytes,{keep=null,staleMs=10*60*1000}={}){
    const all=await entries(),t=now();
-   for(const e of all)if(!e.complete&&e.key!==keep&&t-e.created>staleMs)await remove(e.key);
+   // a raw slice entry fills during normal use over a session (build 320): give it 6 h
+   for(const e of all)if(!e.complete&&e.key!==keep&&t-e.created>(e.info?.kind==='raw'?6*3600*1000:staleMs))await remove(e.key);
    const live=(await entries()).filter(e=>e.complete).sort((a,b)=>a.lastUsed-b.lastUsed);
    let total=live.reduce((a,e)=>a+e.bytes,0);
    for(const e of live){if(total<=budgetBytes)break;if(e.key===keep)continue;await remove(e.key);total-=e.bytes}

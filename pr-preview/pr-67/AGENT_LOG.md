@@ -2166,3 +2166,16 @@ already fetch only the pixel bytes. Settings → デバッグ → 読み込み�
 (docs/read-test.js) measures, on disjoint slice groups: the fixed cost of a
 1-byte read, MB/s with 1/4/8/16 reads in flight, and 4 Web Workers reading —
 to decide between fewer/larger reads and moving the reads off the main thread.
+
+## Build 320 — raw slice cache (disk)
+
+Build 319 read test: ~3.1 ms fixed cost per slice-file read (5.5 s per pass
+over 1784 slices); ahead=1/2 measured slower than 4 in the real run (26 s /
+20 s vs 16 s), so the read-ahead stays 4. New docs/raw-slice-cache.js: the
+first pass stores each slice's pixel bytes (what decodeSourceSlice and the GPU
+volume upload read from the file) in the IndexedDB cache, one record per
+slice, max 16 writes queued (a slice read while full is stored on a later
+pass). Once every slice is stored the entry is published; later passes read
+16 slices per IndexedDB request (2 chunks kept in memory). Setting
+キャッシュ → 元データもキャッシュする (default on); the entry counts toward the
+cache limit (8/16 GB options added). Debug status: read:cache, raw cache hit.
