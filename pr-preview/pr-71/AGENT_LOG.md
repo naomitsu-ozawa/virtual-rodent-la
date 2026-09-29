@@ -2201,3 +2201,15 @@ budgets. PR #70 (a non-Apple texture cap) was closed: it was a model branch and
 Full is an explicit heavy option, 512 is the default.
 Local e2e cannot boot the app in this container (main fails the same tests);
 CI runs them.
+
+## Build 332 — GPU volume texture gets RENDER_ATTACHMENT (all devices)
+
+Build 331 on Windows (Full selected, saved from an earlier test) still failed:
+"Buffer size (3741319168) exceeds the max buffer size limit (2147483648) …
+Dawn_DynamicUploaderStaging … WriteTexture". Uploads are one slice each; the
+size is the whole texture, so this is Dawn's lazy zero-fill of the 3D texture.
+Hypothesis (to be verified on Windows): with RENDER_ATTACHMENT usage Dawn/D3D12
+clears it on the GPU instead of through a staging buffer. Added to the volume
+texture's usage on every device (no branch); a 3D rg8unorm texture with that
+usage + per-slice writes validated on SwiftShader. Mac/iPad must be re-checked
+(3D display, Full/768/512) before merging.
