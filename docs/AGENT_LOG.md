@@ -2294,3 +2294,15 @@ resolution (live), detail, foveation, refresh rate (session.supportedFrameRates,
 when offered). The framebuffer-scale setting (next entry only) is removed.
 Composite shader compiled and sampled correctly in headless Chromium; the XR
 path itself needs the Quest.
+
+## Build 339 — VR diagnostics (measure before the next change)
+
+Owner, build 338: enlarged ≈15 fps whatever the settings (volume resolution
+included); smallest ≈80–90 fps; 50 % looks acceptable. Resolution not helping
+means either the reduced path is not what runs, or the cost is not per-pixel
+ray marching. Not guessing: the menu line now shows GPU ms of the volume pass
+and of the main XR pass (EXT_disjoint_timer_query_webgl2, when offered), JS ms
+per frame, the offscreen and XR target sizes and eye count, and the holder
+scale. New diagnostics row: normal / box only (no marching) / loop-count heat
+map (blue few iterations → red ≥1024). All three shader modes compiled and
+drew in headless Chromium.
