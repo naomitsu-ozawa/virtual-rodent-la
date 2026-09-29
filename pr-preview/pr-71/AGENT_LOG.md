@@ -2202,7 +2202,7 @@ Full is an explicit heavy option, 512 is the default.
 Local e2e cannot boot the app in this container (main fails the same tests);
 CI runs them.
 
-## Build 334 — build 332 reverted (RENDER_ATTACHMENT did not help)
+## Build 333 — build 332 reverted (RENDER_ATTACHMENT did not help)
 
 Owner (Windows, build 332): Full still fails with the same Dawn staging error;
 512/768 work. The extra texture usage is removed again so the Mac/iPad texture
