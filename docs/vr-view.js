@@ -8,9 +8,10 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build336';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build336';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build336';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build337';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build337';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build337';
+import { tr } from './i18n.js?v=20260929-build337';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -43,7 +44,6 @@ uniform float stepSize;
 uniform vec3 calib; // slope, intercept, signedBias
 uniform vec4 segA[4]; // min, max, opacity, enabled
 uniform vec3 segC[4];
-uniform vec3 bgColor;
 in vec3 vPos;
 in vec3 vOrigin;
 out highp vec4 outColor;
@@ -124,8 +124,9 @@ void main(){
   previousT=t;t=nextT;
  }
  if(acc.a<0.004)discard;
- // raw colour like the WebGPU canvas (no colour-space conversion)
- outColor=vec4(acc.rgb+bgColor*(1.0-acc.a),1.0);
+ // premultiplied, blended over the VR background (raw colour like the
+ // WebGPU canvas: no colour-space conversion)
+ outColor=acc;
 }`;
 
 // rg8-packed u16 texture of the current volume, built with the same plan,
@@ -160,20 +161,59 @@ async function buildVolumeData(maxDim,onProgress){
  return{data,dims:[tw,th,td],bricks:mm,brickDims:[bx,by,bz],halfExt,step,calibration:[slope,intercept,bias],filtered};
 }
 
-function makePanel(){
- const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;
+// VR settings kept per browser (resolution only applies when a session starts)
+const SETTINGS_KEY='vrl-vr-settings';
+function loadSettings(){try{return{res:1,quality:0,foveation:1,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{res:1,quality:0,foveation:1}}}
+function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
+const RES=[1,0.8,0.6],STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+
+// background: a dark gradient dome and a floor grid (a few triangles, no
+// cost next to the ray marching)
+function makeBackground(){
+ const g=new THREE.Group();
+ const dome=new THREE.Mesh(new THREE.SphereGeometry(30,32,16),new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,toneMapped:false,
+  vertexShader:'varying float h;void main(){h=normalize(position).y;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+  fragmentShader:'varying float h;void main(){vec3 lo=vec3(0.035,0.045,0.05);vec3 hi=vec3(0.10,0.14,0.20);gl_FragColor=vec4(mix(lo,hi,smoothstep(-0.1,0.8,h)),1.0);}'}));
+ const grid=new THREE.GridHelper(12,24,0x3a5a70,0x1e2e3a);grid.material.transparent=true;grid.material.opacity=0.55;grid.renderOrder=-1;
+ g.add(dome,grid);return g;
+}
+
+// canvas-drawn menu; the controller ray (trigger) presses its buttons
+function makeMenu(ja){
+ const W=1024,H=720,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
- const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.4,0.1),new THREE.MeshBasicMaterial({map:tex,transparent:true}));
- const set=lines=>{ctx.clearRect(0,0,512,128);ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillRect(0,0,512,128);ctx.fillStyle='#fff';ctx.font='28px system-ui,sans-serif';lines.forEach((l,i)=>ctx.fillText(l,16,44+i*40));tex.needsUpdate=true};
- return{mesh,set,dispose(){tex.dispose();mesh.geometry.dispose();mesh.material.dispose()}};
+ const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.56,0.56*H/W),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
+ let buttons=[],hover=-1,lines=[],draw=()=>{};
+ const render=()=>{
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='rgba(12,18,24,.88)';ctx.beginPath();ctx.roundRect(0,0,W,H,28);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font='bold 40px system-ui,sans-serif';ctx.fillText('Virtual Rodent Lab VR',32,60);
+  ctx.font='30px system-ui,sans-serif';ctx.fillStyle='#cfe3f0';lines.forEach((l,i)=>ctx.fillText(l,32,108+i*40));
+  buttons.forEach((bt,i)=>{
+   ctx.fillStyle=bt.on?(bt.color||'#2d6cdf'):(i===hover?'#3a4652':'#26313b');ctx.beginPath();ctx.roundRect(bt.x,bt.y,bt.w,bt.h,14);ctx.fill();
+   if(bt.color&&!bt.on){ctx.strokeStyle=bt.color;ctx.lineWidth=4;ctx.stroke()}
+   if(i===hover){ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke()}
+   ctx.fillStyle='#fff';ctx.font='28px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(bt.label,bt.x+bt.w/2,bt.y+bt.h/2);ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  });
+  tex.needsUpdate=true;
+ };
+ return{mesh,
+  setLines(l){lines=l;render()},
+  setButtons(b){buttons=b;render()},
+  refresh(){draw();render()},
+  onDraw(f){draw=f},
+  hit(uv){const x=uv.x*W,y=(1-uv.y)*H;return buttons.findIndex(b=>b.action&&x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)},
+  setHover(i){if(i!==hover){hover=i;render()}},
+  press(i){buttons[i]?.action?.();draw();render()},
+  dispose(){tex.dispose();mesh.geometry.dispose();mesh.material.dispose()}};
 }
 
 let running=null;
 export async function startVrView({language='ja'}={}){
  if(running)return;
- const ja=language==='ja';
+ const ja=language==='ja',settings=loadSettings();
  const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
+ renderer.xr.setFramebufferScaleFactor(RES[settings.res]??1);
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
  document.body.appendChild(renderer.domElement);
  // requestSession must run inside the click; the texture is built afterwards
@@ -183,13 +223,19 @@ export async function startVrView({language='ja'}={}){
  catch(e){renderer.dispose();renderer.domElement.remove();throw e}
  running={session};
  const scene=new THREE.Scene();scene.background=BG.clone();
+ const background=makeBackground();scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
- const panel=makePanel();panel.mesh.position.set(0,1.55,-0.8);scene.add(panel.mesh);
- panel.set([ja?'VRボリューム準備中…':'Preparing VR volume…']);
- const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let mesh=null,material=null,volTex=null,brickTex=null;
+ const menu=makeMenu(ja);menu.mesh.position.set(-0.5,1.3,-0.55);menu.mesh.rotation.set(-0.15,0.6,0);scene.add(menu.mesh);
+ menu.setLines([ja?'VRボリューム準備中…':'Preparing VR volume…']);
+ const HOME=new THREE.Vector3(0,1.3,-0.6);
+ const holder=new THREE.Group();holder.position.copy(HOME);scene.add(holder);
+ let mesh=null,material=null,volTex=null,brickTex=null,baseStep=0.002,baseScale=0.3/3.3;
+ const hidden=new Set();
+ // controller rays: short when idle, long and bright when pointing at the menu
+ const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
  const controllers=[0,1].map(i=>{const c=renderer.xr.getController(i);scene.add(c);
-  const ray=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-0.08)]),new THREE.LineBasicMaterial({color:0x88ccff}));c.add(ray);return c});
+  const ray=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1)]),new THREE.LineBasicMaterial({color:0x88ccff}));ray.scale.z=0.08;c.add(ray);c.userData.ray=ray;return c});
+ const menuHit=c=>{tmpM.identity().extractRotation(c.matrixWorld);raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);raycaster.ray.direction.set(0,0,-1).applyMatrix4(tmpM);return raycaster.intersectObject(menu.mesh,false)[0]||null};
  // grab: one hand moves/rotates (holder follows the controller); two hands
  // scale by the change in hand distance
  const grabbing=new Set();let twoHand=null;const tmpA=new THREE.Vector3(),tmpB=new THREE.Vector3();
@@ -200,36 +246,55 @@ export async function startVrView({language='ja'}={}){
   else if(grabbing.size===1)[...grabbing][0].attach(holder);
  };
  for(const c of controllers){
-  const down=()=>{grabbing.add(c);regrab()},up=()=>{grabbing.delete(c);regrab()};
+  const down=()=>{grabbing.add(c);regrab()},up=()=>{if(grabbing.delete(c))regrab()};
   c.addEventListener('squeezestart',down);c.addEventListener('squeezeend',up);
-  c.addEventListener('selectstart',down);c.addEventListener('selectend',up);
+  // trigger: presses a menu button when pointing at the menu, else grabs
+  c.addEventListener('selectstart',()=>{const h=menuHit(c);if(h){const i=menu.hit(h.uv);if(i>=0)menu.press(i);return}down()});
+  c.addEventListener('selectend',up);
  }
- renderer.xr.setFramebufferScaleFactor?.(1);
- await renderer.xr.setSession(session);
+ const applyQuality=()=>{if(material)material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);saveSettings(settings)};
+ // fps per setting, so the owner can report which combination is smooth
  let frames=0,fpsAt=performance.now(),fps=0,info='';
+ const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'解像度（次回から）',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
+  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Resolution (next entry)',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
+ menu.onDraw(()=>{
+  const b=[],row=(y,label,values,key,resetFps=true)=>{values.forEach((v,i)=>b.push({x:32+i*200,y,w:188,h:64,label:v,on:settings[key]===i,action:()=>{settings[key]=i;applyQuality();if(resetFps){frames=0;fpsAt=performance.now()}}}));b.push({x:640,y,w:360,h:64,label,on:false})};
+  // row labels are drawn as inert buttons on the right
+  row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');row(420,L.r,RES.map(r=>Math.round(r*100)+'%'),'res',false);
+  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;b.push({x:32+i*240,y:520,w:228,h:64,label:tr(key),color:seg.color||'#888',on:!hidden.has(key),action:()=>{hidden.has(key)?hidden.delete(key):hidden.add(key)}})});
+  b.push({x:32,y:620,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
+  b.push({x:700,y:620,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
+  menu.setButtons(b);
+ });
+ await renderer.xr.setSession(session);
+ applyQuality();menu.refresh();
  const color=new THREE.Color();
  renderer.setAnimationLoop(()=>{
   if(twoHand){const s=Math.min(20,Math.max(0.05,twoHand.s0*handDist()/twoHand.d0));holder.scale.setScalar(s)}
+  let hover=-1;
+  for(const c of controllers){const h=menuHit(c),ray=c.userData.ray;if(h){ray.scale.z=h.distance;ray.material.color.setHex(0xffffff);const i=menu.hit(h.uv);if(i>=0)hover=i}else{ray.scale.z=0.08;ray.material.color.setHex(0x88ccff)}}
+  menu.setHover(hover);
   if(material){
    for(let i=0;i<4;i++){
-    const seg=segmentState[SEGMENT_PRESET_ORDER[i]];
-    material.uniforms.segA.value[i].set(seg?.min||0,seg?.max||0,seg?.opacity??1,seg?.active&&seg?.enabled?1:0);
+    const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
+    material.uniforms.segA.value[i].set(seg?.min||0,seg?.max||0,seg?.opacity??1,seg?.active&&seg?.enabled&&!hidden.has(key)?1:0);
     color.set(seg?.color||'#ffffff');material.uniforms.segC.value[i].set(color.r,color.g,color.b);
    }
   }
   renderer.render(scene,camera);
   frames++;const now=performance.now();
-  if(now-fpsAt>=1000){fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;if(mesh)panel.set([fps.toFixed(0)+' fps',info])}
+  if(now-fpsAt>=1000){fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;if(mesh)menu.setLines([fps.toFixed(0)+' fps · '+info,L.help])}
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  volTex?.dispose();brickTex?.dispose();material?.dispose();mesh?.geometry.dispose();panel.dispose();
+  volTex?.dispose();brickTex?.dispose();material?.dispose();mesh?.geometry.dispose();menu.dispose();
+  background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});
   renderer.dispose();renderer.domElement.remove();running=null;
  };
  session.addEventListener('end',cleanup,{once:true});
  try{
   const gl=renderer.getContext(),maxDim=gl.getParameter(gl.MAX_3D_TEXTURE_SIZE)||2048;
-  const vd=await buildVolumeData(maxDim,(a,b)=>panel.set([(ja?'VRボリューム準備中… ':'Preparing VR volume… ')+a+' / '+b]));
+  const vd=await buildVolumeData(maxDim,(a,b)=>menu.setLines([(ja?'VRボリューム準備中… ':'Preparing VR volume… ')+a+' / '+b]));
   if(!running)return;
   volTex=new THREE.Data3DTexture(vd.data,...vd.dims);volTex.format=THREE.RGFormat;volTex.type=THREE.UnsignedByteType;
   volTex.minFilter=volTex.magFilter=THREE.LinearFilter;volTex.unpackAlignment=1;volTex.needsUpdate=true;
@@ -237,14 +302,15 @@ export async function startVrView({language='ja'}={}){
   brickTex.minFilter=brickTex.magFilter=THREE.NearestFilter;brickTex.unpackAlignment=1;brickTex.needsUpdate=true;
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
-    stepSize:{value:vd.step},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector3())},bgColor:{value:BG.clone()}}});
+    stepSize:{value:vd.step},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector3())}}});
+  material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;
   // app units (longest side 3.3) -> 0.3 m in VR
-  holder.scale.setScalar(0.3/3.3);holder.add(mesh);
+  mesh.renderOrder=1;holder.scale.setScalar(baseScale);holder.add(mesh);baseStep=vd.step;applyQuality();
   info=vd.dims.join('×')+(vd.filtered?(ja?' フィルター適用':' filtered'):'');
-  panel.set([ja?'グリップかトリガーでつかむ／両手で拡大縮小':'Grip or trigger to grab / both hands to scale',info]);
+  menu.setLines([info,L.help]);
  }catch(e){
-  console.error(e);panel.set([(ja?'VR準備に失敗: ':'VR failed: ')+String(e.message||e).slice(0,40)]);
+  console.error(e);menu.setLines([(ja?'VR準備に失敗: ':'VR failed: ')+String(e.message||e).slice(0,40)]);
  }
 }
