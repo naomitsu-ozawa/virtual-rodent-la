@@ -2345,3 +2345,5 @@ ARで見る starts an immersive-ar session (Quest passthrough): alpha WebGL
 context, no scene background, dome and grid not added, transparent clears.
 Everything else (data, volume pass, menu, grab) is the same code. Each button
 shows only when isSessionSupported says so.
+
+Owner, build 343 on Quest: VR and AR both fine (no problems).
