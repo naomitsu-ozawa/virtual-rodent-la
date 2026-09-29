@@ -30,7 +30,9 @@ test('public mouse CT demo loads, decodes and becomes ready', async ({ page }) =
   await page.locator('#demo-button').click();
 
   const firstCard = page.locator('#series-list .series-card').first();
-  await step('download + parse (waiting for series list)', () => expect(firstCard).toBeVisible({ timeout: 200_000 }));
+  // build 334: attached, not visible: the workspace UI (default on every desktop since
+  // build 331) keeps the series list in a closed drawer
+  await step('download + parse (waiting for series list)', () => expect(firstCard).toBeAttached({ timeout: 200_000 }));
 
   // The largest series is selected automatically; its status badge lives in
   // the "selected series" panel (not in the list) and ends with "ready" or
