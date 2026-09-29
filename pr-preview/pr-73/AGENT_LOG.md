@@ -2268,3 +2268,17 @@ packedRgSlice (now exported) / packCtSlice, segmentState (read every frame).
 Not shown yet: processed edits, cuts, section view, MPR planes.
 Checked in the container: lint, unit tests, boot-check, and the shader
 compiled and drew a lit volume in headless Chromium WebGL2. Needs a Quest test.
+
+## Build 337 — VR menu, background, speed settings (diagnostic)
+
+Owner, build 336 on Quest: the volume shows, 20–25 fps (risk of motion
+sickness); wants a background and UI. Not guessing the bottleneck: the menu
+switches the likely levers and shows fps for each, so the owner can report
+which one matters. Settings: detail (ray step ×1 / ×1.5 / ×2), foveation
+(off / mid / high, renderer.xr.setFoveation), resolution (framebuffer scale
+100 / 80 / 60 %, from the next VR entry; stored in localStorage). Menu also
+has segment show/hide (VR only, app state untouched), reset position and
+exit; the trigger presses a button when the ray points at the menu,
+otherwise grabs. Background: gradient dome and floor grid. The volume is now
+premultiplied and blended over the background instead of painting the
+background colour itself.
