@@ -2179,3 +2179,10 @@ pass). Once every slice is stored the entry is published; later passes read
 16 slices per IndexedDB request (2 chunks kept in memory). Setting
 キャッシュ → 元データもキャッシュする (default on); the entry counts toward the
 cache limit (8/16 GB options added). Debug status: read:cache, raw cache hit.
+
+## Build 321 — raw cache status in the segment status line
+
+Build 320 on the Mac: the second run (after reopening) still read the files
+(no read:cache / raw cache hit). The segment status now ends with
+"raw cache <state>": writing n/N, hit, or off (reason: limit, setting,
+unsupported slices, write/commit/read error) to see where it stops.
