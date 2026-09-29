@@ -1,14 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-<<<<<<< HEAD
 import { morphMask } from './mask-ops.js?v=20260929-build334';
 import { frameYield } from './utils.js?v=20260929-build334';
 import { thinSuppressActive, suppressThinStack } from './thin-suppress.js?v=20260929-build334';
-=======
-import { morphMask } from './mask-ops.js?v=20260929-build334';
-import { frameYield } from './utils.js?v=20260929-build334';
-import { thinSuppressActive, suppressThinStack } from './thin-suppress.js?v=20260929-build334';
->>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 export class RunUnionFind{
  constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
  grow(){
