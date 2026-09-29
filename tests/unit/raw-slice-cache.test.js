@@ -48,3 +48,19 @@ describe('raw slice cache (build 320)', () => {
     expect(rawSliceCacheState(s2)).toBe('off');
   });
 });
+describe('raw slice cache resume (build 322)', () => {
+  it('an incomplete entry is resumed when the data is opened again', async () => {
+    const cache = await openVolumeCache({ indexedDB: idb }), s = series(20);
+    await attachRawSliceCache(s, { cache, key: 'k', sliceBytes: 4, budget: 1e9, info: {} });
+    for (const m of s.slices.slice(0, 12)) { putRawSlice(m, bytes(4, m.i)); await settle(); }
+    expect(rawSliceCacheState(s)).toBe('writing');
+    const s2 = series(20);
+    await attachRawSliceCache(s2, { cache, key: 'k', sliceBytes: 4, budget: 1e9, info: {} });
+    expect(s2.rawSliceCache.written.size).toBe(12);
+    for (const m of s2.slices.slice(12)) { putRawSlice(m, bytes(4, m.i)); await settle(); }
+    expect(rawSliceCacheState(s2)).toBe('hit');
+    const s3 = series(20);
+    await attachRawSliceCache(s3, { cache, key: 'k', sliceBytes: 4, budget: 1e9, info: {} });
+    for (const i of [0, 11, 12, 19]) expect([...await getRawSlice(s3.slices[i])]).toEqual([...bytes(4, i)]);
+  });
+});

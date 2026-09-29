@@ -36,15 +36,26 @@ export async function openVolumeCache({indexedDB=globalThis.indexedDB,now=()=>Da
   async read(key,index){const tx=db.transaction('slices');return req(tx.objectStore('slices').get([key,index]))},
   // slices a..b (inclusive) in one request, index order (raw slice cache, build 320)
   async readRange(key,a,b){const tx=db.transaction('slices');return req(tx.objectStore('slices').getAll(IDBKeyRange.bound([key,a],[key,b])))},
-  // start (or restart) an entry; it becomes visible to lookup() only after commit()
-  async begin(key,{slices,bytesPerSlice,info={}}){
-   await remove(key);
-   const tx=db.transaction('entries','readwrite');
-   tx.objectStore('entries').put({key,slices,bytesPerSlice,bytes:slices*bytesPerSlice,info,complete:false,created:now(),lastUsed:now()});
-   await done(tx);
-   let written=0;
+  // start (or restart) an entry; it becomes visible to lookup() only after commit().
+  // resume (build 322): keep the slices an incomplete entry of the same shape already
+  // holds; writer.have lists their indices (written counts distinct indices)
+  async begin(key,{slices,bytesPerSlice,info={}},{resume=false}={}){
+   let have=new Set();
+   if(resume){
+    const t0=db.transaction(['entries','slices']),e=await req(t0.objectStore('entries').get(key));
+    if(e&&!e.complete&&e.slices===slices&&e.bytesPerSlice===bytesPerSlice){const keys=await req(t0.objectStore('slices').getAllKeys(range(key)));have=new Set(keys.map(k=>k[1]).filter(i=>i>=0&&i<slices))}
+    else await done(t0).catch(()=>{});
+   }
+   if(!have.size){
+    await remove(key);
+    const tx=db.transaction('entries','readwrite');
+    tx.objectStore('entries').put({key,slices,bytesPerSlice,bytes:slices*bytesPerSlice,info,complete:false,created:now(),lastUsed:now()});
+    await done(tx);
+   }
+   const seen=new Set(have);let written=seen.size;
    return{
-    async write(index,bytes){const t=db.transaction('slices','readwrite');t.objectStore('slices').put(bytes,[key,index]);await done(t);written++},
+    have,
+    async write(index,bytes){const t=db.transaction('slices','readwrite');t.objectStore('slices').put(bytes,[key,index]);await done(t);if(!seen.has(index)){seen.add(index);written++}},
     async commit(){
      if(written!==slices)throw new Error(`cache entry incomplete (${written}/${slices})`);
      const t=db.transaction('entries','readwrite'),s=t.objectStore('entries'),e=await req(s.get(key));

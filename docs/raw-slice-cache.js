@@ -5,9 +5,10 @@
 // from the file) in the IndexedDB cache; later passes read 16 slices per request.
 // Only a cache (browser storage can be evicted): the DICOM files stay the record.
 // No imports: volume-io.js depends on this, data-load.js wires it up.
-// MAX_INFLIGHT bounds the slices waiting to be written (memory): a slice read
-// while the queue is full is skipped and stored on a later pass in this session.
-const CHUNK=16,KEEP_CHUNKS=2,MAX_INFLIGHT=16;
+// MAX_INFLIGHT bounds the slices waiting to be written (memory, 32 × 2 MB): a slice
+// read while the queue is full is skipped and stored on a later pass; an entry left
+// incomplete is resumed when the data is opened again (build 322).
+const CHUNK=16,KEEP_CHUNKS=2,MAX_INFLIGHT=32;
 const metaCtx=new WeakMap();
 
 // cache: openVolumeCache() handle; key/info: entry key and settings-list info;
@@ -18,8 +19,9 @@ export async function attachRawSliceCache(series,{cache,key,info,sliceBytes,budg
  try{
   const hit=await cache.lookup(key);
   if(hit&&hit.slices===n&&hit.bytesPerSlice===sliceBytes)ctx.state='hit';
-  else if(n*sliceBytes<=budget){ctx.writer=await cache.begin(key,{slices:n,bytesPerSlice:sliceBytes,info});ctx.state='writing'}
+  else if(n*sliceBytes<=budget){ctx.writer=await cache.begin(key,{slices:n,bytesPerSlice:sliceBytes,info},{resume:true});for(const i of ctx.writer.have||[])ctx.written.add(i);ctx.state='writing'}
  }catch(e){console.warn('Raw slice cache unavailable.',e);return null}
+ if(ctx.state==='writing'&&ctx.written.size===n){try{await ctx.writer.commit();ctx.state='hit'}catch(e){ctx.state='off';ctx.error='commit: '+String(e?.message||e)}}
  series.slices.forEach((meta,i)=>metaCtx.set(meta,{ctx,i}));
  series.rawSliceCache=ctx;
  return ctx;
