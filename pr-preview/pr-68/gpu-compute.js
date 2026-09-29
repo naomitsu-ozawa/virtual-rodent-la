@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20260929-build328';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260929-build328';
+import { installGpuLedger } from './mem-ledger.js?v=20260929-build329';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20260929-build329';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20260929-build328';
-import { isDesktopMac, frameYield } from './utils.js?v=20260929-build328';
-import { runsSliceToMask } from './run-length.js?v=20260929-build328';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260929-build328';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260929-build328';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20260929-build329';
+import { isDesktopMac, frameYield } from './utils.js?v=20260929-build329';
+import { runsSliceToMask } from './run-length.js?v=20260929-build329';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20260929-build329';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20260929-build329';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -206,8 +206,6 @@ export function addGpuStepTime(name,ms){gpuStepTimes.set(name,(gpuStepTimes.get(
 // counts (cache hits/misses) are kept apart from the times
 export const gpuCounts=new Map();
 globalThis.__vrlTime=(name,ms)=>addGpuStepTime(name,ms);globalThis.__vrlCount=name=>gpuCounts.set(name,(gpuCounts.get(name)||0)+1);
-// build 328: an explicit 3D grid (tile kernels); each dimension must fit the limit
-export function gpuDispatch3D(pass,[x,y,z]){if(x>GPU_MAX_GROUPS||y>GPU_MAX_GROUPS||z>GPU_MAX_GROUPS)throw new Error('dispatch grid too large: '+[x,y,z].join('x'));pass.dispatchWorkgroups(Math.min(x,GPU_MAX_GROUPS),Math.min(y,GPU_MAX_GROUPS),Math.min(z,GPU_MAX_GROUPS))}
 export function gpuDispatch1D(pass,groups){pass.dispatchWorkgroups(Math.min(groups,GPU_MAX_GROUPS),Math.max(1,Math.ceil(groups/GPU_MAX_GROUPS)))}
 export async function gpuFilterPipeline(kind){
  const device=await ensureGpuFilterDevice();if(!device)return null;
@@ -256,14 +254,13 @@ export function finishGpuResidentTemps(device,cleanup){
  try{completion=device.queue.onSubmittedWorkDone()}catch{cleanup();return Promise.resolve()}
  completion.then(cleanup,cleanup);return completion;
 }
-const NLM_TILE=()=>typeof location!=='undefined'&&/[?&]nlmtile/.test(location.search);
 export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=null,faceContext=null){
  const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
  const bytes=data.byteLength,n=data.length;
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
  const aw=acquireGpuWorkBuffer(device,bytes),bw=acquireGpuWorkBuffer(device,bytes),a=aw.buffer,b=bw.buffer;const tUp=performance.now();device.queue.writeBuffer(a,0,data);addGpuStepTime('upload',performance.now()-tUp);
  const small=[];let encoder=device.createCommandEncoder({label:'VRL filter chunk'});let current=a,next=b;
- const dispatch=async(kind,extraU32=[],paramsF32=[],extraEntries=[],grid=null)=>{
+ const dispatch=async(kind,extraU32=[],paramsF32=[],extraEntries=[])=>{
   const pipeline=await gpuFilterPipeline(kind);if(!pipeline)throw new Error('GPU pipeline unavailable: '+kind);
   const meta=new Uint32Array(8);meta[0]=w;meta[1]=h;meta[2]=d;meta[3]=n;for(let i=0;i<extraU32.length&&i<4;i++)meta[4+i]=extraU32[i]>>>0;
   const params=new Float32Array(Math.max(8,paramsF32.length));params.set(paramsF32);
@@ -272,7 +269,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   const group=device.createBindGroup({layout:bind,entries:[
    {binding:0,resource:{buffer:current}},{binding:1,resource:{buffer:next}},{binding:2,resource:{buffer:mb}},{binding:3,resource:{buffer:pb}},...extraEntries
   ]});
-  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);if(grid)gpuDispatch3D(pass,grid);else gpuDispatch1D(pass,Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
+  const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);gpuDispatch1D(pass,Math.ceil(n/gpuFilterRuntime.workgroupSize));pass.end();
   const t=current;current=next;next=t;
  };
  for(const stage of stages){
@@ -302,16 +299,10 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   else if(stage.key==='bilateral'){
    const radius=Math.max(1,Math.min(3,Math.ceil(p.spatialSigma*1.5)));
    for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.intensitySigma]);
-  }else if(stage.key==='nlm'){
-   // build 328: ?nlmtile runs the workgroup-memory kernel (same result) to compare
-   // its GPU time with the default one on the device (f:nlm vs f:nlm(tile))
-   const sr=Math.min(2,Math.max(1,Math.round(p.searchRadius))),pr=Math.min(2,Math.max(0,Math.round(p.patchRadius)));
-   if(NLM_TILE())await dispatch('nlmTile',[sr,pr],[minv,maxv,p.strength],[],[Math.ceil(w/8),Math.ceil(h/8),d]);
-   else await dispatch('nlm',[sr,pr],[minv,maxv,p.strength]);
-  }
+  }else if(stage.key==='nlm')await dispatch('nlm',[Math.max(1,Math.round(p.searchRadius)),Math.min(2,Math.max(0,Math.round(p.patchRadius)))],[minv,maxv,p.strength]);
   else return null;
   // ?debug: GPU time of each filter stage (build 284, per-filter speed work)
-  if(GPU_TIMING_DEBUG()&&/[?&]stagetimes/.test(location.search)){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('f:'+(stage.key==='gaussian'&&p.mode==='median'?'median':stage.key==='nlm'&&NLM_TILE()?'nlm(tile)':stage.key),performance.now()-t);encoder=device.createCommandEncoder({label:'VRL filter stage'})}
+  if(GPU_TIMING_DEBUG()&&/[?&]stagetimes/.test(location.search)){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('f:'+(stage.key==='gaussian'&&p.mode==='median'?'median':stage.key),performance.now()-t);encoder=device.createCommandEncoder({label:'VRL filter stage'})}
  }
  if(segments?.length&&faceContext?.analysisRuns){
   // One filtered block, one run set per segment: the filters (the expensive

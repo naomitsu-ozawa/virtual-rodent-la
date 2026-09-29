@@ -2176,13 +2176,11 @@ search 1–2 × patch 0–2 (tools/gpu-shader-compare.mjs); SwiftShader time
 with ?debug&stagetimes (f:nlm). A bilateral spatial-weight table was also
 tried: bit-identical but not faster on SwiftShader, so not shipped.
 
-## Build 328 — NLM tile kernel behind ?nlmtile (A/B on the device)
+## Build 329 — NLM tile kernel removed (measured slower)
 
-Owner (build 327, Mac): 3D rebuild with NLM 81.3 s, f:nlm 117.3 s (summed over
-blocks). New kernel 'nlmTile': one 8×8 workgroup per tile of a slice loads the
-clamped (8+2R)²×(2R+1) box (R = search + patch ≤ 4) into workgroup memory once;
-all patch reads come from it. Bit-identical to 'nlm' on SwiftShader (48×48×24
-and 45×37×13, search 1–2 × patch 0–2) but slower there (SwiftShader emulates
-workgroup memory on the CPU), so it is NOT the default: ?nlmtile switches it on
-and ?debug&stagetimes shows f:nlm(tile) vs f:nlm to decide on the Mac.
-gpuDispatch3D() checks each grid dimension against the limit.
+Owner (build 328, Mac, same data/settings): default 'nlm' 3D rebuild 26.6 s,
+f:nlm 17.6 s; ?nlmtile 52.7 s, f:nlm(tile) 57.3 s — about 3× slower, so the
+tile kernel, gpuDispatch3D and ?nlmtile are removed (the build 327 centre-patch
+change stays). tools/gpu-shader-compare.mjs keeps the oldKind/DIMS options.
+Note: build 327's 81.3 s / f:nlm 117.3 s run was not comparable (settings or
+first-run conditions unknown).
