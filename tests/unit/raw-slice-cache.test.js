@@ -78,3 +78,13 @@ describe('raw slice cache backfill (build 323)', () => {
     expect([...await getRawSlice(s2.slices[7])]).toEqual([7, 7, 7, 7]);
   }, 10000);
 });
+describe('raw slice cache commit (build 324)', () => {
+  it('publishes only after every queued write has finished', async () => {
+    const cache = await openVolumeCache({ indexedDB: idb }), s = series(20);
+    await attachRawSliceCache(s, { cache, key: 'k', sliceBytes: 4, budget: 1e9, info: {} });
+    for (const m of s.slices) putRawSlice(m, bytes(4, m.i)); // all queued at once
+    await settle(); await settle();
+    expect(rawSliceCacheState(s)).toBe('hit');
+    expect(s.rawSliceCache.error).toBe('');
+  });
+});

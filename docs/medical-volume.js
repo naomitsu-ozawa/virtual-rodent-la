@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { getRawSlice, putRawSlice } from './raw-slice-cache.js?v=20260929-build323';
+import { getRawSlice, putRawSlice } from './raw-slice-cache.js?v=20260929-build324';
 
 const UNCOMPRESSED_TS=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
