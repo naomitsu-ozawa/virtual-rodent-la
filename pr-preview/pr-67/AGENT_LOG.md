@@ -2186,3 +2186,11 @@ Build 320 on the Mac: the second run (after reopening) still read the files
 (no read:cache / raw cache hit). The segment status now ends with
 "raw cache <state>": writing n/N, hit, or off (reason: limit, setting,
 unsupported slices, write/commit/read error) to see where it stops.
+
+## Build 322 — raw cache: resume an incomplete entry
+
+Build 321 with an 8 GB limit: the first pass stored 1021/1784 slices (the
+IndexedDB writes fell behind the reads; slices over the 16-write queue were
+skipped), and reopening the data restarted the entry from zero. begin() now
+takes {resume:true}: an incomplete entry of the same shape keeps its slices
+(getAllKeys) and the next pass writes only the missing ones. Queue 16 → 32.
