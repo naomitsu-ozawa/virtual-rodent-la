@@ -1,0 +1,46 @@
+diff --git a/docs/read-test.js b/docs/read-test.js
+index c395d16..06c574f 100644
+--- a/docs/read-test.js
++++ b/docs/read-test.js
+@@ -35,8 +35,40 @@ export async function runReadTest(series,onStep){
+    }finally{workers.forEach(w=>w.terminate())}
+   }
+  }
++ // build 327: the same slices through the browser's own storage, to see whether a
++ // disk cache of the slice bytes can beat the files on this device. 32 slices are
++ // written to a temporary IndexedDB store and a temporary OPFS file, read back one
++ // at a time and 16 at a time, then deleted. Numbers are ms per slice.
++ onStep?.('cache');
++ const cacheItems=[];for(let i=0;i<slices.length&&cacheItems.length<32;i+=Math.max(1,Math.floor(slices.length/32)))cacheItems.push(slices[i]);
++ const bytesOf=async m=>new Uint8Array(await m.file.slice(m.pixelOffset??0,(m.pixelOffset??0)+sliceBytes(m)).arrayBuffer());
++ const src=[];for(const m of cacheItems)src.push(await bytesOf(m));
++ const N=src.length,SZ=src[0].byteLength,ms=t=>(performance.now()-t)/N,cache={kind:'cache',count:N};
++ // IndexedDB
++ try{
++  const name='vrl-read-test-'+Date.now(),db=await new Promise((res,rej)=>{const o=indexedDB.open(name,1);o.onupgradeneeded=()=>o.result.createObjectStore('s');o.onsuccess=()=>res(o.result);o.onerror=()=>rej(o.error)});
++  const tx=(mode,f)=>new Promise((res,rej)=>{const t=db.transaction('s',mode),r=f(t.objectStore('s'));t.oncomplete=()=>res(r?.result);t.onerror=()=>rej(t.error)});
++  let t=performance.now();for(let c=0;c<N;c+=16)await tx('readwrite',s=>{for(let i=c;i<Math.min(N,c+16);i++)s.put(src[i],i)});cache.idbWrite=ms(t);
++  t=performance.now();for(let i=0;i<N;i++)await tx('readonly',s=>s.get(i));cache.idbGet=ms(t);
++  t=performance.now();for(let c=0;c<N;c+=16)await tx('readonly',s=>s.getAll(IDBKeyRange.bound(c,Math.min(N,c+16)-1)));cache.idbGet16=ms(t);
++  db.close();indexedDB.deleteDatabase(name);
++ }catch(e){cache.idbError=String(e?.message||e)}
++ // OPFS
++ try{
++  const root=await navigator.storage.getDirectory(),fname='vrl-read-test.bin',fh=await root.getFileHandle(fname,{create:true});
++  let t=performance.now();const w=await fh.createWritable();for(let i=0;i<N;i++)await w.write({type:'write',position:i*SZ,data:src[i]});await w.close();cache.opfsWrite=ms(t);
++  const file=await fh.getFile();
++  t=performance.now();for(let i=0;i<N;i++)await file.slice(i*SZ,(i+1)*SZ).arrayBuffer();cache.opfsGet=ms(t);
++  t=performance.now();for(let c=0;c<N;c+=16)await file.slice(c*SZ,Math.min(N,c+16)*SZ).arrayBuffer();cache.opfsGet16=ms(t);
++  await root.removeEntry(fname);
++ }catch(e){cache.opfsError=String(e?.message||e)}
++ // the files, the same slices, one at a time (reference)
++ {const t=performance.now();for(const m of cacheItems)await bytesOf(m);cache.file=ms(t)}
++ results.push(cache);
+  return results;
+ }
+ export function formatReadTest(results,ja){
+- return results.map(r=>r.kind==='tiny'?(ja?'1バイト読込 ':'1-byte read ')+r.msPerFile.toFixed(1)+' ms/'+(ja?'件':'file'):(r.kind==='worker'?'worker ×':(ja?'並列':'x'))+r.n+' '+r.mbps.toFixed(0)+' MB/s').join(' · ')+' ('+results[0].count+(ja?'枚ずつ':' slices each')+')';
++ const f=v=>v==null?'—':v.toFixed(1),c=results.find(r=>r.kind==='cache'),base=results.filter(r=>r.kind!=='cache');
++ const cacheText=c?' || '+(ja?'1枚あたり ms: ':'ms per slice: ')+'file '+f(c.file)+' · IDB '+(ja?'書込':'write')+' '+f(c.idbWrite)+' / '+(ja?'読込':'read')+' '+f(c.idbGet)+' / 16'+(ja?'枚まとめ':' at once')+' '+f(c.idbGet16)+' · OPFS '+(ja?'書込':'write')+' '+f(c.opfsWrite)+' / '+(ja?'読込':'read')+' '+f(c.opfsGet)+' / 16'+(ja?'枚まとめ':' at once')+' '+f(c.opfsGet16)+(c.idbError?' · IDB error '+c.idbError:'')+(c.opfsError?' · OPFS error '+c.opfsError:''):'';
++ return base.map(r=>r.kind==='tiny'?(ja?'1バイト読込 ':'1-byte read ')+r.msPerFile.toFixed(1)+' ms/'+(ja?'件':'file'):(r.kind==='worker'?'worker ×':(ja?'並列':'x'))+r.n+' '+r.mbps.toFixed(0)+' MB/s').join(' · ')+' ('+base[0].count+(ja?'枚ずつ':' slices each')+')'+cacheText;
+ }

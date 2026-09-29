@@ -2175,3 +2175,45 @@ one random 2D slice; attach/prune/backfill competed with the loading reads.
 All raw-cache and restart-diagnostic changes are reverted; the build 319 read
 test stays. Lesson: a cache for sequential passes must not sit on the random
 2D path, and nothing may run in the background while the data loads.
+
+## HANDOFF (after build 326) — disk cache for the slice reads, stopped here
+
+Owner's order: reach the disk-cache goal (faster 2nd+ full passes over the
+source slices) WITHOUT hurting responsiveness, as one design (no piecemeal
+special cases). Stopped because a win could not be shown yet.
+
+State
+- main = PR #66 (build 318). PR #67 (branch claude/dicom-viewer-handoff-eaqyyu)
+  = build 319 read test + build 326 tag bump; builds 320–325 (raw cache) were
+  reverted in 914e92c. Owner has not decided to merge or close PR #67.
+- The reverted implementation is recoverable: commits 536fe72, e65b3a8,
+  cb4f21f, b8b33c1, 92506ff, 5153c4b (docs/raw-slice-cache.js, readRange /
+  begin({resume}) in gpu-volume-cache.js, hooks in volume-io.js decodeSourceSlice
+  and medical-volume.js rawPixelBytes, attachRawSliceCacheFor in gpu-volume-data.js,
+  settings rawCache + 8/16 GB limits, tests/unit/raw-slice-cache.test.js).
+
+Measured (owner's Mac, 1024×1024×1784, 2 MB slices)
+- read test (build 319): 1-byte read 3.1 ms/file; 1 in flight 428 MB/s, 4: 352,
+  8: 219, 16: 108; 4 workers 254 MB/s. Real segment run: ahead=1 26 s, 2 20 s,
+  4 (default) 14–16 s -> keep 4.
+- raw cache build 321–324: default cache limit on that Mac was 2 GB (fixed setting);
+  first pass stored only 1021/1784 (writes fell behind, queue cap); commit raced
+  in-flight writes (fixed in 324); backfill made a segment run 36 s.
+- Build 325 made opening slower and the 2D slice slider laggy (cause not measured;
+  suspects: a hit read a 16-slice/32 MB chunk for each random 2D slice; attach +
+  prune + backfill during load).
+- Container Chromium (NOT representative): per 2 MB slice — Blob slice 7.7 ms,
+  IDB get 5.5, IDB getAll×16 3.9, IDB write 7–8, OPFS read×16 3.4, OPFS write
+  (createWritable) 30 ms. Storage reads were not clearly faster than file reads.
+
+Next step prepared (not pushed, untested on a device):
+tools/wip/read-test-cache-storage.patch extends the read test to write 32 slices
+to a temp IDB store and a temp OPFS file and time get / get×16 / write against
+the files (ms per slice). Apply, run on the Mac, and only build the cache if a
+storage read is clearly cheaper than a file read there.
+
+Design constraints learned
+- random 2D reads must never pay for a chunk; nothing may run while data loads;
+- fill only during full sequential passes, with backpressure so the entry completes
+  in one pass; publish after every write finished; never delete stored slices on a
+  failed commit; count toward the cache limit (owner's limit is 2 GB -> tell them).
