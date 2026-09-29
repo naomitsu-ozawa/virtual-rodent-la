@@ -25,6 +25,11 @@ export async function attachRawSliceCache(series,{cache,key,info,sliceBytes,budg
  return ctx;
 }
 export function rawSliceCacheState(series){return series?.rawSliceCache?.state||'off'}
+// debug status text, e.g. "writing 1500/1784", "hit", "off (limit 2 GB < 3.6 GB)"
+export function rawSliceCacheSummary(series){
+ const c=series?.rawSliceCache;if(!c)return'off'+(series?.rawCacheReason?' ('+series.rawCacheReason+')':'');
+ return c.state==='writing'?'writing '+c.written.size+'/'+c.n:c.state+(c.error?' ('+c.error+')':'');
+}
 
 function chunkOf(ctx,c){
  let p=ctx.loaded.get(c);
@@ -44,7 +49,7 @@ export async function getRawSlice(meta){
   if(!b||b.byteLength!==ctx.sliceBytes)throw new Error('raw slice missing');
   globalThis.__vrlCount?.('raw cache hit');
   return b instanceof Uint8Array?b:new Uint8Array(b);
- }catch(e){console.warn('Raw slice cache read failed; reading the files.',e);ctx.state='off';ctx.loaded.clear();try{await ctx.cache.remove(ctx.key)}catch{};return null}
+ }catch(e){console.warn('Raw slice cache read failed; reading the files.',e);ctx.state='off';ctx.error='read: '+String(e?.message||e);ctx.loaded.clear();try{await ctx.cache.remove(ctx.key)}catch{};return null}
 }
 // store the bytes read from the file on the first pass; the entry is published
 // (and used from then on) once every slice has been stored
@@ -56,7 +61,7 @@ export function putRawSlice(meta,bytes){
  ctx.writer.write(m.i,copy).finally(()=>{ctx.inflight--}).then(async()=>{
   if(ctx.state==='writing'&&ctx.written.size===ctx.n){
    try{await ctx.writer.commit();ctx.state='hit';globalThis.__vrlCount?.('raw cache stored')}
-   catch(e){ctx.state='off';try{await ctx.writer.abort()}catch{}}
+   catch(e){ctx.state='off';ctx.error='commit: '+String(e?.message||e);try{await ctx.writer.abort()}catch{}}
   }
- },async e=>{ctx.written.delete(m.i);if(ctx.state!=='writing')return;ctx.state='off';console.warn('Raw slice cache write failed (quota?); caching stopped.',e);try{await ctx.writer.abort()}catch{}});
+ },async e=>{ctx.written.delete(m.i);if(ctx.state!=='writing')return;ctx.state='off';ctx.error=String(e?.message||e);console.warn('Raw slice cache write failed (quota?); caching stopped.',e);try{await ctx.writer.abort()}catch{}});
 }

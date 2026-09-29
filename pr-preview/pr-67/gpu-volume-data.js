@@ -1,20 +1,20 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20260929-build320';
-import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260929-build320';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260929-build320';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260929-build320';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260929-build320';
-import { request3DRender } from './scene3d.js?v=20260929-build320';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260929-build320';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260929-build320';
-import { tr } from './i18n.js?v=20260929-build320';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260929-build320';
-import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260929-build320';
-import { datasetFingerprint } from './project-file.js?v=20260929-build320';
-import { attachRawSliceCache } from './raw-slice-cache.js?v=20260929-build320';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20260929-build320';
-import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260929-build320';
+import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20260929-build321';
+import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260929-build321';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260929-build321';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260929-build321';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260929-build321';
+import { request3DRender } from './scene3d.js?v=20260929-build321';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260929-build321';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260929-build321';
+import { tr } from './i18n.js?v=20260929-build321';
+import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260929-build321';
+import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260929-build321';
+import { datasetFingerprint } from './project-file.js?v=20260929-build321';
+import { attachRawSliceCache } from './raw-slice-cache.js?v=20260929-build321';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20260929-build321';
+import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260929-build321';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
@@ -96,18 +96,22 @@ export { pruneOtherFilterSettings };
 // build 320: raw slice bytes cache (raw-slice-cache.js), settings > cache > rawCache.
 // The entry counts toward the same cache limit; older entries are dropped (LRU) to fit.
 export async function attachRawSliceCacheFor(series){
+ // build 321: series.rawCacheReason says why the cache is off (debug status line)
+ const off=r=>{if(series)series.rawCacheReason=r;return null};
  try{
-  if(globalThis.__vrlSettings?.get?.('rawCache')===false)return null;
-  const f=series?.slices?.[0];if(!f||f.pixelOffset==null||!isNativeDicomTransferSyntax(f.ts)||!(f.bits===8||f.bits===16))return null;
-  if(!series.slices.every(m=>m.pixelOffset!=null&&m.ts===f.ts&&m.rows===f.rows&&m.columns===f.columns&&m.bits===f.bits))return null;
-  const cache=await volumeCache();if(!cache)return null;
+  if(globalThis.__vrlSettings?.get?.('rawCache')===false)return off('setting off');
+  const f=series?.slices?.[0];if(!f||f.pixelOffset==null||!isNativeDicomTransferSyntax(f.ts)||!(f.bits===8||f.bits===16))return off('unsupported slices');
+  if(!series.slices.every(m=>m.pixelOffset!=null&&m.ts===f.ts&&m.rows===f.rows&&m.columns===f.columns&&m.bits===f.bits))return off('mixed slices');
+  const cache=await volumeCache();if(!cache)return off('no IndexedDB');
   const sliceBytes=f.rows*f.columns*(f.bits===8?1:2),size=sliceBytes*series.slices.length,budget=await volumeCacheBudget();
   const dataset=datasetFingerprint(series),key=await cacheKey({kind:'raw',dataset});
   const hit=await cache.lookup(key);
-  if(!hit){if(size>budget)return null;if(!volumeCacheState.persistAsked){volumeCacheState.persistAsked=true;try{await navigator.storage?.persist?.()}catch{}}await cache.prune(budget-size,{keep:key})}
-  return attachRawSliceCache(series,{cache,key,sliceBytes,budget,info:{kind:'raw',dataset,description:series.description||''}});
- }catch(e){console.warn('Raw slice cache setup failed.',e);return null}
+  if(!hit){if(size>budget)return off('limit '+fmt(budget)+' < '+fmt(size));if(!volumeCacheState.persistAsked){volumeCacheState.persistAsked=true;try{await navigator.storage?.persist?.()}catch{}}await cache.prune(budget-size,{keep:key})}
+  const ctx=await attachRawSliceCache(series,{cache,key,sliceBytes,budget,info:{kind:'raw',dataset,description:series.description||''}});
+  return ctx||off('attach failed');
+ }catch(e){console.warn('Raw slice cache setup failed.',e);return off('error: '+(e?.message||e))}
 }
+
 export async function updateVolumeCacheControl(){
  if(!volumeCacheClearBtn)return;
  const available=!!sceneState?.medicalVolume,cache=available?await volumeCache():null,bytes=cache?await cache.usage().catch(()=>0):0;
