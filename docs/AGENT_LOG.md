@@ -2222,7 +2222,7 @@ run a stale page. Re-deployed as build 334 for a check with the build number
 visible. Owner's Chrome: 154.0.8037.58 Stable (Windows).
 (aa55710 was pushed with cherry-pick conflict markers; fixed in the next commit.)
 
-## Build 334+ — VR feasibility page (docs/xr-check.html)
+## Build 334+ — VR feasibility page (docs/xr/index.html; open as /xr/)
 
 Owner: target Meta Quest 3 / 3S; wants to "hold" the current 3D view in VR
 (volume preferred, to be decided on the device). Standalone page, no app code:
