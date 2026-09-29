@@ -8,10 +8,10 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build338';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build338';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build338';
-import { tr } from './i18n.js?v=20260929-build338';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build339';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build339';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build339';
+import { tr } from './i18n.js?v=20260929-build339';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -41,6 +41,9 @@ uniform vec3 halfExt;
 uniform vec3 texDims;
 uniform vec3 brickDims;
 uniform float stepSize;
+// diagnostics (build 339): 0 normal, 1 box only (no marching), 2 loop count
+// heat map (blue = few iterations, red = 1024 or more)
+uniform int diag;
 uniform vec3 calib; // slope, intercept, signedBias
 uniform vec4 segA[4]; // min, max, opacity, enabled
 uniform vec3 segC[4];
@@ -95,10 +98,12 @@ void main(){
  vec3 o=vOrigin;vec3 dir=normalize(vPos-vOrigin);
  vec2 bounds=hitBox(o,dir);
  if(bounds.x>bounds.y)discard;
+ if(diag==1){outColor=vec4(0.2,0.35,0.5,1.0);return;}
  float t=max(bounds.x,0.0);float endT=bounds.y;float step=max(stepSize,1e-5);
- float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);
+ float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);int iters=0;
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
+  iters++;
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
   bool canSample=brickMayContain(tc0);
   float nextT=t+step;
@@ -123,6 +128,7 @@ void main(){
   }
   previousT=t;t=nextT;
  }
+ if(diag==2){float h=clamp(float(iters)/1024.0,0.0,1.0);outColor=vec4(h,1.0-abs(h*2.0-1.0),1.0-h,1.0);return;}
  if(acc.a<0.004)discard;
  // premultiplied, blended over the VR background (raw colour like the
  // WebGPU canvas: no colour-space conversion)
@@ -197,7 +203,7 @@ function makeBackground(){
 
 // canvas-drawn menu; the controller ray (trigger) presses its buttons
 function makeMenu(ja){
- const W=1024,H=720,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+ const W=1024,H=860,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.56,0.56*H/W),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
  let buttons=[],hover=-1,lines=[],draw=()=>{};
@@ -227,7 +233,7 @@ function makeMenu(ja){
 let running=null;
 export async function startVrView({language='ja'}={}){
  if(running)return;
- const ja=language==='ja',settings=loadSettings();
+ const ja=language==='ja',settings=loadSettings();settings.diag=0;
  const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
@@ -270,28 +276,47 @@ export async function startVrView({language='ja'}={}){
  }
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
  const applyQuality=()=>{
-  if(material)material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);
+  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
   if(rates.length&&session.updateTargetFrameRate)session.updateTargetFrameRate(rates[Math.min(settings.rate,rates.length-1)]).catch(()=>{});
   saveSettings(settings);
  };
  // fps per setting, so the owner can report which combination is smooth
  let frames=0,fpsAt=performance.now(),fps=0,info='';
- const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
-  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
+ const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',d:'診断',dv:['通常','箱のみ','ループ数'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
+  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',d:'Diagnostics',dv:['Normal','Box only','Loop count'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
  menu.onDraw(()=>{
   const b=[],row=(y,label,values,key,resetFps=true)=>{values.forEach((v,i)=>b.push({x:32+i*200,y,w:188,h:64,label:v,on:settings[key]===i,action:()=>{settings[key]=i;applyQuality();if(resetFps){frames=0;fpsAt=performance.now()}}}));b.push({x:640,y,w:360,h:64,label,on:false})};
   // row labels are drawn as inert buttons on the right
-  row(180,L.r,VRES.map(r=>Math.round(r*100)+'%'),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');
-  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;b.push({x:32+i*240,y:520,w:228,h:64,label:tr(key),color:seg.color||'#888',on:!hidden.has(key),action:()=>{hidden.has(key)?hidden.delete(key):hidden.add(key)}})});
-  b.push({x:32,y:620,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
-  b.push({x:700,y:620,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
+  row(180,L.r,VRES.map(r=>Math.round(r*100)+'%'),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');row(500,L.d,L.dv,'diag');
+  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;b.push({x:32+i*240,y:580,w:228,h:64,label:tr(key),color:seg.color||'#888',on:!hidden.has(key),action:()=>{hidden.has(key)?hidden.delete(key):hidden.add(key)}})});
+  b.push({x:32,y:680,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
+  b.push({x:700,y:680,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
   menu.setButtons(b);
  });
  await renderer.xr.setSession(session);
  applyQuality();menu.refresh();
  const color=new THREE.Color();
+ // GPU time per pass (EXT_disjoint_timer_query_webgl2, when offered) and JS
+ // time per frame, averaged over the fps window
+ const gl=renderer.getContext(),timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
+ const pending=[],sums={vol:0,main:0,js:0},counts={vol:0,main:0,js:0};let sizes='';
+ const timed=(kind,fn)=>{
+  if(!timerExt||pending.length>12){fn();return}
+  const q=gl.createQuery();gl.beginQuery(timerExt.TIME_ELAPSED_EXT,q);fn();gl.endQuery(timerExt.TIME_ELAPSED_EXT);pending.push({q,kind});
+ };
+ const pollTimers=()=>{
+  while(pending.length){
+   const {q,kind}=pending[0];
+   if(!gl.getQueryParameter(q,gl.QUERY_RESULT_AVAILABLE))break;
+   pending.shift();
+   if(!gl.getParameter(timerExt.GPU_DISJOINT_EXT)){sums[kind]+=gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6;counts[kind]++}
+   gl.deleteQuery(q);
+  }
+ };
+ const avg=k=>counts[k]?(sums[k]/counts[k]).toFixed(1):'–';
  renderer.setAnimationLoop(()=>{
+  const js0=performance.now();if(timerExt)pollTimers();
   if(twoHand){const s=Math.min(20,Math.max(0.05,twoHand.s0*handDist()/twoHand.d0));holder.scale.setScalar(s)}
   let hover=-1;
   for(const c of controllers){const h=menuHit(c),ray=c.userData.ray;if(h){ray.scale.z=h.distance;ray.material.color.setHex(0xffffff);const i=menu.hit(h.uv);if(i>=0)hover=i}else{ray.scale.z=0.08;ray.material.color.setHex(0x88ccff)}}
@@ -316,19 +341,25 @@ export async function startVrView({language='ja'}={}){
     scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);
     renderer.xr.enabled=false;renderer.setRenderTarget(lowTarget);
     renderer.setClearColor(0x000000,0);lowTarget.scissorTest=false;renderer.clear(true,false,false);
-    for(const sub of xrCam.cameras){
+    timed('vol',()=>{for(const sub of xrCam.cameras){
      const v=sub.viewport,x=Math.floor(v.x*f),y=Math.floor(v.y*f),vw=Math.ceil(v.z*f),vh=Math.ceil(v.w*f);
      lowTarget.viewport.set(x,y,vw,vh);lowTarget.scissor.set(x,y,vw,vh);lowTarget.scissorTest=true;
      renderer.setRenderTarget(lowTarget);renderer.render(volScene,sub);
-    }
+    }});
+    sizes=(ja?'縮小描画 ':'low ')+tw+'×'+th+' / XR '+w+'×'+h+' ('+xrCam.cameras.length+(ja?'眼':' eyes')+')';
     lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(BG,1);
     compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(1/w,1/h);
     mesh.material=compMaterial;
-   }else mesh.material=material;
+   }else{mesh.material=material;const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
   }
-  renderer.render(scene,camera);
+  sums.js+=performance.now()-js0;counts.js++;
+  timed('main',()=>renderer.render(scene,camera));
   frames++;const now=performance.now();
-  if(now-fpsAt>=1000){fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;if(mesh)menu.setLines([fps.toFixed(0)+' fps · '+info,L.help])}
+  if(now-fpsAt>=1000){
+   fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
+   if(mesh)menu.setLines([fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)')),sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info]);
+   for(const k in sums){sums[k]=0;counts[k]=0}
+  }
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
@@ -347,7 +378,7 @@ export async function startVrView({language='ja'}={}){
   brickTex.minFilter=brickTex.magFilter=THREE.NearestFilter;brickTex.unpackAlignment=1;brickTex.needsUpdate=true;
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
-    stepSize:{value:vd.step},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector3())}}});
+    stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector3())}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;
