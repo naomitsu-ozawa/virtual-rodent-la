@@ -8,10 +8,10 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build340';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build340';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build340';
-import { tr } from './i18n.js?v=20260929-build340';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build341';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build341';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build341';
+import { tr } from './i18n.js?v=20260929-build341';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -41,8 +41,9 @@ uniform vec3 halfExt;
 uniform vec3 texDims;
 uniform vec3 brickDims;
 uniform float stepSize;
-// diagnostics (build 339): 0 normal, 1 box only (no marching), 2 loop count
-// heat map (blue = few iterations, red = 1024 or more)
+// diagnostics (build 339/341): 0 normal, 1 box only (no marching), 2 loop
+// count heat map (blue = few iterations, red = 1024 or more), 3 no shading at
+// hits (no refinement, no gradient), 4 no empty-space skipping
 uniform int diag;
 uniform vec3 calib; // slope, intercept, signedBias
 uniform vec4 segA[4]; // min, max, opacity, enabled
@@ -105,7 +106,7 @@ void main(){
   if(t>endT||acc.a>0.985)break;
   iters++;
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
-  bool canSample=brickMayContain(tc0);
+  bool canSample=diag==4||brickMayContain(tc0);
   float nextT=t+step;
   if(!canSample){nextT=t+max(brickExit(tc0,dir)+step*0.05,step);lastIndex=-1;}
   else{
@@ -113,9 +114,9 @@ void main(){
    if(idx!=lastIndex){
     if(idx>=0){
      float lo=previousT;float hi=t;
-     for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(o+dir*mid))==idx)hi=mid;else lo=mid;}
+     if(diag!=3)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(o+dir*mid))==idx)hi=mid;else lo=mid;}
      vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
-     vec3 n=gradientAt(tc);
+     vec3 n=diag==3?-dir:gradientAt(tc);
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
@@ -135,6 +136,30 @@ void main(){
  outColor=acc;
 }`;
 
+// brick min/max in HU; one voxel of overlap so trilinear samples at a
+// brick edge are covered
+function computeBricks(data,[tw,th,td],[slope,intercept,bias]){
+ const bx=Math.ceil(tw/BRICK),by=Math.ceil(th/BRICK),bz=Math.ceil(td/BRICK),mm=new Float32Array(bx*by*bz*2);
+ for(let k=0;k<bz;k++)for(let j=0;j<by;j++)for(let i=0;i<bx;i++){
+  let lo=65535,hi=0;
+  const z0=Math.max(0,k*BRICK-1),z1=Math.min(td,(k+1)*BRICK+1),y0=Math.max(0,j*BRICK-1),y1=Math.min(th,(j+1)*BRICK+1),x0=Math.max(0,i*BRICK-1),x1=Math.min(tw,(i+1)*BRICK+1);
+  for(let z=z0;z<z1;z++)for(let y=y0;y<y1;y++){let o=(z*th+y)*tw*2+x0*2;for(let x=x0;x<x1;x++,o+=2){const w=data[o]|(data[o+1]<<8);if(w<lo)lo=w;if(w>hi)hi=w}}
+  const b=((k*by+j)*bx+i)*2,a=(lo-bias)*slope+intercept,c=(hi-bias)*slope+intercept;mm[b]=Math.min(a,c);mm[b+1]=Math.max(a,c);
+ }
+ return{bricks:mm,brickDims:[bx,by,bz]};
+}
+// diagnostics (build 341): half-size copy (2×2×2 average) to test whether
+// reading the 512³ texture is what limits the frame rate
+function halveVolume(vd){
+ const [w,h,d]=vd.dims,tw=Math.max(1,w>>1),th=Math.max(1,h>>1),td=Math.max(1,d>>1),src=vd.data,out=new Uint8Array(tw*th*td*2);
+ for(let z=0;z<td;z++)for(let y=0;y<th;y++)for(let x=0;x<tw;x++){
+  let acc=0;
+  for(let dz=0;dz<2;dz++)for(let dy=0;dy<2;dy++){const o=(((z*2+dz)*h+(y*2+dy))*w+x*2)*2;acc+=(src[o]|(src[o+1]<<8))+(src[o+2]|(src[o+3]<<8))}
+  const v=Math.round(acc/8),o=((z*th+y)*tw+x)*2;out[o]=v&255;out[o+1]=v>>8;
+ }
+ return{...vd,data:out,dims:[tw,th,td],...computeBricks(out,[tw,th,td],vd.calibration)};
+}
+
 // rg8-packed u16 texture of the current volume, built with the same plan,
 // area reduction and packing as the WebGPU upload, plus per-brick HU min/max
 async function buildVolumeData(maxDim,onProgress){
@@ -152,19 +177,11 @@ async function buildVolumeData(maxDim,onProgress){
   if(plan.reduced)reduceSliceArea(packed,s.columns,xs,ys,tw,th,tw*2,out,rowSum,rowCnt);else out.set(packed.subarray(0,sliceSize));
   if((z&15)===15||z===td-1){onProgress?.(z+1,td);await new Promise(r=>setTimeout(r,0))}
  }
- // brick min/max in HU; one voxel of overlap so trilinear samples at a
- // brick edge are covered
- const bx=Math.ceil(tw/BRICK),by=Math.ceil(th/BRICK),bz=Math.ceil(td/BRICK),mm=new Float32Array(bx*by*bz*2);
- const slope=first.slope||1,intercept=first.intercept||0,bias=signed?32768:0;
- for(let k=0;k<bz;k++)for(let j=0;j<by;j++)for(let i=0;i<bx;i++){
-  let lo=65535,hi=0;
-  const z0=Math.max(0,k*BRICK-1),z1=Math.min(td,(k+1)*BRICK+1),y0=Math.max(0,j*BRICK-1),y1=Math.min(th,(j+1)*BRICK+1),x0=Math.max(0,i*BRICK-1),x1=Math.min(tw,(i+1)*BRICK+1);
-  for(let z=z0;z<z1;z++)for(let y=y0;y<y1;y++){let o=(z*th+y)*tw*2+x0*2;for(let x=x0;x<x1;x++,o+=2){const w=data[o]|(data[o+1]<<8);if(w<lo)lo=w;if(w>hi)hi=w}}
-  const b=((k*by+j)*bx+i)*2,a=(lo-bias)*slope+intercept,c=(hi-bias)*slope+intercept;mm[b]=Math.min(a,c);mm[b+1]=Math.max(a,c);
- }
+ const slope=first.slope||1,intercept=first.intercept||0,bias=signed?32768:0,calibration=[slope,intercept,bias];
+ const {bricks:mm,brickDims}=computeBricks(data,[tw,th,td],calibration);
  const px=s.columns*s.spacingX,py=s.rows*s.spacingY,pz=s.slices.length*s.spacingZ,maxP=Math.max(px,py,pz,1),scale=3.3/maxP;
  const halfExt=[px*scale*.5,py*scale*.5,pz*scale*.5],step=Math.max(1e-5,Math.min(px/tw,py/th,pz/td)*scale*.85);
- return{data,dims:[tw,th,td],bricks:mm,brickDims:[bx,by,bz],halfExt,step,calibration:[slope,intercept,bias],filtered};
+ return{data,dims:[tw,th,td],bricks:mm,brickDims,halfExt,step,calibration,filtered};
 }
 
 // VR settings kept per browser (resolution only applies when a session starts)
@@ -207,7 +224,7 @@ function makeBackground(){
 
 // canvas-drawn menu; the controller ray (trigger) presses its buttons
 function makeMenu(ja){
- const W=1024,H=860,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+ const W=1024,H=860+80,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.56,0.56*H/W),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
  let buttons=[],hover=-1,lines=[],draw=()=>{};
@@ -237,7 +254,7 @@ function makeMenu(ja){
 let running=null;
 export async function startVrView({language='ja'}={}){
  if(running)return;
- const ja=language==='ja',settings=loadSettings();settings.diag=0;
+ const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.data=0;
  const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
@@ -255,7 +272,7 @@ export async function startVrView({language='ja'}={}){
  menu.setLines([ja?'VRボリューム準備中…':'Preparing VR volume…']);
  const HOME=new THREE.Vector3(0,1.3,-0.6);
  const holder=new THREE.Group();holder.position.copy(HOME);scene.add(holder);
- let mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3;
+ let useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3;
  const hidden=new Set();
  // controller rays: short when idle, long and bright when pointing at the menu
  const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
@@ -282,22 +299,23 @@ export async function startVrView({language='ja'}={}){
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
  let autoF=0.5,autoFrames=0,autoAt=performance.now();
  const applyQuality=()=>{
-  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0}
+  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;useData(settings.data|0)}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
   if(rates.length&&session.updateTargetFrameRate)session.updateTargetFrameRate(rates[Math.min(settings.rate,rates.length-1)]).catch(()=>{});
   saveSettings(settings);
  };
  // fps per setting, so the owner can report which combination is smooth
  let frames=0,fpsAt=performance.now(),fps=0,info='';
- const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',auto:'自動',d:'診断',dv:['通常','箱のみ','ループ数'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
-  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',auto:'Auto',d:'Diagnostics',dv:['Normal','Box only','Loop count'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
+ const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',auto:'自動',dt:'データ（診断）',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
+  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',auto:'Auto',dt:'Data (diagnostic)',dv:['Normal','Box only','Loop count','No shading','No skipping'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
  menu.onDraw(()=>{
   const b=[],row=(y,label,values,key,resetFps=true)=>{const bw=values.length>3?140:188;values.forEach((v,i)=>b.push({x:32+i*(bw+12),y,w:bw,h:64,label:v,on:settings[key]===i,action:()=>{settings[key]=i;applyQuality();if(resetFps){frames=0;fpsAt=performance.now()}}}));b.push({x:640,y,w:360,h:64,label,on:false})};
   // row labels are drawn as inert buttons on the right
-  row(180,L.r,VRES.map(r=>r?Math.round(r*100)+'%':L.auto),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');row(500,L.d,L.dv,'diag');
-  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;b.push({x:32+i*240,y:580,w:228,h:64,label:tr(key),color:seg.color||'#888',on:!hidden.has(key),action:()=>{hidden.has(key)?hidden.delete(key):hidden.add(key)}})});
-  b.push({x:32,y:680,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
-  b.push({x:700,y:680,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
+  row(180,L.r,VRES.map(r=>r?Math.round(r*100)+'%':L.auto),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');row(500,L.dt,['512³','256³'],'data');
+  L.dv.forEach((v,i)=>b.push({x:32+i*196,y:580,w:184,h:64,label:v,on:settings.diag===i,action:()=>{settings.diag=i;applyQuality();frames=0;fpsAt=performance.now()}}));
+  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;b.push({x:32+i*240,y:660,w:228,h:64,label:tr(key),color:seg.color||'#888',on:!hidden.has(key),action:()=>{hidden.has(key)?hidden.delete(key):hidden.add(key)}})});
+  b.push({x:32,y:760,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
+  b.push({x:700,y:760,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
   menu.setButtons(b);
  });
  await renderer.xr.setSession(session);
@@ -381,7 +399,7 @@ export async function startVrView({language='ja'}={}){
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  volTex?.dispose();brickTex?.dispose();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();
+  volTex?.dispose();brickTex?.dispose();disposeExtra();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});
   renderer.dispose();renderer.domElement.remove();running=null;
  };
@@ -390,10 +408,21 @@ export async function startVrView({language='ja'}={}){
   const gl=renderer.getContext(),maxDim=gl.getParameter(gl.MAX_3D_TEXTURE_SIZE)||2048;
   const vd=await buildVolumeData(maxDim,(a,b)=>menu.setLines([(ja?'VRボリューム準備中… ':'Preparing VR volume… ')+a+' / '+b]));
   if(!running)return;
-  volTex=new THREE.Data3DTexture(vd.data,...vd.dims);volTex.format=THREE.RGFormat;volTex.type=THREE.UnsignedByteType;
-  volTex.minFilter=volTex.magFilter=THREE.LinearFilter;volTex.unpackAlignment=1;volTex.needsUpdate=true;
-  brickTex=new THREE.Data3DTexture(vd.bricks,...vd.brickDims);brickTex.format=THREE.RGFormat;brickTex.type=THREE.FloatType;
-  brickTex.minFilter=brickTex.magFilter=THREE.NearestFilter;brickTex.unpackAlignment=1;brickTex.needsUpdate=true;
+  const makeTextures=d=>{
+   const v=new THREE.Data3DTexture(d.data,...d.dims);v.format=THREE.RGFormat;v.type=THREE.UnsignedByteType;
+   v.minFilter=v.magFilter=THREE.LinearFilter;v.unpackAlignment=1;v.needsUpdate=true;
+   const b=new THREE.Data3DTexture(d.bricks,...d.brickDims);b.format=THREE.RGFormat;b.type=THREE.FloatType;
+   b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
+   return{v,b,dims:d.dims,brickDims:d.brickDims};
+  };
+  const full=makeTextures(vd);let half=null;volTex=full.v;brickTex=full.b;
+  // diagnostics: 512 / 256 data (256 made on first use, kept for the session)
+  useData=i=>{
+   const t=i===1?(half||=makeTextures(halveVolume(vd))):full;
+   material.uniforms.vol.value=t.v;material.uniforms.bricks.value=t.b;material.uniforms.texDims.value.set(...t.dims);material.uniforms.brickDims.value.set(...t.brickDims);
+   info=t.dims.join('×')+(vd.filtered?(ja?' フィルター適用':' filtered'):'');
+  };
+  disposeExtra=()=>{half?.v.dispose();half?.b.dispose()};
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
     stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector3())}}});
