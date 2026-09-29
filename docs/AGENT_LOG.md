@@ -2167,55 +2167,11 @@ already fetch only the pixel bytes. Settings → デバッグ → 読み込み�
 1-byte read, MB/s with 1/4/8/16 reads in flight, and 4 Web Workers reading —
 to decide between fewer/larger reads and moving the reads off the main thread.
 
-## Build 320 — raw slice cache (disk)
+## Build 326 — raw slice cache reverted (builds 320–325)
 
-Build 319 read test: ~3.1 ms fixed cost per slice-file read (5.5 s per pass
-over 1784 slices); ahead=1/2 measured slower than 4 in the real run (26 s /
-20 s vs 16 s), so the read-ahead stays 4. New docs/raw-slice-cache.js: the
-first pass stores each slice's pixel bytes (what decodeSourceSlice and the GPU
-volume upload read from the file) in the IndexedDB cache, one record per
-slice, max 16 writes queued (a slice read while full is stored on a later
-pass). Once every slice is stored the entry is published; later passes read
-16 slices per IndexedDB request (2 chunks kept in memory). Setting
-キャッシュ → 元データもキャッシュする (default on); the entry counts toward the
-cache limit (8/16 GB options added). Debug status: read:cache, raw cache hit.
-
-## Build 321 — raw cache status in the segment status line
-
-Build 320 on the Mac: the second run (after reopening) still read the files
-(no read:cache / raw cache hit). The segment status now ends with
-"raw cache <state>": writing n/N, hit, or off (reason: limit, setting,
-unsupported slices, write/commit/read error) to see where it stops.
-
-## Build 322 — raw cache: resume an incomplete entry
-
-Build 321 with an 8 GB limit: the first pass stored 1021/1784 slices (the
-IndexedDB writes fell behind the reads; slices over the 16-write queue were
-skipped), and reopening the data restarted the entry from zero. begin() now
-takes {resume:true}: an incomplete entry of the same shape keeps its slices
-(getAllKeys) and the next pass writes only the missing ones. Queue 16 → 32.
-
-## Build 323 — raw cache: background backfill
-
-Build 322: 1435/1784 after four runs — later runs took their segment results
-from the segment cache (2 s) and read no slice files, so the entry never
-completed. Attach now starts a backfill 3 s later: the missing slices are read
-from the files one at a time (queue kept under half of 32) and stored; it stops
-when another series is attached, the entry completes, or a write fails.
-
-## Build 324 — raw cache: commit after the writes finish; backfill yields
-
-Build 323 on the Mac: "commit: cache entry incomplete (1771/1784)" — the
-commit ran when every slice had been queued, with 13 writes still in flight,
-and the failure aborted (deleted) the entry. Now: a slice counts once its write
-finished (ctx.stored), commit waits for inflight 0, and a failed commit or write
-keeps the stored slices (resume next session). The backfill waited for nothing
-and the segment run with it took 36 s: it now pauses while the app read a
-slice file in the last 2 s. Settings → cache lists the filling raw entry.
-
-## Build 325 — diagnostics: why a segment pass restarts
-
-Owner (build 323): one fat run showed three compute passes and a progress bar
-that kept restarting, sliders untouched. With ?debug the segment status now
-lists run#n per pass, "overlap" when it started while an older pass was still
-running, and the signature fields that changed (min/max/surface/filterRev/…).
+Owner (build 325): opening the data got slower and the 2D slice slider lagged
+badly. Likely causes (not measured): a hit read a 16-slice chunk (32 MB) for
+one random 2D slice; attach/prune/backfill competed with the loading reads.
+All raw-cache and restart-diagnostic changes are reverted; the build 319 read
+test stays. Lesson: a cache for sequential passes must not sit on the random
+2D path, and nothing may run in the background while the data loads.
