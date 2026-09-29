@@ -8,10 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build343';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build343';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build343';
-import { tr } from './i18n.js?v=20260929-build343';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build344';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build344';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build344';
+import { tr } from './i18n.js?v=20260929-build344';
+import { wc, ww } from './ui-shell.js?v=20260929-build344';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -48,6 +49,15 @@ uniform int diag;
 uniform vec3 calib; // slope, intercept, signedBias
 uniform vec4 segA[4]; // min, max, opacity, enabled
 uniform vec4 segC[4]; // rgb, w=1: simple display (no refinement, no gradient)
+// hand-held section (build 344), object space: the kept side is
+// dot(cutPlane.xyz,p) >= cutPlane.w (the far side from the eye). cutOn clips
+// the volume; sliceOpacity > 0 draws the oblique CT slice on the plane,
+// resampled every frame from sliceVol (the 512 data) with the app's window
+uniform vec4 cutPlane;
+uniform int cutOn;
+uniform float sliceOpacity;
+uniform vec2 sliceWindow; // center, width
+uniform sampler3D sliceVol;
 in vec3 vPos;
 in vec3 vOrigin;
 out highp vec4 outColor;
@@ -86,6 +96,11 @@ float brickExit(vec3 tc,vec3 dir){
  }
  return best;
 }
+float sliceGray(vec3 p){
+ vec2 q=texture(sliceVol,clamp(texCoord(p),vec3(0.0),vec3(0.999999))).rg*255.0;
+ float hu=(q.x+q.y*256.0-calib.z)*calib.x+calib.y;
+ return clamp((hu-(sliceWindow.x-0.5*sliceWindow.y))/max(sliceWindow.y,1e-3),0.0,1.0);
+}
 vec3 gradientAt(vec3 tc){
  vec3 d=1.0/max(texDims,vec3(1.0));
  float gx=huAt(tc+vec3(d.x,0.0,0.0))-huAt(tc-vec3(d.x,0.0,0.0));
@@ -101,10 +116,27 @@ void main(){
  if(bounds.x>bounds.y)discard;
  if(diag==1){outColor=vec4(0.2,0.35,0.5,1.0);return;}
  float t=max(bounds.x,0.0);float endT=bounds.y;float step=max(stepSize,1e-5);
+ float planeT=-1.0;
+ if(cutOn>0||sliceOpacity>0.0){
+  float side=dot(cutPlane.xyz,o)-cutPlane.w;float slope=dot(cutPlane.xyz,dir);
+  if(abs(slope)>1e-8){
+   float cross=-side/slope;
+   if(cross>=t-1e-6&&cross<=endT+1e-6)planeT=cross;
+   if(cutOn>0){if(slope>0.0)t=max(t,cross);else endT=min(endT,cross);}
+  }else if(cutOn>0&&side<0.0)discard;
+  if(cutOn>0&&t>endT+1e-6&&planeT<0.0)discard;
+ }
+ bool sliceDone=sliceOpacity<=0.0||planeT<0.0;
  float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);int iters=0;
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
   iters++;
+  if(!sliceDone&&planeT<=t+step){
+   // the slice lies before the next sample: composite it in depth order
+   float g=sliceGray(o+dir*planeT);
+   float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+vec3(g)*contribution,acc.a+contribution);
+   sliceDone=true;
+  }
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
   bool canSample=diag==4||brickMayContain(tc0);
   float nextT=t+step;
@@ -128,6 +160,10 @@ void main(){
    }
   }
   previousT=t;t=nextT;
+ }
+ if(!sliceDone&&acc.a<=0.985){
+  float g=sliceGray(o+dir*planeT);
+  float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+vec3(g)*contribution,acc.a+contribution);
  }
  if(diag==2){float h=clamp(float(iters)/1024.0,0.0,1.0);outColor=vec4(h,1.0-abs(h*2.0-1.0),1.0-h,1.0);return;}
  if(acc.a<0.004)discard;
@@ -187,7 +223,7 @@ async function buildVolumeData(maxDim,onProgress){
 
 // VR settings kept per browser (resolution only applies when a session starts)
 const SETTINGS_KEY='vrl-vr-settings-2';
-const DEFAULTS={data:1,quality:0,vres:0,foveation:2,rate:0};
+const DEFAULTS={cut:1,sliceOp:2,data:1,quality:0,vres:0,foveation:2,rate:0};
 function loadSettings(){try{return{...DEFAULTS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
@@ -198,7 +234,7 @@ function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v)
 // drops to 15 when the volume fills the view, 100 % is slower than 50 %: the
 // cost follows the marched pixels, so auto keeps the frame time by lowering
 // the resolution while the volume is large and raising it when small.
-const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=0.8,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+const SLICE_OPACITY=[0,0.3,0.6,1],VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=0.8,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
 
 // upscales the offscreen volume image; drawn with the volume box so only the
 // covered pixels are touched
@@ -225,7 +261,7 @@ function makeBackground(){
 
 // canvas-drawn menu; the controller ray (trigger) presses its buttons
 function makeMenu(ja){
- const W=1024,H=860+80,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+ const W=1024,H=1080,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.56,0.56*H/W),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
  let buttons=[],hover=-1,lines=[],draw=()=>{};
@@ -279,6 +315,20 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  const segMode={};
+ // hand-held section (build 344): a square frame on one controller; its
+ // local X axis is the plane normal (held like a blade). B/Y toggles it,
+ // the trigger of the holding hand leaves it fixed in the volume, the
+ // trigger again picks it up.
+ const section={on:false,held:null},planeObj=new THREE.Group();
+ {const h=0.12,g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-h,-h),new THREE.Vector3(0,h,-h),new THREE.Vector3(0,h,h),new THREE.Vector3(0,-h,h)]);
+  planeObj.add(new THREE.LineLoop(g,new THREE.LineBasicMaterial({color:0xffcc44})));}
+ const takePlane=c=>{c.attach(planeObj);section.held=c};
+ const setSection=(on,c=controllers[1]||controllers[0])=>{
+  section.on=on;
+  if(on){c.add(planeObj);planeObj.position.set(0,0,-0.1);planeObj.quaternion.identity();planeObj.scale.setScalar(1);section.held=c}
+  else{planeObj.removeFromParent();section.held=null}
+  menu.refresh();
+ };
  // controller rays: short when idle, long and bright when pointing at the menu
  const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
  const controllers=[0,1].map(i=>{const c=renderer.xr.getController(i);scene.add(c);
@@ -297,7 +347,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const down=()=>{grabbing.add(c);regrab()},up=()=>{if(grabbing.delete(c))regrab()};
   c.addEventListener('squeezestart',down);c.addEventListener('squeezeend',up);
   // trigger: presses a menu button when pointing at the menu, else grabs
-  c.addEventListener('selectstart',()=>{const h=menuHit(c);if(h){const i=menu.hit(h.uv);if(i>=0)menu.press(i);return}down()});
+  c.addEventListener('selectstart',()=>{const h=menuHit(c);if(h){const i=menu.hit(h.uv);if(i>=0)menu.press(i);return}
+   // section on: the trigger fixes the held plane in the volume or picks it up
+   if(section.on){if(section.held===c){holder.attach(planeObj);section.held=null}else if(!section.held)takePlane(c);return}
+   down()});
+  c.addEventListener('connected',e=>{c.userData.source=e.data});c.addEventListener('disconnected',()=>{c.userData.source=null});
   c.addEventListener('selectend',up);
  }
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
@@ -311,21 +365,23 @@ export async function startVrView({language='ja',mode='vr'}={}){
  };
  // fps per setting, so the owner can report which combination is smooth
  let frames=0,fpsAt=performance.now(),fps=0,info='';
- const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',auto:'自動',dt:'データ',simple:'（簡易）',off:'（非表示）',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
-  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',auto:'Auto',dt:'Data',simple:' (simple)',off:' (hidden)',dv:['Normal','Box only','Loop count','No shading','No skipping'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
+ const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',auto:'自動',dt:'データ',sec:'断面（B/Y）',cut:'手前を切り取る',sl:'スライス不透明度',offOn:['オフ','オン'],simple:'（簡易）',off:'（非表示）',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小・B/Yで断面、トリガーで固定/持つ'}
+  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',auto:'Auto',dt:'Data',sec:'Section (B/Y)',cut:'Clip near side',sl:'Slice opacity',offOn:['Off','On'],simple:' (simple)',off:' (hidden)',dv:['Normal','Box only','Loop count','No shading','No skipping'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger grab, both hands scale, B/Y section, trigger fixes/takes it'};
  menu.onDraw(()=>{
   const b=[],row=(y,label,values,key,resetFps=true)=>{const bw=values.length>3?140:188;values.forEach((v,i)=>b.push({x:32+i*(bw+12),y,w:bw,h:64,label:v,on:settings[key]===i,action:()=>{settings[key]=i;applyQuality();if(resetFps){frames=0;fpsAt=performance.now()}}}));b.push({x:640,y,w:360,h:64,label,on:false})};
   // row labels are drawn as inert buttons on the right
   row(180,L.r,VRES.map(r=>r?Math.round(r*100)+'%':L.auto),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');row(500,L.dt,['512³','256³'],'data');
+  b.push({x:32,y:660,w:188,h:64,label:L.offOn[0],on:!section.on,action:()=>setSection(false)},{x:232,y:660,w:188,h:64,label:L.offOn[1],on:section.on,action:()=>{if(!section.on)setSection(true)}},{x:640,y:660,w:360,h:64,label:L.sec,on:false});
+  row(740,L.cut,L.offOn,'cut');row(820,L.sl,SLICE_OPACITY.map(v=>v?Math.round(v*100)+'%':L.offOn[0]),'sliceOp');
   L.dv.forEach((v,i)=>b.push({x:32+i*196,y:580,w:184,h:64,label:v,on:settings.diag===i,action:()=>{settings.diag=i;applyQuality();frames=0;fpsAt=performance.now()}}));
-  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;const m=segMode[key]|0;b.push({x:32+i*240,y:660,w:228,h:64,label:tr(key)+(m===1?L.simple:m===2?L.off:''),color:seg.color||'#888',on:m!==2,action:()=>{segMode[key]=(m+1)%3}})});
-  b.push({x:32,y:760,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
-  b.push({x:700,y:760,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
+  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;const m=segMode[key]|0;b.push({x:32+i*240,y:900,w:228,h:64,label:tr(key)+(m===1?L.simple:m===2?L.off:''),color:seg.color||'#888',on:m!==2,action:()=>{segMode[key]=(m+1)%3}})});
+  b.push({x:32,y:990,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
+  b.push({x:700,y:990,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
   menu.setButtons(b);
  });
  await renderer.xr.setSession(session);
  applyQuality();menu.refresh();
- const color=new THREE.Color();
+ const color=new THREE.Color(),tmpP=new THREE.Vector3(),tmpQ=new THREE.Vector3(),tmpN=new THREE.Vector3(),tmpE=new THREE.Vector3();
  // GPU time per pass (EXT_disjoint_timer_query_webgl2, when offered) and JS
  // time per frame, averaged over the fps window
  const gl=renderer.getContext(),timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
@@ -350,6 +406,21 @@ export async function startVrView({language='ja',mode='vr'}={}){
   let hover=-1;
   for(const c of controllers){const h=menuHit(c),ray=c.userData.ray;if(h){ray.scale.z=h.distance;ray.material.color.setHex(0xffffff);const i=menu.hit(h.uv);if(i>=0)hover=i}else{ray.scale.z=0.08;ray.material.color.setHex(0x88ccff)}}
   menu.setHover(hover);
+  // B/Y (xr-standard button 5) toggles the section on that hand
+  for(const c of controllers){const pressed=!!c.userData.source?.gamepad?.buttons?.[5]?.pressed;if(pressed&&!c.userData.byDown)setSection(!section.on,c);c.userData.byDown=pressed}
+  if(material){
+   const u=material.uniforms;
+   if(section.on){
+    // plane in the volume's object space; the normal is flipped so the eye
+    // is on the removed side (the cut always opens towards the viewer)
+    scene.updateMatrixWorld();planeObj.getWorldPosition(tmpP);tmpN.set(1,0,0).transformDirection(planeObj.matrixWorld);
+    tmpQ.copy(tmpP).add(tmpN);mesh.worldToLocal(tmpP);mesh.worldToLocal(tmpQ);tmpN.subVectors(tmpQ,tmpP).normalize();
+    renderer.xr.getCamera().getWorldPosition(tmpE);mesh.worldToLocal(tmpE);if(tmpN.dot(tmpE)-tmpN.dot(tmpP)>0)tmpN.negate();
+    u.cutPlane.value.set(tmpN.x,tmpN.y,tmpN.z,tmpN.dot(tmpP));
+   }
+   u.cutOn.value=section.on&&settings.cut?1:0;u.sliceOpacity.value=section.on?SLICE_OPACITY[settings.sliceOp]??0:0;
+   u.sliceWindow.value.set(+wc.value||0,Math.max(1,+ww.value||1));
+  }
   if(material){
    for(let i=0;i<4;i++){
     const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
@@ -430,7 +501,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   disposeExtra=()=>{half?.v.dispose();half?.b.dispose()};
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
-    stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())}}});
+    stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
+    cutPlane:{value:new THREE.Vector4(0,0,1,0)},cutOn:{value:0},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;

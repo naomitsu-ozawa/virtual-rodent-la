@@ -2347,3 +2347,18 @@ Everything else (data, volume pass, menu, grab) is the same code. Each button
 shows only when isSessionSupported says so.
 
 Owner, build 343 on Quest: VR and AR both fine (no problems).
+
+## Build 344 — VR/AR hand-held section with oblique slice
+
+Owner: wants section analysis in VR, moving the plane freely, with the slice
+image shown at the plane's angle and a chosen opacity. B/Y (xr-standard
+button 5) toggles a square frame on that controller (plane normal = the
+controller's local X, held like a blade); the holding hand's trigger leaves
+the plane fixed in the volume (attached to the volume holder), trigger again
+picks it up. Every frame the plane goes to the volume's object space and its
+normal is flipped so the eye is on the removed side. Ray shader: optional clip
+to the kept half-space (手前を切り取る) and the oblique CT slice composited in
+depth order at the plane crossing, resampled per pixel from the 512 texture
+with the app's window centre/width (wc/ww), opacity off/30/60/100 %. Headless
+check: slice grey 0.5 at window 200/100 on HU 200, 50 % premultiplied, clip
+keeps the far half.
