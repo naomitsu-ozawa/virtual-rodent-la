@@ -2282,3 +2282,15 @@ exit; the trigger presses a button when the ray points at the menu,
 otherwise grabs. Background: gradient dome and floor grid. The volume is now
 premultiplied and blended over the background instead of painting the
 background colour itself.
+
+## Build 338 — VR: volume drawn at reduced resolution
+
+Owner, build 337: bone only at the coarsest step ≈30 fps; enlarging with both
+hands drops to 16 fps, so the cost follows the covered pixels. The ray-marched
+volume is now drawn per eye into an offscreen target (100 / 70 / 50 % per axis,
+default 50 % = 1/4 of the pixels) and a composite material on the same box
+upscales it in the main XR pass (only box pixels touched). Menu: volume
+resolution (live), detail, foveation, refresh rate (session.supportedFrameRates,
+when offered). The framebuffer-scale setting (next entry only) is removed.
+Composite shader compiled and sampled correctly in headless Chromium; the XR
+path itself needs the Quest.
