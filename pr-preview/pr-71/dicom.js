@@ -1,11 +1,7 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-<<<<<<< HEAD
 import { multi, safePair, num, safeTriple, numberOr, frameYield } from './utils.js?v=20260929-build334';
-=======
-import { multi, safePair, num, safeTriple, numberOr, frameYield } from './utils.js?v=20260929-build334';
->>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 export async function parseDicomHeader(file){
  const attempts=[Math.min(file.size,256*1024),Math.min(file.size,1024*1024)];
  let lastError=null;

@@ -1,16 +1,9 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-<<<<<<< HEAD
 import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20260929-build334';
 import { hexRgb } from './utils.js?v=20260929-build334';
 import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20260929-build334';
 import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20260929-build334';
-=======
-import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20260929-build334';
-import { hexRgb } from './utils.js?v=20260929-build334';
-import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20260929-build334';
-import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20260929-build334';
->>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
 export const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
 export const segmentState={

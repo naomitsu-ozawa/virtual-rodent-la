@@ -1,6 +1,5 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-<<<<<<< HEAD
 import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20260929-build334';
 import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260929-build334';
 import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260929-build334';
@@ -14,21 +13,6 @@ import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260929-build
 import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260929-build334';
 import { datasetFingerprint } from './project-file.js?v=20260929-build334';
 import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260929-build334';
-=======
-import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20260929-build334';
-import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260929-build334';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260929-build334';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260929-build334';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260929-build334';
-import { request3DRender } from './scene3d.js?v=20260929-build334';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260929-build334';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260929-build334';
-import { tr } from './i18n.js?v=20260929-build334';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260929-build334';
-import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260929-build334';
-import { datasetFingerprint } from './project-file.js?v=20260929-build334';
-import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260929-build334';
->>>>>>> 8669256 (GPU volume texture: add RENDER_ATTACHMENT so the zero-fill runs on the GPU (Windows Full failed))
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
