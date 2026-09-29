@@ -698,6 +698,16 @@ export class MedicalVolumeRenderer{
   if(s.slices.some(m=>m.rows!==s.rows||m.columns!==s.columns))return{ok:false,reason:'Inconsistent DICOM matrix'};
   const first=s.slices[0],slope=first.slope,intercept=first.intercept,signed=!!first.signed;
   if(s.slices.some(m=>Math.abs(m.slope-slope)>1e-9||Math.abs(m.intercept-intercept)>1e-6||!!m.signed!==signed))return{ok:false,reason:'Per-slice calibration differs'};
+  // build 330: outside Apple devices the whole texture must fit one buffer. On the
+  // owner's Windows PC (NVIDIA, Chrome/D3D12) the full 1024×1024×1784 volume (3.74 GB)
+  // failed: "Buffer size (3741319168) exceeds the max buffer size limit (2147483648)
+  // … Dawn_DynamicUploaderStaging … WriteTexture" — the first slice write makes Dawn
+  // zero-fill the whole 3D texture through one staging buffer. The Mac (Metal) path
+  // uploads the same texture fine, so it keeps its size; elsewhere the plan is
+  // capped to maxBufferSize (Full then becomes the largest size that fits).
+  const apple=typeof navigator!=='undefined'&&/Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent||'');
+  const bufCap=apple?0:Number(this.device.limits.maxBufferSize)||0;
+  if(bufCap>0&&(maxTextureBytes<=0||maxTextureBytes>bufCap))maxTextureBytes=bufCap;
   const lim=this.device.limits.maxTextureDimension3D,plan=volumeTexturePlan(v,maxTextureBytes,lim,targetInPlane);
   if(plan.dims[0]>lim||plan.dims[1]>lim||plan.dims[2]>lim)return{ok:false,reason:'Volume exceeds maxTextureDimension3D '+lim};
   return{ok:true,plan};

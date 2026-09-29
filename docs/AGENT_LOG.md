@@ -2187,3 +2187,14 @@ Other filters (PR #68, builds 327–329) — no gain, closed
   for timing (workgroup memory is emulated on the CPU).
 
 Held (owner): read-only prefetch to lower the 3D rebuild memory peak (~3.5 GB).
+
+## Build 330 — Windows: cap the GPU volume to maxBufferSize
+
+Owner (Windows, NVIDIA Lovelace, Chrome): 3D resolution Full failed with
+"Buffer size (3741319168) exceeds the max buffer size limit (2147483648) …
+Dawn_DynamicUploaderStaging … WriteTexture" and fell back. The uploads are one
+slice each; the size is the whole 1024×1024×1784 rg8 texture, i.e. Dawn's
+zero-fill of the 3D texture on the first partial write. MedicalVolumeRenderer
+.support() now caps the plan to device.limits.maxBufferSize outside Apple
+devices (Full -> 821×821×1430, 1.93 GB, area-averaged). Mac/iPad unchanged.
+The same Windows PC otherwise worked: 512 at 60 fps, segment 9 s, rebuild 13 s.
