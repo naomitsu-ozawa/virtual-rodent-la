@@ -2317,3 +2317,14 @@ XR frame interval is compared with the target rate; over budget lowers the
 factor (down to 25 %), within budget raises it (up to 80 %). One offscreen
 target at 80 %, only the viewports change, so no reallocation. Manual 100 /
 70 / 50 % stay. Settings key renamed (old saved indices no longer match).
+
+## Build 341 — VR diagnostics for the per-ray cost
+
+Owner, build 340: enlarged, auto settles at 25 % and ≈30 fps — too coarse to
+observe. 25 % is 1/4 of the pixels of 50 % yet only ≈2× faster, so a large
+per-ray cost remains besides the pixel count. Candidates, each now switchable
+(not guessed): shading at hits (6-step refinement + 6-sample gradient) →
+diagnostic 陰影なし; empty-space test per step → スキップなし (expected
+slower; shows how much skipping saves); texture reads of the 512³ volume →
+data 256³ (2×2×2 average built on first use, same step so the loop count
+stays comparable).
