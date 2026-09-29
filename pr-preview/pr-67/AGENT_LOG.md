@@ -2212,3 +2212,10 @@ finished (ctx.stored), commit waits for inflight 0, and a failed commit or write
 keeps the stored slices (resume next session). The backfill waited for nothing
 and the segment run with it took 36 s: it now pauses while the app read a
 slice file in the last 2 s. Settings → cache lists the filling raw entry.
+
+## Build 325 — diagnostics: why a segment pass restarts
+
+Owner (build 323): one fat run showed three compute passes and a progress bar
+that kept restarting, sliders untouched. With ?debug the segment status now
+lists run#n per pass, "overlap" when it started while an older pass was still
+running, and the signature fields that changed (min/max/surface/filterRev/…).
