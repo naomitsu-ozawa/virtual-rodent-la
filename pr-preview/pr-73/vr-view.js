@@ -8,10 +8,10 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build341';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build341';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build341';
-import { tr } from './i18n.js?v=20260929-build341';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260929-build342';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260929-build342';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260929-build342';
+import { tr } from './i18n.js?v=20260929-build342';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -47,7 +47,7 @@ uniform float stepSize;
 uniform int diag;
 uniform vec3 calib; // slope, intercept, signedBias
 uniform vec4 segA[4]; // min, max, opacity, enabled
-uniform vec3 segC[4];
+uniform vec4 segC[4]; // rgb, w=1: simple display (no refinement, no gradient)
 in vec3 vPos;
 in vec3 vOrigin;
 out highp vec4 outColor;
@@ -113,15 +113,15 @@ void main(){
    int idx=segmentIndexAt(tc0);
    if(idx!=lastIndex){
     if(idx>=0){
-     float lo=previousT;float hi=t;
-     if(diag!=3)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(o+dir*mid))==idx)hi=mid;else lo=mid;}
+     float lo=previousT;float hi=t;bool simple=diag==3||segC[idx].w>0.5;
+     if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(o+dir*mid))==idx)hi=mid;else lo=mid;}
      vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
-     vec3 n=diag==3?-dir:gradientAt(tc);
+     vec3 n=simple?-dir:gradientAt(tc);
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
      float alpha=clamp(segA[idx].z,0.03,1.0);
-     vec3 lit=segC[idx]*diffuse+vec3(spec);
+     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -148,8 +148,9 @@ function computeBricks(data,[tw,th,td],[slope,intercept,bias]){
  }
  return{bricks:mm,brickDims:[bx,by,bz]};
 }
-// diagnostics (build 341): half-size copy (2×2×2 average) to test whether
-// reading the 512³ texture is what limits the frame rate
+// half-size copy (2×2×2 average). Build 341 measured texture reads of 512³
+// as the main per-ray cost; owner: 256³ comfortable and fine to observe, so
+// it is the VR default (build 342), 512³ stays selectable
 function halveVolume(vd){
  const [w,h,d]=vd.dims,tw=Math.max(1,w>>1),th=Math.max(1,h>>1),td=Math.max(1,d>>1),src=vd.data,out=new Uint8Array(tw*th*td*2);
  for(let z=0;z<td;z++)for(let y=0;y<th;y++)for(let x=0;x<tw;x++){
@@ -186,7 +187,7 @@ async function buildVolumeData(maxDim,onProgress){
 
 // VR settings kept per browser (resolution only applies when a session starts)
 const SETTINGS_KEY='vrl-vr-settings-2';
-const DEFAULTS={quality:0,vres:0,foveation:2,rate:0};
+const DEFAULTS={data:1,quality:0,vres:0,foveation:2,rate:0};
 function loadSettings(){try{return{...DEFAULTS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
@@ -254,7 +255,7 @@ function makeMenu(ja){
 let running=null;
 export async function startVrView({language='ja'}={}){
  if(running)return;
- const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.data=0;
+ const ja=language==='ja',settings=loadSettings();settings.diag=0;
  const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
@@ -273,7 +274,9 @@ export async function startVrView({language='ja'}={}){
  const HOME=new THREE.Vector3(0,1.3,-0.6);
  const holder=new THREE.Group();holder.position.copy(HOME);scene.add(holder);
  let useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3;
- const hidden=new Set();
+ // per segment in VR only: 0 normal, 1 simple (for segments not being
+ // looked at; owner, build 341), 2 hidden
+ const segMode={};
  // controller rays: short when idle, long and bright when pointing at the menu
  const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
  const controllers=[0,1].map(i=>{const c=renderer.xr.getController(i);scene.add(c);
@@ -306,14 +309,14 @@ export async function startVrView({language='ja'}={}){
  };
  // fps per setting, so the owner can report which combination is smooth
  let frames=0,fpsAt=performance.now(),fps=0,info='';
- const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',auto:'自動',dt:'データ（診断）',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
-  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',auto:'Auto',dt:'Data (diagnostic)',dv:['Normal','Box only','Loop count','No shading','No skipping'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
+ const L=ja?{q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],r:'ボリューム解像度',auto:'自動',dt:'データ',simple:'（簡易）',off:'（非表示）',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],hz:'リフレッシュレート',seg:'表示',reset:'位置を戻す',exit:'終了',help:'グリップ/トリガーでつかむ・両手で拡大縮小'}
+  :{q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],r:'Volume resolution',auto:'Auto',dt:'Data',simple:' (simple)',off:' (hidden)',dv:['Normal','Box only','Loop count','No shading','No skipping'],hz:'Refresh rate',seg:'Show',reset:'Reset position',exit:'Exit',help:'Grip/trigger to grab, both hands to scale'};
  menu.onDraw(()=>{
   const b=[],row=(y,label,values,key,resetFps=true)=>{const bw=values.length>3?140:188;values.forEach((v,i)=>b.push({x:32+i*(bw+12),y,w:bw,h:64,label:v,on:settings[key]===i,action:()=>{settings[key]=i;applyQuality();if(resetFps){frames=0;fpsAt=performance.now()}}}));b.push({x:640,y,w:360,h:64,label,on:false})};
   // row labels are drawn as inert buttons on the right
   row(180,L.r,VRES.map(r=>r?Math.round(r*100)+'%':L.auto),'vres');row(260,L.q,L.qv,'quality');row(340,L.f,L.fv,'foveation');if(rates.length>1)row(420,L.hz,rates.slice(0,3).map(r=>r+' Hz'),'rate');row(500,L.dt,['512³','256³'],'data');
   L.dv.forEach((v,i)=>b.push({x:32+i*196,y:580,w:184,h:64,label:v,on:settings.diag===i,action:()=>{settings.diag=i;applyQuality();frames=0;fpsAt=performance.now()}}));
-  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;b.push({x:32+i*240,y:660,w:228,h:64,label:tr(key),color:seg.color||'#888',on:!hidden.has(key),action:()=>{hidden.has(key)?hidden.delete(key):hidden.add(key)}})});
+  SEGMENT_PRESET_ORDER.forEach((key,i)=>{const seg=segmentState[key];if(!seg?.active)return;const m=segMode[key]|0;b.push({x:32+i*240,y:660,w:228,h:64,label:tr(key)+(m===1?L.simple:m===2?L.off:''),color:seg.color||'#888',on:m!==2,action:()=>{segMode[key]=(m+1)%3}})});
   b.push({x:32,y:760,w:300,h:70,label:L.reset,action:()=>{scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(HOME);holder.quaternion.identity();holder.scale.setScalar(baseScale)}});
   b.push({x:700,y:760,w:300,h:70,label:L.exit,color:'#b33',on:true,action:()=>session.end()});
   menu.setButtons(b);
@@ -348,8 +351,8 @@ export async function startVrView({language='ja'}={}){
   if(material){
    for(let i=0;i<4;i++){
     const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
-    material.uniforms.segA.value[i].set(seg?.min||0,seg?.max||0,seg?.opacity??1,seg?.active&&seg?.enabled&&!hidden.has(key)?1:0);
-    color.set(seg?.color||'#ffffff');material.uniforms.segC.value[i].set(color.r,color.g,color.b);
+    material.uniforms.segA.value[i].set(seg?.min||0,seg?.max||0,seg?.opacity??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
+    color.set(seg?.color||'#ffffff');material.uniforms.segC.value[i].set(color.r,color.g,color.b,segMode[key]===1?1:0);
    }
   }
   // auto: frame interval from the XR loop, checked twice a second
@@ -416,7 +419,7 @@ export async function startVrView({language='ja'}={}){
    return{v,b,dims:d.dims,brickDims:d.brickDims};
   };
   const full=makeTextures(vd);let half=null;volTex=full.v;brickTex=full.b;
-  // diagnostics: 512 / 256 data (256 made on first use, kept for the session)
+  // 512 / 256 data (256 made on first use, kept for the session)
   useData=i=>{
    const t=i===1?(half||=makeTextures(halveVolume(vd))):full;
    material.uniforms.vol.value=t.v;material.uniforms.bricks.value=t.b;material.uniforms.texDims.value.set(...t.dims);material.uniforms.brickDims.value.set(...t.brickDims);
@@ -425,7 +428,7 @@ export async function startVrView({language='ja'}={}){
   disposeExtra=()=>{half?.v.dispose();half?.b.dispose()};
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
-    stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector3())}}});
+    stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;
@@ -437,7 +440,6 @@ export async function startVrView({language='ja'}={}){
   rayMesh=new THREE.Mesh(mesh.geometry,material.clone());rayMesh.material.uniforms=material.uniforms;rayMesh.material.blending=THREE.NoBlending;rayMesh.material.transparent=false;
   rayMesh.matrixAutoUpdate=false;rayMesh.matrixWorldAutoUpdate=false;rayMesh.frustumCulled=false;volScene.add(rayMesh);
   mesh.renderOrder=1;holder.scale.setScalar(baseScale);holder.add(mesh);baseStep=vd.step;applyQuality();
-  info=vd.dims.join('×')+(vd.filtered?(ja?' フィルター適用':' filtered'):'');
   menu.setLines([info,L.help]);
  }catch(e){
   console.error(e);menu.setLines([(ja?'VR準備に失敗: ':'VR failed: ')+String(e.message||e).slice(0,40)]);
