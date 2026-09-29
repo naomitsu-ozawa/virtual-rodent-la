@@ -2252,3 +2252,98 @@ fetch of index.json and the slices (6 in flight), then the usual inspect()
 path. For the Quest: no URL typing or folder picker needed. The container
 cannot boot the app (esm.sh / jsDelivr blocked), so only index.json and a
 slice were fetched locally; the button needs a device check.
+
+## Build 336 — VR prototype (WebXR + WebGL2)
+
+New module docs/vr-view.js and button VRで見る (shown only when
+navigator.xr supports immersive-vr). WebGL2 because Quest has no XRGPUBinding
+(build 335 check: WebGL2 + XRWebGLLayer reached 90 fps). VR-specific: the
+three.js WebGLRenderer with renderer.xr, a GLSL3 port of volumeShader()
+(same segment test, 6-step hit refinement, gradient normal, shading
+constants, background), CPU brick min/max (8³) for empty-space skipping,
+controller grab (grip or trigger: move/rotate; both hands: scale) and an fps
+panel. Shared with the other platforms: gpuVolumeTarget() (filters applied
+when the 3D view has them), volumeTexturePlan (512 per side), reduceSliceArea,
+packedRgSlice (now exported) / packCtSlice, segmentState (read every frame).
+Not shown yet: processed edits, cuts, section view, MPR planes.
+Checked in the container: lint, unit tests, boot-check, and the shader
+compiled and drew a lit volume in headless Chromium WebGL2. Needs a Quest test.
+
+## Build 337 — VR menu, background, speed settings (diagnostic)
+
+Owner, build 336 on Quest: the volume shows, 20–25 fps (risk of motion
+sickness); wants a background and UI. Not guessing the bottleneck: the menu
+switches the likely levers and shows fps for each, so the owner can report
+which one matters. Settings: detail (ray step ×1 / ×1.5 / ×2), foveation
+(off / mid / high, renderer.xr.setFoveation), resolution (framebuffer scale
+100 / 80 / 60 %, from the next VR entry; stored in localStorage). Menu also
+has segment show/hide (VR only, app state untouched), reset position and
+exit; the trigger presses a button when the ray points at the menu,
+otherwise grabs. Background: gradient dome and floor grid. The volume is now
+premultiplied and blended over the background instead of painting the
+background colour itself.
+
+## Build 338 — VR: volume drawn at reduced resolution
+
+Owner, build 337: bone only at the coarsest step ≈30 fps; enlarging with both
+hands drops to 16 fps, so the cost follows the covered pixels. The ray-marched
+volume is now drawn per eye into an offscreen target (100 / 70 / 50 % per axis,
+default 50 % = 1/4 of the pixels) and a composite material on the same box
+upscales it in the main XR pass (only box pixels touched). Menu: volume
+resolution (live), detail, foveation, refresh rate (session.supportedFrameRates,
+when offered). The framebuffer-scale setting (next entry only) is removed.
+Composite shader compiled and sampled correctly in headless Chromium; the XR
+path itself needs the Quest.
+
+## Build 339 — VR diagnostics (measure before the next change)
+
+Owner, build 338: enlarged ≈15 fps whatever the settings (volume resolution
+included); smallest ≈80–90 fps; 50 % looks acceptable. Resolution not helping
+means either the reduced path is not what runs, or the cost is not per-pixel
+ray marching. Not guessing: the menu line now shows GPU ms of the volume pass
+and of the main XR pass (EXT_disjoint_timer_query_webgl2, when offered), JS ms
+per frame, the offscreen and XR target sizes and eye count, and the holder
+scale. New diagnostics row: normal / box only (no marching) / loop-count heat
+map (blue few iterations → red ≥1024). All three shader modes compiled and
+drew in headless Chromium.
+
+## Build 340 — VR: automatic volume resolution
+
+Owner, build 339 (bone, enlarged): box only 90 fps; normal and loop-count
+modes drop; loop-count map blue (iterations well under 1024); 100 % slower
+than 50 %. So the cost is marched pixels × per-ray work, and 50 % is still too
+many pixels when the volume fills both eyes. New default 自動: every 0.5 s the
+XR frame interval is compared with the target rate; over budget lowers the
+factor (down to 25 %), within budget raises it (up to 80 %). One offscreen
+target at 80 %, only the viewports change, so no reallocation. Manual 100 /
+70 / 50 % stay. Settings key renamed (old saved indices no longer match).
+
+## Build 341 — VR diagnostics for the per-ray cost
+
+Owner, build 340: enlarged, auto settles at 25 % and ≈30 fps — too coarse to
+observe. 25 % is 1/4 of the pixels of 50 % yet only ≈2× faster, so a large
+per-ray cost remains besides the pixel count. Candidates, each now switchable
+(not guessed): shading at hits (6-step refinement + 6-sample gradient) →
+diagnostic 陰影なし; empty-space test per step → スキップなし (expected
+slower; shows how much skipping saves); texture reads of the 512³ volume →
+data 256³ (2×2×2 average built on first use, same step so the loop count
+stays comparable).
+
+## Build 342 — VR: 256³ default, per-segment simple display
+
+Owner, build 341: no skipping very slow; 256³ data comfortable (also without
+enlarging) and its smoothing looks fine for observation; no shading unsuitable
+for the segment being looked at but acceptable for the others. So texture
+reads of 512³ were the main per-ray cost. Data 256³ (2×2×2 average of the
+512 plan) is now the saved default, 512³ selectable. Segment buttons cycle
+normal → simple (no hit refinement, no gradient; segC.w) → hidden, VR only.
+
+## Build 343 — AR (passthrough) view
+
+Owner: wants a transparent background; two buttons, VRで見る and ARで見る.
+ARで見る starts an immersive-ar session (Quest passthrough): alpha WebGL
+context, no scene background, dome and grid not added, transparent clears.
+Everything else (data, volume pass, menu, grab) is the same code. Each button
+shows only when isSessionSupported says so.
+
+Owner, build 343 on Quest: VR and AR both fine (no problems).
