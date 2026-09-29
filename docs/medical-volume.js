@@ -1,5 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
+import { getRawSlice, putRawSlice } from './raw-slice-cache.js?v=20260929-build320';
 
 const UNCOMPRESSED_TS=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
@@ -9,8 +10,11 @@ async function rawPixelBytes(meta){
  if(!UNCOMPRESSED_TS.has(meta.ts))throw new Error('GPU volume currently requires uncompressed DICOM');
  const bytesNeeded=meta.rows*meta.columns*2;
  if(meta.pixelOffset!=null){
+  // build 320: the raw slice cache (raw-slice-cache.js) when this series has one
+  const cached=await getRawSlice(meta);if(cached&&cached.byteLength===bytesNeeded)return cached;
   const bytes=new Uint8Array(await meta.file.slice(meta.pixelOffset,meta.pixelOffset+bytesNeeded).arrayBuffer());
   if(bytes.byteLength<bytesNeeded)throw new Error('Pixel Data is shorter than expected');
+  putRawSlice(meta,bytes.slice());
   return bytes;
  }
  const all=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(all),el=ds.elements.x7fe00010;

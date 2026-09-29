@@ -1,9 +1,10 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260928-build319';
-import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260928-build319';
-import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260928-build319';
+import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260929-build320';
+import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopMac } from './utils.js?v=20260929-build320';
+import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260929-build320';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
+import { getRawSlice, putRawSlice } from './raw-slice-cache.js?v=20260929-build320';
 export function sourceMprCacheLimit(){
  if(isIPhoneRuntime())return 512*1024*1024;
  if(isIPadRuntime())return 1536*1024*1024;
@@ -106,7 +107,9 @@ export async function decodeSourceSlice(meta){
  if(!bpp)throw new Error('Unsupported BitsAllocated='+meta.bits);
  let bytes,offset=meta.pixelOffset;
  if(offset!=null){
-  const tf=performance.now();bytes=new Uint8Array(await meta.file.slice(offset,offset+meta.rows*meta.columns*bpp).arrayBuffer());globalThis.__vrlTime?.('read:file',performance.now()-tf);
+  const tc=performance.now();bytes=await getRawSlice(meta);
+  if(bytes)globalThis.__vrlTime?.('read:cache',performance.now()-tc);
+  else{const tf=performance.now();bytes=new Uint8Array(await meta.file.slice(offset,offset+meta.rows*meta.columns*bpp).arrayBuffer());globalThis.__vrlTime?.('read:file',performance.now()-tf);putRawSlice(meta,bytes)}
   offset=0;
  }else{
   const all=new Uint8Array(await meta.file.arrayBuffer()),ds=dicomParser.parseDicom(all),el=ds.elements.x7fe00010;

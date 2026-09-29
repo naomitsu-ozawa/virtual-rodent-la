@@ -13,7 +13,8 @@ export const SETTINGS_DEFAULTS={
  showPerf:true,        // frame time / fps in the status bar
  debug:false,          // same as ?debug
  cacheAutoPrune:true,  // keep only the current filter setting per dataset + 3D resolution
- cacheLimit:'auto'     // GPU volume cache limit: auto / 0.5 / 1 / 2 / 4 (GB)
+ rawCache:true,        // build 320: also cache the raw slice bytes (faster 2nd+ reads)
+ cacheLimit:'auto'     // cache limit: auto / 0.5 / 1 / 2 / 4 / 8 / 16 (GB)
 };
 // pixel budgets (MP) per interaction tier / at rest; 'max' = no budget
 export const DRAG_BUDGETS={low:[0.12e6,0.09e6,0.06e6],standard:[0.25e6,0.18e6,0.12e6],high:[0.45e6,0.32e6,0.22e6],max:[Infinity,Infinity,Infinity]};
