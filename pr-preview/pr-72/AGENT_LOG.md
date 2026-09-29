@@ -2235,3 +2235,8 @@ Also noted: on dual-GPU Windows laptops Chrome uses the integrated GPU
 (powerPreference is ignored); set Chrome to "High performance" in Windows
 Settings > System > Display > Graphics (chrome://flags may be blocked by policy).
 Owner's RTX laptop: Full 28 ms after the switch (Intel: 202 ms).
+
+Result (owner, borrowed Meta Quest, /xr/ page): no XRGPUBinding (WebGPU cannot
+draw into VR there); the WebGL2 VR session ran at 90 fps. -> a VR mode needs its
+own WebGL2 renderer (volume raycast in WebGL2 + XRWebGLLayer), fed by the same
+data as the WebGPU view.
