@@ -9,12 +9,13 @@
 // read while the queue is full is skipped and stored on a later pass; an entry left
 // incomplete is resumed when the data is opened again (build 322).
 const CHUNK=16,KEEP_CHUNKS=2,MAX_INFLIGHT=32;
-const metaCtx=new WeakMap();
+const metaCtx=new WeakMap(),BACKFILL_DELAY_MS=3000;let activeBackfill=null;
 
 // cache: openVolumeCache() handle; key/info: entry key and settings-list info;
 // sliceBytes: bytes per slice; persist(): optional prune/persist before writing
 export async function attachRawSliceCache(series,{cache,key,info,sliceBytes,budget}){
  const n=series?.slices?.length||0;if(!cache||!n||!sliceBytes)return null;
+ activeBackfill=null;
  const ctx={series,cache,key,sliceBytes,n,state:'off',writer:null,written:new Set(),inflight:0,loaded:new Map()};
  try{
   const hit=await cache.lookup(key);
@@ -24,7 +25,27 @@ export async function attachRawSliceCache(series,{cache,key,info,sliceBytes,budg
  if(ctx.state==='writing'&&ctx.written.size===n){try{await ctx.writer.commit();ctx.state='hit'}catch(e){ctx.state='off';ctx.error='commit: '+String(e?.message||e)}}
  series.slices.forEach((meta,i)=>metaCtx.set(meta,{ctx,i}));
  series.rawSliceCache=ctx;
+ if(ctx.state==='writing')setTimeout(()=>void backfill(ctx),BACKFILL_DELAY_MS);
  return ctx;
+}
+// build 323: fill the missing slices in the background. A later run may never
+// read the files again (segment results come from their own cache), so the
+// entry would stay incomplete. One file read + one write at a time; stops when
+// another series is attached, the entry completes, or a write fails.
+async function backfill(ctx){
+ activeBackfill=ctx;
+ const pause=ms=>new Promise(r=>setTimeout(r,ms));
+ for(let i=0;i<ctx.n;i++){
+  if(activeBackfill!==ctx||ctx.state!=='writing')return;
+  if(ctx.written.has(i))continue;
+  while(ctx.inflight>=MAX_INFLIGHT/2){await pause(50);if(activeBackfill!==ctx||ctx.state!=='writing')return}
+  const meta=ctx.series.slices[i];
+  try{
+   const bytes=new Uint8Array(await meta.file.slice(meta.pixelOffset,meta.pixelOffset+ctx.sliceBytes).arrayBuffer());
+   if(bytes.byteLength===ctx.sliceBytes)putRawSlice(meta,bytes);
+  }catch(e){ctx.error='backfill: '+String(e?.message||e);return}
+  await pause(0);
+ }
 }
 export function rawSliceCacheState(series){return series?.rawSliceCache?.state||'off'}
 // debug status text, e.g. "writing 1500/1784", "hit", "off (limit 2 GB < 3.6 GB)"

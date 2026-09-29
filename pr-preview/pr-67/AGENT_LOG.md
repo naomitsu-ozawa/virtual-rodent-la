@@ -2194,3 +2194,11 @@ IndexedDB writes fell behind the reads; slices over the 16-write queue were
 skipped), and reopening the data restarted the entry from zero. begin() now
 takes {resume:true}: an incomplete entry of the same shape keeps its slices
 (getAllKeys) and the next pass writes only the missing ones. Queue 16 → 32.
+
+## Build 323 — raw cache: background backfill
+
+Build 322: 1435/1784 after four runs — later runs took their segment results
+from the segment cache (2 s) and read no slice files, so the entry never
+completed. Attach now starts a backfill 3 s later: the missing slices are read
+from the files one at a time (queue kept under half of 32) and stored; it stops
+when another series is attached, the entry completes, or a write fails.
