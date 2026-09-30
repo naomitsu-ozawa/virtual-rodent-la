@@ -45,8 +45,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: VR shader image and texture-read regression
+        run: npm run vr-brick-check
       - name: Smoke tests
-        run: npx playwright test tests/e2e/smoke.spec.js tests/e2e/folder-project.spec.js tests/e2e/project-share.spec.js tests/e2e/mpr3d-sliders.spec.js
+        run: npx playwright test tests/e2e/smoke.spec.js tests/e2e/folder-project.spec.js tests/e2e/project-share.spec.js tests/e2e/mpr3d-sliders.spec.js tests/e2e/vr-brick-prepare.spec.js
       - name: Public demo end-to-end (Zenodo download)
         if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_demo)
         run: npx playwright test tests/e2e/demo.spec.js

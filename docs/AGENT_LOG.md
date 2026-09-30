@@ -2570,3 +2570,50 @@ for one-side mode, remove. B/Y: short press shows / hides, long press
 at 4 a short message. Grip/trigger takes the nearest frame. Menu 断面 tab:
 rows per plane (切る/切らない, 向きを反転, 消す), ＋追加. Headless shader
 check with 0/1/2 planes, clip bits and slices; menu layout rendered.
+
+## Build 369 — Codex Quest 3 performance test on an independent branch
+
+Owner: make a device-testable build for October 1 without interfering with
+the other AI. Dedicated branch codex/quest3-render-perf-20260930, separate
+worktree, based on main build 360. PR 78 already contains brick-test reuse
+and surface-search changes, so these are deliberately not reimplemented.
+
+New vr-brick-flags.js prepares one-byte conservative segment-presence flags
+per brick: low nibble exactly reproduces the legacy HU min/max test, high
+nibble can reject only provably empty processing-mask/classification
+support, including trilinear neighbours on the actual mask grid. Shader
+uses R8UI plus a visible-segment bit mask instead of RG32F range comparisons;
+newly empty processed bricks omit CT/mask fetches but retain every original
+fine sample position, previousT and six bisections. Legacy empty skips,
+normals, colour, opacity, slices and caps remain unchanged.
+
+Details has Fast traversal Original/Fast for same-session A/B testing.
+?vrperf=1 selects isolated settings, defaults to fixed 100% screen rendering,
+locks the data at 512 and sampling at Normal, removes Auto resolution, and
+starts at the smallest supported rate >=72 Hz. Normal VR settings are not
+overwritten. Preparing flags happens before XR and is cached with the data.
+Both metadata textures are retained for A/B, not a total-memory reduction.
+
+Real GLSL regression tools/vr-brick-check.mjs compares a frozen build 360
+fragment shader against fallback and fast modes: exact RGBA match in twelve
+scenarios (opaque/translucent, edits, four segments, cls, edits off, four
+sections/cap, inside view, uneven grids). HU-fetch counts decrease 7–23%
+in the outside-view processed HU phantom scenarios (inside view ~5%;
+classification reads ~11% fewer, unchanged normal HU reads); RG32F reads become R8 reads. These are
+software-renderer work counts, not Quest FPS or measured device speedup.
+Added unit coverage for interpolation halos, threshold crossings, float32
+thresholds, mixed mask grids and 512-grid capacity, plus a browser test of
+real-source preparation, cached reuse and invalidation. Device instructions
+in QUEST3_PERFORMANCE_TEST.md. Main/other AI branch not modified.
+
+Checks on build 369: lint, 410 unit/static/tool tests passed (one existing
+todo), boot-check, 12 real-GLSL exact-image cases, 14 browser tests passed.
+Local browser tests map pinned CDN modules to npm copies; CI also runs the
+shader regression and source-preparation browser test. Quest FPS pending.
+
+### build 369 補足：VR遅延の保護（同じ専用ブランチ）
+- 性能比較URLはGPUテクスチャ転送・シェーダー準備・GPU完了待ちをXRセッション開始前に実行。xr-compatible contextを引き継ぐ。
+- 3Dは初期停止、手動開始。連続したフレーム遅延／GPU時間超過を観測したら3Dを停止し、メニューとコントローラー処理を続ける。自動再試行・品質低下はしない。性能URLの追加描画スクリーンショットを無効化。
+- 最初の重い描画やGPUドライバー停止の完全回避は保証できない。実機の70fpsと停止後の操作性は未測定。
+- フレーム保護の単体検証、実WebGL2での事前転送・コンパイル・完了待ち・準備キャッシュのブラウザ検証を追加。
+- 最終検証：lint、単体421件（既存todo1件）、ブラウザ14件、12条件の実GLSL画像一致、build 369起動確認。ブラウザは同バージョンの依存ライブラリをローカル配信して確認した。Quest実機FPSは未確認。GPU転送失敗時に開始可能と判定しないこともブラウザで検証。

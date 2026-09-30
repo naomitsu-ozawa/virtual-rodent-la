@@ -8,12 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build360';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build360';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build360';
-import { sceneState } from './state.js?v=20260930-build360';
-import { tr } from './i18n.js?v=20260930-build360';
-import { wc, ww } from './ui-shell.js?v=20260930-build360';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build369';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build369';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build369';
+import { sceneState } from './state.js?v=20260930-build369';
+import { tr } from './i18n.js?v=20260930-build369';
+import { wc, ww } from './ui-shell.js?v=20260930-build369';
+import { VrFrameGuard } from './vr-frame-guard.js?v=20260930-build369';
+import { buildVrBrickFlags } from './vr-brick-flags.js?v=20260930-build369';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -39,6 +41,10 @@ precision highp float;
 precision highp sampler3D;
 uniform sampler3D vol;
 uniform sampler3D bricks;
+uniform highp usampler3D brickFlags;
+uniform int brickAccel;
+uniform uint visibleBits;
+uniform int processedBricks;
 uniform vec3 halfExt;
 uniform vec3 texDims;
 uniform vec3 brickDims;
@@ -193,7 +199,18 @@ void main(){
    }
   }
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
-  bool canSample=diag==4||brickMayContain(tc0);
+  bool canSample=true;
+  if(diag!=4){
+   if(brickAccel>0){
+    uint flags=texture(brickFlags,clamp(tc0,vec3(0.0),vec3(0.999999))).r;
+    canSample=(flags&visibleBits)!=0u;
+    if(canSample&&processedBricks>0&&((flags>>4u)&visibleBits)==0u){
+     // Keep the original fine sample positions and previousT. Jumping to
+     // a newly empty brick's exit would change the next surface search.
+     lastIndex=-1;previousT=t;t+=step;continue;
+    }
+   }else canSample=brickMayContain(tc0);
+  }
   float nextT=t+step;
   if(!canSample){nextT=t+max(brickExit(tc0,dir)+step*0.05,step);lastIndex=-1;}
   else{
@@ -304,11 +321,13 @@ async function buildVolumeData(maxDim,onProgress){
 
 // VR settings kept per browser (resolution only applies when a session starts)
 const SETTINGS_KEY='vrl-vr-settings-3';
+const PERF_PROFILE=new URL(location.href).searchParams.get('vrperf')==='1';
+const settingsKey=()=>PERF_PROFILE?'vrl-vr-perf-settings-1':SETTINGS_KEY;
 // menuMode 0 follows the head lazily, 1 stays where it is; secHold 0 grip
 // picks the section up near the frame, 1 trigger fixes / picks it up
-const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.6,data:1,quality:0,vres:0,foveation:2,rate:0};
-function loadSettings(){try{return{...DEFAULTS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{...DEFAULTS}}}
-function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
+const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.6,data:1,quality:0,vres:0,foveation:2,rate:0,brickAccel:1};
+function loadSettings(){const key=settingsKey(),defaults={...DEFAULTS,...(PERF_PROFILE?{data:0,vres:1,quality:0}:{})};let value;try{value={...defaults,...JSON.parse(localStorage.getItem(key)||'{}')}}catch{value=defaults}if(PERF_PROFILE){value.data=0;value.quality=0;if(value.vres===0)value.vres=1}return value}
+function saveSettings(v){try{localStorage.setItem(settingsKey(),JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
 // smaller per axis and scaled up where the volume box covers the view. Owner,
 // build 337: fps fell from 30 to 16 when the volume was enlarged, so the cost
@@ -447,7 +466,7 @@ function buildClsData(t,calibration,edit){
  return{data:out,C,chan};
 }
 let prepared=null,preparing=null;
-export function vrReady(){return !!prepared&&prepared.key===vrDataKey()}
+export function vrReady(mode='vr'){return !!prepared&&prepared.key===vrDataKey()&&(!PERF_PROFILE||gpuPrepared?.key===prepared.key&&gpuPrepared.mode===mode&&!gpuPrepared.renderer.getContext().isContextLost())}
 const maxTexture3D=()=>{try{const c=document.createElement('canvas'),g=c.getContext('webgl2');const m=g?.getParameter(g.MAX_3D_TEXTURE_SIZE)||2048;g?.getExtension('WEBGL_lose_context')?.loseContext();return m}catch{return 2048}};
 // phases reported as {phase, done, total}; timings (ms) returned with the data
 export async function prepareVrData(onProgress=()=>{}){
@@ -466,10 +485,60 @@ export async function prepareVrData(onProgress=()=>{}){
   const edit={dims:editDims,data:m.activeMask?m.data:null,active:m.activeMask|0};times.mask=performance.now()-t0;
   onProgress({phase:'cls',done:0,total:1});await tick();t0=performance.now();
   const small=half||vd,cls=buildClsData(small,vd.calibration,edit);times.cls=performance.now()-t0;
-  return{key,vd,half,edit,cls,times};
+  onProgress({phase:'bricks',done:0,total:1});await tick();t0=performance.now();
+  const segs=SEGMENT_PRESET_ORDER.slice(0,4).map(k=>segmentState[k]);
+  const fullFlags=buildVrBrickFlags(vd,segs,edit),halfFlags=half?buildVrBrickFlags(half,segs,edit):null;
+  const clsFlags=cls?buildVrBrickFlags(small,segs,edit,cls):null;times.bricks=performance.now()-t0;
+  return{key,vd,half,edit,cls,fullFlags,halfFlags,clsFlags,times};
  })();
  preparing={key,promise};
  try{prepared=await promise;return prepared}finally{if(preparing?.promise===promise)preparing=null}
+}
+// Upload the large textures and compile the programs BEFORE entering XR.
+// Keep the same xr-compatible context so setSession cannot discard them.
+let gpuPrepared=null,gpuPreparing=null;
+const flagsTexture=(data,dims)=>{const f=new THREE.Data3DTexture(data,...dims);f.format=THREE.RedIntegerFormat;f.type=THREE.UnsignedByteType;f.minFilter=f.magFilter=THREE.NearestFilter;f.unpackAlignment=1;f.needsUpdate=true;return f};
+const volumeTextures=(d,flags)=>{
+ const v=new THREE.Data3DTexture(d.data,...d.dims);v.format=THREE.RGFormat;v.type=THREE.UnsignedByteType;v.minFilter=v.magFilter=THREE.LinearFilter;v.unpackAlignment=1;v.needsUpdate=true;
+ const b=new THREE.Data3DTexture(d.bricks,...d.brickDims);b.format=THREE.RGFormat;b.type=THREE.FloatType;b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
+ return{v,b,flags:flagsTexture(flags,d.brickDims),dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null};
+};
+const editTexture=P=>{if(!P.edit.data)return null;const e=new THREE.Data3DTexture(P.edit.data,...P.edit.dims);e.format=THREE.RGBAFormat;e.type=THREE.UnsignedByteType;e.minFilter=e.magFilter=THREE.LinearFilter;e.unpackAlignment=1;e.needsUpdate=true;e.userData.up=true;return e};
+export async function prepareVrGpu(P,mode='vr'){
+ if(gpuPrepared?.key===P.key&&gpuPrepared.mode===mode)return gpuPrepared;
+ if(gpuPreparing?.key===P.key&&gpuPreparing.mode===mode)return gpuPreparing.promise;
+ const promise=(async()=>{
+  const old=gpuPrepared;gpuPrepared=null;if(old){old.full.v.dispose();old.full.b.dispose();old.full.flags.dispose();old.edit?.dispose();old.warmMaterials.forEach(m=>m.dispose());old.renderer.dispose()}
+  const canvas=document.createElement('canvas'),context=canvas.getContext('webgl2',{antialias:false,alpha:mode==='ar',preserveDrawingBuffer:false,xrCompatible:true});
+  if(!context)throw new Error('WebGL2 unavailable');
+  const renderer=new THREE.WebGLRenderer({canvas,context});let full=null,edit=null;const materials=[];
+  try{
+   await context.makeXRCompatible();
+   full=volumeTextures(P.vd,P.fullFlags);edit=editTexture(P);
+   for(const t of [full.v,full.b,full.flags,edit].filter(Boolean))renderer.initTexture(t);
+   if(context.getError()!==context.NO_ERROR||context.isContextLost())throw new Error('GPU texture upload failed');
+   const sc=new THREE.Scene(),geo=new THREE.BoxGeometry(2,2,2);
+   for(const transparent of [true,false]){
+    const m=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,transparent,depthWrite:false,blending:transparent?THREE.CustomBlending:THREE.NoBlending});materials.push(m);sc.add(new THREE.Mesh(geo,m));
+   }
+   const cm=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:compositeVertex,fragmentShader:compositeFragment,side:THREE.BackSide,toneMapped:false,transparent:true,depthWrite:false});materials.push(cm);sc.add(new THREE.Mesh(geo,cm));
+   try{
+    const cam=new THREE.PerspectiveCamera();await renderer.compileAsync(sc,cam);
+    // Fixed lower screen factors use a linear offscreen pass. Compile this
+    // program variant too, without doing a ray march during preparation.
+    const rt=new THREE.WebGLRenderTarget(1,1,{depthBuffer:false});
+    try{renderer.setRenderTarget(rt);await renderer.compileAsync(sc,cam)}finally{renderer.setRenderTarget(null);rt.dispose()}
+    for(const p of renderer.info.programs)if(!context.getProgramParameter(p.program,context.LINK_STATUS))throw new Error('VR shader compilation failed')
+   }finally{geo.dispose()}
+   // Wait for uploads/compilation to complete while still on the flat page.
+   const fence=context.fenceSync(context.SYNC_GPU_COMMANDS_COMPLETE,0);context.flush();
+   if(!fence)throw new Error('GPU preparation fence unavailable');
+   try{const until=performance.now()+30000;while(true){const result=context.clientWaitSync(fence,0,0);if(result===context.ALREADY_SIGNALED||result===context.CONDITION_SATISFIED)break;if(result===context.WAIT_FAILED||context.isContextLost()||performance.now()>until)throw new Error('GPU preparation did not complete');await new Promise(r=>setTimeout(r,16))}}finally{context.deleteSync(fence)}
+   if(P.key!==vrDataKey())throw new Error('Data changed during GPU preparation');
+   return gpuPrepared={key:P.key,mode,renderer,full,edit,warmMaterials:materials};
+  }catch(e){full?.v.dispose();full?.b.dispose();full?.flags.dispose();edit?.dispose();materials.forEach(m=>m.dispose());renderer.dispose();throw e}
+ })();gpuPreparing={key:P.key,mode,promise};
+ try{return await promise}finally{if(gpuPreparing?.promise===promise)gpuPreparing=null}
 }
 // page panel: progress while preparing, then the start button (a click, so
 // the session may start)
@@ -478,15 +547,18 @@ export function showPreparePanel({language='ja',mode='vr',onStart}){
  const panel=document.createElement('div');panel.id='vr-prepare-panel';
  Object.assign(panel.style,{position:'fixed',left:'50%',top:'50%',transform:'translate(-50%,-50%)',zIndex:'10000',background:'#141c24f2',color:'#fff',padding:'20px 24px',borderRadius:'14px',width:'min(92vw,440px)',font:'15px system-ui,sans-serif',boxShadow:'0 8px 30px #0008'});
  panel.innerHTML='<strong style="font-size:18px"></strong><div class="ph" style="margin:12px 0 6px;color:#cfe3f0"></div><div style="height:10px;background:#26313b;border-radius:5px;overflow:hidden"><div class="bar" style="height:100%;width:0;background:#2d6cdf"></div></div><div class="tm" style="margin-top:10px;color:#9fb3c3;font-size:13px;white-space:pre-line"></div><div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button type="button" class="cancel"></button><button type="button" class="start" disabled></button></div>';
- const q=c=>panel.querySelector(c),names=ja?{copy:'3D画面から写す',read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ'}:{copy:'Copy from the 3D view',read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification'};
+ const q=c=>panel.querySelector(c),names=ja?{copy:'3D画面から写す',read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ',bricks:'空領域の事前判定'}:{copy:'Copy from the 3D view',read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification',bricks:'Precomputing empty regions'};
  q('strong').textContent=(mode==='ar'?'AR':'VR')+(ja?'の準備':' preparation');q('.cancel').textContent=ja?'閉じる':'Close';q('.start').textContent=mode==='ar'?(ja?'ARを開始':'Start AR'):(ja?'VRを開始':'Start VR');
  Object.assign(q('.start').style,{background:'#2d6cdf',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 18px',fontSize:'16px'});Object.assign(q('.cancel').style,{background:'#26313b',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 14px'});
- const order=['read','half','mask','cls'],allPhases=['copy',...order];
+ const order=['read','half','mask','cls','bricks'],allPhases=['copy',...order];
  q('.cancel').onclick=()=>panel.remove();
  q('.start').onclick=()=>{panel.remove();onStart()};
  document.body.append(panel);
  const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'||phase==='copy'?' '+done+' / '+total:'');const i=Math.max(0,order.indexOf(phase==='copy'?'read':phase)),f=(i+((phase==='read'||phase==='copy')&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%'};
- prepareVrData(report).then(p=>{
+ prepareVrData(report).then(async p=>{
+  if(PERF_PROFILE){q('.ph').textContent=ja?'GPUへ転送・描画の準備（VR開始前）':'Uploading and preparing GPU before XR';await prepareVrGpu(p,mode)}
+  return p;
+ }).then(p=>{
   q('.bar').style.width='100%';q('.ph').textContent=ja?'準備ができました':'Ready';
   q('.tm').textContent=allPhases.filter(k=>p.times[k]!=null).map(k=>names[k]+': '+(p.times[k]/1000).toFixed(1)+' s').join('\n');
   q('.start').disabled=false;q('.start').focus();
@@ -499,15 +571,16 @@ let running=null;
 export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
  const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;settings.clsDiag=0;
- const ar=mode==='ar',renderer=new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
+ if(PERF_PROFILE&&!vrReady(mode))throw new Error('Prepare the GPU before starting VR');
+ const gpu=PERF_PROFILE?gpuPrepared:null;if(gpu)gpuPrepared=null;
+ const ar=mode==='ar',renderer=gpu?.renderer||new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
  document.body.appendChild(renderer.domElement);
- // requestSession must run inside the click; the texture is built afterwards
- // while the headset shows progress
+ // Request in the click. The performance profile already uploaded its textures.
  let session;
  try{session=await navigator.xr.requestSession(ar?'immersive-ar':'immersive-vr',{optionalFeatures:['local-floor']})}
- catch(e){renderer.dispose();renderer.domElement.remove();throw e}
+ catch(e){renderer.domElement.remove();if(gpu)gpuPrepared=gpu;else renderer.dispose();throw e}
  running={session};
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
@@ -525,9 +598,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: held in hand',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
  const menu=makeMenu();scene.add(menu.mesh);
+ const guard=PERF_PROFILE?new VrFrameGuard():null;
+ session.addEventListener('visibilitychange',()=>{if(guard&&session.visibilityState!=='visible'){guard.pause('visibility');notifyPause()}});
+ const pauseText=()=>ja?'3D停止中：負荷保護。縮小して手動で再開':'3D paused: overload protection. Scale down, then resume';
+ const notifyPause=()=>{if(mesh)mesh.visible=false;ui.flash='';ui.status=pauseText();setMenuOpen(true);menu.refresh()};
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3,info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{gpu?.full.flags.dispose();gpu?.edit?.dispose()},mesh=null,material=null,volTex=gpu?.full.v||null,brickTex=gpu?.full.b||null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3,info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  const segMode={};
@@ -629,6 +706,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(section.held===c&&settings.secHold===1)fixPlane()});
  }
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
+ if(PERF_PROFILE){const i=rates.findIndex(r=>r>=72);if(i>=0)settings.rate=i}
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
  let autoF=0.5,autoFrames=0,autoAt=performance.now();
  let frames=0,fpsAt=performance.now(),fps=0;
@@ -660,7 +738,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     w.push({type:'slider',x:760,y,w:210,h:72,value:op,text:'',set:v=>{segOpacity[key]=Math.max(0.05,Math.round(v*20)/20)}})});
    const yb=MENU_H-110;
    label(X,yb-140,L.menuKey,{size:26,color:'#9fb3c3'});
-   btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow()});btn(X+320,yb,320,L.shot,false,()=>{shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
+   btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow()});btn(X+320,yb,320,guard?(guard.paused?(ja?'3Dを開始／再開':'Start / resume 3D'):(ja?'3Dを停止':'Pause 3D')):L.shot,false,()=>{if(guard){if(!mesh)return;if(guard.paused){guard.resume();mesh.visible=true}else{guard.pause();notifyPause()}menu.refresh()}else shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
    choice(yb-100,L.menuPos,[{label:L.follow,value:0},{label:L.fixed,value:1}],settings.menuMode,v=>{settings.menuMode=v;saveSettings(settings)});
   }else if(ui.tab===1){
    choice(y0,L.sec,[{label:L.offOn[0],value:false},{label:L.offOn[1],value:true}],section.on,v=>{if(v!==section.on)setSection(v)});
@@ -683,9 +761,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    label(X,yb2+470,section.on?L.secHelp[settings.secHold]:L.secOff,{size:26});
    label(X,yb2+506,L.byHelp,{size:24,color:'#9fb3c3'});
   }else if(ui.tab===2){
-   choice(y0,L.r,VRES.map((r,i)=>({label:r?Math.round(r*100)+'%':L.auto,value:i})),settings.vres,v=>{settings.vres=v;applyQuality()});
-   choice(y0+90,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
-   choice(y0+180,L.q,L.qv.map((t,i)=>({label:t,value:i})),settings.quality,v=>{settings.quality=v;applyQuality()});
+   choice(y0,L.r,VRES.map((r,i)=>({label:r?Math.round(r*100)+'%':L.auto,value:i})).filter(o=>!PERF_PROFILE||o.value!==0),settings.vres,v=>{settings.vres=v;applyQuality()});
+   choice(y0+90,L.dt,[{label:'256³',value:1},{label:'512³',value:0}].filter(o=>!PERF_PROFILE||o.value===0),settings.data,v=>{settings.data=v;applyQuality()});
+   choice(y0+180,L.q,L.qv.map((t,i)=>({label:t,value:i})).filter(o=>!PERF_PROFILE||o.value===0),settings.quality,v=>{settings.quality=v;applyQuality()});
    choice(y0+270,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
    if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
   }else{
@@ -694,6 +772,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0+370,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
    choice(y0+280,L.editD,L.editDv.map((t,i)=>({label:t,value:i})),settings.editDiag|0,v=>{settings.editDiag=v;refreshEdits()});
    choice(y0+190,'',L.dv.slice(3).map((t,i)=>({label:t,value:i+3})),settings.diag,v=>{settings.diag=v;applyQuality()});
+   choice(y0+460,ja?'高速探索':'Fast traversal',[{label:ja?'従来':'Original',value:0},{label:ja?'高速':'Fast',value:1}],settings.brickAccel|0,v=>{settings.brickAccel=v;applyQuality()});
+   label(X,y0+570,ja?'比較時は画質の「自動」を外してください':'Compare at a fixed resolution in Quality',{size:24,color:'#9fb3c3'});
   }
   return w;
  });
@@ -706,14 +786,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const pending=[],sums={vol:0,main:0,js:0},counts={vol:0,main:0,js:0};let sizes='';
  const timed=(kind,fn)=>{
   if(!timerExt||pending.length>12){fn();return}
-  const q=gl.createQuery();gl.beginQuery(timerExt.TIME_ELAPSED_EXT,q);fn();gl.endQuery(timerExt.TIME_ELAPSED_EXT);pending.push({q,kind});
+  const q=gl.createQuery();gl.beginQuery(timerExt.TIME_ELAPSED_EXT,q);fn();gl.endQuery(timerExt.TIME_ELAPSED_EXT);pending.push({q,kind,epoch:guard?.epoch,active:!!mesh&&!guard?.paused,monitor:kind==='vol'||kind==='main'&&!(VRES[settings.vres]<1)});
  };
  const pollTimers=()=>{
   while(pending.length){
-   const {q,kind}=pending[0];
+   const {q,kind,epoch,active,monitor}=pending[0];
    if(!gl.getQueryParameter(q,gl.QUERY_RESULT_AVAILABLE))break;
    pending.shift();
-   if(!gl.getParameter(timerExt.GPU_DISJOINT_EXT)){sums[kind]+=gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6;counts[kind]++}
+   if(!gl.getParameter(timerExt.GPU_DISJOINT_EXT)){const ms=gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6;sums[kind]+=ms;counts[kind]++;if(active&&monitor&&guard?.gpu(ms,targetRate(),epoch))notifyPause()}
    gl.deleteQuery(q);
   }
  };
@@ -736,7 +816,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   ui.flash=L.shotDone+' ('+(shots.length+1)+')';ui.flashUntil=performance.now()+3000;menu.refresh();for(const c of controllers)pulse(c,0.5,40);
  };
  renderer.setAnimationLoop(()=>{
-  const js0=performance.now();if(timerExt)pollTimers();
+  const js0=performance.now();if(mesh&&guard?.frame(js0,targetRate()))notifyPause();if(timerExt)pollTimers();
   readHead();
   if(!menuPlaced)placeMenuNow();
   // lazy follow: move back in front once the head has turned well away
@@ -768,7 +848,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // section frame colour: yellow held, cyan fixed, white when a grip would take it
   // frame colour: own colour; white while held or when a hand could take it
   if(section.on){const near=new Set(controllers.map(nearestPlane));for(const pl of planes)pl.mat.color.setHex(pl===section.heldPlane||near.has(pl)?0xffffff:pl.color)}
-  const st=section.on?(section.held?L.stHeld:L.stFixed):L.stNone;
+  const st=guard?.paused?pauseText():section.on?(section.held?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}
   if(material){
    const u=material.uniforms;
@@ -791,6 +871,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
     u.segA.value[i].set(seg?.min||0,seg?.max||0,segOpacity[key]??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
     color.set(seg?.color||'#ffffff');u.segC.value[i].set(color.r,color.g,color.b,segMode[key]===1?1:0);
    }
+   u.visibleBits.value=u.segA.value.reduce((bits,a,i)=>a.w>0.5?bits|(1<<i):bits,0);
+   u.brickAccel.value=settings.brickAccel?1:0;
   }
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];
@@ -804,7 +886,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
   }
   const f=auto?autoF:(VRES[settings.vres]??1);
-  if(mesh){
+  if(mesh&&!guard?.paused){
    if(f<1){
     // own pass per eye into the small target, then the composite material
     // on the same box upscales it inside the main XR render
@@ -836,7 +918,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(now-fpsAt>=1000){
    fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
    ui.fpsLine=fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
-   ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info;
+   ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info+' · '+(settings.brickAccel?'R8':'RG32F');
    if(ui.tab===3||ui.flash)menu.refresh();
    if(ui.flash&&now>ui.flashUntil)ui.flash='';
    for(const k in sums){sums[k]=0;counts[k]=0}
@@ -844,9 +926,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  volTex?.dispose();brickTex?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();badge.userData.dispose();
+  volTex?.dispose();brickTex?.dispose();disposeExtra();disposeEdits();material?.dispose();rayMesh?.material.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();badge.userData.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);ringGeo.dispose();ring.material.dispose();
-  renderer.dispose();renderer.domElement.remove();running=null;
+  gpu?.warmMaterials.forEach(m=>m.dispose());renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);
  };
  session.addEventListener('end',cleanup,{once:true});
@@ -855,23 +937,18 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const P=await prepareVrData(({phase,done,total})=>{ui.status=L.preparing+(phase==='read'?done+' / '+total:phase);menu.refresh()});
   const vd=P.vd;
   if(!running)return;
-  const makeTextures=d=>{
-   const v=new THREE.Data3DTexture(d.data,...d.dims);v.format=THREE.RGFormat;v.type=THREE.UnsignedByteType;
-   v.minFilter=v.magFilter=THREE.LinearFilter;v.unpackAlignment=1;v.needsUpdate=true;
-   const b=new THREE.Data3DTexture(d.bricks,...d.brickDims);b.format=THREE.RGFormat;b.type=THREE.FloatType;
-   b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
-   return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null};
-  };
+  if(gpu&&P.key!==gpu.key)throw new Error('Data changed: exit VR and prepare again');
+  const makeTextures=volumeTextures;
   // classification texture from the prepared bytes (only on the ≤256 grid)
   const clsTexture=t=>{
    const c=P.cls;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
    const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.userData.chan=c.chan;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;
    return x;
   };
-  const full=makeTextures(vd);let half=null;volTex=full.v;brickTex=full.b;
+  const full=gpu?.full||makeTextures(vd,P.fullFlags);let half=null,clsFlags=null;volTex=full.v;brickTex=full.b;
   // 512 / 256 data (256 made on first use, kept for the session)
   useData=i=>{
-   const t=i===1&&P.half?(half||=makeTextures(P.half)):full;
+   const t=i===1&&P.half?(half||=makeTextures(P.half,P.halfFlags)):full;
    material.uniforms.vol.value=t.v;material.uniforms.bricks.value=t.b;material.uniforms.texDims.value.set(...t.dims);material.uniforms.brickDims.value.set(...t.brickDims);
    info=t.dims.join('×')+(vd.filtered?L.filtered:'');
    // classification only on grids of at most 256 (512³ × 4 bytes is too big);
@@ -879,6 +956,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(Math.max(...t.dims)<=256&&!t.cls&&!(settings.clsDiag|0))t.cls=clsTexture(t);
    const on=!!t.cls&&!(settings.clsDiag|0);
    material.uniforms.useCls.value=on?1:0;material.uniforms.clsTex.value=t.cls||dummyEdit;if(t.cls)material.uniforms.clsChan.value.set(...t.cls.userData.chan);
+   material.uniforms.brickFlags.value=on?(clsFlags||=flagsTexture(P.clsFlags,t.brickDims)):t.flags;
    refreshEdits();
   };
   // processed segments: built once when VR starts (edits cannot change in
@@ -886,17 +964,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // normalised, so it serves both data sizes); the filter follows the
   // diagnostic setting (0 smooth, 1 nearest, 2 off)
   const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
-  let editTex=null;const editActive=P.edit.active;
-  if(P.edit.data){editTex=new THREE.Data3DTexture(P.edit.data,...P.edit.dims);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.unpackAlignment=1}
+  const editTex=gpu?.edit||editTexture(P),editActive=P.edit.active;
   refreshEdits=()=>{
    if(!material)return;const mode=settings.editDiag|0;
    if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
    material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editTex.value=editTex||dummyEdit;
+   material.uniforms.processedBricks.value=material.uniforms.useCls.value>0||mode!==2?1:0;
   };
   disposeEdits=()=>{editTex?.dispose();dummyEdit.dispose()};
-  disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();full.cls?.dispose()};
+  disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.flags.dispose();half?.cls?.dispose();full.flags.dispose();full.cls?.dispose();clsFlags?.dispose()};
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
-   uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
+   uniforms:{vol:{value:volTex},bricks:{value:brickTex},brickFlags:{value:full.flags},brickAccel:{value:1},visibleBits:{value:0},processedBricks:{value:1},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
     stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
     cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
@@ -909,8 +987,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   rayMesh=new THREE.Mesh(mesh.geometry,material.clone());rayMesh.material.uniforms=material.uniforms;rayMesh.material.blending=THREE.NoBlending;rayMesh.material.transparent=false;
   rayMesh.matrixAutoUpdate=false;rayMesh.matrixWorldAutoUpdate=false;rayMesh.frustumCulled=false;volScene.add(rayMesh);
   // app units (longest side 3.3) -> 0.3 m in VR, placed in front of the head
-  mesh.renderOrder=1;holder.add(mesh);baseStep=vd.step;applyQuality();bringVolumeFront();
-  ui.status=L.stNone;menu.refresh();
+  mesh.renderOrder=1;mesh.visible=!guard?.paused;holder.add(mesh);baseStep=vd.step;applyQuality();bringVolumeFront();
+  ui.status=guard?.paused?pauseText():L.stNone;menu.refresh();
  }catch(e){
   console.error(e);ui.status=L.failed+String(e.message||e).slice(0,40);menu.refresh();
  }
