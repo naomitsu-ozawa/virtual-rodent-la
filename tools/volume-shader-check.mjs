@@ -52,9 +52,12 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
   // build 374 layout: colour table after the pairs, data[0] = its start; region index texture (4 bits per voxel)
   const tableStart=header+runs.length*2,data2=new Uint32Array(tableStart+16);data2.set(data);data2[0]=tableStart;data2[tableStart]=0xff;data2[tableStart+1]=word;
   overlayBuf=storage(data2);
-  const tw=N/8,words=new Uint32Array(tw*N*N);for(const [row,x0,x1] of runs){for(let x=x0;x<=x1;x++){const wi=row*tw+(x>>3),sh=(x&7)*4;words[wi]=(words[wi]&~(15<<sh))|(1<<sh)}}
+  // build 376 (as setAnalysisRuns): staging buffer at the 256-byte row pitch, one copyBufferToTexture (tw = 16 words here, so rows are padded)
+  const tw=N/8,bytesPerRow=Math.ceil(tw*4/256)*256,rowWords=bytesPerRow/4,staging=device.createBuffer({size:bytesPerRow*N*N,usage:GPUBufferUsage.COPY_SRC,mappedAtCreation:true}),words=new Uint32Array(staging.getMappedRange());
+  for(const [row,x0,x1] of runs){for(let x=x0;x<=x1;x++){const wi=row*rowWords+(x>>3),sh=(x&7)*4;words[wi]=(words[wi]&~(15<<sh))|(1<<sh)}}
+  staging.unmap();
   regionTex=device.createTexture({size:{width:tw,height:N,depthOrArrayLayers:N},dimension:'3d',format:'r32uint',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
-  device.queue.writeTexture({texture:regionTex},words,{bytesPerRow:tw*4,rowsPerImage:N},{width:tw,height:N,depthOrArrayLayers:N});}
+  const enc=device.createCommandEncoder();enc.copyBufferToTexture({buffer:staging,bytesPerRow,rowsPerImage:N},{texture:regionTex},{width:tw,height:N,depthOrArrayLayers:N});device.queue.submit([enc.finish()]);}
  const W=384,H=384,uni=new Float32Array(22*4),put=(s,a,c,d,e)=>{uni[s*4]=a;uni[s*4+1]=c;uni[s*4+2]=d;uni[s*4+3]=e};
  // camera: app units, longest side 3.3; half extents 1.65; looking from a corner
  const half=[1.65,1.65,1.65],scale=3.3/N,step=Math.max(1e-5,scale*0.85);

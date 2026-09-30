@@ -3019,9 +3019,37 @@ Not done: if the iPad still drops frames with a coloured fat region, the
 next candidates are the editAllows bit-mask texture (build 373 note) and
 a dilated region texture (one load per hit, ±1 texel bleed).
 
-## Handoff (after build 375)
+## Build 376 — region texture uploaded by one aligned buffer copy; upload diagnostics
 
-State: build 375 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (iPad, build 375): for a few seconds after colouring a region the
+view was choppy with 待ち (GPU queue wait) about 120 ms, then about 3 ms;
+and the striped colouring of build 371 was back. The analysis itself
+finishes before the colour appears, so the queued GPU work must be the
+region texture upload (queue.writeTexture, 67 MB at 512³, 128–256 bytes
+per row): an implementation that copies it row by row or in chunks keeps
+the queue busy for seconds, and rows not yet copied read as "no region" —
+stripes — until it finishes. Unverified on the device; this build makes
+the upload one copy and reports it.
+- setAnalysisRuns fills the index words straight into a mapped staging
+  buffer (mappedAtCreation, rows padded to the 256-byte pitch that
+  copyBufferToTexture requires by spec) and copies with one
+  copyBufferToTexture; the staging buffer is destroyed when the queue
+  reports the copy done. Harness image with the padded copy is
+  byte-identical to the writeTexture one (whole volume coloured).
+- Status bar while a region is shown: "領域tex 64×512×512 67 MB 転送 xx ms"
+  (size, and the time from the copy's submit to onSubmittedWorkDone), or
+  "領域tex なし（reason）→ 行検索" when the allocation was refused.
+- The 375 lookup (regionOverlayNear) is unchanged: it colours a superset of
+  the 374 hits with the same texture, so it cannot by itself produce the
+  stripes; if they persist with the copy above, the next step is the 374
+  inside-voxel path behind a switch for an A/B on the device.
+Checks: lint, 404 unit tests (fake device with staging buffer and copy),
+boot-check, harness (padded copy vs writeTexture identical; vs 374: 0
+differing channels whole volume coloured, 21 at a small region's border).
+
+## Handoff (after build 376)
+
+State: build 376 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -3060,12 +3088,14 @@ D. Goal (owner): VR auto resolution held at 100 % at the normal size.
    limit; then precomputed normals (memory!) or temporal reuse.
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
-F. iPad (builds 372–375): region colouring speckle fixed, drag lookups by
-   binary search + GPU-timed drag budget, region index texture, coloured
-   hits without HU fetches, controller hysteresis, per-second frame stats.
-   Open: iPad check with a coloured fat region — read "[1秒: N 枚, 最大,
-   落ち]" while choppy; if frames still drop, editAllows bit-mask texture
-   or a dilated region texture (build 375 entry).
+F. iPad (builds 372–376): region colouring speckle fixed, drag lookups by
+   binary search + GPU-timed drag budget, region index texture (uploaded
+   by one aligned buffer copy), coloured hits without HU fetches,
+   controller hysteresis, per-second frame stats, upload diagnostics.
+   Open: iPad check with a coloured fat region — read "領域tex … 転送 xx
+   ms", "待ち" in the first seconds, and "[1秒: N 枚, 最大, 落ち]"; stripes
+   still there → A/B switch to the 374 inside-voxel lookup; frames still
+   dropping → editAllows bit-mask texture or a dilated region texture.
 Order: device checks of builds 361–368 first; then whatever the owner
 reports (tablet comfort on the Quest browser, fps). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).

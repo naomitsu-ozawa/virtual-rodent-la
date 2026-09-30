@@ -9,15 +9,25 @@ import { MedicalVolumeRenderer } from '../../docs/medical-volume.js';
 // per u32 along x, k = region index + 1.
 globalThis.GPUBufferUsage ??= { STORAGE: 0x80, COPY_DST: 0x8 };
 globalThis.GPUTextureUsage ??= { TEXTURE_BINDING: 0x4, COPY_DST: 0x2 };
+globalThis.GPUBufferUsage.COPY_SRC ??= 0x4;
 function fakeRenderer(textureDims) {
   const written = [], textures = [];
   const device = {
     limits: { maxStorageBufferBindingSize: 1 << 20 },
-    createBuffer: ({ size }) => ({ size, destroy: vi.fn() }),
+    createBuffer: ({ size, mappedAtCreation }) => {
+      const data = new ArrayBuffer(size);
+      return { size, destroy: vi.fn(), mapped: !!mappedAtCreation, getMappedRange: () => data, unmap: vi.fn() };
+    },
     createTexture: (desc) => ({ desc, destroy: vi.fn() }),
+    // build 376: the region texture is filled in a staging buffer and copied with copyBufferToTexture
+    createCommandEncoder: () => ({
+      copyBufferToTexture: (src, dst, size) => textures.push({ texture: dst.texture, words: new Uint32Array(src.buffer.getMappedRange()), layout: { bytesPerRow: src.bytesPerRow, rowsPerImage: src.rowsPerImage }, size }),
+      finish: () => ({}),
+    }),
     queue: {
       writeBuffer: (buffer, _offset, data) => written.push({ buffer, data: new Uint32Array(data) }),
-      writeTexture: ({ texture }, data, layout, size) => { textures.push({ texture, words: new Uint32Array(data), layout, size }); },
+      submit: vi.fn(),
+      onSubmittedWorkDone: () => Promise.resolve(),
     },
   };
   const r = Object.create(MedicalVolumeRenderer.prototype);
@@ -49,8 +59,10 @@ describe('MedicalVolumeRenderer.setAnalysisRuns', () => {
     // region index texture: width 1 word (8 voxels), rows (z0,y1): x2..4 -> k=1, x6..7 -> k=2; (z1,y0): x0 -> k=2
     const t = textures.at(-1);
     expect(t.size).toEqual({ width: 1, height: 2, depthOrArrayLayers: 2 });
-    expect(t.layout).toEqual({ bytesPerRow: 4, rowsPerImage: 2 });
-    expect([...t.words]).toEqual([0, (1 << 8) | (1 << 12) | (1 << 16) | (2 << 24) | (2 << 28), 2, 0].map(x => x >>> 0));
+    expect(t.layout).toEqual({ bytesPerRow: 256, rowsPerImage: 2 }); // rows padded to the 256-byte pitch copyBufferToTexture requires
+    const row = (i) => t.words[i * 64];
+    expect([row(0), row(1), row(2), row(3)]).toEqual([0, (1 << 8) | (1 << 12) | (1 << 16) | (2 << 24) | (2 << 28), 2, 0].map(x => x >>> 0));
+    expect(t.words.length).toBe(64 * 4);
     expect(r.regionTexture).toBe(t.texture);
     expect(r.analysisOverlaySignature).toBe('sig');
     expect(r.rebuildBindGroup).toHaveBeenCalled();
