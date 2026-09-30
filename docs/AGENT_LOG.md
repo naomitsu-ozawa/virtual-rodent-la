@@ -2540,3 +2540,18 @@ re-entry reuse it. Headless (practice data, no segment): read 18.7 s,
 256³ 0.6 s, mask 0.0 s, classification 0.0 s — re-reading the DICOM slices
 dominates; next candidate: copy the WebGPU volume texture instead.
 Memory: the prepared data stays in the page (≈300 MB with the 512 plan).
+
+## Build 359 — VR preparation copies the 3D view's WebGPU texture
+
+Build 358 measured the DICOM re-read as the main cost (≈19 s headless).
+New MedicalVolumeRenderer.readPackedTexture(): a small compute shader
+textureLoads the resident rg8 texture and packs two voxels per u32 (the
+texture has no COPY_SRC and its usage is left untouched), read back in
+≤32 MB chunks — the exact bytes that were uploaded. buildVolumeData uses it
+when the resident texture has the same series, filter signature (not a
+partial rebuild) and plan dims as the VR plan (512 by default on both);
+otherwise it reads the slices as before. Filtered data no longer re-runs
+the filters for VR. Checked: 96×70×37 and 512×512×130 textures copied with
+0 mismatched bytes (SwiftShader WebGPU, 68 MB in 1.5 s). The full app path
+could not run headless (three.webgpu swizzle error with this Chromium);
+needs the device. Panel shows 3D画面から写す when used.

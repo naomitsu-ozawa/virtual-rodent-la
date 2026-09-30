@@ -8,11 +8,12 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build358';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build358';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build358';
-import { tr } from './i18n.js?v=20260930-build358';
-import { wc, ww } from './ui-shell.js?v=20260930-build358';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build359';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build359';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build359';
+import { sceneState } from './state.js?v=20260930-build359';
+import { tr } from './i18n.js?v=20260930-build359';
+import { wc, ww } from './ui-shell.js?v=20260930-build359';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -268,11 +269,18 @@ async function buildVolumeData(maxDim,onProgress){
  const plan=volumeTexturePlan(v,0,maxDim,VR_TARGET_SIDE),[tw,th,td]=plan.dims,first=s.slices[0],signed=!!first.signed;
  const filtered=!!(v.filterSignature&&typeof v.sliceData==='function');
  const sliceBytes=filtered?async z=>packCtSlice(await v.sliceData(z),first):z=>packedRgSlice(s.slices[z]);
- const data=new Uint8Array(tw*th*td*2),sliceSize=tw*th*2;
+ // build 359: when the 3D view's WebGPU texture holds the same data on the
+ // same grid (series, filter signature, plan), copy it instead of reading
+ // and filtering the DICOM slices again
+ const mv=sceneState?.medicalVolume;let copied=null;
+ if(mv?.texture&&typeof mv.readPackedTexture==='function'&&mv.seriesId===s.id&&mv.dataSignature!=='partial'&&(mv.dataSignature||'')===(v.filterSignature||'')&&mv.textureDims?.join()===plan.dims.join()){
+  try{copied=await mv.readPackedTexture((a,b)=>onProgress?.(a,b,'gpu'))}catch(e){console.warn('VR: GPU copy failed, reading slices',e);copied=null}
+ }
+ const data=copied?.data||new Uint8Array(tw*th*td*2),sliceSize=tw*th*2;
  const spans=(n,t)=>{const a=new Uint32Array(t+1);for(let i=0;i<=t;i++)a[i]=Math.min(n,Math.round(i*n/t));for(let i=0;i<t;i++)if(a[i+1]<=a[i])a[i+1]=Math.min(n,a[i]+1);return a};
  const xs=spans(s.columns,tw),ys=spans(s.rows,th),rowSum=new Float64Array(tw),rowCnt=new Uint32Array(tw);
  const zMap=new Uint32Array(td);for(let z=0;z<td;z++)zMap[z]=td<=1?0:Math.round(z*(s.slices.length-1)/(td-1));
- for(let z=0;z<td;z++){
+ for(let z=0;z<td&&!copied;z++){
   const packed=await sliceBytes(plan.reduced?zMap[z]:z),out=data.subarray(z*sliceSize,(z+1)*sliceSize);
   if(plan.reduced)reduceSliceArea(packed,s.columns,xs,ys,tw,th,tw*2,out,rowSum,rowCnt);else out.set(packed.subarray(0,sliceSize));
   if((z&15)===15||z===td-1){onProgress?.(z+1,td);await new Promise(r=>setTimeout(r,0))}
@@ -281,7 +289,7 @@ async function buildVolumeData(maxDim,onProgress){
  const {bricks:mm,brickDims}=computeBricks(data,[tw,th,td],calibration);
  const px=s.columns*s.spacingX,py=s.rows*s.spacingY,pz=s.slices.length*s.spacingZ,maxP=Math.max(px,py,pz,1),scale=3.3/maxP;
  const halfExt=[px*scale*.5,py*scale*.5,pz*scale*.5],step=Math.max(1e-5,Math.min(px/tw,py/th,pz/td)*scale*.85);
- return{data,dims:[tw,th,td],bricks:mm,brickDims,halfExt,step,calibration,filtered};
+ return{data,dims:[tw,th,td],bricks:mm,brickDims,halfExt,step,calibration,filtered,source:copied?'gpu':'files'};
 }
 
 // VR settings kept per browser (resolution only applies when a session starts)
@@ -439,8 +447,8 @@ export async function prepareVrData(onProgress=()=>{}){
  const promise=(async()=>{
   prepared=null;const times={},tick=async()=>new Promise(r=>setTimeout(r,0));
   let t0=performance.now();
-  const vd=await buildVolumeData(maxTexture3D(),(a,b)=>onProgress({phase:'read',done:a,total:b}));
-  times.read=performance.now()-t0;
+  const vd=await buildVolumeData(maxTexture3D(),(a,b,src)=>onProgress({phase:src==='gpu'?'copy':'read',done:a,total:b}));
+  times[vd.source==='gpu'?'copy':'read']=performance.now()-t0;
   onProgress({phase:'half',done:0,total:1});await tick();t0=performance.now();
   const half=Math.max(...vd.dims)>256?halveVolume(vd):null;times.half=performance.now()-t0;
   onProgress({phase:'mask',done:0,total:1});await tick();t0=performance.now();
@@ -460,17 +468,17 @@ export function showPreparePanel({language='ja',mode='vr',onStart}){
  const panel=document.createElement('div');panel.id='vr-prepare-panel';
  Object.assign(panel.style,{position:'fixed',left:'50%',top:'50%',transform:'translate(-50%,-50%)',zIndex:'10000',background:'#141c24f2',color:'#fff',padding:'20px 24px',borderRadius:'14px',width:'min(92vw,440px)',font:'15px system-ui,sans-serif',boxShadow:'0 8px 30px #0008'});
  panel.innerHTML='<strong style="font-size:18px"></strong><div class="ph" style="margin:12px 0 6px;color:#cfe3f0"></div><div style="height:10px;background:#26313b;border-radius:5px;overflow:hidden"><div class="bar" style="height:100%;width:0;background:#2d6cdf"></div></div><div class="tm" style="margin-top:10px;color:#9fb3c3;font-size:13px;white-space:pre-line"></div><div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button type="button" class="cancel"></button><button type="button" class="start" disabled></button></div>';
- const q=c=>panel.querySelector(c),names=ja?{read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ'}:{read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification'};
+ const q=c=>panel.querySelector(c),names=ja?{copy:'3D画面から写す',read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ'}:{copy:'Copy from the 3D view',read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification'};
  q('strong').textContent=(mode==='ar'?'AR':'VR')+(ja?'の準備':' preparation');q('.cancel').textContent=ja?'閉じる':'Close';q('.start').textContent=mode==='ar'?(ja?'ARを開始':'Start AR'):(ja?'VRを開始':'Start VR');
  Object.assign(q('.start').style,{background:'#2d6cdf',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 18px',fontSize:'16px'});Object.assign(q('.cancel').style,{background:'#26313b',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 14px'});
- const order=['read','half','mask','cls'];
+ const order=['read','half','mask','cls'],allPhases=['copy',...order];
  q('.cancel').onclick=()=>panel.remove();
  q('.start').onclick=()=>{panel.remove();onStart()};
  document.body.append(panel);
- const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'?' '+done+' / '+total:'');const i=order.indexOf(phase),f=(i+(phase==='read'&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%'};
+ const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'||phase==='copy'?' '+done+' / '+total:'');const i=Math.max(0,order.indexOf(phase==='copy'?'read':phase)),f=(i+((phase==='read'||phase==='copy')&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%'};
  prepareVrData(report).then(p=>{
   q('.bar').style.width='100%';q('.ph').textContent=ja?'準備ができました':'Ready';
-  q('.tm').textContent=order.filter(k=>p.times[k]!=null).map(k=>names[k]+': '+(p.times[k]/1000).toFixed(1)+' s').join('\n');
+  q('.tm').textContent=allPhases.filter(k=>p.times[k]!=null).map(k=>names[k]+': '+(p.times[k]/1000).toFixed(1)+' s').join('\n');
   q('.start').disabled=false;q('.start').focus();
  },e=>{console.error(e);q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e)});
 }
