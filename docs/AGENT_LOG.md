@@ -2621,6 +2621,12 @@ copied from the WebGPU texture, practice data cached, VR-local CT window tab,
 slice opacity default 100 %). main = build 360; 361 awaits the owner's Quest
 check and merge instruction.
 
+How the owner checks a build: open a PR from the work branch; the pages
+workflow deploys docs/ to
+https://naomitsu-ozawa.github.io/virtual-rodent-la/pr-preview/pr-<N>/ and the
+owner opens that URL on the Quest / iPad / Mac. Always give that preview URL
+(not only the PR link) when reporting a pushed build.
+
 Owner rules (keep): reply in Japanese; no meshes in the GPU volume view;
 never guess — measure first or ship a diagnostic build; run lint, unit tests
 and boot-check before pushing (boot-check needs PW_CHROMIUM=/opt/pw-browsers/chromium);
