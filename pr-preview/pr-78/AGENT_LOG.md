@@ -2665,9 +2665,34 @@ by the subagent; 断面 tab rendered headless with a selected plane. Needs a
 Quest check: pointing / far grab, handle legibility (the digit is mirrored
 from the back face), scroll speed and dead zone, the double frame.
 
-## Handoff (after build 364)
+## Build 365 — section selection, round 2: snap to axis, left-hand panel (item C)
 
-State: build 364 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Design (Fable), implementation by an Opus 5.5 subagent from a brief, reviewed
+here (one change: the 断面 tab also refreshes when the panel's state key
+changes, so its snap buttons follow a hand-rotated plane).
+- Snap: 軸位 / 冠状 / 矢状 buttons put the selected plane's normal on the
+  volume z / y / x axis (holder space = object space), frame edges along the
+  other two axes (up = volume y, coronal: z), normal sign kept (removed side
+  unchanged), position unchanged. Works while held (converted into the
+  controller's frame). Buttons light when the normal is within about 1° of
+  the axis. Row in the 断面 tab under the plane rows; 持ち方 moved to the
+  表示 tab above メニューの位置 to make room.
+- Left-hand panel: makeMenu now takes (W, H, width in m); a 640×232 canvas
+  0.17 m wide sits on the left controller at (0, 0.10, 0.03), tilted like the
+  menu tag, visible while sections are on. Row 1: selected plane name (its
+  colour), 軸位 / 冠状 / 矢状. Row 2: 向きを反転 (片側 only), 切る／切らない,
+  消す, ＋追加. The other hand's ray presses it; ray priority is menu → tag →
+  panel → frame. Redrawn when its state key changes, hidden in screenshots.
+Checks: lint, 397 unit tests, boot-check OK; vr-slice-check output identical;
+headless snap check (holder rotated and scaled, plane under holder and under
+a rotated controller, 12 cases: normal·axis = ±1, edge·up = 1); tabs 0 / 1
+and the panel rendered headless JA / EN, nothing outside the canvas. Needs a
+Quest check: panel position on the hand (may need to move up / tilt), button
+size for the ray, snap direction.
+
+## Handoff (after build 365)
+
+State: build 365 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -2696,10 +2721,10 @@ A. Done in build 361 (cause: 60 % default opacity over the dome; VR window
    tab added). Open: Quest check of the slice at 100 % and of the new tab.
 B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
    scroll). Open: Quest check; scroll speed (5 cm/s) may need tuning.
-C. Round 2: snap plane to axial / coronal / sagittal, left-hand section
-   panel, slim the big menu. Fable 5.1 high (design), Opus 5.5 high (impl).
+C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
+   Open: Quest check of the panel placement.
 D. Complex shapes: precomputed normals, fewer refinement steps; verify by
    image comparison and device fps. Fable 5.1 high–max.
 E. First-run VR guide (3 steps, controller labels). Sonnet 5.5 medium.
-Order: C → D → E (A, B done, pending device checks). Headless tools used so far: see the build
+Order: D → E (A–C done, pending device checks). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
