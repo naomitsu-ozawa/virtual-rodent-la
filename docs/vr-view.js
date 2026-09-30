@@ -8,11 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build353';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build353';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build353';
-import { tr } from './i18n.js?v=20260930-build353';
-import { wc, ww } from './ui-shell.js?v=20260930-build353';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build354';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build354';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build354';
+import { tr } from './i18n.js?v=20260930-build354';
+import { wc, ww } from './ui-shell.js?v=20260930-build354';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -402,6 +402,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  const segMode={};
+ // VR opacity per segment (build 354): 100 % by default, so rays stop at the
+ // first surface; the app's opacity is not used or changed
+ const segOpacity={};
  // controllers: ray, input source (handedness, gamepad), haptics
  const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
  const controllers=[0,1].map(i=>{const c=renderer.xr.getController(i);scene.add(c);
@@ -508,8 +511,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(ui.tab===0){
    const active=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active);
    if(!active.length)label(X,y0+40,L.noSeg);
-   active.forEach((key,i)=>{const seg=segmentState[key],y=y0+i*76,m=segMode[key]|0;label(X,y+36,tr(key),{color:seg.color||'#fff',bold:true});
-    L.segModes.forEach((t,j)=>btn(250+j*250,y,236,t,m===j,()=>{segMode[key]=j},{color:j===0?seg.color:undefined}))});
+   // name + VR opacity, display mode, opacity slider (VR only; starts at 100 %)
+   active.forEach((key,i)=>{const seg=segmentState[key],y=y0+i*76,m=segMode[key]|0,op=segOpacity[key]??1;label(X,y+36,tr(key)+' '+Math.round(op*100)+'%',{color:seg.color||'#fff',bold:true,size:28});
+    L.segModes.forEach((t,j)=>btn(250+j*160,y,150,t,m===j,()=>{segMode[key]=j},{color:j===0?seg.color:undefined,size:28}));
+    w.push({type:'slider',x:760,y,w:210,h:72,value:op,text:'',set:v=>{segOpacity[key]=Math.max(0.05,Math.round(v*20)/20)}})});
    const yb=MENU_H-110;
    label(X,yb-140,L.menuKey,{size:26,color:'#9fb3c3'});
    btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow()});btn(X+320,yb,320,L.shot,false,()=>{shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
@@ -618,7 +623,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    u.sliceWindow.value.set(+wc.value||0,Math.max(1,+ww.value||1));
    for(let i=0;i<4;i++){
     const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
-    u.segA.value[i].set(seg?.min||0,seg?.max||0,seg?.opacity??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
+    u.segA.value[i].set(seg?.min||0,seg?.max||0,segOpacity[key]??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
     color.set(seg?.color||'#ffffff');u.segC.value[i].set(color.r,color.g,color.b,segMode[key]===1?1:0);
    }
   }
