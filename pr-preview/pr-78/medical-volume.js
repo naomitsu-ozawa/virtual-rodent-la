@@ -225,6 +225,29 @@ fn segmentIndexFor(v:f32,tc0:vec3<f32>)->i32{
  return -1;
 }
 fn rawSegmentIndexAt(tc0:vec3<f32>)->i32{return rawSegmentIndexFor(huAt(tc0));}
+// build 372: the voxel the run tables (analysis regions, cut preview) count as
+// inside. The surface hit lies on the trilinear iso-surface, between an
+// outside and an inside voxel centre, so its floor voxel is the outside one
+// about half of the time and a region-coloured surface came out speckled /
+// striped along the depth contours. Step along the ray by half a voxel (up
+// to three times) until the voxel's own stored value is in the segment's range.
+fn huVoxel(tc0:vec3<f32>)->f32{
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
+ return (q.x+q.y*256.0-u.calibration.y)*u.dimsSlope.w+u.calibration.x;
+}
+fn objToTc(d:vec3<f32>)->vec3<f32>{return vec3<f32>(d.x/(2.0*u.halfStep.x),-d.y/(2.0*u.halfStep.y),d.z/(2.0*u.halfStep.z))/max(u.textureDims.xyz,vec3<f32>(1.0));}
+// candidates: the hit voxel, then half / one voxel inward (along the
+// gradient, into the segment), then along the ray (grazing hits)
+fn insideVoxelTc(tc0:vec3<f32>,dir:vec3<f32>,inward:vec3<f32>,seg:u32)->vec3<f32>{
+ let a=u.segments[seg*2u];
+ let di=objToTc(inward);let dr=objToTc(dir);
+ var cand=array<vec3<f32>,6>(tc0,tc0+di*0.5,tc0+di*1.0,tc0+dr*0.5,tc0+dr*1.0,tc0+di*1.5);
+ for(var k:u32=0u;k<6u;k=k+1u){let v=huVoxel(cand[k]);if(v>=a.x&&v<=a.y){return cand[k];}}
+ return tc0;
+}
 fn segmentIndexAt(tc0:vec3<f32>)->i32{return segmentIndexFor(huAt(tc0),tc0);}
 fn capSegmentIndex(tc0:vec3<f32>)->i32{
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
@@ -390,11 +413,14 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      let diffuse=0.28+0.72*abs(dot(n,lightDir));
      let spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
      let a=u.segments[u32(idx)*2u];
-     let isCutPreview=previewContains(u32(idx),tc);
+     // inward = towards the segment's range: up the gradient when entered from below its minimum, else down
+     let inward=select(-n,n,hvPrev<-1e8||hvPrev<a.x);
+     let tcv=insideVoxelTc(tc,dir,inward,u32(idx));
+     let isCutPreview=previewContains(u32(idx),tcv);
      var col=u.segments[u32(idx)*2u+1u].rgb;
      var alpha=clamp(a.z,0.03,1.0);
      var lit=col*diffuse+vec3<f32>(spec);
-     let overlay=select(0u,analysisOverlayAt(tc),!isCutPreview);
+     let overlay=select(0u,analysisOverlayAt(tcv),!isCutPreview);
      if(overlay!=0u){
       col=vec3<f32>(f32((overlay>>16u)&255u),f32((overlay>>8u)&255u),f32(overlay&255u))/255.0;
       let focused=(overlay&0x1000000u)!=0u;

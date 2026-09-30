@@ -2903,9 +2903,27 @@ Checks: lint, 404 unit tests, boot-check, vr-slice-check (0 diff), both
 shader harnesses (counts unchanged), e2e sample-project + folder-project +
 smoke: 11 passed (local CDN mirror).
 
-## Handoff (after build 371)
+## Build 372 — analysis region colouring was speckled / striped (WebGPU volume)
 
-State: build 371 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (iPad, build 371 screenshot): a selected analysis region (fat, cyan)
+shows as cyan / orange stripes along the depth contours. Reproduced headless
+with the harness (ANALYSIS=1: the bone sphere as a focused region): the OLD
+shader shows the same speckle, so it was not caused by builds 368–371 but
+made visible by this use. Cause: the region and cut-preview run tables are
+looked up at the floor voxel of the surface hit; the hit lies on the
+trilinear iso-surface between an outside and an inside voxel centre, so the
+floor voxel is the outside one about half of the time and the region test
+fails there. Fix: insideVoxelTc() looks up the first voxel whose own stored
+value is inside the segment's range among: the hit voxel, half / one / one
+and a half voxels inward (along the gradient, towards the range), half / one
+voxel along the ray (grazing hits). Harness: the region sphere is now cyan
+apart from a few pixels (before: half speckled); images without a region
+unchanged (fetch counts 18.9 / 12.7 / 8.0 as in build 368).
+Checks: lint, 404 unit tests, boot-check, harness.
+
+## Handoff (after build 372)
+
+State: build 372 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
