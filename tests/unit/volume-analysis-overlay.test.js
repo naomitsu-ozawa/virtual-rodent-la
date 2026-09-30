@@ -43,6 +43,7 @@ describe('MedicalVolumeRenderer.setAnalysisRuns', () => {
     expect(data[header + 2]).toBe((7 << 16) | 6);
     expect(data[header + 3]).toBe((0xabcdef | 0x1000000 | 0x80000000) >>> 0);
     expect(data[header + 4]).toBe(0);
+    expect(data[table]).toBe(0xff); // no segment indices given: every segment
     expect(data[table + 1]).toBe((0x112233 | 0x80000000) >>> 0);
     expect(data[table + 2]).toBe((0xabcdef | 0x1000000 | 0x80000000) >>> 0);
     // region index texture: width 1 word (8 voxels), rows (z0,y1): x2..4 -> k=1, x6..7 -> k=2; (z1,y0): x0 -> k=2
@@ -58,7 +59,8 @@ describe('MedicalVolumeRenderer.setAnalysisRuns', () => {
   it('skips the upload when the signature is unchanged and clears when empty', () => {
     const { r, written } = fakeRenderer([4, 1, 1]);
     const v = { columns: 4, rows: 1, slices: 1 };
-    r.setAnalysisRuns([{ runs: runs(1, { 0: [0, 1, 2] }), color: 1 }], v, 's1');
+    r.setAnalysisRuns([{ runs: runs(1, { 0: [0, 1, 2] }), color: 1, segments: [2] }], v, 's1');
+    expect(written.at(-1).data[written.at(-1).data[0]]).toBe(1 << 2); // segment mask (build 375)
     const n = written.length;
     r.setAnalysisRuns([{ runs: runs(1, { 0: [0, 1, 2] }), color: 1 }], v, 's1');
     expect(written.length).toBe(n);

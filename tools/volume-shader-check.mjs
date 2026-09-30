@@ -11,7 +11,7 @@ const fileA=process.argv[2]||'docs/medical-volume.js',fileB=process.argv[3]||nul
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 const shaderOf=file=>{const s=fs.readFileSync(file,'utf8'),a=s.indexOf('export function volumeShader(){'),b=s.indexOf('export function brickShader(){',a);const body=s.slice(a,b),i=body.indexOf('`')+1,j=body.lastIndexOf('`');return safeWgsl(body.slice(i,j))};
 const counting=code=>('var<private> nFetch:u32=0u;var<private> nBrick:u32=0u;var<private> nEdit:u32=0u;\n'+code)
- .replace('fn huAt(tc0:vec3<f32>)->f32{','fn huAt(tc0:vec3<f32>)->f32{nFetch=nFetch+1u;')
+ .replace('fn huAt(tc0:vec3<f32>)->f32{','fn huAt(tc0:vec3<f32>)->f32{nFetch=nFetch+1u;').replace('fn huVoxel(tc0:vec3<f32>)->f32{','fn huVoxel(tc0:vec3<f32>)->f32{nFetch=nFetch+1u;')
  .replace('fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}','fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}').replace('fn brickClass(p:vec3<f32>)->i32{','fn brickClass(p:vec3<f32>)->i32{nBrick=nBrick+1u;').replace(/fn brickMayContain\(p:vec3<f32>\)->bool\{\n/,'fn brickMayContain(p:vec3<f32>)->bool{nBrick=nBrick+1u;\n')
  .replace('fn editAllows(seg:u32,tc0:vec3<f32>)->bool{','fn editAllows(seg:u32,tc0:vec3<f32>)->bool{nEdit=nEdit+1u;')
  .replace(/return vec4<f32>\(acc\.rgb\+bg\*\(1\.0-acc\.a\),1\.0\);\n}`?$/,'return vec4<f32>(f32(nFetch),f32(nBrick),f32(nEdit),1.0);\n}');
@@ -20,7 +20,7 @@ const srv=http.createServer((q,r)=>{r.writeHead(200,{'content-type':'text/html'}
 const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--use-webgpu-adapter=swiftshader']});
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,400))});
 await pg.goto('http://localhost:8778/');
-const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analysis,regionTexOn})=>{
+const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analysis,regionTexOn,regionR})=>{
  const adapter=await navigator.gpu.requestAdapter(),device=await adapter.requestDevice();
  // phantom: 128³, unsigned u16 = HU + 1024 (slope 1, intercept -1024, bias 0):
  // soft-tissue ellipsoid (40 HU) holding a bone sphere (900 HU), a 2-voxel
@@ -46,11 +46,11 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
  // analysis overlay (medical-volume.js setAnalysisRuns layout): the bone sphere as one focused cyan region
  let overlayBuf=zero,regionTex=device.createTexture({size:{width:1,height:1,depthOrArrayLayers:1},dimension:'3d',format:'r32uint',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
  if(analysis){const rowCount=N*N,counts=new Uint32Array(rowCount),runs=[];
-  for(let z=0;z<N;z++)for(let y=0;y<N;y++){let x0=-1;for(let x=0;x<=N;x++){const inR=x<N&&Math.hypot(x-64,y-64,z-64)<22;if(inR&&x0<0)x0=x;if(!inR&&x0>=0){runs.push([z*N+y,x0,x-1]);counts[z*N+y]++;x0=-1}}}
+  for(let z=0;z<N;z++)for(let y=0;y<N;y++){let x0=-1;for(let x=0;x<=N;x++){const inR=x<N&&Math.hypot(x-64,y-64,z-64)<regionR;if(inR&&x0<0)x0=x;if(!inR&&x0>=0){runs.push([z*N+y,x0,x-1]);counts[z*N+y]++;x0=-1}}}
   const header=2+rowCount,data=new Uint32Array(header+runs.length*2),cursor=new Uint32Array(rowCount);data[0]=1;let at=header;for(let r=0;r<rowCount;r++){data[1+r]=at;cursor[r]=at;at+=counts[r]*2}data[1+rowCount]=at;
   const word=(0x00c8ff|0x1000000|0x80000000)>>>0;for(const [row,x0,x1] of runs){const c=cursor[row];data[c]=((x1&65535)<<16)|(x0&65535);data[c+1]=word;cursor[row]=c+2}
   // build 374 layout: colour table after the pairs, data[0] = its start; region index texture (4 bits per voxel)
-  const tableStart=header+runs.length*2,data2=new Uint32Array(tableStart+16);data2.set(data);data2[0]=tableStart;data2[tableStart+1]=word;
+  const tableStart=header+runs.length*2,data2=new Uint32Array(tableStart+16);data2.set(data);data2[0]=tableStart;data2[tableStart]=0xff;data2[tableStart+1]=word;
   overlayBuf=storage(data2);
   const tw=N/8,words=new Uint32Array(tw*N*N);for(const [row,x0,x1] of runs){for(let x=x0;x<=x1;x++){const wi=row*tw+(x>>3),sh=(x&7)*4;words[wi]=(words[wi]&~(15<<sh))|(1<<sh)}}
   regionTex=device.createTexture({size:{width:tw,height:N,depthOrArrayLayers:N},dimension:'3d',format:'r32uint',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
@@ -92,7 +92,7 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
  const out={A:await run(shaders.A,'A'),Ac:await run(shaders.Ac,'Ac','rgba32float')};if(shaders.B){out.B=await run(shaders.B,'B');out.Bc=await run(shaders.Bc,'Bc','rgba32float')}
  for(const k of ['Ac','Bc']){const r=out[k];if(!r||r.errs)continue;let f=0,br=0,e=0;for(let i=0;i<r.px.length;i+=4){f+=r.px[i];br+=r.px[i+1];e+=r.px[i+2]}r.sums={fetch:f,brick:br,edit:e};r.px=null}
  return{W,H,out};
-},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr,analysis,regionTexOn:+(process.env.REGIONTEX??1)});
+},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr,analysis,regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22)});
 await b.close();srv.close();
 const {W,H,out}=result;
 for(const k of Object.keys(out)){const r=out[k];if(r.errs){console.log(k,'COMPILE ERRORS',r.errs);process.exit(1)}

@@ -2980,9 +2980,48 @@ search took the pair with the larger x0. Speed is not measurable here
 Not done (follow-up if still slow): editAllows for processed segments (fat
 RLE) as a bit-mask texture, same scheme, one load per sample.
 
-## Handoff (after build 374)
+## Build 375 — coloured hits without HU fetches, drag controller hysteresis, per-second frame stats
 
-State: build 374 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (iPad, build 374): comfortable without a coloured region; with one
+the ×0.7 / ×0.5 size factor appeared and the view was choppy while the
+status bar read about 60 fps; it smoothed out after dragging for a while.
+Facts from the code: the 間隔 figure is one gap sample every 250 ms, so
+dropped frames between samples are invisible; the drag controller decided
+on a single GPU measurement (down over 10 ms, up under 5 ms, every 300 ms),
+so a size flip every 300 ms is possible when the time does not scale with
+the pixel count (build 279 saw that); with a region every hit still paid the
+inside-voxel search (1–6 HU fetches) before the texture lookup.
+- Shader: hits on segments without a shown region skip the region lookup
+  entirely (a segment mask word at the colour table start,
+  data[tableStart]; analysis-ops passes the region's segment indices,
+  unknown → all). With the index texture the lookup is regionOverlayNear:
+  the same six candidates as insideVoxelTc (hit voxel first), read from the
+  region texture only — a coloured hit costs one texture load, no HU fetch;
+  insideVoxelTc now runs only for a cut preview or the row-search fallback.
+  Semantics: the first candidate with a region instead of the region at the
+  first in-segment candidate: differs only at a region's border inside its
+  own segment (harness: 21 of 442368 channels, 7 pixels, at the sphere's
+  edge; whole volume coloured: 0 differing channels; no region: 0).
+  Inlining six lookups into the hit block cost +16 % on the SwiftShader CPU
+  proxy even when not executed; as one loop body with arithmetic offsets
+  the proxy is +3 % (run-to-run noise about 3 %). Metal decides.
+- Drag controller: down when two measurements in a row exceed 9 ms (300 ms
+  hold), up only when the time predicted for the larger size (pixels scale
+  with the step) stays under 7 ms for three measurements and the size was
+  held 600 ms; history cleared on a change.
+- Status bar while dragging: "[1秒: N 枚, 最大 xx ms, 落ち n]" — frames in
+  the last second, longest gap, gaps over 20 ms. Reads a dropped-frame
+  count directly instead of one gap sample.
+- Harness: REGIONR (region radius, default 22; 200 = everything coloured),
+  huVoxel fetches counted.
+Checks: lint, 404 unit tests (segment mask), boot-check, harness as above.
+Not done: if the iPad still drops frames with a coloured fat region, the
+next candidates are the editAllows bit-mask texture (build 373 note) and
+a dilated region texture (one load per hit, ±1 texel bleed).
+
+## Handoff (after build 375)
+
+State: build 375 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -3021,10 +3060,12 @@ D. Goal (owner): VR auto resolution held at 100 % at the normal size.
    limit; then precomputed normals (memory!) or temporal reuse.
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
-F. iPad (builds 372–374): region colouring speckle fixed, drag lookups by
-   binary search + GPU-timed drag budget, region index texture. Open:
-   iPad check of drag fps with a coloured fat region; if still heavy, the
-   editAllows bit-mask texture (see build 373 / 374 entries).
+F. iPad (builds 372–375): region colouring speckle fixed, drag lookups by
+   binary search + GPU-timed drag budget, region index texture, coloured
+   hits without HU fetches, controller hysteresis, per-second frame stats.
+   Open: iPad check with a coloured fat region — read "[1秒: N 枚, 最大,
+   落ち]" while choppy; if frames still drop, editAllows bit-mask texture
+   or a dilated region texture (build 375 entry).
 Order: device checks of builds 361–368 first; then whatever the owner
 reports (tablet comfort on the Quest browser, fps). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
