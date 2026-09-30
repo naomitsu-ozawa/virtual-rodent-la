@@ -8,12 +8,12 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build360';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build360';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build360';
-import { sceneState } from './state.js?v=20260930-build360';
-import { tr } from './i18n.js?v=20260930-build360';
-import { wc, ww } from './ui-shell.js?v=20260930-build360';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build361';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build361';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build361';
+import { sceneState } from './state.js?v=20260930-build361';
+import { tr } from './i18n.js?v=20260930-build361';
+import { wc, ww } from './ui-shell.js?v=20260930-build361';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -303,11 +303,11 @@ async function buildVolumeData(maxDim,onProgress){
 }
 
 // VR settings kept per browser (resolution only applies when a session starts)
-const SETTINGS_KEY='vrl-vr-settings-3';
+const SETTINGS_KEY='vrl-vr-settings-4',OLD_KEY='vrl-vr-settings-3'; // v4: slice opacity defaults to 100 % (build 361)
 // menuMode 0 follows the head lazily, 1 stays where it is; secHold 0 grip
 // picks the section up near the frame, 1 trigger fixes / picks it up
-const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.6,data:1,quality:0,vres:0,foveation:2,rate:0};
-function loadSettings(){try{return{...DEFAULTS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{...DEFAULTS}}}
+const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:1,data:1,quality:0,vres:0,foveation:2,rate:0};
+function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&localStorage.getItem(OLD_KEY);return{...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:1}:{})}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
 // smaller per axis and scaled up where the volume box covers the view. Owner,
@@ -318,6 +318,8 @@ function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v)
 // cost follows the marched pixels, so auto keeps the frame time by lowering
 // the resolution while the volume is large and raising it when small.
 const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=0.8,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+// VR window slider / button step in HU (build 361)
+const WIN_STEP=10;
 
 // upscales the offscreen volume image; drawn with the volume box so only the
 // covered pixels are touched
@@ -499,6 +501,7 @@ let running=null;
 export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
  const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;settings.clsDiag=0;
+ const vrWindow={c:+wc.value||0,w:Math.max(1,+ww.value||1)}; // VR-local CT window (build 361): starts from the app's sliders, not written back
  const ar=mode==='ar',renderer=new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
@@ -512,13 +515,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
- const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','画質','詳細'],follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
+ const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','CT値','画質','詳細'],win:'VRでの断面スライスの表示範囲（アプリの値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
-  :{title:'Virtual Rodent Lab',tabs:['View','Section','Quality','Details'],follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
+  :{title:'Virtual Rodent Lab',tabs:['View','Section','Window','Quality','Details'],win:'Slice window in VR (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
@@ -647,7 +650,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   label(X,52,L.title,{bold:true,size:36,color:'#fff'});
   btn(780,18,200,L.close,false,()=>setMenuOpen(false),{size:28});
   // tabs
-  L.tabs.forEach((t,i)=>btn(X+i*240,110,226,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i}));
+  L.tabs.forEach((t,i)=>btn(X+i*196,110,184,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i}));
   const status=ui.flash&&performance.now()<ui.flashUntil?ui.flash:ui.status;
   label(X,228,status,{color:'#ffd27a'});
   const y0=270;
@@ -683,6 +686,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
    label(X,yb2+470,section.on?L.secHelp[settings.secHold]:L.secOff,{size:26});
    label(X,yb2+506,L.byHelp,{size:24,color:'#9fb3c3'});
   }else if(ui.tab===2){
+   // VR-local window: slider 0..1 over the app's slider range, presets set it as given
+   const cr=[+wc.min,+wc.max],[cMin,cMax]=Number.isFinite(cr[0])&&Number.isFinite(cr[1])&&cr[0]<cr[1]?cr:[-2000,4000],wMax=Number.isFinite(+ww.max)&&+ww.max>1?+ww.max:8000,cl=(v,a,b)=>Math.min(b,Math.max(a,v));
+   label(X,y0+10,L.win,{size:26,color:'#9fb3c3'});
+   const row=(y,text,key,lo,hi)=>{label(X,y+36,text);const floor=key==='w'?1:-Infinity;w.push({type:'slider',x:CX+26,y,w:300,h:72,value:cl((vrWindow[key]-lo)/(hi-lo),0,1),text:String(Math.round(vrWindow[key])),set:v=>{vrWindow[key]=Math.max(floor,Math.round((lo+v*(hi-lo))/WIN_STEP)*WIN_STEP)}});
+    btn(800,y,70,'−',false,()=>{vrWindow[key]=Math.max(floor,cl(vrWindow[key]-WIN_STEP,lo,hi))},{size:30});btn(890,y,70,'＋',false,()=>{vrWindow[key]=Math.max(floor,cl(vrWindow[key]+WIN_STEP,lo,hi))},{size:30})};
+   row(y0+50,L.wcL,'c',cMin,cMax);row(y0+140,L.wwL,'w',1,wMax);
+   [[L.pApp,+wc.value||0,Math.max(1,+ww.value||1)],[L.pFull,Math.round((cMin+cMax)/2),Math.max(1,Math.round(cMax-cMin))],[L.pBone,500,2000],[L.pSoft,40,400]].forEach(([t,c,wd],i)=>btn(X+i*244,y0+240,232,t,vrWindow.c===c&&vrWindow.w===wd,()=>{vrWindow.c=c;vrWindow.w=wd},{size:28}));
+   label(X,y0+350,L.winHelp,{size:24,color:'#9fb3c3'});
+  }else if(ui.tab===3){
    choice(y0,L.r,VRES.map((r,i)=>({label:r?Math.round(r*100)+'%':L.auto,value:i})),settings.vres,v=>{settings.vres=v;applyQuality()});
    choice(y0+90,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
    choice(y0+180,L.q,L.qv.map((t,i)=>({label:t,value:i})),settings.quality,v=>{settings.quality=v;applyQuality()});
@@ -785,7 +797,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
      u.cutPlanes.value[n].set(tmpN.x,tmpN.y,tmpN.z,tmpN.dot(tmpP));if(pl.cut&&settings.cut)cutBits|=1<<n;n++;
     }}
    u.planeCount.value=n;u.planeCut.value=cutBits;u.capOn.value=settings.cap?1:0;u.sliceTint.value=+settings.sliceTint||0;u.sliceOpacity.value=section.on?settings.sliceOpacity:0;
-   u.sliceWindow.value.set(+wc.value||0,Math.max(1,+ww.value||1));
+   u.sliceWindow.value.set(vrWindow.c,Math.max(1,vrWindow.w));
    for(let i=0;i<4;i++){
     const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
     u.segA.value[i].set(seg?.min||0,seg?.max||0,segOpacity[key]??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
@@ -837,7 +849,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
    ui.fpsLine=fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
    ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info;
-   if(ui.tab===3||ui.flash)menu.refresh();
+   if(ui.tab===4||ui.flash)menu.refresh();
    if(ui.flash&&now>ui.flashUntil)ui.flash='';
    for(const k in sums){sums[k]=0;counts[k]=0}
   }

@@ -2571,13 +2571,55 @@ at 4 a short message. Grip/trigger takes the nearest frame. Menu 断面 tab:
 rows per plane (切る/切らない, 向きを反転, 消す), ＋追加. Headless shader
 check with 0/1/2 planes, clip bits and slices; menu layout rendered.
 
-## Handoff (after build 360, main at 3819d79)
+## Build 361 — VR slice window: cause measured, opacity default, VR window tab
 
-State: main = build 360 (VR/AR: WebGL2 volume, 256³ default, auto
-resolution, precomputed classification with processing mask, up to 4
-section planes with cap / slice colouring / clip modes, beginner menu,
-screenshots, data prepared before the session and copied from the WebGPU
-texture, practice data cached). All merged; no open PR.
+Owner (handoff item A): the VR slice did not look like the 2D view with the
+same window. Measured before changing anything:
+- The real VR fragment shader run headless (SwiftShader WebGL2, synthetic HU
+  ramp, window 300/400) matches the 2D formula (mpr-render.js
+  round((HU-low)*255/ww)) byte for byte at 100 % slice opacity: difference 0
+  on every row. Window values (the same wc/ww sliders), the ramp formula and
+  the rg8 decode were not the cause.
+- At the VR default opacity 60 % the slice is blended over the dark dome:
+  black lifts to 21–25, white caps at 174–178, mid greys −25…−64. Inside a
+  visible segment the cap fills the rest (−1…−5 from the 2D tint), so bone
+  looked right while soft tissue looked dark and flat — the "wrong window"
+  impression.
+- Colour space: three 0.186 makes the Quest projection layer with gl.RGBA8
+  and adds no colour conversion to a ShaderMaterial. The WebXR core and Layers
+  specs require the compositor to treat RGBA8 layer pixels as sRGB-encoded
+  (no gamma conversion), so the raw 0.5 the shader writes shows like the 2D
+  canvas byte 128; the menu (three built-in material, sRGB encode) relies on
+  the same rule. Not confirmed on the device, spec + code only.
+- Secondary, unchanged: the slice is drawn inside the reduced-resolution pass
+  (auto 25–80 %) so it is softer than 2D; trilinear resampling.
+Changes:
+- DEFAULTS.sliceOpacity 0.6 → 1. Settings key vrl-vr-settings-3 → -4; the old
+  key is migrated once with sliceOpacity forced to 1, other values kept.
+- New menu tab CT値 / Window (index 2; 画質 → 3, 詳細 → 4, fps refresh on
+  tab 4). VR-local window vrWindow {c,w}: starts from the app's wc/ww when the
+  session starts, feeds the sliceWindow uniform every frame, never written
+  back to the app and not persisted. Centre slider over the app slider range
+  (wc.min..wc.max), width over 1..ww.max, 10 HU steps, −/＋ buttons of 10 HU,
+  presets アプリの値 / 全範囲 / 骨 (500/2000) / 軟部 (40/400).
+- tools/vr-slice-check.mjs (npm run vr-slice-check, PW_CHROMIUM needed): the
+  headless shader-vs-2D table above, kept for regression checks.
+Checks: lint, 397 unit tests, boot-check OK; vr-slice-check 100 % rows all 0;
+menu tab rendered headless in JA and EN (no overlap, widest x 1004, bottom
+y ≈ 650). Implementation by a Sonnet 5.5 subagent from a written brief;
+reviewed and fixed here (slider text overlapped the −/＋ buttons, width could
+round to 0, step constant out of the label table). Needs a Quest check: slice
+grey vs the 2D view at 100 %, the new tab's sliders with the controller.
+
+## Handoff (after build 361)
+
+State: build 361 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+volume, 256³ default, auto resolution, precomputed classification with
+processing mask, up to 4 section planes with cap / slice colouring / clip
+modes, beginner menu, screenshots, data prepared before the session and
+copied from the WebGPU texture, practice data cached, VR-local CT window tab,
+slice opacity default 100 %). main = build 360; 361 awaits the owner's Quest
+check and merge instruction.
 
 Owner rules (keep): reply in Japanese; no meshes in the GPU volume view;
 never guess — measure first or ship a diagnostic build; run lint, unit tests
@@ -2590,11 +2632,8 @@ solution is not in sight, stop and prepare a handoff. Bump the build with
 npm run bump-build for every pushed change and log it here.
 
 Next work (owner-approved list; recommended model / effort):
-A. VR slice CT window: find why the slice does not look like the 2D view
-   with the same window (suspects: colour space of the XR framebuffer vs raw
-   output, or which window values are read) — measure first; then add VR
-   window centre / width sliders (+ presets). Fable 5.1 high (cause),
-   Sonnet 5.5 medium (sliders).
+A. Done in build 361 (cause: 60 % default opacity over the dome; VR window
+   tab added). Open: Quest check of the slice at 100 % and of the new tab.
 B. Section selection, round 1: pick the frame the ray points at (grab from a
    distance), coloured handle + number per frame at offset corners, a
    "selected plane" (thicker frame), thumbstick moves the selected plane
@@ -2604,5 +2643,5 @@ C. Round 2: snap plane to axial / coronal / sagittal, left-hand section
 D. Complex shapes: precomputed normals, fewer refinement steps; verify by
    image comparison and device fps. Fable 5.1 high–max.
 E. First-run VR guide (3 steps, controller labels). Sonnet 5.5 medium.
-Order: A → B → C → D → E. Headless tools used so far: see the build
+Order: B → C → D → E (A done, pending device check). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
