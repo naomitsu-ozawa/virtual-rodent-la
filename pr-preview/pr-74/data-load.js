@@ -1,31 +1,31 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale, mark3DCurrent } from './three-state.js?v=20260930-build354';
-import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-status.js?v=20260930-build354';
-import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20260930-build354';
-import { footer, resetFilterBtn, wc, ww, surfaceSmoothEnabled, surfaceSmoothStrength, planes, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, projectSaveBtn, list, selected, prog, volumeAnalysisToggle, threeLabel, state, renderModeToggle, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, filterAddSelect, filterAddButton, ctRangeAuto, ctRangeFull, $, folderBtn, demoBtn, progLabel, bar } from './ui-shell.js?v=20260930-build354';
-import { compareFingerprints, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20260930-build354';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsGlobalMask } from './segments.js?v=20260930-build354';
-import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls } from './filter-pipeline.js?v=20260930-build354';
-import { setControlValue, applyCtRangeMode, removeSegmentPreset, addSegmentPreset, segmentControl, setControlChecked, clearAnalysisHighlight, scheduleSegment3D, updateSegmentOutputs, renderSegmentPresets, THIN_SLIDERS, configureThinSliders } from './segment-ui.js?v=20260930-build354';
-import { syncGpuVolumeEdits, gpuVolumeApplied, gpuVolumeTarget, gpuVolumePlanOptions, updateVolumeCacheControl, gpuVolumeDataSignature } from './gpu-volume-data.js?v=20260930-build354';
-import { renderAll, cancelSourceMprWarmup } from './mpr-render.js?v=20260930-build354';
-import { updateAnalysisEditorControls } from './edit-tools.js?v=20260930-build354';
-import { request3DRender } from './scene3d.js?v=20260930-build354';
-import { esc, fmt, isIPadRuntime, isIPhoneRuntime, niceCtStep, isDesktopRuntime, withTimeout } from './utils.js?v=20260930-build354';
-import { decode, prepareSourceMprCache } from './volume-io.js?v=20260930-build354';
-import { progress, clearMemoryFilterPreviewCache } from './rebuild-3d.js?v=20260930-build354';
-import { ensureMpr3DPreviewCache, syncMpr3DSliceSliders, syncMpr3DOverlayPresentation, disposeMprPlaneGroup } from './mpr3d-overlay.js?v=20260930-build354';
-import { tr } from './i18n.js?v=20260930-build354';
-import { setGpuComputeBackend, gpuFilterRuntime, gpuFilterPipeline } from './gpu-compute.js?v=20260930-build354';
+import { mark3DStale, mark3DCurrent } from './three-state.js?v=20260930-build355';
+import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-status.js?v=20260930-build355';
+import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20260930-build355';
+import { footer, resetFilterBtn, wc, ww, surfaceSmoothEnabled, surfaceSmoothStrength, planes, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, projectSaveBtn, list, selected, prog, volumeAnalysisToggle, threeLabel, state, renderModeToggle, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, filterAddSelect, filterAddButton, ctRangeAuto, ctRangeFull, $, folderBtn, demoBtn, progLabel, bar } from './ui-shell.js?v=20260930-build355';
+import { compareFingerprints, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20260930-build355';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsGlobalMask } from './segments.js?v=20260930-build355';
+import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls } from './filter-pipeline.js?v=20260930-build355';
+import { setControlValue, applyCtRangeMode, removeSegmentPreset, addSegmentPreset, segmentControl, setControlChecked, clearAnalysisHighlight, scheduleSegment3D, updateSegmentOutputs, renderSegmentPresets, THIN_SLIDERS, configureThinSliders } from './segment-ui.js?v=20260930-build355';
+import { syncGpuVolumeEdits, gpuVolumeApplied, gpuVolumeTarget, gpuVolumePlanOptions, updateVolumeCacheControl, gpuVolumeDataSignature } from './gpu-volume-data.js?v=20260930-build355';
+import { renderAll, cancelSourceMprWarmup } from './mpr-render.js?v=20260930-build355';
+import { updateAnalysisEditorControls } from './edit-tools.js?v=20260930-build355';
+import { request3DRender } from './scene3d.js?v=20260930-build355';
+import { esc, fmt, isIPadRuntime, isIPhoneRuntime, niceCtStep, isDesktopRuntime, withTimeout } from './utils.js?v=20260930-build355';
+import { decode, prepareSourceMprCache } from './volume-io.js?v=20260930-build355';
+import { progress, clearMemoryFilterPreviewCache } from './rebuild-3d.js?v=20260930-build355';
+import { ensureMpr3DPreviewCache, syncMpr3DSliceSliders, syncMpr3DOverlayPresentation, disposeMprPlaneGroup } from './mpr3d-overlay.js?v=20260930-build355';
+import { tr } from './i18n.js?v=20260930-build355';
+import { setGpuComputeBackend, gpuFilterRuntime, gpuFilterPipeline } from './gpu-compute.js?v=20260930-build355';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260930-build354';
-import { filterState, currentFilterSignature } from './source-filters.js?v=20260930-build354';
-import { dispose } from './surface-mesh.js?v=20260930-build354';
-import { residentMprJobs } from './mpr-orthogonal.js?v=20260930-build354';
+import { GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20260930-build355';
+import { filterState, currentFilterSignature } from './source-filters.js?v=20260930-build355';
+import { dispose } from './surface-mesh.js?v=20260930-build355';
+import { residentMprJobs } from './mpr-orthogonal.js?v=20260930-build355';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-import { ensureSegmentBaseRuns } from './segment-runs.js?v=20260930-build354';
-import { APP_VERSION, APP_BUILD } from './version.js?v=20260930-build354';
+import { ensureSegmentBaseRuns } from './segment-runs.js?v=20260930-build355';
+import { APP_VERSION, APP_BUILD } from './version.js?v=20260930-build355';
 export const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 export const DEMO_SIZE=20800000;
 export function updateRenderModeControl(v=volume){
@@ -174,12 +174,15 @@ export async function loadSampleDemo(){
  // cache problems fall back to the network
  let cache=null;try{if('caches' in window)cache=await withTimeout(caches.open(SAMPLE_CACHE),1500,null)}catch{cache=null}
  const out=new Array(names.length);let next=0,done=0,bytes=0,cached=0;
- const lane=async()=>{while(next<names.length){const i=next++,url=new URL(SAMPLE_DEMO_BASE+encodeURIComponent(names[i]),location.href).href;
-  let res=null;try{res=cache?await cache.match(url):null}catch{res=null}
+ // build 355: the cache key does not contain the page path, so main and the
+ // PR previews (same origin) share one copy; the write runs beside the read
+ const puts=[];
+ const lane=async()=>{while(next<names.length){const i=next++,url=new URL(SAMPLE_DEMO_BASE+encodeURIComponent(names[i]),location.href).href,key=location.origin+'/__vrl-sample/v1/'+encodeURIComponent(names[i]);
+  let res=null;try{res=cache?await cache.match(key):null}catch{res=null}
   if(res)cached++;
-  else{res=await fetch(url,{credentials:'omit'});if(!res.ok)throw new Error(names[i]+': HTTP '+res.status);if(cache){try{await cache.put(url,res.clone())}catch{}}}
+  else{res=await fetch(url,{credentials:'omit'});if(!res.ok)throw new Error(names[i]+': HTTP '+res.status);if(cache)puts.push(cache.put(key,res.clone()).catch(()=>{}))}
   const b=await res.blob();bytes+=b.size;out[i]=new File([b],names[i]);done++;progress(done,names.length)}};
- await Promise.all(Array.from({length:6},lane));
+ await Promise.all(Array.from({length:6},lane));await Promise.all(puts);
  footer.textContent=tr('sampleDone')+' · '+names.length+' · '+fmt(bytes)+(cached?' · '+tr('sampleCached')+' '+cached:'');
  return out;
 }

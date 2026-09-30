@@ -2483,3 +2483,15 @@ segment starts at 100 % (the app's opacity is neither used nor changed), so
 rays end at the first surface (acc > 0.985) instead of crossing
 semi-transparent tissue — expected to relieve the two-segment load (to be
 measured). 表示 tab: name with %, display mode, opacity slider (5–100 %).
+
+## Build 355 — practice data load checked
+
+Owner: practice data slow to load — network or code? Measured locally
+(Chromium, local server, button to 'loaded'): first 9.2 s (fetch 3.8 s +
+cache writes that each lane awaited), second 1.1 s from the cache. So a
+repeat load is disk-bound and short; the first load moves 257 MB and is
+network-bound on the device (e.g. ≈40 s at 50 Mbit/s). Two code fixes: the
+cache write no longer blocks the next download (first load 9.2 → 7.3 s
+locally), and the cache key no longer contains the page path, so main and
+every PR preview (same origin) share one copy (before, each preview URL
+downloaded again). Old v1-by-URL entries are left unused.
