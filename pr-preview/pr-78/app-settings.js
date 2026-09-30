@@ -8,6 +8,7 @@ export const SETTINGS_DEFAULTS={
  dragQuality:'standard', // pixel budget while dragging
  restQuality:'standard', // pixel budget at rest
  stepQuality:'standard', // ray-march step
+ refine:'fast',        // surface search: fast (2 secant + 1 bisection on the HU iso-value) / exact (6 bisections)
  interp:'linear',
  dragLowerRes:true,    // lower the 3D resolution while dragging (resizes the canvas)      // 3D sampling: none / linear / smooth / smoother
  showPerf:true,        // frame time / fps in the status bar
@@ -28,6 +29,7 @@ const api={
  dragBudget:tier=>(DRAG_BUDGETS[values.dragQuality]||DRAG_BUDGETS.standard)[tier]??DRAG_BUDGETS.standard[0],
  restBudget:()=>REST_BUDGETS[values.restQuality]??REST_BUDGETS.standard,
  stepScale:()=>STEP_SCALES[values.stepQuality]??1,
+ refineMode:()=>values.refine==='exact'?0:1,
  interpLevel:()=>({none:0,linear:1,smooth:2,smoother:3})[values.interp]??1,
  debugOn:()=>debugEnabled()
 };

@@ -8,12 +8,12 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build367';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build367';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build367';
-import { sceneState } from './state.js?v=20260930-build367';
-import { tr } from './i18n.js?v=20260930-build367';
-import { wc, ww } from './ui-shell.js?v=20260930-build367';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build368';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build368';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build368';
+import { sceneState } from './state.js?v=20260930-build368';
+import { tr } from './i18n.js?v=20260930-build368';
+import { wc, ww } from './ui-shell.js?v=20260930-build368';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -74,6 +74,9 @@ uniform float sliceOpacity;
 uniform int capOn;
 uniform float sliceTint;
 uniform vec2 sliceWindow; // center, width
+// build 368: surface search 1 = fast (2 secant guesses + 1 bisection on the
+// interpolated value), 0 = exact (6 bisections)
+uniform int refine;
 uniform sampler3D sliceVol;
 in vec3 vPos;
 in vec3 vOrigin;
@@ -100,21 +103,34 @@ bool editAllows(int s,vec3 tc){
 uniform int useCls;
 uniform sampler3D clsTex;
 uniform ivec4 clsChan; // channel of each segment (-1: none); only active segments are stored
+// the value the last segmentIndexAt sampled (build 368): HU, or the
+// classification vector; the surface search reuses it as the outside sample
+float gHu=0.0;vec4 gQ=vec4(0.0);
 int segmentIndexAt(vec3 tc){
  if(useCls>0){
-  vec4 q=texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999)));
+  vec4 q=texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999)));gQ=q;
   for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&q[c]>=0.5)return s;}
   return -1;
  }
- float v=huAt(tc);
+ float v=huAt(tc);gHu=v;
  for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc))return s;}
  return -1;
 }
-bool brickMayContain(vec3 tc){
+// signed distance-like value of segment s at the last sample: >= 0 inside
+float segValue(int s);
+// the largest enabled-segment value at the last sample (negative when the sample is in no segment)
+float maxSegValue(){float m=-1e9;for(int s=0;s<4;s++)if(segA[s].w>0.5)m=max(m,segValue(s));return m;}
+float segValue(int s){if(useCls>0){int c=clsChan[s];return c>=0?gQ[c]-0.5:-1.0;}vec4 a=segA[s];return gHu<a.x?gHu-a.x:a.y-gHu;}
+// build 368: 0 = no enabled segment in the brick, 1 = mixed, 2+s = every
+// sample in the brick is segment s (range holds the brick's min..max, no
+// earlier enabled segment overlaps, no processing mask on s): a ray already
+// inside s crosses it without sampling. Bricks carry one voxel of overlap.
+int brickClass(vec3 tc){
  vec2 mm=texture(bricks,clamp(tc,vec3(0.0),vec3(0.999999))).rg;
- for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y)return true;}
- return false;
+ for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){if(mm.x>=a.x&&mm.y<=a.y&&((editMask>>s)&1)==0)return 2+s;return 1;}}
+ return 0;
 }
+bool brickMayContain(vec3 tc){return brickClass(tc)>0;}
 // distance along dir (object space) to leave the current brick
 float brickExit(vec3 tc,vec3 dir){
  vec3 dtc=vec3(dir.x/(2.0*halfExt.x),-dir.y/(2.0*halfExt.y),dir.z/(2.0*halfExt.z));
@@ -173,6 +189,9 @@ void main(){
  }
  int nextSlice=0;
  float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);int iters=0;
+ // build 368: brickEnd = t where the current non-empty brick is left; the
+ // brick min/max is fetched once per brick instead of once per sample
+ float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
   iters++;
@@ -193,15 +212,28 @@ void main(){
    }
   }
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
-  bool canSample=diag==4||brickMayContain(tc0);
+  bool canSample=diag==4||t<brickEnd;
+  if(!canSample){int bc=brickClass(tc0);canSample=bc>0;uniformSeg=bc>=2?bc-2:-1;if(canSample)brickEnd=t+brickExit(tc0,dir);}
   float nextT=t+step;
-  if(!canSample){nextT=t+max(brickExit(tc0,dir)+step*0.05,step);lastIndex=-1;}
+  if(!canSample){brickEnd=-1.0;prevValid=false;nextT=t+max(brickExit(tc0,dir)+step*0.05,step);lastIndex=-1;}
+  else if(diag!=4&&uniformSeg>=0&&uniformSeg==lastIndex&&brickEnd>t+step){
+   // inside a uniform brick of the segment the ray is already in: nothing changes until it is left
+   nextT=brickEnd+step*0.05;previousT=max(t,brickEnd-step*0.05);prevValid=false;t=nextT;continue;
+  }
   else{
    int idx=segmentIndexAt(tc0);
+   float curF=idx>=0?segValue(idx):-1.0;
    if(idx!=lastIndex){
     if(idx>=0){
      float lo=previousT;float hi=t;bool simple=diag==3||segC[idx].w>0.5;
-     if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(o+dir*mid))==idx)hi=mid;else lo=mid;}
+     // fast search (build 368): the boundary is an iso-value of the sampled
+     // field (no processing mask on the segment, previous sample measured and
+     // outside): two secant guesses + one bisection instead of six bisections
+     float f1=segValue(idx);bool iso=refine==1&&((editMask>>idx)&1)==0&&prevValid&&prevF<0.0;
+     if(!simple&&iso){float f0=prevF;
+      for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
+       bool inside=segmentIndexAt(texCoord(o+dir*mid))==idx;float fm=segValue(idx);if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
+     else if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(o+dir*mid))==idx)hi=mid;else lo=mid;}
      vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
      vec3 n=simple?-dir:gradientAt(tc);
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
@@ -213,6 +245,9 @@ void main(){
     }
     lastIndex=idx;
    }
+   // outside value for the next segment's search: the largest segment value
+   // at this sample when no segment holds it (kept negative), else its own
+   prevValid=true;prevF=idx>=0?curF:maxSegValue();
   }
   previousT=t;t=nextT;
  }
@@ -306,7 +341,7 @@ async function buildVolumeData(maxDim,onProgress){
 const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is; secHold 0 grip
 // picks the section up near the frame, 1 trigger fixes / picks it up
-const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1};
+const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1};
 // an older key is migrated once, with the slice opacity reset to the new default
 function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);return{...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
@@ -518,13 +553,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（二重枠）を法線方向に動かします','レイで指した枠（白くなる）は、離れたままつかめます'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (double frame) on its normal','A frame the ray points at (turns white) can be grabbed from a distance'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
@@ -709,7 +744,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  let autoF=0.5,autoFrames=0,autoAt=performance.now();
  let frames=0,fpsAt=performance.now(),fps=0;
  const applyQuality=()=>{
-  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;useData(settings.data|0)}
+  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;material.uniforms.refine.value=settings.refine|0;useData(settings.data|0)}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
   if(rates.length&&session.updateTargetFrameRate)session.updateTargetFrameRate(rates[Math.min(settings.rate,rates.length-1)]).catch(()=>{});
   saveSettings(settings);frames=0;fpsAt=performance.now();
@@ -785,6 +820,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});
    choice(y0+150,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
    choice(y0+420,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
+   choice(y0+510,L.refineL,L.refineV.map((t,i)=>({label:t,value:1-i})),settings.refine|0,v=>{settings.refine=v;applyQuality()});
    choice(y0+330,L.editD,L.editDv.map((t,i)=>({label:t,value:i})),settings.editDiag|0,v=>{settings.editDiag=v;refreshEdits()});
    choice(y0+240,'',L.dv.slice(3).map((t,i)=>({label:t,value:i+3})),settings.diag,v=>{settings.diag=v;applyQuality()});
   }
@@ -1027,7 +1063,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
     stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
-    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null}}});
+    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;

@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { set3DBusy } from './three-status.js?v=20260930-build367';
-import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20260930-build367';
-import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20260930-build367';
-import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20260930-build367';
-import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20260930-build367';
-import { request3DRender } from './scene3d.js?v=20260930-build367';
-import { applyLanguage } from './i18n.js?v=20260930-build367';
-import { isIPadRuntime, isIPhoneRuntime, fmt } from './utils.js?v=20260930-build367';
-import { settings } from './app-settings.js?v=20260930-build367';
+import { set3DBusy } from './three-status.js?v=20260930-build368';
+import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20260930-build368';
+import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20260930-build368';
+import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20260930-build368';
+import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20260930-build368';
+import { request3DRender } from './scene3d.js?v=20260930-build368';
+import { applyLanguage } from './i18n.js?v=20260930-build368';
+import { isIPadRuntime, isIPhoneRuntime, isTabletRuntime, fmt } from './utils.js?v=20260930-build368';
+import { settings } from './app-settings.js?v=20260930-build368';
 export function initIPadWorkspaceUi(){
  if(!useWorkspaceUi())return;
  const shell=document.querySelector('.app-shell'),workspace=document.querySelector('.workspace'),sidebar=document.querySelector('.sidebar'),sidebarScroll=document.querySelector('.sidebar-scroll'),viewer=document.querySelector('#viewer-grid'),topbar=document.querySelector('.topbar');
@@ -104,10 +104,10 @@ export function initIPadGpuQualityControl(){
  if(!ipadGpuQualityControl||!ipadGpuQuality)return;
  if(isIPhoneRuntime()){ipadGpuQualityControl.classList.add('is-hidden');ipadGpuQualityControl.style.display='none';return}
  // full size only off iPad (memory); the label is the 3D volume resolution
- if(isIPadRuntime())ipadGpuQuality.querySelector('option[value="0"]')?.remove();
+ if(isTabletRuntime())ipadGpuQuality.querySelector('option[value="0"]')?.remove();
   ipadGpuQualityControl.classList.remove('is-hidden');ipadGpuQualityControl.style.display='flex';ipadGpuQuality.value=String(ipadGpuTargetSide);
  ipadGpuQuality.onchange=async()=>{
-  const v=+ipadGpuQuality.value,next=v===768?768:v===0&&!isIPadRuntime()?0:512;if(next===ipadGpuTargetSide)return;
+  const v=+ipadGpuQuality.value,next=v===768?768:v===0&&!isTabletRuntime()?0:512;if(next===ipadGpuTargetSide)return;
   setIpadGpuTargetSide(next);settings.set('gpuSide',next);
   const mv=sceneState?.medicalVolume,target=sourceVolume||volume,wasVolume=threeRenderMode==='volume'&&!!mv?.active;
   if(!mv||!target?.sourceBacked){updateRenderModeControl(target);return}

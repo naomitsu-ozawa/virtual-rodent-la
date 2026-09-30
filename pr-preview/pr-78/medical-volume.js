@@ -207,24 +207,25 @@ fn appliedCutNormal(seg:u32,tc0:vec3<f32>)->vec3<f32>{
  if(l<1e-6){return vec3<f32>(0.0,0.0,1.0);}
  return g/l;
 }
-fn rawSegmentIndexAt(tc0:vec3<f32>)->i32{
- let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- let v=huAt(tc);
+// build 368: the segment tests take the HU value, so one texture fetch per
+// sample serves both the raw index and the edited index (was two fetches)
+fn rawSegmentIndexFor(v:f32)->i32{
  for(var s:u32=0u;s<4u;s=s+1u){
   let a=u.segments[s*2u];
   if(a.w>0.5&&v>=a.x&&v<=a.y){return i32(s);}
  }
  return -1;
 }
-fn segmentIndexAt(tc0:vec3<f32>)->i32{
+fn segmentIndexFor(v:f32,tc0:vec3<f32>)->i32{
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- let v=huAt(tc);
  for(var s:u32=0u;s<4u;s=s+1u){
   let a=u.segments[s*2u];
   if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){return i32(s);}
  }
  return -1;
 }
+fn rawSegmentIndexAt(tc0:vec3<f32>)->i32{return rawSegmentIndexFor(huAt(tc0));}
+fn segmentIndexAt(tc0:vec3<f32>)->i32{return segmentIndexFor(huAt(tc0),tc0);}
 fn capSegmentIndex(tc0:vec3<f32>)->i32{
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  var idx=segmentIndexAt(tc);if(idx>=0){return idx;}
@@ -240,15 +241,24 @@ fn capSegmentIndex(tc0:vec3<f32>)->i32{
  }
  return -1;
 }
-fn brickMayContain(p:vec3<f32>)->bool{
+fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}
+// build 368: 0 = no enabled segment in the brick, 1 = mixed, 2+s = every
+// sample in the brick is segment s (its range holds the brick's min..max, no
+// earlier enabled segment overlaps, no edit / cut mask on s): a ray already
+// inside s crosses such a brick without sampling
+fn brickClass(p:vec3<f32>)->i32{
  let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999));let dims=max(u.textureDims.xyz,vec3<f32>(1.0));let bs=max(u.viewport.w,1.0);
  let voxel=vec3<u32>(tc*dims);let bx=voxel.x/u32(bs);let by=voxel.y/u32(bs);let bz=voxel.z/u32(bs);let bcx=u32(u.calibration.z);let bcy=u32(u.calibration.w);
  let mm=brickMinMax[bz*bcx*bcy+by*bcx+bx];
- for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){return true;}}
- return false;
+ let masks=editRows[0]|appliedCutRows[0];
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){
+  if(mm.x>=a.x&&mm.y<=a.y&&(masks&(1u<<s))==0u){return 2+i32(s);}
+  return 1;}}
+ return 0;
 }
 fn brickExitDistance(p:vec3<f32>,dir:vec3<f32>)->f32{
- let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999));let dims=max(u.dimsSlope.xyz,vec3<f32>(1.0));let bs=max(u.viewport.w,1.0);let voxel=vec3<u32>(tc*dims);
+ // build 368: on the texture grid, like brickMayContain (was the source grid: shorter skips on reduced textures)
+ let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999));let dims=max(u.textureDims.xyz,vec3<f32>(1.0));let bs=max(u.viewport.w,1.0);let voxel=vec3<u32>(tc*dims);
  let b=voxel/u32(bs);let voxelSize=2.0*u.halfStep.xyz/dims;var best=1e20;
  if(abs(dir.x)>1e-8){let edge=select(f32(b.x*u32(bs)),min(f32((b.x+1u)*u32(bs)),dims.x),dir.x>0.0);let q=-u.halfStep.x+edge*voxelSize.x;let dt=(q-p.x)/dir.x;if(dt>1e-7){best=min(best,dt);}}
  if(abs(dir.y)>1e-8){let edge=select(f32(b.y*u32(bs)),min(f32((b.y+1u)*u32(bs)),dims.y),dir.y<0.0);let q=u.halfStep.y-edge*voxelSize.y;let dt=(q-p.y)/dir.y;if(dt>1e-7){best=min(best,dt);}}
@@ -300,12 +310,22 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
   let q=(x-u.camOrigin.x)/dir.x;if(q>=t&&q<=endT){sagittalT=q;}
  }
  var previousT=t;var lastIndex:i32=-1;var previousCutIdx:i32=-1;var acc=vec4<f32>(0.0);
+ // build 368: brickEnd = t where the current non-empty brick is left; the
+ // brick min/max is read once per brick instead of once per sample
+ var brickEnd=-1.0;var prevHv=-1e9;var uniformSeg:i32=-1;
  for(var iter:u32=0u;iter<4096u;iter=iter+1u){
   if(t>endT||acc.a>0.985){break;}
   let p=u.camOrigin.xyz+dir*t;
-  let canSample=brickMayContain(p);
+  var canSample=t<brickEnd;
+  if(!canSample){let bc=brickClass(p);canSample=bc>0;uniformSeg=select(-1,bc-2,bc>=2);if(canSample){brickEnd=t+brickExitDistance(p,dir);}}
   var nextT=t+step;
-  if(!canSample){let skip=brickExitDistance(p,dir);nextT=t+max(skip+step*0.05,step);}
+  if(!canSample){brickEnd=-1.0;prevHv=-1e9;let skip=brickExitDistance(p,dir);nextT=t+max(skip+step*0.05,step);}
+  else if(uniformSeg>=0&&uniformSeg==lastIndex&&brickEnd>t+step){
+   // inside a uniform brick of the segment the ray is already in: nothing can change until the brick is left
+   canSample=false;nextT=brickEnd+step*0.05;prevHv=-1e9;
+   // the last point inside the brick counts as the previous (inside) sample for the next surface search
+   previousT=max(t,brickEnd-step*0.05);t=nextT;continue;
+  }
   var capDrawn=false;
   if(capT>=t-1e-7&&capT<=nextT+1e-7){
    if(u.sectionCap.x>0.5){
@@ -327,8 +347,10 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
   }
   if(canSample&&!capDrawn){
    let tc0=texCoord(p);
-   let rawIdx=rawSegmentIndexAt(tc0);
-   let idx=segmentIndexAt(tc0);
+   let hv=huAt(tc0);
+   let rawIdx=rawSegmentIndexFor(hv);
+   let idx=segmentIndexFor(hv,tc0);
+   let hvPrev=prevHv;prevHv=hv;
    let maskedCutIdx=select(-1,rawIdx,rawIdx>=0&&idx<0&&appliedCutContains(u32(rawIdx),tc0));
 
    // The edit mask is authoritative. Voxels inside the cut volume are empty space.
@@ -338,9 +360,25 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
    }else if(idx!=lastIndex){
     if(idx>=0){
      var lo=previousT;var hi=t;
-     for(var r:u32=0u;r<6u;r=r+1u){
-      let mid=(lo+hi)*0.5;let mi=segmentIndexAt(texCoord(u.camOrigin.xyz+dir*mid));
-      if(mi==idx){hi=mid;}else{lo=mid;}
+     // surface search (build 368). mprVisible.w = 1: when the boundary is an
+     // HU iso-value (no edit / cut mask on the segment, previous sample
+     // measured and outside the range) two secant guesses on the HU plus one
+     // bisection (3 fetches) replace the six bisections
+     let sa=u.segments[u32(idx)*2u];
+     let iso=u.mprVisible.w>0.5&&((editRows[0]|appliedCutRows[0])&(1u<<u32(idx)))==0u&&hvPrev>-1e8&&(hvPrev<sa.x||hvPrev>sa.y);
+     if(iso){
+      let thr=select(sa.y,sa.x,hvPrev<sa.x);var f0=hvPrev-thr;var f1=hv-thr;
+      for(var r:u32=0u;r<3u;r=r+1u){
+       var mid=(lo+hi)*0.5;
+       if(r<2u&&abs(f1-f0)>1e-6){mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);}
+       let tcm=texCoord(u.camOrigin.xyz+dir*mid);let hm=huAt(tcm);
+       if(segmentIndexFor(hm,tcm)==idx){hi=mid;f1=hm-thr;}else{lo=mid;f0=hm-thr;}
+      }
+     }else{
+      for(var r:u32=0u;r<6u;r=r+1u){
+       let mid=(lo+hi)*0.5;let mi=segmentIndexAt(texCoord(u.camOrigin.xyz+dir*mid));
+       if(mi==idx){hi=mid;}else{lo=mid;}
+      }
      }
      let hp=u.camOrigin.xyz+dir*hi;let tc=texCoord(hp);
      var n=gradientAt(tc);
@@ -422,7 +460,8 @@ fn huAt(x:u32,y:u32,z:u32)->f32{
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let bxCount=meta[3];let byCount=meta[4];let bzCount=meta[5];let total=bxCount*byCount*bzCount;let i=gid.x;if(i>=total){return;}
  let bx=i%bxCount;let by=(i/bxCount)%byCount;let bz=i/(bxCount*byCount);let bs=meta[6];
- let x0=bx*bs;let y0=by*bs;let z0=bz*bs;let x1=min(x0+bs,meta[0]);let y1=min(y0+bs,meta[1]);let z1=min(z0+bs,meta[2]);
+ // build 368: one voxel of overlap, so every trilinear sample inside the brick lies within [min,max] (uniform bricks can then be crossed without sampling)
+ let x0=select(bx*bs-1u,0u,bx==0u);let y0=select(by*bs-1u,0u,by==0u);let z0=select(bz*bs-1u,0u,bz==0u);let x1=min((bx+1u)*bs+1u,meta[0]);let y1=min((by+1u)*bs+1u,meta[1]);let z1=min((bz+1u)*bs+1u,meta[2]);
  var lo=1e30;var hi=-1e30;
  for(var z=z0;z<z1;z=z+1u){for(var y=y0;y<y1;y=y+1u){for(var x=x0;x<x1;x=x+1u){let v=huAt(x,y,z);lo=min(lo,v);hi=max(hi,v);}}}
  outMinMax[i]=vec2<f32>(lo,hi);
@@ -1152,7 +1191,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
   }
   const indices=mpr.indices||[0,0,0],visible=mpr.visible||[0,0,0];
   put(16,+indices[0]||0,+indices[1]||0,+indices[2]||0,Number.isFinite(+mpr.opacity)?Math.max(0,Math.min(1,+mpr.opacity)):0);
-  put(17,visible[0]?1:0,visible[1]?1:0,visible[2]?1:0,0);
+  put(17,visible[0]?1:0,visible[1]?1:0,visible[2]?1:0,globalThis.__vrlSettings?.refineMode?.()??1);
   put(18,Number.isFinite(+mpr.windowCenter)?+mpr.windowCenter:0,Math.max(1,Number.isFinite(+mpr.windowWidth)?+mpr.windowWidth:1),0,0);
   const section=mpr.section||{},plane=section.plane,active=section.active&&plane,mode=plane==='axial'?1:plane==='coronal'?2:plane==='sagittal'?3:0;
   let coord=0;
