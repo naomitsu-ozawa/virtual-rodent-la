@@ -949,7 +949,7 @@ export class MedicalVolumeRenderer{
   return this._regionDummy;
  }
  clearAnalysisRuns(){
-  this.regionTexture?.destroy?.();this.regionTexture=null;
+  this.regionTexture?.destroy?.();this.regionTexture=null;this.regionTexInfo='';
   this.analysisOverlayBuffer?.destroy?.();
   this.analysisOverlayBuffer=this.device.createBuffer({label:'VRL analysis overlay empty',size:8,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(this.analysisOverlayBuffer,0,new Uint32Array([0,0]));
@@ -986,18 +986,28 @@ export class MedicalVolumeRenderer{
   const buffer=this.device.createBuffer({label:'VRL analysis overlay',size:data.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(buffer,0,data);
   // build 374: region index texture (4 bits per voxel, 8 per u32 along x; 67 MB at 512³, 8 MB at 256³). Regions past the 14th read 15 = search the row.
-  let tex=null;
+  // build 376: filled in a mapped staging buffer and copied with one copyBufferToTexture at the 256-byte row pitch the
+  // spec requires there (the iPad waited ~120 ms per frame for seconds after a writeTexture of the same data, and the
+  // colouring showed stripes meanwhile: a row-wise or chunked upload). Upload time and size go to the status bar.
+  let tex=null,staging=null;this.regionTexInfo='';
   try{
-   const tw=Math.ceil(w/8),words=new Uint32Array(tw*h*d);
-   for(let ri=0;ri<grids.length;ri++){const g=grids[ri];if(!g)continue;const k=Math.min(ri+1,15);
-    for(let z=0;z<d;z++){const rec=g[z];if(!rec)continue;for(let i=0;i<rec.length;i+=3){const base=(z*h+rec[i])*tw;for(let x=rec[i+1];x<=rec[i+2];x++){const wi=base+(x>>3),sh=(x&7)*4;words[wi]=(words[wi]&~(15<<sh))|(k<<sh)}}}}
-   // WebGPU reports allocation failure through the error scope, not by throwing: drop the texture (the row search stays correct) when it arrives
+   const tw=Math.ceil(w/8),bytesPerRow=Math.ceil(tw*4/256)*256,rowWords=bytesPerRow/4,bytes=bytesPerRow*h*d;
    this.device.pushErrorScope?.('out-of-memory');
+   staging=this.device.createBuffer({label:'VRL region index staging',size:bytes,usage:GPUBufferUsage.COPY_SRC,mappedAtCreation:true});
+   const words=new Uint32Array(staging.getMappedRange());
+   for(let ri=0;ri<grids.length;ri++){const g=grids[ri];if(!g)continue;const k=Math.min(ri+1,15);
+    for(let z=0;z<d;z++){const rec=g[z];if(!rec)continue;for(let i=0;i<rec.length;i+=3){const base=(z*h+rec[i])*rowWords;for(let x=rec[i+1];x<=rec[i+2];x++){const wi=base+(x>>3),sh=(x&7)*4;words[wi]=(words[wi]&~(15<<sh))|(k<<sh)}}}}
+   staging.unmap();
    tex=this.device.createTexture({label:'VRL region index',size:{width:tw,height:h,depthOrArrayLayers:d},dimension:'3d',format:'r32uint',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
-   this.device.queue.writeTexture({texture:tex},words,{bytesPerRow:tw*4,rowsPerImage:h},{width:tw,height:h,depthOrArrayLayers:d});
-   const created=tex;
-   this.device.popErrorScope?.()?.then(err=>{if(err&&this.regionTexture===created){console.warn('Region index texture not available; searching rows instead.',err.message);created.destroy?.();this.regionTexture=null;this.rebuildBindGroup()}}).catch(()=>{});
-  }catch(e){console.warn('Region index texture not available; searching rows instead.',e);tex?.destroy?.();tex=null}
+   const enc=this.device.createCommandEncoder({label:'VRL region index upload'});
+   enc.copyBufferToTexture({buffer:staging,bytesPerRow,rowsPerImage:h},{texture:tex},{width:tw,height:h,depthOrArrayLayers:d});
+   const t0=performance.now();this.device.queue.submit([enc.finish()]);
+   const created=tex,stagingBuf=staging,mb=(bytes/1048576).toFixed(0);
+   this.regionTexInfo=tw+'×'+h+'×'+d+' '+mb+' MB 転送中';
+   this.device.queue.onSubmittedWorkDone?.()?.then(()=>{stagingBuf.destroy?.();if(this.regionTexture===created)this.regionTexInfo=tw+'×'+h+'×'+d+' '+mb+' MB 転送 '+Math.round(performance.now()-t0)+' ms'}).catch(()=>{});
+   // WebGPU reports allocation failure through the error scope, not by throwing: drop the texture (the row search stays correct) when it arrives
+   this.device.popErrorScope?.()?.then(err=>{if(err&&this.regionTexture===created){console.warn('Region index texture not available; searching rows instead.',err.message);created.destroy?.();this.regionTexture=null;this.regionTexInfo='なし（'+err.message+'）→ 行検索';this.rebuildBindGroup()}}).catch(()=>{});
+  }catch(e){console.warn('Region index texture not available; searching rows instead.',e);tex?.destroy?.();tex=null;staging?.destroy?.();this.regionTexInfo='なし（'+String(e?.message||e)+'）→ 行検索'}
   this.regionTexture?.destroy?.();this.regionTexture=tex;
   this.analysisOverlayBuffer?.destroy?.();this.analysisOverlayBuffer=buffer;this.analysisOverlaySignature=signature;this.rebuildBindGroup();
  }
@@ -1244,7 +1254,7 @@ fn word(i:u32)->u32{
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
   const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;if(globalThis.__vrlSettings?.get?.('showPerf')===false){el.textContent='';return}
   const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
-  el.textContent=' · 3D '+Math.round(ms)+' ms'+(this.interactive&&(this.dragScale||1)<1?' ×'+this.dragScale:'')+' · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)'+this.gapStats():'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+  el.textContent=' · 3D '+Math.round(ms)+' ms'+(this.interactive&&(this.dragScale||1)<1?' ×'+this.dragScale:'')+' · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)'+this.gapStats():'')+(this.regionTexInfo?' · 領域tex '+this.regionTexInfo:'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
  }
  // frames in the last second while dragging: count, longest gap, gaps over 20 ms (a 60 Hz frame missed)
  gapStats(){
