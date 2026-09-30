@@ -8,11 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260930-build345';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260930-build345';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build345';
-import { tr } from './i18n.js?v=20260930-build345';
-import { wc, ww } from './ui-shell.js?v=20260930-build345';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260930-build346';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260930-build346';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build346';
+import { tr } from './i18n.js?v=20260930-build346';
+import { wc, ww } from './ui-shell.js?v=20260930-build346';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -355,13 +355,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','画質','詳細'],follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',shot:'スクリーンショット',exit:'終了',
-   sec:'断面',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cut:'手前を切り取る',sl:'スライス不透明度',
+   sec:'断面',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
    secHelp:['断面の枠の近くでグリップ：持つ／離す：その場に固定','断面を持っている手のトリガー：固定／もう一度：持つ'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Quality','Details'],follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',shot:'Screenshot',exit:'Exit',
-   sec:'Section',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cut:'Clip near side',sl:'Slice opacity',
+   sec:'Section',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
    secHelp:['Grip near the frame: hold / release: stays fixed','Trigger of the holding hand: fix / again: hold'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: held in hand',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
@@ -408,6 +408,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const section={on:false,held:null},planeObj=new THREE.Group();
  const frameMat=new THREE.LineBasicMaterial({color:0xffcc44});
  {const h=0.12,g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-h,-h),new THREE.Vector3(0,h,-h),new THREE.Vector3(0,h,h),new THREE.Vector3(0,-h,h)]);planeObj.add(new THREE.LineLoop(g,frameMat))}
+ // one-side mode (build 346): section.side picks the kept half along the
+ // frame's local X (kept: side*X >= 0); the arrow points at the removed half
+ section.side=1;
+ const arrow=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,0.02,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,-0.02,0)]),frameMat);
+ arrow.visible=false;planeObj.add(arrow);
+ // side that removes the viewer's half right now (what 'near' shows)
+ const chooseSide=()=>{readHead();scene.updateMatrixWorld();planeObj.getWorldPosition(tmpA);tmpB.set(1,0,0).transformDirection(planeObj.matrixWorld);section.side=tmpB.dot(tmpA.subVectors(head,tmpA))>0?-1:1};
  const takePlane=c=>{c.attach(planeObj);section.held=c;pulse(c);menu.refresh()};
  const fixPlane=()=>{const c=section.held;holder.attach(planeObj);section.held=null;if(c)pulse(c,0.2);menu.refresh()};
  const nearPlane=c=>{c.getWorldPosition(tmpA);planeObj.getWorldPosition(tmpB);return tmpA.distanceTo(tmpB)<0.2};
@@ -421,6 +428,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     planeObj.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tmpA);planeObj.scale.setScalar(1);holder.attach(planeObj);section.held=null;
    }
   }else{planeObj.removeFromParent();section.held=null}
+  if(on)chooseSide();
   menu.refresh();
  };
  let dragging=null,shotRequested=false;
@@ -480,10 +488,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }else if(ui.tab===1){
    choice(y0,L.sec,[{label:L.offOn[0],value:false},{label:L.offOn[1],value:true}],section.on,v=>{if(v!==section.on)setSection(v)});
    choice(y0+90,L.hold,L.holdModes.map((t,i)=>({label:t,value:i})),settings.secHold,v=>{if(section.held)fixPlane();settings.secHold=v;saveSettings(settings)});
-   choice(y0+180,L.cut,[{label:L.offOn[0],value:0},{label:L.offOn[1],value:1}],settings.cut?1:0,v=>{settings.cut=v;saveSettings(settings)});
+   choice(y0+180,L.cut,L.cutModes.map((t,i)=>({label:t,value:i})),settings.cut|0,v=>{if(v===2&&settings.cut!==2&&section.on)chooseSide();settings.cut=v;saveSettings(settings)});
    label(X,y0+306,L.sl);
    w.push({type:'slider',x:CX+26,y:y0+270,w:470,h:72,value:settings.sliceOpacity,text:Math.round(settings.sliceOpacity*100)+'%',set:v=>{settings.sliceOpacity=Math.round(v*20)/20}});
-   label(X,y0+400,section.on?L.secHelp[settings.secHold]:L.secOff,{size:28});
+   label(X,y0+390,section.on?L.secHelp[settings.secHold]:L.secOff,{size:28});
+   if(settings.cut===2){label(X,y0+430,L.cutHelp,{size:26,color:'#9fb3c3'});btn(X,y0+460,260,L.flip,false,()=>{section.side=-section.side})}
   }else if(ui.tab===2){
    choice(y0,L.r,VRES.map((r,i)=>({label:r?Math.round(r*100)+'%':L.auto,value:i})),settings.vres,v=>{settings.vres=v;applyQuality()});
    choice(y0+90,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
@@ -566,11 +575,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(material){
    const u=material.uniforms;
    if(section.on){
-    // plane in the volume's object space; the normal is flipped so the eye
-    // is on the removed side (the cut always opens towards the viewer)
+    // plane in the volume's object space. 'near': the normal is flipped so
+    // the eye is on the removed side; 'one side': the side chosen when it
+    // was set (section.side) stays removed wherever the viewer goes
     scene.updateMatrixWorld();planeObj.getWorldPosition(tmpP);tmpN.set(1,0,0).transformDirection(planeObj.matrixWorld);
     tmpQ.copy(tmpP).add(tmpN);mesh.worldToLocal(tmpP);mesh.worldToLocal(tmpQ);tmpN.subVectors(tmpQ,tmpP).normalize();
-    tmpE.copy(head);mesh.worldToLocal(tmpE);if(tmpN.dot(tmpE)-tmpN.dot(tmpP)>0)tmpN.negate();
+    tmpE.copy(head);mesh.worldToLocal(tmpE);if(settings.cut===2){if(section.side<0)tmpN.negate()}else if(tmpN.dot(tmpE)-tmpN.dot(tmpP)>0)tmpN.negate();
+    arrow.visible=settings.cut===2;arrow.scale.x=-section.side;
     u.cutPlane.value.set(tmpN.x,tmpN.y,tmpN.z,tmpN.dot(tmpP));
    }
    u.cutOn.value=section.on&&settings.cut?1:0;u.sliceOpacity.value=section.on?settings.sliceOpacity:0;

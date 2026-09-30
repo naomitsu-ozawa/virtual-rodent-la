@@ -2384,3 +2384,12 @@ until the session ends, then a panel on the page offers each for saving
 (AR: passthrough is not in the image, background transparent). Haptic pulse
 on presses. Menu layouts rendered headless and checked (light segment
 colours get dark text).
+
+## Build 346 — section clip: one-side mode
+
+Owner: besides clipping the near side, wants a mode that removes one side
+only, so the 3D stays when looking from the other side. 切り取り is now
+オフ / 手前 / 片側. 片側: the removed half is fixed to the frame (section.side
+along its local X), chosen as the viewer's half when the section appears or
+the mode is picked; 向きを反転 swaps it; an arrow on the frame points at the
+removed half. 手前 unchanged (flips towards the eye every frame).
