@@ -2808,9 +2808,50 @@ passed (run with a local HTTPS mirror of the CDN modules, since the
 container blocks cdn.jsdelivr.net / esm.sh for Chromium; the plain
 `npx playwright test` needs network and a matching Chromium build).
 
-## Handoff (after build 368)
+## Build 369 — VR sphere tracing with a distance field; samples-per-pixel probe
 
-State: build 368 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner clarified the goal of task 1: not pixel-identical images but the VR
+auto resolution (25–80 % today) staying at 100 % at the normal viewing size
+(the enlarge-slowdown is a separate, mostly solved matter). 100 % is 4–16×
+the pixels of the auto levels, so the per-pixel work must drop by that
+much, or the resolution stays adaptive. No device tonight, so the work that
+can be done headless was done, with a probe for the morning.
+- docs/distance-field.js (unit-tested): per classification channel a byte
+  per voxel, a lower bound of the distance (voxels) to the voxels around
+  the segment's surface (seeds = voxels with a 26-neighbour of the other
+  class; chamfer 3-4-5 × 0.9 / 3, floored). Built in prepareVrData after the
+  classification (phase 距離場, ~1.1 s for 128³ × 2 channels headless; 256³
+  is 8× the voxels, so several seconds on the page), uploaded as a nearest-
+  sampled RGBA8 texture on the classification grid.
+- Shader: with useDist the ray reads the distance first and jumps (d − 2)
+  voxels whenever d ≥ 3 (no surface can lie in the jump), samples at the
+  fine step only within ~2 voxels of a surface; bricks are not read at all
+  in this mode. Requires the classification path (≤ 256 grid); 512 data
+  keeps the old path. 詳細 › 距離場（診断）オン／オフ for A/B on the device.
+- Probe: 詳細 shows サンプル数／画素 (loop-count diagnostic on a 48×48
+  target from the left eye once a second, mean over covered pixels).
+Measured (phantom, per pixel, whole image, cls path, old → new incl. build
+368): soft 35 % + bone: cls fetches 19.9 → 11.0, brick reads 19.6 → 0,
+distance fetches 13.5, HU (gradient) 2.3: total 41.8 → 26.8 (−36 %). Bone
+only (opaque): 5.1 + 5.6 + 0.8 = 11.5 → 1.7 + 2.9 + 0.8 = 5.4 (−53 %).
+Images: surfaces intact (thin plate, tube); differences only on silhouette /
+facet pixels (1.7–2.6 % of channels, mean 5–8/255), from sub-voxel hit
+shifts as the sample phase changes.
+What remains per surface hit: ~3 fine approach samples, the search (3 or 6
+fetches), the gradient (6 HU fetches) — precomputed normals would remove 5
+per hit (48 MB at 256³). The bone-only cost is already ~5 fetches per pixel:
+if the device still cannot hold 100 %, the limit is the pixel count itself
+(Quest 3: ~9 MP per frame at 100 %) and not the per-ray work, so the auto
+resolution stays the right tool and the next lever would be temporal reuse
+(previous-frame hit depth), not the shader.
+Morning measurements wanted (詳細 tab, normal size, bone only and bone +
+soft): fps · ボリューム ms · 縮小描画 % (auto), the same with 画質 › 100 %,
+and サンプル数／画素 with 距離場 on / off and 表面の探索 高速 / 精密.
+Checks: lint, 404 unit tests, boot-check, vr-slice-check (0 diff), harness.
+
+## Handoff (after build 369)
+
+State: build 369 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -2841,9 +2882,12 @@ B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
    scroll). Open: Quest check; scroll speed (5 cm/s) may need tuning.
 C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
-D. Build 368: fewer fetches per sample / per brick, uniform-brick crossing,
-   fast surface search (switchable). Open: device fps (Mac / iPad / Quest),
-   precomputed normals if the hit cost still matters.
+D. Goal (owner): VR auto resolution held at 100 % at the normal size.
+   Builds 368–369: fewer fetches per sample / brick, uniform-brick crossing,
+   fast surface search, distance-field sphere tracing (all switchable),
+   samples-per-pixel probe. Open: the device numbers above decide whether
+   per-ray work or the pixel count is the limit; then precomputed normals
+   or temporal reuse.
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
 Order: device checks of builds 361–368 first; then whatever the owner
