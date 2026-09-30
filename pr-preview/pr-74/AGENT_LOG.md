@@ -2417,3 +2417,13 @@ shader tests it in segmentIndexAt, like editAllows in volumeShader. The mask
 is rebuilt when the data size changes or the edit signature changes (checked
 once a second), so edits made in the app while in VR appear too. Headless:
 mask 0 hides, mask 1 shows.
+
+## Build 349 — no periodic edit check
+
+Owner, build 348: screen flickers, suspects the once-a-second update. The
+periodic edit-signature check is removed (not verified on the device whether
+it rebuilt; not kept either way). The processed-segment mask is built at VR
+start and on a data-size change only; 加工を再読み込み (menu header) takes
+edits made in the app during VR. Other periodic work left: auto resolution
+(every 0.5 s) — if the flicker remains, fix the resolution (画質 → 50 %) to
+check whether it is that.

@@ -8,11 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build348';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build348';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build348';
-import { tr } from './i18n.js?v=20260930-build348';
-import { wc, ww } from './ui-shell.js?v=20260930-build348';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build349';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build349';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build349';
+import { tr } from './i18n.js?v=20260930-build349';
+import { wc, ww } from './ui-shell.js?v=20260930-build349';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -228,13 +228,6 @@ function buildEditMask(dims){
  });
  return{activeMask,data};
 }
-// cheap change check for the edits: revisions and run identities per segment
-const editIds=new WeakMap();let editIdNext=1;
-const idOf=o=>{if(!o)return 0;let i=editIds.get(o);if(!i){i=editIdNext++;editIds.set(o,i)}return i};
-function editSignature(){
- return SEGMENT_PRESET_ORDER.map(k=>{const st=segmentEditState[k],seg=segmentState[k]||{};return [st?.revision|0,idOf(st?.baseRuns),idOf(st?.keepRuns),idOf(st?.excludeRuns),seg.active?1:0,seg.enabled?1:0,seg.opening,seg.closing,seg.holeFill?1:0,seg.minComponent,seg.surfaceMm,seg.thicknessMm].join(',')}).join('|');
-}
-
 // rg8-packed u16 texture of the current volume, built with the same plan,
 // area reduction and packing as the WebGPU upload, plus per-brick HU min/max
 async function buildVolumeData(maxDim,onProgress){
@@ -392,13 +385,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','画質','詳細'],follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',shot:'スクリーンショット',exit:'終了',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',reloadEdits:'加工を再読み込み',reloaded:'アプリの加工結果を読み込みました',shot:'スクリーンショット',exit:'終了',
    sec:'断面',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Quality','Details'],follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',shot:'Screenshot',exit:'Exit',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',reloadEdits:'Reload processing',reloaded:'Processed segments reloaded from the app',shot:'Screenshot',exit:'Exit',
    sec:'Section',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
@@ -508,6 +501,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // header
   label(X,52,L.title,{bold:true,size:36,color:'#fff'});
   btn(780,18,200,L.close,false,()=>setMenuOpen(false),{size:28});
+  btn(450,18,310,L.reloadEdits,false,()=>{refreshEdits(true);ui.flash=L.reloaded;ui.flashUntil=performance.now()+2500},{size:28});
   // tabs
   L.tabs.forEach((t,i)=>btn(X+i*240,110,226,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i}));
   const status=ui.flash&&performance.now()<ui.flashUntil?ui.flash:ui.status;
@@ -674,7 +668,6 @@ export async function startVrView({language='ja',mode='vr'}={}){
    fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
    ui.fpsLine=fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
    ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info;
-   refreshEdits();
    if(ui.tab===3||ui.flash)menu.refresh();
    if(ui.flash&&now>ui.flashUntil)ui.flash='';
    for(const k in sums){sums[k]=0;counts[k]=0}
@@ -707,14 +700,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
    info=t.dims.join('×')+(vd.filtered?L.filtered:'');
    refreshEdits();
   };
-  // processed segments: rebuilt when the edits or the data grid change
-  // (checked with the fps update, once a second)
+  // processed segments: built at start and when the data grid changes;
+  // edits made in the app during VR are taken with 加工を再読み込み (build 349:
+  // the once-a-second check of build 348 is gone, owner saw flicker)
   const dummyEdit=new THREE.Data3DTexture(new Uint8Array(1),1,1,1);dummyEdit.format=THREE.RedFormat;dummyEdit.needsUpdate=true;
   let editTex=null,editKey='';
-  refreshEdits=()=>{
+  refreshEdits=(force=false)=>{
    if(!material)return;
-   const dims=material.uniforms.texDims.value.toArray().map(Math.round),key=editSignature()+'#'+dims.join('x');
-   if(key===editKey)return;editKey=key;
+   const dims=material.uniforms.texDims.value.toArray().map(Math.round),key=dims.join('x');
+   if(!force&&key===editKey)return;editKey=key;
    let m;try{m=buildEditMask(dims)}catch(e){console.error(e);m={activeMask:0,data:null}}
    editTex?.dispose();editTex=null;
    if(m.activeMask&&m.data){editTex=new THREE.Data3DTexture(m.data,...dims);editTex.format=THREE.RedFormat;editTex.type=THREE.UnsignedByteType;editTex.minFilter=editTex.magFilter=THREE.NearestFilter;editTex.unpackAlignment=1;editTex.needsUpdate=true}
