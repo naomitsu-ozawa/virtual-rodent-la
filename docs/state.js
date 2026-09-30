@@ -100,7 +100,7 @@ export let cutControlPreviewRaf=0;
 export function setCutControlPreviewRaf(v){return cutControlPreviewRaf=v}
 export let smoothingRefreshTimer=null;
 export function setSmoothingRefreshTimer(v){return smoothingRefreshTimer=v}
-import { settings } from './app-settings.js?v=20260930-build351';
+import { settings } from './app-settings.js?v=20260930-build352';
 // 3D volume in-plane size, remembered in the settings (build 280); full size
 // (0) is desktop-only, so an iPad falls back to 512
 export let ipadGpuTargetSide=(()=>{const v=+settings.get('gpuSide');const ipad=typeof navigator!=='undefined'&&(/iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||'')));return v===768?768:v===0&&!ipad?0:512})();
