@@ -2495,3 +2495,18 @@ cache write no longer blocks the next download (first load 9.2 → 7.3 s
 locally), and the cache key no longer contains the page path, so main and
 every PR preview (same origin) share one copy (before, each preview URL
 downloaded again). Old v1-by-URL entries are left unused.
+
+## Build 356 — VR/AR: precomputed classification ("compile" before viewing)
+
+Owner, build 355: processing mask on = coarse and stuttering; asked to
+compile before VR. Thresholds and edits cannot change in VR, so on the ≤256
+grid (the default 256³ data) a classification texture is built once: per
+active segment one byte f = 0.5 + (HU distance inside its range)/2048
+(clamped), set to 0 where the processing mask excludes the voxel; 1, 2 or 4
+channels (only active segments), so two segments read 2 bytes per step — the
+same as the HU texture and without the mask fetch, decode and range test.
+segmentIndexAt reads it when useCls; hit refinement uses it too; normals and
+the slice still use HU. f is linear in HU, so its trilinear 0.5 crossing is
+the HU threshold (8-bit steps = 8 HU). Headless vs the HU path (160³ phantom,
+two segments): identical except grazing silhouette pixels (mean abs diff
+0.23/255). 512³ data keeps the HU + mask path. 詳細 → 事前計算 (診断) on/off.
