@@ -14,19 +14,43 @@ const INF=0x3fffffff;
 // inside: Uint8Array (non-zero = inside), dims [w,h,d]; returns Uint8Array
 export function chamferDistanceBytes(inside,dims){
  const [w,h,d]=dims,n=w*h*d,D=new Int32Array(n),wh=w*h;
- // seeds: voxels with a 26-neighbour of the other class
- for(let z=0;z<d;z++)for(let y=0;y<h;y++){const row=z*wh+y*w;for(let x=0;x<w;x++){const i=row+x,v=inside[i]!==0;let b=false;
-  for(let dz=-1;dz<=1&&!b;dz++){const zz=z+dz;if(zz<0||zz>=d)continue;for(let dy=-1;dy<=1&&!b;dy++){const yy=y+dy;if(yy<0||yy>=h)continue;const r2=zz*wh+yy*w;
-   for(let dx=-1;dx<=1;dx++){const xx=x+dx;if(xx<0||xx>=w)continue;if((inside[r2+xx]!==0)!==v){b=true;break}}}}
-  D[i]=b?0:INF}}
- // forward pass: neighbours already visited (z-1 layer: 9, y-1 row: 3, x-1: 1)
+ // seeds: voxels with a 26-neighbour of the other class = dilate(inside) and
+ // not erode(inside), with separable 3-tap max / min passes (build 370: the
+ // direct 27-neighbour test took most of the build time at 256³)
+ const a=new Uint8Array(n),b=new Uint8Array(n);
+ const axisPass=(src,dst,op)=>{
+  // x axis
+  for(let z=0;z<d;z++)for(let y=0;y<h;y++){const r=z*wh+y*w;for(let x=0;x<w;x++){let v=src[r+x];const l=x>0?src[r+x-1]:v,rr=x<w-1?src[r+x+1]:v;dst[r+x]=op?(v|l|rr):(v&l&rr)}}
+  // y axis (in place on dst via a row buffer)
+  const rowBuf=new Uint8Array(w);
+  for(let z=0;z<d;z++){const layer=z*wh;let prev=null;for(let y=0;y<h;y++){const r=layer+y*w;rowBuf.set(dst.subarray(r,r+w));const nxt=y<h-1?r+w:r,prv=y>0?r-w:r;
+   for(let x=0;x<w;x++){const v=rowBuf[x],up=y>0?prev[x]:v,dn=dst[nxt+x];dst[r+x]=op?(v|up|dn):(v&up&dn)}
+   prev=prev||new Uint8Array(w);prev.set(rowBuf)}}
+  // z axis
+  const layBuf=new Uint8Array(wh);let prevL=null;
+  for(let z=0;z<d;z++){const r=z*wh;layBuf.set(dst.subarray(r,r+wh));const nxt=z<d-1?r+wh:r;
+   for(let i=0;i<wh;i++){const v=layBuf[i],up=z>0?prevL[i]:v,dn=dst[nxt+i];dst[r+i]=op?(v|up|dn):(v&up&dn)}
+   prevL=prevL||new Uint8Array(wh);prevL.set(layBuf)}
+ };
+ for(let i=0;i<n;i++)a[i]=inside[i]?1:0;
+ axisPass(a,b,1); // b = dilate(inside)
+ const dil=b.slice();axisPass(a,b,0); // b = erode(inside)
+ for(let i=0;i<n;i++)D[i]=(dil[i]&&!b[i])?0:INF;
+ // chamfer passes: forward over the 13 already-visited neighbours (z-1
+ // layer: 9, y-1 row: 3, x-1: 1), backward over their mirrors; interior
+ // voxels use precomputed index offsets without bounds checks
  const F=[[-1,0,0,3],[-1,-1,0,4],[0,-1,0,3],[1,-1,0,4],[-1,-1,-1,5],[0,-1,-1,4],[1,-1,-1,5],[-1,0,-1,4],[0,0,-1,3],[1,0,-1,4],[-1,1,-1,5],[0,1,-1,4],[1,1,-1,5]];
- const pass=(offs,zs,ze,zi,ys,ye,yi,xs,xe,xi)=>{
-  for(let z=zs;z!==ze;z+=zi)for(let y=ys;y!==ye;y+=yi)for(let x=xs;x!==xe;x+=xi){const i=z*wh+y*w+x;let m=D[i];if(m===0)continue;
-   for(let k=0;k<offs.length;k++){const o=offs[k],xx=x+o[0],yy=y+o[1],zz=z+o[2];if(xx<0||yy<0||zz<0||xx>=w||yy>=h||zz>=d)continue;const c=D[zz*wh+yy*w+xx]+o[3];if(c<m)m=c}
-   D[i]=m}};
- pass(F,0,d,1,0,h,1,0,w,1);
- pass(F.map(o=>[-o[0],-o[1],-o[2],o[3]]),d-1,-1,-1,h-1,-1,-1,w-1,-1,-1);
+ const pass=(offs,back)=>{
+  const io=new Int32Array(13),ic=new Int32Array(13);for(let k=0;k<13;k++){const o=offs[k];io[k]=o[0]+o[1]*w+o[2]*wh;ic[k]=o[3]}
+  const zs=back?d-1:0,ze=back?-1:d,zi=back?-1:1,ys=back?h-1:0,ye=back?-1:h,yi=back?-1:1,xs=back?w-1:0,xe=back?-1:w,xi=back?-1:1;
+  for(let z=zs;z!==ze;z+=zi){const zin=z>0&&z<d-1;for(let y=ys;y!==ye;y+=yi){const yin=zin&&y>0&&y<h-1,row=z*wh+y*w;
+   for(let x=xs;x!==xe;x+=xi){const i=row+x;let m=D[i];if(m===0)continue;
+    if(yin&&x>0&&x<w-1){for(let k=0;k<13;k++){const c=D[i+io[k]]+ic[k];if(c<m)m=c}}
+    else for(let k=0;k<13;k++){const o=offs[k],xx=x+o[0],yy=y+o[1],zz=z+o[2];if(xx<0||yy<0||zz<0||xx>=w||yy>=h||zz>=d)continue;const c=D[zz*wh+yy*w+xx]+o[3];if(c<m)m=c}
+    D[i]=m}}}
+ };
+ pass(F,false);
+ pass(F.map(o=>[-o[0],-o[1],-o[2],o[3]]),true);
  const out=new Uint8Array(n);
  for(let i=0;i<n;i++){const v=Math.floor(D[i]*0.3);out[i]=v>255?255:v}
  return out;

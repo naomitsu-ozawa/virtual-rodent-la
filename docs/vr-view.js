@@ -8,13 +8,13 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build369';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build369';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build369';
-import { sceneState } from './state.js?v=20260930-build369';
-import { buildDistanceBytes } from './distance-field.js?v=20260930-build369';
-import { tr } from './i18n.js?v=20260930-build369';
-import { wc, ww } from './ui-shell.js?v=20260930-build369';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build370';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build370';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build370';
+import { sceneState } from './state.js?v=20260930-build370';
+import { buildDistanceBytes } from './distance-field.js?v=20260930-build370';
+import { tr } from './i18n.js?v=20260930-build370';
+import { wc, ww } from './ui-shell.js?v=20260930-build370';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -373,7 +373,9 @@ function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v)
 // drops to 15 when the volume fills the view, 100 % is slower than 50 %: the
 // cost follows the marched pixels, so auto keeps the frame time by lowering
 // the resolution while the volume is large and raising it when small.
-const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=0.8,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+// build 370: auto may reach 100 % (was 80 %); the controller follows the GPU
+// time of the volume pass when the timer extension is offered
+const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=1,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
 // VR window slider / button step in HU (build 361)
 const WIN_STEP=10;
 
@@ -839,13 +841,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0+270,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
    if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
   }else{
-   label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});
-   choice(y0+150,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
-   choice(y0+420,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
-   choice(y0+510,L.refineL,L.refineV.map((t,i)=>({label:t,value:1-i})),settings.refine|0,v=>{settings.refine=v;applyQuality()});
-   choice(y0+600,L.distD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.distDiag|0,v=>{settings.distDiag=v;applyQuality()});
-   choice(y0+330,L.editD,L.editDv.map((t,i)=>({label:t,value:i})),settings.editDiag|0,v=>{settings.editDiag=v;refreshEdits()});
-   choice(y0+240,'',L.dv.slice(3).map((t,i)=>({label:t,value:i+3})),settings.diag,v=>{settings.diag=v;applyQuality()});
+   label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
+   choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
+   choice(y0+470,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
+   choice(y0+560,L.refineL,L.refineV.map((t,i)=>({label:t,value:1-i})),settings.refine|0,v=>{settings.refine=v;applyQuality()});
+   choice(y0+650,L.distD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.distDiag|0,v=>{settings.distDiag=v;applyQuality()});
+   choice(y0+380,L.editD,L.editDv.map((t,i)=>({label:t,value:i})),settings.editDiag|0,v=>{settings.editDiag=v;refreshEdits()});
+   choice(y0+290,'',L.dv.slice(3).map((t,i)=>({label:t,value:i+3})),settings.diag,v=>{settings.diag=v;applyQuality()});
   }
   return w;
  });
@@ -869,7 +871,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // GPU time per pass (EXT_disjoint_timer_query_webgl2, when offered) and JS
  // time per frame, averaged over the fps window
  const gl=renderer.getContext(),timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
- const pending=[],sums={vol:0,main:0,js:0},counts={vol:0,main:0,js:0};let sizes='';
+ const pending=[],sums={vol:0,main:0,js:0},counts={vol:0,main:0,js:0},ctrl={vol:0,main:0},ctrlN={vol:0,main:0};let sizes='';
  const timed=(kind,fn)=>{
   if(!timerExt||pending.length>12){fn();return}
   const q=gl.createQuery();gl.beginQuery(timerExt.TIME_ELAPSED_EXT,q);fn();gl.endQuery(timerExt.TIME_ELAPSED_EXT);pending.push({q,kind});
@@ -879,7 +881,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const {q,kind}=pending[0];
    if(!gl.getQueryParameter(q,gl.QUERY_RESULT_AVAILABLE))break;
    pending.shift();
-   if(!gl.getParameter(timerExt.GPU_DISJOINT_EXT)){sums[kind]+=gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6;counts[kind]++}
+   if(!gl.getParameter(timerExt.GPU_DISJOINT_EXT)){const ms=gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6;sums[kind]+=ms;counts[kind]++;if(kind in ctrl){ctrl[kind]+=ms;ctrlN[kind]++}}
    gl.deleteQuery(q);
   }
  };
@@ -994,9 +996,25 @@ export async function startVrView({language='ja',mode='vr'}={}){
    autoFrames++;const nowA=performance.now();
    if(nowA-autoAt>=500){
     const interval=(nowA-autoAt)/autoFrames,budget=1000/(targetRate()||72);
-    if(interval>budget*1.12)autoF=Math.max(AUTO_MIN,autoF*Math.min(0.92,Math.sqrt(budget/interval)));
-    else if(interval<budget*1.04)autoF=Math.min(AUTO_MAX,autoF*1.06);
-    autoFrames=0;autoAt=nowA;
+    const volMs=ctrlN.vol?ctrl.vol/ctrlN.vol:0,mainMs=ctrlN.main?ctrl.main/ctrlN.main:0;
+    if(mainMs>0){
+     // build 370: GPU-timed control. The frame interval is quantised by the
+     // display (a small overrun shows as a halved rate), so the factor now
+     // follows the measured GPU time: pixel cost ∝ f², target = 80 % of the
+     // budget minus the rest of the frame; damped (×0.7 … ×1.15 per step)
+     let want;
+     if(autoF>=1||volMs<=0){const total=mainMs;want=total>budget*0.8?autoF*Math.sqrt(budget*0.8/total):(autoF<1?autoF*1.15:1)}
+     else{const target=Math.max(1,budget*0.8-mainMs);want=autoF*Math.sqrt(target/volMs)}
+     let next=want<autoF?Math.max(want,autoF*0.7):Math.min(want,autoF*1.15);
+     if(interval>budget*1.5)next=Math.min(next,autoF*0.85); // frames are being dropped anyway
+     autoF=Math.min(AUTO_MAX,Math.max(AUTO_MIN,next));
+     ui.autoLine=(ja?'自動: GPU ボリューム ':'auto: GPU volume ')+volMs.toFixed(1)+' ms · '+(ja?'本描画 ':'main ')+mainMs.toFixed(1)+' ms / '+(ja?'予算 ':'budget ')+budget.toFixed(1)+' ms → '+Math.round(autoF*100)+'%';
+    }else{
+     if(interval>budget*1.12)autoF=Math.max(AUTO_MIN,autoF*Math.min(0.92,Math.sqrt(budget/interval)));
+     else if(interval<budget*1.04)autoF=Math.min(AUTO_MAX,autoF*1.06);
+     ui.autoLine=(ja?'自動（間隔）: ':'auto (interval): ')+interval.toFixed(1)+' ms / '+budget.toFixed(1)+' ms → '+Math.round(autoF*100)+'%';
+    }
+    ctrl.vol=ctrl.main=0;ctrlN.vol=ctrlN.main=0;autoFrames=0;autoAt=nowA;
    }
   }
   const f=auto?autoF:(VRES[settings.vres]??1);
