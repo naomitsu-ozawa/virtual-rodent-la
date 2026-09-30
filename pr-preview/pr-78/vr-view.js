@@ -8,12 +8,12 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build361';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build361';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build361';
-import { sceneState } from './state.js?v=20260930-build361';
-import { tr } from './i18n.js?v=20260930-build361';
-import { wc, ww } from './ui-shell.js?v=20260930-build361';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build362';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build362';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build362';
+import { sceneState } from './state.js?v=20260930-build362';
+import { tr } from './i18n.js?v=20260930-build362';
+import { wc, ww } from './ui-shell.js?v=20260930-build362';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -303,11 +303,12 @@ async function buildVolumeData(maxDim,onProgress){
 }
 
 // VR settings kept per browser (resolution only applies when a session starts)
-const SETTINGS_KEY='vrl-vr-settings-4',OLD_KEY='vrl-vr-settings-3'; // v4: slice opacity defaults to 100 % (build 361)
+const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is; secHold 0 grip
 // picks the section up near the frame, 1 trigger fixes / picks it up
-const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:1,data:1,quality:0,vres:0,foveation:2,rate:0};
-function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&localStorage.getItem(OLD_KEY);return{...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:1}:{})}}catch{return{...DEFAULTS}}}
+const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0};
+// an older key is migrated once, with the slice opacity reset to the new default
+function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);return{...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
 // smaller per axis and scaled up where the volume box covers the view. Owner,
