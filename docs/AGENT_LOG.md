@@ -2611,15 +2611,24 @@ reviewed and fixed here (slider text overlapped the −/＋ buttons, width could
 round to 0, step constant out of the label table). Needs a Quest check: slice
 grey vs the 2D view at 100 %, the new tab's sliders with the controller.
 
-## Handoff (after build 361)
+## Build 362 — slice opacity default 70 %
 
-State: build 361 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner, after build 361: keep some see-through, default about 70 %.
+DEFAULTS.sliceOpacity 0.7; settings key -5, older keys (-4, -3) migrated
+once with the slice opacity reset to the new default, other values kept.
+Owner also asked for a flip button for the one-side clip; the 断面 tab
+already has 向きを反転 per plane (shown when 切り取り = 片側 and the plane
+clips) — asked whether a controller button is wanted instead.
+
+## Handoff (after build 362)
+
+State: build 362 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, VR-local CT window tab,
-slice opacity default 100 %). main = build 360; 361 awaits the owner's Quest
-check and merge instruction.
+slice opacity default 70 %). main = build 360; PR #78 (preview
+/pr-preview/pr-78/) awaits the owner's Quest check and merge instruction.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
