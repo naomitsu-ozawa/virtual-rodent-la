@@ -2570,3 +2570,39 @@ for one-side mode, remove. B/Y: short press shows / hides, long press
 at 4 a short message. Grip/trigger takes the nearest frame. Menu 断面 tab:
 rows per plane (切る/切らない, 向きを反転, 消す), ＋追加. Headless shader
 check with 0/1/2 planes, clip bits and slices; menu layout rendered.
+
+## Handoff (after build 360, main at 3819d79)
+
+State: main = build 360 (VR/AR: WebGL2 volume, 256³ default, auto
+resolution, precomputed classification with processing mask, up to 4
+section planes with cap / slice colouring / clip modes, beginner menu,
+screenshots, data prepared before the session and copied from the WebGPU
+texture, practice data cached). All merged; no open PR.
+
+Owner rules (keep): reply in Japanese; no meshes in the GPU volume view;
+never guess — measure first or ship a diagnostic build; run lint, unit tests
+and boot-check before pushing (boot-check needs PW_CHROMIUM=/opt/pw-browsers/chromium);
+merge only when the owner says so; answer questions without implementing;
+swap is forbidden (disk cache OK); research-grade accuracy; no platform
+branching except VR (share what can be shared); do not break what works on
+Mac/iPad; no wasted features (e.g. nothing can be edited inside VR); when a
+solution is not in sight, stop and prepare a handoff. Bump the build with
+npm run bump-build for every pushed change and log it here.
+
+Next work (owner-approved list; recommended model / effort):
+A. VR slice CT window: find why the slice does not look like the 2D view
+   with the same window (suspects: colour space of the XR framebuffer vs raw
+   output, or which window values are read) — measure first; then add VR
+   window centre / width sliders (+ presets). Fable 5.1 high (cause),
+   Sonnet 5.5 medium (sliders).
+B. Section selection, round 1: pick the frame the ray points at (grab from a
+   distance), coloured handle + number per frame at offset corners, a
+   "selected plane" (thicker frame), thumbstick moves the selected plane
+   along its normal (slice scrolling). Fable 5.1 high.
+C. Round 2: snap plane to axial / coronal / sagittal, left-hand section
+   panel, slim the big menu. Fable 5.1 high (design), Opus 5.5 high (impl).
+D. Complex shapes: precomputed normals, fewer refinement steps; verify by
+   image comparison and device fps. Fable 5.1 high–max.
+E. First-run VR guide (3 steps, controller labels). Sonnet 5.5 medium.
+Order: A → B → C → D → E. Headless tools used so far: see the build
+entries above (shader tests via tools/boot-check.mjs with page.evaluate).
