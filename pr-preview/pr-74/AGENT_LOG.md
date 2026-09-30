@@ -2474,3 +2474,12 @@ did not help ("オンでも遅いまま", I first misread this as the skip makin
 slower). Reverted anyway (vr-view.js back to build 350): no measured gain,
 and it made the brick texel RGBA32F (16 bytes read at every step instead of
 8) plus per-step branching.
+
+## Build 354 — VR/AR segment opacity 100 % by default
+
+Owner: in VR/AR the segments need not be see-through by default (the
+section tool shows the inside); keep it settable. VR-only opacity per
+segment starts at 100 % (the app's opacity is neither used nor changed), so
+rays end at the first surface (acc > 0.985) instead of crossing
+semi-transparent tissue — expected to relieve the two-segment load (to be
+measured). 表示 tab: name with %, display mode, opacity slider (5–100 %).
