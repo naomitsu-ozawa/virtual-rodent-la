@@ -2427,3 +2427,13 @@ start and on a data-size change only; 加工を再読み込み (menu header) tak
 edits made in the app during VR. Other periodic work left: auto resolution
 (every 0.5 s) — if the flicker remains, fix the resolution (画質 → 50 %) to
 check whether it is that.
+
+## Build 350 — processed mask smooth, built once; flicker diagnostic
+
+Owner, build 349: still flickers badly with a fixed resolution; edits cannot
+be made in VR, so the reload button was waste (removed). Suspected cause
+(not yet measured): the build 348 mask is nearest-sampled per voxel, so the
+edited boundary steps between voxels as the head moves. Now RGBA (one channel
+per segment), linear filtering, allowed where ≥ 0.5 (smooth boundary), on a
+grid of at most 256 per side, built once at VR start. 詳細 → 加工マスク
+(診断): なめらか / ボクセル / オフ, to confirm the cause on the device.

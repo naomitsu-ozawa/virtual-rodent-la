@@ -8,11 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build349';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build349';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build349';
-import { tr } from './i18n.js?v=20260930-build349';
-import { wc, ww } from './ui-shell.js?v=20260930-build349';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build350';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build350';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build350';
+import { tr } from './i18n.js?v=20260930-build350';
+import { wc, ww } from './ui-shell.js?v=20260930-build350';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -53,9 +53,11 @@ uniform vec4 segC[4]; // rgb, w=1: simple display (no refinement, no gradient)
 // dot(cutPlane.xyz,p) >= cutPlane.w (the far side from the eye). cutOn clips
 // the volume; sliceOpacity > 0 draws the oblique CT slice on the plane,
 // resampled every frame from sliceVol (the 512 data) with the app's window
-// processed segments / edits (build 348): the same keep/exclude runs the
-// WebGPU volume uses (gpuVolumeEditDescriptors), rasterised to one byte per
-// voxel; bit s = voxel allowed for segment s, only for segments in editMask
+// processed segments / edits (build 348/350): the same keep/exclude runs the
+// WebGPU volume uses (gpuVolumeEditDescriptors), rasterised to RGBA, channel s
+// = 1 where segment s is allowed (only for segments in editMask). Linear
+// filtering + 0.5 gives a smooth boundary instead of voxel steps (diagnostic
+// switch in 詳細: smooth / nearest / off)
 uniform int editMask;
 uniform sampler3D editTex;
 uniform vec4 cutPlane;
@@ -79,8 +81,7 @@ float huAt(vec3 tc0){
 }
 bool editAllows(int s,vec3 tc){
  if(((editMask>>s)&1)==0)return true;
- int bits=int(texture(editTex,clamp(tc,vec3(0.0),vec3(0.999999))).r*255.0+0.5);
- return ((bits>>s)&1)==1;
+ return texture(editTex,clamp(tc,vec3(0.0),vec3(0.999999)))[s]>=0.5;
 }
 int segmentIndexAt(vec3 tc){
  float v=huAt(tc);
@@ -207,9 +208,9 @@ function halveVolume(vd){
  return{...vd,data:out,dims:[tw,th,td],...computeBricks(out,[tw,th,td],vd.calibration)};
 }
 
-// processed-segment mask on the VR texture grid (dims): the WebGPU edit runs
-// mapped with the same gpuRunsForTexture (exclude runs dilated by one on a
-// reduced grid, as the WebGPU volume does)
+// processed-segment mask (RGBA, one channel per segment) on the given grid:
+// the WebGPU edit runs mapped with the same gpuRunsForTexture (exclude runs
+// dilated by one on a reduced grid, as the WebGPU volume does)
 function buildEditMask(dims){
  const v=gpuVolumeTarget();if(!v)return{activeMask:0,data:null};
  const descs=gpuVolumeEditDescriptors(),[w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],reduced=w!==v.columns||h!==v.rows||d!==v.slices;
@@ -217,13 +218,11 @@ function buildEditMask(dims){
  SEGMENT_PRESET_ORDER.slice(0,4).forEach((key,si)=>{
   const desc=descs[key];if(!desc?.runs)return;
   const runs=gpuRunsForTexture(desc.runs,sourceDims,dims,{dilate:reduced&&desc.mode==='exclude'?1:0});
-  data||=new Uint8Array(w*h*d);const bit=1<<si;activeMask|=bit;
-  if(desc.mode==='exclude')for(let i=0;i<data.length;i++)data[i]|=bit;
+  data||=new Uint8Array(w*h*d*4);activeMask|=1<<si;
+  const on=desc.mode==='exclude'?0:255;
+  if(desc.mode==='exclude')for(let i=si;i<data.length;i+=4)data[i]=255;
   for(let z=0;z<d;z++){const rec=runs?.[z];if(!rec?.length)continue;
-   for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;
-    if(desc.mode==='keep')for(let x=rec[i+1];x<=rec[i+2];x++)data[o+x]|=bit;
-    else for(let x=rec[i+1];x<=rec[i+2];x++)data[o+x]&=~bit;
-   }
+   for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;for(let x=rec[i+1];x<=rec[i+2];x++)data[(o+x)*4+si]=on}
   }
  });
  return{activeMask,data};
@@ -370,7 +369,7 @@ let running=null;
 // Quest, no background drawn and the clear is transparent
 export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
- const ja=language==='ja',settings=loadSettings();settings.diag=0;
+ const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;
  const ar=mode==='ar',renderer=new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
@@ -385,13 +384,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','画質','詳細'],follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',reloadEdits:'加工を再読み込み',reloaded:'アプリの加工結果を読み込みました',shot:'スクリーンショット',exit:'終了',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Quality','Details'],follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',reloadEdits:'Reload processing',reloaded:'Processed segments reloaded from the app',shot:'Screenshot',exit:'Exit',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Section',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
@@ -501,7 +500,6 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // header
   label(X,52,L.title,{bold:true,size:36,color:'#fff'});
   btn(780,18,200,L.close,false,()=>setMenuOpen(false),{size:28});
-  btn(450,18,310,L.reloadEdits,false,()=>{refreshEdits(true);ui.flash=L.reloaded;ui.flashUntil=performance.now()+2500},{size:28});
   // tabs
   L.tabs.forEach((t,i)=>btn(X+i*240,110,226,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i}));
   const status=ui.flash&&performance.now()<ui.flashUntil?ui.flash:ui.status;
@@ -533,6 +531,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }else{
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});
    choice(y0+100,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
+   choice(y0+280,L.editD,L.editDv.map((t,i)=>({label:t,value:i})),settings.editDiag|0,v=>{settings.editDiag=v;refreshEdits()});
    choice(y0+190,'',L.dv.slice(3).map((t,i)=>({label:t,value:i+3})),settings.diag,v=>{settings.diag=v;applyQuality()});
   }
   return w;
@@ -700,19 +699,19 @@ export async function startVrView({language='ja',mode='vr'}={}){
    info=t.dims.join('×')+(vd.filtered?L.filtered:'');
    refreshEdits();
   };
-  // processed segments: built at start and when the data grid changes;
-  // edits made in the app during VR are taken with 加工を再読み込み (build 349:
-  // the once-a-second check of build 348 is gone, owner saw flicker)
-  const dummyEdit=new THREE.Data3DTexture(new Uint8Array(1),1,1,1);dummyEdit.format=THREE.RedFormat;dummyEdit.needsUpdate=true;
-  let editTex=null,editKey='';
-  refreshEdits=(force=false)=>{
-   if(!material)return;
-   const dims=material.uniforms.texDims.value.toArray().map(Math.round),key=dims.join('x');
-   if(!force&&key===editKey)return;editKey=key;
-   let m;try{m=buildEditMask(dims)}catch(e){console.error(e);m={activeMask:0,data:null}}
-   editTex?.dispose();editTex=null;
-   if(m.activeMask&&m.data){editTex=new THREE.Data3DTexture(m.data,...dims);editTex.format=THREE.RedFormat;editTex.type=THREE.UnsignedByteType;editTex.minFilter=editTex.magFilter=THREE.NearestFilter;editTex.unpackAlignment=1;editTex.needsUpdate=true}
-   material.uniforms.editMask.value=m.activeMask|0;material.uniforms.editTex.value=editTex||dummyEdit;
+  // processed segments: built once when VR starts (edits cannot change in
+  // VR), on a grid of at most 256 per side (texture coordinates are
+  // normalised, so it serves both data sizes); the filter follows the
+  // diagnostic setting (0 smooth, 1 nearest, 2 off)
+  const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
+  let editTex=null,editActive=0;
+  {const g=Math.max(...vd.dims)>256?vd.dims.map(n=>Math.max(1,n>>1)):vd.dims;
+   let m;try{m=buildEditMask(g)}catch(e){console.error(e);m={activeMask:0,data:null}}
+   if(m.activeMask&&m.data){editTex=new THREE.Data3DTexture(m.data,...g);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.unpackAlignment=1;editActive=m.activeMask}}
+  refreshEdits=()=>{
+   if(!material)return;const mode=settings.editDiag|0;
+   if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
+   material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editTex.value=editTex||dummyEdit;
   };
   disposeEdits=()=>{editTex?.dispose();dummyEdit.dispose()};
   disposeExtra=()=>{half?.v.dispose();half?.b.dispose()};
