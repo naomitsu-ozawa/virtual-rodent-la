@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260930-build367';
-import { fmt, frameYield, isIPhoneRuntime, isIPadRuntime, isDesktopRuntime } from './utils.js?v=20260930-build367';
-import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260930-build367';
+import { dicomCodecModulePromise, setDicomCodecModulePromise } from './state.js?v=20260930-build368';
+import { fmt, frameYield, isIPhoneRuntime, isTabletRuntime, isDesktopRuntime } from './utils.js?v=20260930-build368';
+import { isNativeDicomTransferSyntax, COMPRESSED_DICOM_TRANSFER_SYNTAXES, encapsulatedFrameBytes, dicomImageFrameInfo } from './dicom.js?v=20260930-build368';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 export function sourceMprCacheLimit(){
  if(isIPhoneRuntime())return 512*1024*1024;
- if(isIPadRuntime())return 1536*1024*1024;
+ if(isTabletRuntime())return 1536*1024*1024;
  return Number.MAX_SAFE_INTEGER;
 }
 export function sourceMprDecodeConcurrency(){

@@ -2730,9 +2730,87 @@ Checks: lint, 397 unit tests, boot-check OK; board (JA/EN, both states) and
 Needs a Quest check: board position (front-right, 0.34 m right of centre),
 text size, whether it gets in the way.
 
-## Handoff (after build 367)
+## Build 368 — overnight tasks: 3D speed (all platforms), tablet profile, practice project
 
-State: build 367 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (evening, no mid-way checks possible): 1. speed up the 3D drawing on
+VR / PC / iPad without losing quality; 2. Quest as comfortable as the iPad
+for analysis and 3D editing; 3. a developer-supplied project file for the
+practice data. Approach: measure the shader work headlessly (fetch counts,
+exact images), change only what keeps the image, put a switch on the one
+change that is not bit-identical.
+
+### 1. Volume shaders (docs/medical-volume.js WGSL, docs/vr-view.js GLSL)
+New tools: tools/volume-shader-check.mjs (SwiftShader WebGPU, real WGSL,
+128³ phantom: soft ellipsoid 35 %, bone sphere, 2-voxel plate, hollow tube;
+per-pixel counts of HU fetches / brick reads / edit lookups via injected
+counters, image compare of two file versions, PNGs) and
+tools/vr-volume-check.mjs (same phantom through three.js WebGL2, HU and
+classification paths, counts + compare). SwiftShader time is not used (CPU
+proxy, the log of build 330 already said so); counts are the measure.
+Changes, all three shaders / paths:
+- one HU fetch per sample (WGSL had two: raw index + edited index);
+- brick min/max read once per brick (brickEnd = exit distance), not per
+  sample; WGSL brickExitDistance now uses the texture grid like
+  brickMayContain (it used the source grid: shorter skips on reduced
+  textures);
+- bricks carry one voxel of overlap (WGSL brick shader; VR already did), so
+  every trilinear sample inside a brick lies within its min..max;
+- uniform bricks: a brick whose min..max lies inside one enabled segment's
+  range (no earlier segment overlapping, no edit / cut mask on it) is crossed
+  without sampling by a ray already inside that segment (translucent soft
+  tissue interiors); the last point inside the brick becomes the previous
+  sample of the next surface search;
+- surface search: 6 bisections → 2 secant guesses on the sampled value (HU,
+  or the classification value in VR) + 1 bisection when the boundary is an
+  iso-value (no mask on the segment, previous sample measured and outside);
+  else 6 bisections as before. Setting 描画 › 表面の探索 高速 / 精密
+  (app-settings refine, default fast; uniform mprVisible.w) and VR 詳細 ›
+  表面の探索 (settings.refine, uniform refine).
+Measured on the phantom (per pixel, whole 384² image, half background):
+- WGSL: HU fetches 43.0 → 18.9, brick reads 28.5 → 12.7, edit lookups
+  14.2 → 8.0. Exact mode + old bricks: image identical (0 differing
+  channels). New bricks + uniform crossing, exact search: 0.5 % of channels
+  differ (silhouette pixels, sub-voxel hit shifts), mean 6/255. Fast search:
+  4.4 % of channels differ, mean 2.4/255 (shading at the hit point), max 88
+  on isolated silhouette pixels.
+- GLSL HU path: fetches 22.3 → 16.0, brick reads 19.6 → 5.0; cls path: cls
+  fetches 19.9 → 13.6, brick reads 19.6 → 5.0; same difference pattern
+  (0.45 % / mean 6 exact, 7 % / mean 2 fast).
+Not done: precomputed normal textures (memory: 48 MB at 256³, 384 MB at
+512³) — the gradient is 6 fetches per hit, about 4 % of the fetches here.
+Real-device fps still to be measured by the owner (Mac status bar 3D ms,
+iPad, Quest 詳細 tab).
+
+### 2. Tablet profile (Quest browser)
+No device here, so only what is safe: utils.isTabletRuntime() = iPad, or a
+touch device that is neither desktop nor iPhone (Quest browser, Android
+tablets). It now selects the iPad caps: GPU volume cache 1.5 GB, source
+slice cache 192 MB, orthogonal cache 256 MB, volume read 1.5 GB, gpuSide
+'full' removed from the quality control (512 fallback in state.js for any
+touch device). Status label shows 'tablet 512' on such devices (iPad keeps
+'iPad'). The shader work above is the main speed lever there too. Comfort
+of analysis / editing with the controller pointer is not measurable here:
+the owner should try lasso / cut on the Quest browser and report.
+
+### 3. Practice data + bundled project (Opus 5.5 subagent, reviewed)
+sampleDemoBtn: after loadSampleDemo, fetch demo/sample1/project.vrlab
+(no-cache, not stored in the sample Cache Storage); if present it becomes
+pendingProject and the existing selectSeries / applyPendingProject path
+applies it (fingerprint checked). Missing file: silent; broken file:
+console.warn. README in docs/demo/sample1 explains: save a project from the
+practice data, rename to project.vrlab, put it next to index.json. No
+project file added (the owner saves one). e2e tests/e2e/sample-project.spec.js
+(stubbed index / slices / project; applied, and 404 case).
+
+Checks: lint, 397 unit tests, boot-check, vr-slice-check (100 %: 0 diff),
+both shader harnesses; e2e sample-project + folder-project + smoke: 11
+passed (run with a local HTTPS mirror of the CDN modules, since the
+container blocks cdn.jsdelivr.net / esm.sh for Chromium; the plain
+`npx playwright test` needs network and a matching Chromium build).
+
+## Handoff (after build 368)
+
+State: build 368 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -2763,9 +2841,11 @@ B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
    scroll). Open: Quest check; scroll speed (5 cm/s) may need tuning.
 C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
-D. Complex shapes: precomputed normals, fewer refinement steps; verify by
-   image comparison and device fps. Fable 5.1 high–max.
+D. Build 368: fewer fetches per sample / per brick, uniform-brick crossing,
+   fast surface search (switchable). Open: device fps (Mac / iPad / Quest),
+   precomputed normals if the hit cost still matters.
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
-Order: D (A–C, E done, pending device checks). Headless tools used so far: see the build
+Order: device checks of builds 361–368 first; then whatever the owner
+reports (tablet comfort on the Quest browser, fps). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
