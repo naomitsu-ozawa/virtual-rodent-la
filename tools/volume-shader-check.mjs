@@ -7,7 +7,7 @@
 // it, e.g. a copy from git: git show HEAD:docs/medical-volume.js > /tmp/old.js
 import { chromium } from '@playwright/test';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
-const fileA=process.argv[2]||'docs/medical-volume.js',fileB=process.argv[3]||null,outDir=process.argv[4]||'.',refine=+(process.env.REFINE??1),overlap=+(process.env.OVERLAP??1),mpr=+(process.env.MPR??0);
+const fileA=process.argv[2]||'docs/medical-volume.js',fileB=process.argv[3]||null,outDir=process.argv[4]||'.',refine=+(process.env.REFINE??1),overlap=+(process.env.OVERLAP??1),mpr=+(process.env.MPR??0),analysis=+(process.env.ANALYSIS??0);
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 const shaderOf=file=>{const s=fs.readFileSync(file,'utf8'),a=s.indexOf('export function volumeShader(){'),b=s.indexOf('export function brickShader(){',a);const body=s.slice(a,b),i=body.indexOf('`')+1,j=body.lastIndexOf('`');return safeWgsl(body.slice(i,j))};
 const counting=code=>('var<private> nFetch:u32=0u;var<private> nBrick:u32=0u;var<private> nEdit:u32=0u;\n'+code)
@@ -20,7 +20,7 @@ const srv=http.createServer((q,r)=>{r.writeHead(200,{'content-type':'text/html'}
 const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--use-webgpu-adapter=swiftshader']});
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,400))});
 await pg.goto('http://localhost:8778/');
-const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr})=>{
+const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analysis})=>{
  const adapter=await navigator.gpu.requestAdapter(),device=await adapter.requestDevice();
  // phantom: 128³, unsigned u16 = HU + 1024 (slope 1, intercept -1024, bias 0):
  // soft-tissue ellipsoid (40 HU) holding a bone sphere (900 HU), a 2-voxel
@@ -43,6 +43,13 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr})=>{
   const o=((k*bx+j)*bx+i)*2;brick[o]=lo;brick[o+1]=hi}
  const storage=arr=>{const buf=device.createBuffer({size:Math.max(16,arr.byteLength),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(buf,0,arr);return buf};
  const brickBuf=storage(brick),zero=storage(new Uint32Array([0,0,0,0])),editRows=storage(new Uint32Array(64));
+ // analysis overlay (medical-volume.js setAnalysisRuns layout): the bone sphere as one focused cyan region
+ let overlayBuf=zero;
+ if(analysis){const rowCount=N*N,counts=new Uint32Array(rowCount),runs=[];
+  for(let z=0;z<N;z++)for(let y=0;y<N;y++){let x0=-1;for(let x=0;x<=N;x++){const inR=x<N&&Math.hypot(x-64,y-64,z-64)<22;if(inR&&x0<0)x0=x;if(!inR&&x0>=0){runs.push([z*N+y,x0,x-1]);counts[z*N+y]++;x0=-1}}}
+  const header=2+rowCount,data=new Uint32Array(header+runs.length*2),cursor=new Uint32Array(rowCount);data[0]=1;let at=header;for(let r=0;r<rowCount;r++){data[1+r]=at;cursor[r]=at;at+=counts[r]*2}data[1+rowCount]=at;
+  const word=(0x00c8ff|0x1000000|0x80000000)>>>0;for(const [row,x0,x1] of runs){const c=cursor[row];data[c]=((x1&65535)<<16)|(x0&65535);data[c+1]=word;cursor[row]=c+2}
+  overlayBuf=storage(data)}
  const W=384,H=384,uni=new Float32Array(22*4),put=(s,a,c,d,e)=>{uni[s*4]=a;uni[s*4+1]=c;uni[s*4+2]=d;uni[s*4+3]=e};
  // camera: app units, longest side 3.3; half extents 1.65; looking from a corner
  const half=[1.65,1.65,1.65],scale=3.3/N,step=Math.max(1e-5,scale*0.85);
@@ -65,7 +72,7 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr})=>{
   const pipeline=device.createRenderPipeline({layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format}]},primitive:{topology:'triangle-list'}});
   const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:uniBuf}},{binding:1,resource:tex.createView({dimension:'3d'})},{binding:2,resource:{buffer:editRows}},{binding:3,resource:{buffer:brickBuf}},{binding:4,resource:sampler},
-   {binding:5,resource:{buffer:zero}},{binding:6,resource:{buffer:zero}},{binding:7,resource:{buffer:zero}},{binding:8,resource:{buffer:zero}},{binding:9,resource:{buffer:zero}},{binding:10,resource:{buffer:zero}}]});
+   {binding:5,resource:{buffer:zero}},{binding:6,resource:{buffer:zero}},{binding:7,resource:{buffer:zero}},{binding:8,resource:{buffer:zero}},{binding:9,resource:{buffer:zero}},{binding:10,resource:{buffer:overlayBuf}}]});
   const times=[];let px=null;
   const passes=format==='rgba8unorm'?6:1;
   for(let i=0;i<passes;i++){
@@ -80,7 +87,7 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr})=>{
  const out={A:await run(shaders.A,'A'),Ac:await run(shaders.Ac,'Ac','rgba32float')};if(shaders.B){out.B=await run(shaders.B,'B');out.Bc=await run(shaders.Bc,'Bc','rgba32float')}
  for(const k of ['Ac','Bc']){const r=out[k];if(!r||r.errs)continue;let f=0,br=0,e=0;for(let i=0;i<r.px.length;i+=4){f+=r.px[i];br+=r.px[i+1];e+=r.px[i+2]}r.sums={fetch:f,brick:br,edit:e};r.px=null}
  return{W,H,out};
-},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr});
+},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr,analysis});
 await b.close();srv.close();
 const {W,H,out}=result;
 for(const k of Object.keys(out)){const r=out[k];if(r.errs){console.log(k,'COMPILE ERRORS',r.errs);process.exit(1)}
