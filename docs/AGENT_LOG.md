@@ -2921,9 +2921,32 @@ apart from a few pixels (before: half speckled); images without a region
 unchanged (fetch counts 18.9 / 12.7 / 8.0 as in build 368).
 Checks: lint, 404 unit tests, boot-check, harness.
 
-## Handoff (after build 372)
+## Build 373 — 3D drag fps on the iPad: run-table lookups by binary search, GPU-timed drag budget
 
-State: build 372 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (iPad, build 372, fat segment + analysis region, zoomed in): low fps
+while dragging, choppy when enlarged. Status bar in the screenshot: 3D 13 ms
+at 541×332 (interaction tier 2 already), 間隔 33 ms (30 fps). 13 ms for
+0.18 MP is ~70 ns per pixel: the per-pixel work, not the pixel count. When
+zoomed in every pixel is a hit, and each hit ran analysisOverlayAt, a
+linear scan over the row's run pairs (a fat region has hundreds per row);
+previewContains / appliedCutContains scanned likewise.
+- All three lookups now binary-search the row (sorted, disjoint intervals;
+  editAllows already did). setAnalysisRuns sorts each row's pairs by x0
+  (regions were appended in region order). Harness with a region: image
+  identical to build 372 (0 differing channels).
+- Adaptive drag budget: while dragging, the tier's pixel budget is scaled by
+  the measured GPU time of the volume pass (steps 1 / 0.7 / 0.5 / 0.35, one
+  step down over 10 ms, one step up under 5 ms, at most every 300 ms, kept
+  between drags); the frame-time line shows ×0.7 etc. A 60 Hz frame with
+  present needs the pass under ~8–10 ms; 13 ms fell to 30 fps.
+Not done (follow-up if still slow): the per-sample editAllows binary search
+for processed segments (fat RLE) could become a bit-mask texture (16 MB per
+segment at 512³, one load instead of ~8 dependent storage reads).
+Checks: lint, 404 unit tests, boot-check, harness (overlay 0 diff).
+
+## Handoff (after build 373)
+
+State: build 373 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
