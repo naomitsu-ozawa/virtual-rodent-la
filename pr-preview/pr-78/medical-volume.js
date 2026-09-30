@@ -85,6 +85,12 @@ struct Uniforms{
 // the fragment stage stays within 8 storage buffers: [0]=1 when non-empty,
 // [1..rowCount+1]=offsets into this array, then (x0|x1<<16, rgb|flags) pairs.
 @group(0) @binding(10) var<storage,read> analysisOverlay:array<u32>;
+// build 374: region index per voxel, 4 bits each, 8 voxels per u32 along x
+// (0 none, 1..14 = shown region, 15 = more regions: search the row). One
+// texture load replaces the binary search of the row's run pairs at every
+// hit. section.w = 1 when the texture is valid. analysisOverlay[0] is then the
+// start of the colour table (index k -> word), or 0 when there is no region.
+@group(0) @binding(11) var regionTex:texture_3d<u32>;
 
 struct VOut{@builtin(position) position:vec4<f32>};
 @vertex fn vs(@builtin(vertex_index) i:u32)->VOut{
@@ -165,6 +171,12 @@ fn analysisOverlayAt(tc0:vec3<f32>)->u32{
  let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
+ if(u.section.w>0.5){
+  let word=textureLoad(regionTex,vec3<i32>(i32(p.x>>3u),i32(p.y),i32(p.z)),0).r;
+  let k=(word>>((p.x&7u)*4u))&15u;
+  if(k==0u){return 0u;}
+  if(k<15u){return analysisOverlay[analysisOverlay[0]+k];}
+ }
  let row=p.z*dims.y+p.y;
  let start=analysisOverlay[1u+row];
  let finish=analysisOverlay[2u+row];
@@ -410,7 +422,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      let a=u.segments[u32(idx)*2u];
      // inward = towards the segment's range: up the gradient when entered from below its minimum, else down
      let inward=select(-n,n,hvPrev<-1e8||hvPrev<a.x);
-     let tcv=insideVoxelTc(tc,dir,inward,u32(idx));
+     var tcv=tc;if(analysisOverlay[0]!=0u||previewRows[0]!=0u){tcv=insideVoxelTc(tc,dir,inward,u32(idx));}
      let isCutPreview=previewContains(u32(idx),tcv);
      var col=u.segments[u32(idx)*2u+1u].rgb;
      var alpha=clamp(a.z,0.03,1.0);
@@ -892,6 +904,7 @@ export class MedicalVolumeRenderer{
    {binding:2,resource:{buffer:this.editRowsBuffer}},{binding:3,resource:{buffer:this.brickBuffer}},{binding:4,resource:this.sampler},{binding:5,resource:{buffer:this.editIntervalsBuffer}},
    {binding:6,resource:{buffer:this.previewRowsBuffer}},{binding:7,resource:{buffer:this.previewIntervalsBuffer}},
    {binding:8,resource:{buffer:this.appliedCutRowsBuffer}},{binding:9,resource:{buffer:this.appliedCutIntervalsBuffer}},
+   {binding:11,resource:(this.regionTexture||this.regionDummy()).createView({dimension:'3d'})},
    {binding:10,resource:{buffer:this.analysisOverlayBuffer}}
   ]});
  }
@@ -902,7 +915,13 @@ export class MedicalVolumeRenderer{
   this.device.queue.writeBuffer(this.editRowsBuffer,0,new Uint32Array([0,0]));this.device.queue.writeBuffer(this.editIntervalsBuffer,0,new Uint32Array([0]));
   this.editSignature='';if(this.texture&&this.brickBuffer)this.rebuildBindGroup();
  }
+ // 1×1×1 r32uint stand-in for binding 11 while no region texture exists
+ regionDummy(){
+  if(!this._regionDummy)this._regionDummy=this.device.createTexture({label:'VRL region index empty',size:{width:1,height:1,depthOrArrayLayers:1},dimension:'3d',format:'r32uint',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
+  return this._regionDummy;
+ }
  clearAnalysisRuns(){
+  this.regionTexture?.destroy?.();this.regionTexture=null;
   this.analysisOverlayBuffer?.destroy?.();
   this.analysisOverlayBuffer=this.device.createBuffer({label:'VRL analysis overlay empty',size:8,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(this.analysisOverlayBuffer,0,new Uint32Array([0,0]));
@@ -921,18 +940,34 @@ export class MedicalVolumeRenderer{
   for(const g of grids)if(g)for(let z=0;z<d;z++){const rec=g[z];if(rec)for(let i=0;i<rec.length;i+=3)counts[z*h+rec[i]]++}
   const header=2+rowCount;let total=0;for(let r=0;r<rowCount;r++)total+=counts[r];
   if(!total){this.clearAnalysisRuns();this.analysisOverlaySignature=signature;return}
-  const data=new Uint32Array(header+total*2),cursor=new Uint32Array(rowCount);data[0]=1;let at=header;
+  // colour table after the pairs: word for region index k (1..14); data[0] points at it (build 374)
+  const tableStart=header+total*2,data=new Uint32Array(tableStart+16),cursor=new Uint32Array(rowCount);data[0]=tableStart;let at=header;
   for(let r=0;r<rowCount;r++){data[1+r]=at;cursor[r]=at;at+=counts[r]*2}
   data[1+rowCount]=at;
   for(let ri=0;ri<grids.length;ri++){
    const g=grids[ri];if(!g)continue;const word=((regions[ri].color>>>0)&0xffffff)|(regions[ri].focused?0x1000000:0)|0x80000000;
    for(let z=0;z<d;z++){const rec=g[z];if(rec)for(let i=0;i<rec.length;i+=3){const row=z*h+rec[i],c=cursor[row];data[c]=((rec[i+2]&65535)<<16)|(rec[i+1]&65535);data[c+1]=word>>>0;cursor[row]=c+2}}
   }
+  for(let ri=0;ri<Math.min(grids.length,14);ri++)data[tableStart+1+ri]=(((regions[ri].color>>>0)&0xffffff)|(regions[ri].focused?0x1000000:0)|0x80000000)>>>0;
   // build 373: the shader binary-searches each row, so its pairs must be sorted by x0 (regions were appended in region order)
   for(let r=0;r<rowCount;r++){const a=data[1+r],b=data[2+r];if(b-a<=2)continue;const pairs=[];for(let c=a;c<b;c+=2)pairs.push([data[c],data[c+1]]);pairs.sort((x,y)=>(x[0]&65535)-(y[0]&65535));for(let k=0;k<pairs.length;k++){data[a+k*2]=pairs[k][0];data[a+k*2+1]=pairs[k][1]}}
   if(data.byteLength>this.device.limits.maxStorageBufferBindingSize)throw new Error('GPU analysis overlay exceeds storage buffer limit');
   const buffer=this.device.createBuffer({label:'VRL analysis overlay',size:data.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(buffer,0,data);
+  // build 374: region index texture (4 bits per voxel, 8 per u32 along x; 67 MB at 512³, 8 MB at 256³). Regions past the 14th read 15 = search the row.
+  let tex=null;
+  try{
+   const tw=Math.ceil(w/8),words=new Uint32Array(tw*h*d);
+   for(let ri=0;ri<grids.length;ri++){const g=grids[ri];if(!g)continue;const k=Math.min(ri+1,15);
+    for(let z=0;z<d;z++){const rec=g[z];if(!rec)continue;for(let i=0;i<rec.length;i+=3){const base=(z*h+rec[i])*tw;for(let x=rec[i+1];x<=rec[i+2];x++){const wi=base+(x>>3),sh=(x&7)*4;words[wi]=(words[wi]&~(15<<sh))|(k<<sh)}}}}
+   // WebGPU reports allocation failure through the error scope, not by throwing: drop the texture (the row search stays correct) when it arrives
+   this.device.pushErrorScope?.('out-of-memory');
+   tex=this.device.createTexture({label:'VRL region index',size:{width:tw,height:h,depthOrArrayLayers:d},dimension:'3d',format:'r32uint',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
+   this.device.queue.writeTexture({texture:tex},words,{bytesPerRow:tw*4,rowsPerImage:h},{width:tw,height:h,depthOrArrayLayers:d});
+   const created=tex;
+   this.device.popErrorScope?.()?.then(err=>{if(err&&this.regionTexture===created){console.warn('Region index texture not available; searching rows instead.',err.message);created.destroy?.();this.regionTexture=null;this.rebuildBindGroup()}}).catch(()=>{});
+  }catch(e){console.warn('Region index texture not available; searching rows instead.',e);tex?.destroy?.();tex=null}
+  this.regionTexture?.destroy?.();this.regionTexture=tex;
   this.analysisOverlayBuffer?.destroy?.();this.analysisOverlayBuffer=buffer;this.analysisOverlaySignature=signature;this.rebuildBindGroup();
  }
  clearPreviewRuns(){
@@ -1236,7 +1271,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
    else if(mode===2)coord=(1-(idx+.5)/Math.max(h,1)*2)*this.halfExtents[1];
    else if(mode===3)coord=((idx+.5)/Math.max(w,1)*2-1)*this.halfExtents[0];
   }
-  put(19,active?mode:0,coord,section.reverse?-1:1,0);
+  put(19,active?mode:0,coord,section.reverse?-1:1,this.regionTexture?1:0);
   put(20,section.capEnabled?1:0,Number.isFinite(+section.capOpacity)?Math.max(0,Math.min(1,+section.capOpacity)):.85,section.hatch?1:0,28);
   // w=1: trilinear sampling. It was on for reduced textures only, so the full-size
   // volume used nearest voxels and showed staircases (owner, build 282). rg8 lo/hi
@@ -1279,7 +1314,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
   const result=await this.pickMany([{clientX,clientY}],camera,obj,segmentState,segmentOrder,preferredKey);return result[0]||null;
  }
  resetData(){this.setActive(false);this.texture?.destroy?.();this.brickBuffer?.destroy?.();this.texture=null;this.brickBuffer=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.previewVolume=null;this.previewPlaneBuffers={coronal:null,sagittal:null};this.volume=null;this.textureDims=[1,1,1];this.reducedVolume=false;this.textureBytes=0;this.planSignature='';this.clearEditRuns();this.clearPreviewRuns();this.clearAppliedCutRuns()}
- destroy(){this.resetData();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();this.previewRowsBuffer?.destroy?.();this.previewIntervalsBuffer?.destroy?.();this.analysisOverlayBuffer?.destroy?.();this.appliedCutRowsBuffer?.destroy?.();this.appliedCutIntervalsBuffer?.destroy?.();this.mprUniformBuffer?.destroy?.();this.canvas.remove()}
+ destroy(){this.resetData();this.regionTexture?.destroy?.();this._regionDummy?.destroy?.();this.uniformBuffer?.destroy?.();this.pickBuffer?.destroy?.();this.pickOutput?.destroy?.();this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();this.previewRowsBuffer?.destroy?.();this.previewIntervalsBuffer?.destroy?.();this.analysisOverlayBuffer?.destroy?.();this.appliedCutRowsBuffer?.destroy?.();this.appliedCutIntervalsBuffer?.destroy?.();this.mprUniformBuffer?.destroy?.();this.canvas.remove()}
 }
 
 
