@@ -2710,9 +2710,29 @@ Checks: lint, 397 unit tests, boot-check OK; 表示 / 詳細 tabs rendered
 headless. Needs a Quest check: start height, the 詳細 line values, grabbing
 the menu.
 
-## Handoff (after build 366)
+## Build 367 — help board (controls) front-right, grabbable
 
-State: build 366 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: show the controls on the right side of the view; must be movable by
+hand like the menu. A canvas board (820×560 px, 0.32 m wide, labels only,
+makeMenu reused) placed front-right, mirrored from the menu, lazily
+following the head like the menu (lazyFollow now shared by both). Contents
+follow the state: without sections the basics (grip, two-hand scale, A/X,
+B/Y, menu grab); with sections the section controls (point / approach +
+hold button, thumbstick scroll, left-hand board, B/Y); with the menu open
+the last line says trigger = menu buttons / sliders. Grip while the ray hits
+the board moves it (ray priority menu → tag → panel → board → frame); on
+release it stays facing the head and the setting becomes 固定. 表示 tab:
+操作方法 = 非表示 / ついて来る / 固定 (settings.help, default follow);
+正面に戻す also re-places the board; hidden in screenshots. This covers
+handoff item E in its simplest form (no first-run steps).
+Checks: lint, 397 unit tests, boot-check OK; board (JA/EN, both states) and
+表示 tab rendered headless, every label width measured against its canvas.
+Needs a Quest check: board position (front-right, 0.34 m right of centre),
+text size, whether it gets in the way.
+
+## Handoff (after build 367)
+
+State: build 367 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -2745,6 +2765,7 @@ C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
 D. Complex shapes: precomputed normals, fewer refinement steps; verify by
    image comparison and device fps. Fable 5.1 high–max.
-E. First-run VR guide (3 steps, controller labels). Sonnet 5.5 medium.
-Order: D → E (A–C done, pending device checks). Headless tools used so far: see the build
+E. Help board done in build 367 (state-dependent controls, front-right).
+   A first-run 3-step guide is still open if the owner wants it.
+Order: D (A–C, E done, pending device checks). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
