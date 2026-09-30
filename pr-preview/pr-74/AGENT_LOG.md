@@ -2393,3 +2393,11 @@ only, so the 3D stays when looking from the other side. 切り取り is now
 along its local X), chosen as the viewer's half when the section appears or
 the mode is picked; 向きを反転 swaps it; an arrow on the frame points at the
 removed half. 手前 unchanged (flips towards the eye every frame).
+
+## Build 347 — section held only while pressed
+
+Owner: hold the section like the volume, only while the trigger or grip is
+pressed. Both hold modes now: press the chosen button near the frame (white)
+to hold, release to leave it fixed in the volume. The section always appears
+fixed through the volume centre facing the viewer. The old trigger toggle
+(fix / pick up) is gone.

@@ -8,11 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260930-build346';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260930-build346';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build346';
-import { tr } from './i18n.js?v=20260930-build346';
-import { wc, ww } from './ui-shell.js?v=20260930-build346';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260930-build347';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260930-build347';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build347';
+import { tr } from './i18n.js?v=20260930-build347';
+import { wc, ww } from './ui-shell.js?v=20260930-build347';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -356,13 +356,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','画質','詳細'],follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',shot:'スクリーンショット',exit:'終了',
    sec:'断面',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
-   secHelp:['断面の枠の近くでグリップ：持つ／離す：その場に固定','断面を持っている手のトリガー：固定／もう一度：持つ'],secOff:'「オン」かB/Yボタンで断面を出します',
+   secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Quality','Details'],follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',shot:'Screenshot',exit:'Exit',
    sec:'Section',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
-   secHelp:['Grip near the frame: hold / release: stays fixed','Trigger of the holding hand: fix / again: hold'],secOff:'Turn it on here or press B/Y',
+   secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: held in hand',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
  const menu=makeMenu();scene.add(menu.mesh);
@@ -401,10 +401,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(grabbing.size===2)twoHand={d0:Math.max(handDist(),1e-3),s0:holder.scale.x};
   else if(grabbing.size===1)[...grabbing][0].attach(holder);
  };
- // hand-held section (build 344/345): a square frame, local X = plane normal
- // (held like a blade). Hold mode is a setting: grip near the frame holds it
- // and release leaves it fixed in the volume, or (trigger mode) the holding
- // hand's trigger fixes it and the trigger picks it up again. B/Y toggles.
+ // hand-held section (build 344–347): a square frame, local X = plane normal
+ // (held like a blade). Like the volume, it is held only while the chosen
+ // button (grip or trigger, a setting) is pressed near the frame; on release
+ // it stays fixed in the volume. B/Y toggles.
  const section={on:false,held:null},planeObj=new THREE.Group();
  const frameMat=new THREE.LineBasicMaterial({color:0xffcc44});
  {const h=0.12,g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-h,-h),new THREE.Vector3(0,h,-h),new THREE.Vector3(0,h,h),new THREE.Vector3(0,-h,h)]);planeObj.add(new THREE.LineLoop(g,frameMat))}
@@ -421,9 +421,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const setSection=(on,c=controllers[1]||controllers[0])=>{
   section.on=on;
   if(on){
-   if(settings.secHold===1){c.add(planeObj);planeObj.position.set(0,0,-0.1);planeObj.quaternion.identity();planeObj.scale.setScalar(1);section.held=c}
-   else{
-    // grip mode: appears fixed through the volume centre, facing the viewer
+   {
+    // appears fixed through the volume centre, facing the viewer
     readHead();scene.add(planeObj);holder.getWorldPosition(planeObj.position);tmpA.subVectors(head,planeObj.position).normalize();
     planeObj.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tmpA);planeObj.scale.setScalar(1);holder.attach(planeObj);section.held=null;
    }
@@ -449,9 +448,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const h=menuHit(c);
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
    if(badgeHit(c)){setMenuOpen(true);pulse(c);return}
-   if(section.on&&settings.secHold===1){if(section.held===c)fixPlane();else if(!section.held)takePlane(c)}
+   if(section.on&&settings.secHold===1&&!section.held&&nearPlane(c))takePlane(c);
   });
-  c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}});
+  c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(section.held===c&&settings.secHold===1)fixPlane()});
  }
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
@@ -569,7 +568,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }
   menu.setHover(hover);
   // section frame colour: yellow held, cyan fixed, white when a grip would take it
-  if(section.on)frameMat.color.setHex(section.held?0xffcc44:(settings.secHold===0&&controllers.some(nearPlane))?0xffffff:0x44ddff);
+  if(section.on)frameMat.color.setHex(section.held?0xffcc44:controllers.some(nearPlane)?0xffffff:0x44ddff);
   const st=section.on?(section.held?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}
   if(material){
