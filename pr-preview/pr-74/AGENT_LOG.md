@@ -2362,3 +2362,25 @@ depth order at the plane crossing, resampled per pixel from the 512 texture
 with the app's window centre/width (wc/ww), opacity off/30/60/100 %. Headless
 check: slice grey 0.5 at window 200/100 on HU 200, 50 % premultiplied, clip
 keeps the far half.
+
+## Build 345 — VR/AR menu redesign, grip/trigger section hold, screenshots
+
+Owner: beginner-friendly UI, menu not fixed in space; section hold and menu
+position both selectable; wants screenshots. Menu rebuilt (canvas widgets:
+buttons, labels, sliders): header (title, close), tabs 表示 / 断面 / 画質 /
+詳細, one status line (section held / fixed, flashes), name-left /
+buttons-right rows. Menu position: follows lazily (moves back in front when
+the head turns >≈35° or it is >0.45 m off; front-left, below eye level) or
+fixed, chosen in 表示. A/X toggles the menu; when closed a メニュー tag on the
+left controller opens it. Input: trigger = select (buttons, slider drag),
+grip = grab; the trigger no longer grabs the volume. Section hold: grip
+(grip near the frame holds, release fixes it; frame white when grippable,
+yellow held, cyan fixed; appears fixed through the volume centre facing the
+viewer) or trigger (old behaviour); B/Y still toggles. Slice opacity is a
+0–100 % slider (5 % steps). 正面に戻す brings the volume and menu in front.
+Screenshot: the left eye re-rendered at 1600 px wide into an offscreen target
+(menu, tag and rays hidden, full-resolution volume), read back to PNG; kept
+until the session ends, then a panel on the page offers each for saving
+(AR: passthrough is not in the image, background transparent). Haptic pulse
+on presses. Menu layouts rendered headless and checked (light segment
+colours get dark text).
