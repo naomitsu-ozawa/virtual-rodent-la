@@ -152,13 +152,12 @@ fn previewContains(seg:u32,tc0:vec3<f32>)->bool{
  let row=p.z*dims.y+p.y;
  let start=previewRows[1u+row];
  let finish=previewRows[2u+row];
- for(var i=start;i<finish;i=i+1u){
-  let packed=previewIntervals[i];
-  let x0=packed&65535u;
-  let x1=packed>>16u;
-  if(p.x<x0){break;}
-  if(p.x<=x1){return true;}
- }
+ // build 373: binary search for the last interval starting at or before p.x
+ // (a fat region has hundreds of intervals per row; the linear scan ran once
+ // per hit pixel and dominated the frame when zoomed in)
+ var lo=start;var hi=finish;
+ loop{if(lo>=hi){break;}let mid=(lo+hi)/2u;if((previewIntervals[mid]&65535u)<=p.x){lo=mid+1u;}else{hi=mid;}}
+ if(lo>start){return p.x<=(previewIntervals[lo-1u]>>16u);}
  return false;
 }
 fn analysisOverlayAt(tc0:vec3<f32>)->u32{
@@ -169,10 +168,10 @@ fn analysisOverlayAt(tc0:vec3<f32>)->u32{
  let row=p.z*dims.y+p.y;
  let start=analysisOverlay[1u+row];
  let finish=analysisOverlay[2u+row];
- for(var i=start;i<finish;i=i+2u){
-  let packed=analysisOverlay[i];
-  if(p.x>=(packed&65535u)&&p.x<=(packed>>16u)){return analysisOverlay[i+1u];}
- }
+ // build 373: pairs (x0|x1<<16, colour) sorted by x0 per row (setAnalysisRuns): binary search
+ var lo=start/2u;var hi=finish/2u;
+ loop{if(lo>=hi){break;}let mid=(lo+hi)/2u;if((analysisOverlay[mid*2u]&65535u)<=p.x){lo=mid+1u;}else{hi=mid;}}
+ if(lo>start/2u){let i=(lo-1u)*2u;if(p.x<=(analysisOverlay[i]>>16u)){return analysisOverlay[i+1u];}}
  return 0u;
 }
 fn appliedCutContains(seg:u32,tc0:vec3<f32>)->bool{
@@ -186,13 +185,9 @@ fn appliedCutContains(seg:u32,tc0:vec3<f32>)->bool{
  let row=p.z*dims.y+p.y;
  let start=appliedCutRows[base+row];
  let finish=appliedCutRows[base+row+1u];
- for(var i=start;i<finish;i=i+1u){
-  let packed=appliedCutIntervals[i];
-  let x0=packed&65535u;
-  let x1=packed>>16u;
-  if(p.x<x0){break;}
-  if(p.x<=x1){return true;}
- }
+ var lo=start;var hi=finish;
+ loop{if(lo>=hi){break;}let mid=(lo+hi)/2u;if((appliedCutIntervals[mid]&65535u)<=p.x){lo=mid+1u;}else{hi=mid;}}
+ if(lo>start){return p.x<=(appliedCutIntervals[lo-1u]>>16u);}
  return false;
 }
 fn appliedCutNormal(seg:u32,tc0:vec3<f32>)->vec3<f32>{
@@ -933,6 +928,8 @@ export class MedicalVolumeRenderer{
    const g=grids[ri];if(!g)continue;const word=((regions[ri].color>>>0)&0xffffff)|(regions[ri].focused?0x1000000:0)|0x80000000;
    for(let z=0;z<d;z++){const rec=g[z];if(rec)for(let i=0;i<rec.length;i+=3){const row=z*h+rec[i],c=cursor[row];data[c]=((rec[i+2]&65535)<<16)|(rec[i+1]&65535);data[c+1]=word>>>0;cursor[row]=c+2}}
   }
+  // build 373: the shader binary-searches each row, so its pairs must be sorted by x0 (regions were appended in region order)
+  for(let r=0;r<rowCount;r++){const a=data[1+r],b=data[2+r];if(b-a<=2)continue;const pairs=[];for(let c=a;c<b;c+=2)pairs.push([data[c],data[c+1]]);pairs.sort((x,y)=>(x[0]&65535)-(y[0]&65535));for(let k=0;k<pairs.length;k++){data[a+k*2]=pairs[k][0];data[a+k*2+1]=pairs[k][1]}}
   if(data.byteLength>this.device.limits.maxStorageBufferBindingSize)throw new Error('GPU analysis overlay exceeds storage buffer limit');
   const buffer=this.device.createBuffer({label:'VRL analysis overlay',size:data.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(buffer,0,data);
@@ -1154,6 +1151,17 @@ fn word(i:u32)->u32{
  setActive(active){if(!active&&typeof document!=='undefined'){const el=document.getElementById('gpu-frame-time');if(el)el.textContent=''}
   this.active=!!active;this.canvas.style.display=this.active?'block':'none';
  }
+ // build 373: while dragging, the pixel budget of the tier is scaled by the
+ // measured GPU time of the volume pass: over 10 ms (a 60 Hz frame cannot
+ // hold it with the present) one step down, under 5 ms one step up; steps
+ // 1 / 0.7 / 0.5 / 0.35, at most every 300 ms, kept between drags
+ adaptDragScale(){
+  if(!this.interactive||!(this.lastFrameMs>0))return;
+  const now=performance.now();if(now-(this._dragScaleAt||0)<300)return;
+  const steps=[1,0.7,0.5,0.35],cur=this.dragScale||1,i=steps.indexOf(cur)<0?0:steps.indexOf(cur);let next=cur;
+  if(this.lastFrameMs>10&&i<steps.length-1)next=steps[i+1];else if(this.lastFrameMs<5&&i>0)next=steps[i-1];
+  if(next!==cur){this.dragScale=next;this._dragScaleAt=now;this.resize()}
+ }
  setInteractive(active,tier=0){
   const next=!!active,nextTier=next?Math.max(0,Math.min(2,Math.round(+tier||0))):0;
   if(this.interactive===next&&this.interactionTier===nextTier)return;
@@ -1164,7 +1172,7 @@ fn word(i:u32)->u32{
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
   const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;if(globalThis.__vrlSettings?.get?.('showPerf')===false){el.textContent='';return}
   const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
-  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+  el.textContent=' · 3D '+Math.round(ms)+' ms'+(this.interactive&&(this.dragScale||1)<1?' ×'+this.dragScale:'')+' · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
  }
  dropLowTargets(){for(const t of (this.lowTargets||new Map()).values())t.texture.destroy?.();this.lowTargets=new Map()}
  // one texture per drag size, kept until the canvas size changes
@@ -1200,7 +1208,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
   // canvas per drag/zoom reallocated its buffers (swap on the owner's Mac).
   const [w,h]=fit(Math.min(dpr,1.5),cfg?.restBudget?.()??1.0e6);
   if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;this.resizeCount=(this.resizeCount||0)+1;this.dropLowTargets()}
-  const [rw,rh]=lowered?fit(Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]),budgets[this.interactionTier]||budgets[0]):[w,h];
+  const [rw,rh]=lowered?fit(Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]),(budgets[this.interactionTier]||budgets[0])*(this.dragScale||1)):[w,h];
   this.renderW=Math.min(rw,w);this.renderH=Math.min(rh,h);
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
@@ -1246,7 +1254,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
   if(this._lastRenderAt)this.frameGapMs=now-this._lastRenderAt;this._lastRenderAt=now;
   let before=null;if(measure){this._frameTimerPending=true;before=fq.onSubmittedWorkDone().then(()=>performance.now())}
   fq.submit([encoder.finish()]);
-  if(measure){const t0=now;Promise.all([before,fq.onSubmittedWorkDone().then(()=>performance.now())]).then(([tb,te])=>{this.queueWaitMs=Math.max(0,tb-t0);this.lastFrameMs=te-Math.max(t0,tb);this._frameTimerPending=false;this.showFrameTime()},()=>{this._frameTimerPending=false})}
+  if(measure){const t0=now;Promise.all([before,fq.onSubmittedWorkDone().then(()=>performance.now())]).then(([tb,te])=>{this.queueWaitMs=Math.max(0,tb-t0);this.lastFrameMs=te-Math.max(t0,tb);this._frameTimerPending=false;this.adaptDragScale();this.showFrameTime()},()=>{this._frameTimerPending=false})}
  }
  async pickMany(points,camera,obj,segmentState,segmentOrder,preferredKey=null){
   if(!this.active||!this.texture||!this.bindGroup||!obj||!points?.length)return points?.map(()=>null)||[];
