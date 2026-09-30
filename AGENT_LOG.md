@@ -2555,3 +2555,18 @@ the filters for VR. Checked: 96×70×37 and 512×512×130 textures copied with
 0 mismatched bytes (SwiftShader WebGPU, 68 MB in 1.5 s). The full app path
 could not run headless (three.webgpu swizzle error with this Chromium);
 needs the device. Panel shows 3D画面から写す when used.
+
+## Build 360 — VR/AR: up to 4 section planes
+
+Owner: more sections (4?); add with a long press. Shader: cutPlanes[4],
+planeCount, planeCut bits. Clipping planes shrink the ray interval (kept =
+intersection of every clipping plane's kept half); the cap is drawn on the
+plane that set the entry; every plane's slice inside the kept interval is
+composited in depth order (up to 4, sorted). JS: planes list, each with its
+own frame colour (yellow, cyan, magenta, green; white while held or
+grippable), clip on/off (the first clips, added ones start without), side
+for one-side mode, remove. B/Y: short press shows / hides, long press
+(0.6 s, ring on the controller, haptic) adds a plane in front of that hand;
+at 4 a short message. Grip/trigger takes the nearest frame. Menu 断面 tab:
+rows per plane (切る/切らない, 向きを反転, 消す), ＋追加. Headless shader
+check with 0/1/2 planes, clip bits and slices; menu layout rendered.
