@@ -8,12 +8,12 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build359';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build359';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build359';
-import { sceneState } from './state.js?v=20260930-build359';
-import { tr } from './i18n.js?v=20260930-build359';
-import { wc, ww } from './ui-shell.js?v=20260930-build359';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build360';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build360';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build360';
+import { sceneState } from './state.js?v=20260930-build360';
+import { tr } from './i18n.js?v=20260930-build360';
+import { wc, ww } from './ui-shell.js?v=20260930-build360';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -61,8 +61,12 @@ uniform vec4 segC[4]; // rgb, w=1: simple display (no refinement, no gradient)
 // switch in 詳細: smooth / nearest / off)
 uniform int editMask;
 uniform sampler3D editTex;
-uniform vec4 cutPlane;
-uniform int cutOn;
+// up to 4 sections (build 360): planeCount planes, bit i of planeCut = plane
+// i clips (its removed half is dot(n,p) < w); every plane shows its slice,
+// composited in depth order inside the kept interval
+uniform vec4 cutPlanes[4];
+uniform int planeCount;
+uniform int planeCut;
 uniform float sliceOpacity;
 // build 357: capOn paints the cut face flat in the segment colour (lit by the
 // plane normal, as the app's section cap); sliceTint > 0 colours the slice
@@ -150,32 +154,38 @@ void main(){
  if(bounds.x>bounds.y)discard;
  if(diag==1){outColor=vec4(0.2,0.35,0.5,1.0);return;}
  float t=max(bounds.x,0.0);float endT=bounds.y;float step=max(stepSize,1e-5);
- float planeT=-1.0;float capT=-1.0;
- if(cutOn>0||sliceOpacity>0.0){
-  float side=dot(cutPlane.xyz,o)-cutPlane.w;float slope=dot(cutPlane.xyz,dir);
+ float capT=-1.0;int capPlane=-1;float sliceT[4];int nSlice=0;
+ float crossT[4];bool crossOk[4];
+ for(int i=0;i<4;i++){
+  crossOk[i]=false;crossT[i]=0.0;if(i>=planeCount)continue;
+  vec4 pl=cutPlanes[i];float side=dot(pl.xyz,o)-pl.w;float slope=dot(pl.xyz,dir);bool clip=((planeCut>>i)&1)==1;
   if(abs(slope)>1e-8){
-   float cross=-side/slope;
-   if(cross>=t-1e-6&&cross<=endT+1e-6)planeT=cross;
-   if(cutOn>0){if(slope>0.0){if(capOn>0&&cross>=t&&cross<=endT)capT=cross;t=max(t,cross);}else endT=min(endT,cross);}
-  }else if(cutOn>0&&side<0.0)discard;
-  if(cutOn>0&&t>endT+1e-6&&planeT<0.0)discard;
+   float cross=-side/slope;crossT[i]=cross;crossOk[i]=true;
+   if(clip){if(slope>0.0){if(cross>t){t=cross;capT=cross;capPlane=i;}}else endT=min(endT,cross);}
+  }else if(clip&&side<0.0)discard;
  }
- bool sliceDone=sliceOpacity<=0.0||planeT<0.0;
+ if(t>endT+1e-6)discard;
+ if(capOn==0||capT>endT){capT=-1.0;capPlane=-1;}
+ // slices inside the kept interval, sorted front to back
+ if(sliceOpacity>0.0){
+  for(int i=0;i<4;i++){if(crossOk[i]&&crossT[i]>=t-1e-5&&crossT[i]<=endT+1e-5){sliceT[nSlice]=crossT[i];nSlice++;}}
+  for(int i=1;i<4;i++){if(i>=nSlice)break;float k=sliceT[i];int j=i-1;while(j>=0&&sliceT[j]>k){sliceT[j+1]=sliceT[j];j--;}sliceT[j+1]=k;}
+ }
+ int nextSlice=0;
  float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);int iters=0;
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
   iters++;
-  if(!sliceDone&&planeT<=t+step){
-   // the slice lies before the next sample: composite it in depth order
-   vec3 sc=sliceColor(o+dir*planeT);
+  while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
+   // a slice lies before the next sample: composite it in depth order
+   vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
    float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
-   sliceDone=true;
   }
   if(capT>=0.0){
    // cut face: flat, segment colour lightened, lit by the plane normal
    int ci=segmentIndexAt(texCoord(o+dir*capT));capT=-1.0;
    if(ci>=0){
-    vec3 n=cutPlane.xyz;vec3 viewDir=-dir;vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
+    vec3 n=cutPlanes[capPlane].xyz;vec3 viewDir=-dir;vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
     float diffuse=0.28+0.72*abs(dot(n,lightDir));
     vec3 lit=mix(segC[ci].rgb,vec3(1.0),0.22)*diffuse;
     float contribution=(1.0-acc.a)*clamp(segA[ci].z,0.03,1.0);acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
@@ -206,8 +216,8 @@ void main(){
   }
   previousT=t;t=nextT;
  }
- if(!sliceDone&&acc.a<=0.985){
-  vec3 sc=sliceColor(o+dir*planeT);
+ while(nextSlice<nSlice&&acc.a<=0.985){
+  vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
   float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
  }
  if(diag==2){float h=clamp(float(iters)/1024.0,0.0,1.0);outColor=vec4(h,1.0-abs(h*2.0-1.0),1.0-h,1.0);return;}
@@ -337,7 +347,7 @@ function makeBackground(){
 // {type:'button',x,y,w,h,label,on,color,action}, {type:'label',x,y,text},
 // {type:'slider',x,y,w,h,value(0..1),text,set(v)}. The trigger presses a
 // button or drags a slider while held.
-const MENU_W=1024,MENU_H=900;
+const MENU_W=1024,MENU_H=1180;
 function makeMenu(){
  const W=MENU_W,H=MENU_H,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
@@ -504,13 +514,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','画質','詳細'],follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
-   sec:'断面',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
+   sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Quality','Details'],follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
-   sec:'Section',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
+   sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: held in hand',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
@@ -553,41 +563,55 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(grabbing.size===2)twoHand={d0:Math.max(handDist(),1e-3),s0:holder.scale.x};
   else if(grabbing.size===1)[...grabbing][0].attach(holder);
  };
- // hand-held section (build 344–347): a square frame, local X = plane normal
- // (held like a blade). Like the volume, it is held only while the chosen
- // button (grip or trigger, a setting) is pressed near the frame; on release
- // it stays fixed in the volume. B/Y toggles.
- const section={on:false,held:null},planeObj=new THREE.Group();
- const frameMat=new THREE.LineBasicMaterial({color:0xffcc44});
- {const h=0.12,g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-h,-h),new THREE.Vector3(0,h,-h),new THREE.Vector3(0,h,h),new THREE.Vector3(0,-h,h)]);planeObj.add(new THREE.LineLoop(g,frameMat))}
- // one-side mode (build 346): section.side picks the kept half along the
- // frame's local X (kept: side*X >= 0); the arrow points at the removed half
- section.side=1;
- const arrow=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,0.02,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,-0.02,0)]),frameMat);
- arrow.visible=false;planeObj.add(arrow);
- // side that removes the viewer's half right now (what 'near' shows)
- const chooseSide=()=>{readHead();scene.updateMatrixWorld();planeObj.getWorldPosition(tmpA);tmpB.set(1,0,0).transformDirection(planeObj.matrixWorld);section.side=tmpB.dot(tmpA.subVectors(head,tmpA))>0?-1:1};
- const takePlane=c=>{c.attach(planeObj);section.held=c;pulse(c);menu.refresh()};
- const fixPlane=()=>{const c=section.held;holder.attach(planeObj);section.held=null;if(c)pulse(c,0.2);menu.refresh()};
- const nearPlane=c=>{c.getWorldPosition(tmpA);planeObj.getWorldPosition(tmpB);return tmpA.distanceTo(tmpB)<0.2};
- const setSection=(on,c=controllers[1]||controllers[0])=>{
-  section.on=on;
-  if(on){
-   {
-    // appears fixed through the volume centre, facing the viewer
-    readHead();scene.add(planeObj);holder.getWorldPosition(planeObj.position);tmpA.subVectors(head,planeObj.position).normalize();
-    planeObj.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tmpA);planeObj.scale.setScalar(1);holder.attach(planeObj);section.held=null;
-   }
-  }else{planeObj.removeFromParent();section.held=null}
-  if(on)chooseSide();
-  menu.refresh();
+ // hand-held sections (build 344–360): up to 4 square frames, local X =
+ // plane normal (held like a blade). A frame is held only while the chosen
+ // button (grip or trigger) is pressed near it; on release it stays fixed in
+ // the volume. B/Y short press shows / hides the sections, long press adds
+ // one. Each plane: clip or not, side (one-side mode), own frame colour.
+ const PLANE_COLORS=[0xffcc44,0x44ddff,0xff66cc,0x77ee66],MAX_PLANES=4,LONG_PRESS=600;
+ const section={on:false,held:null,heldPlane:null},planes=[];
+ const makePlane=(color,cut)=>{
+  const obj=new THREE.Group(),mat=new THREE.LineBasicMaterial({color}),h=0.12;
+  obj.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-h,-h),new THREE.Vector3(0,h,-h),new THREE.Vector3(0,h,h),new THREE.Vector3(0,-h,h)]),mat));
+  // one-side mode (build 346): side picks the kept half along local X; the
+  // arrow points at the removed half
+  const arrow=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,0.02,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,-0.02,0)]),mat);
+  arrow.visible=false;obj.add(arrow);
+  return{obj,mat,arrow,color,cut,side:1};
  };
+ const disposePlane=pl=>{pl.obj.removeFromParent();pl.obj.traverse(o=>{o.geometry?.dispose()});pl.mat.dispose()};
+ // side that removes the viewer's half right now (what 'near' shows)
+ const chooseSide=pl=>{readHead();scene.updateMatrixWorld();pl.obj.getWorldPosition(tmpA);tmpB.set(1,0,0).transformDirection(pl.obj.matrixWorld);pl.side=tmpB.dot(tmpA.subVectors(head,tmpA))>0?-1:1};
+ const takePlane=(pl,c)=>{c.attach(pl.obj);section.held=c;section.heldPlane=pl;pulse(c);menu.refresh()};
+ const fixPlane=()=>{const c=section.held,pl=section.heldPlane;if(pl)holder.attach(pl.obj);section.held=null;section.heldPlane=null;if(c)pulse(c,0.2);menu.refresh()};
+ const planeDist=(pl,c)=>{c.getWorldPosition(tmpA);pl.obj.getWorldPosition(tmpB);return tmpA.distanceTo(tmpB)};
+ const nearestPlane=c=>{if(!section.on)return null;let best=null,bd=0.2;for(const pl of planes){const d=planeDist(pl,c);if(d<bd){bd=d;best=pl}}return best};
+ // new plane: through the volume centre (first) or in front of the hand
+ // (added ones), facing the viewer, fixed in the volume
+ const addPlane=(c=null)=>{
+  if(planes.length>=MAX_PLANES)return null;
+  const used=new Set(planes.map(p=>p.color)),color=PLANE_COLORS.find(x=>!used.has(x))??PLANE_COLORS[0];
+  const pl=makePlane(color,planes.length===0);planes.push(pl);
+  readHead();scene.add(pl.obj);
+  if(c){c.getWorldPosition(pl.obj.position);tmpB.set(0,0,-1).transformDirection(c.matrixWorld);pl.obj.position.addScaledVector(tmpB,0.12)}
+  else holder.getWorldPosition(pl.obj.position);
+  tmpA.subVectors(head,pl.obj.position).normalize();pl.obj.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tmpA);pl.obj.scale.setScalar(1);
+  holder.attach(pl.obj);chooseSide(pl);section.on=true;planes.forEach(p=>{p.obj.visible=true});menu.refresh();return pl;
+ };
+ const removePlane=pl=>{if(section.heldPlane===pl){section.held=null;section.heldPlane=null}const i=planes.indexOf(pl);if(i>=0)planes.splice(i,1);disposePlane(pl);if(!planes.length)section.on=false;menu.refresh()};
+ const setSection=on=>{
+  if(on&&!planes.length){addPlane();return}
+  section.on=on;if(!on&&section.heldPlane)fixPlane();planes.forEach(p=>{p.obj.visible=on});menu.refresh();
+ };
+ // long-press progress ring shown on the pressing controller
+ const ringGeo=new THREE.BufferGeometry().setFromPoints(Array.from({length:33},(_,i)=>new THREE.Vector3(Math.cos(i/32*Math.PI*2)*0.025,Math.sin(i/32*Math.PI*2)*0.025,0)));
+ const ring=new THREE.Line(ringGeo,new THREE.LineBasicMaterial({color:0xffffff}));ring.position.set(0,0.035,0.02);ring.rotation.x=-0.6;ring.visible=false;
  let dragging=null,shotRequested=false;
  for(const c of controllers){
   c.addEventListener('connected',e=>{c.userData.source=e.data;if(!ui.open&&c.userData.source?.handedness==='left')c.add(badge)});
   c.addEventListener('disconnected',()=>{c.userData.source=null});
   c.addEventListener('squeezestart',()=>{
-   if(section.on&&settings.secHold===0&&!section.held&&nearPlane(c)){takePlane(c);return}
+   if(settings.secHold===0&&!section.held){const pl=nearestPlane(c);if(pl){takePlane(pl,c);return}}
    grabbing.add(c);regrab();
   });
   c.addEventListener('squeezeend',()=>{
@@ -600,7 +624,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const h=menuHit(c);
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
    if(badgeHit(c)){setMenuOpen(true);pulse(c);return}
-   if(section.on&&settings.secHold===1&&!section.held&&nearPlane(c))takePlane(c);
+   if(settings.secHold===1&&!section.held){const pl=nearestPlane(c);if(pl)takePlane(pl,c)}
   });
   c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(section.held===c&&settings.secHold===1)fixPlane()});
  }
@@ -640,16 +664,24 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(yb-100,L.menuPos,[{label:L.follow,value:0},{label:L.fixed,value:1}],settings.menuMode,v=>{settings.menuMode=v;saveSettings(settings)});
   }else if(ui.tab===1){
    choice(y0,L.sec,[{label:L.offOn[0],value:false},{label:L.offOn[1],value:true}],section.on,v=>{if(v!==section.on)setSection(v)});
-   choice(y0+90,L.hold,L.holdModes.map((t,i)=>({label:t,value:i})),settings.secHold,v=>{if(section.held)fixPlane();settings.secHold=v;saveSettings(settings)});
-   choice(y0+180,L.cut,L.cutModes.map((t,i)=>({label:t,value:i})),settings.cut|0,v=>{if(v===2&&settings.cut!==2&&section.on)chooseSide();settings.cut=v;saveSettings(settings)});
-   choice(y0+270,L.cap,[{label:L.offOn[0],value:0},{label:L.offOn[1],value:1}],settings.cap?1:0,v=>{settings.cap=v;saveSettings(settings)});
-   if(settings.cut===2)btn(800,y0+270,184,L.flip,false,()=>{section.side=-section.side},{size:26});
-   label(X,y0+396,L.sl);
-   w.push({type:'slider',x:CX+26,y:y0+360,w:470,h:72,value:settings.sliceOpacity,text:Math.round(settings.sliceOpacity*100)+'%',set:v=>{settings.sliceOpacity=Math.round(v*20)/20}});
-   label(X,y0+486,L.tint);
-   w.push({type:'slider',x:CX+26,y:y0+450,w:470,h:72,value:settings.sliceTint,text:settings.sliceTint?Math.round(settings.sliceTint*100)+'%':L.offOn[0],set:v=>{settings.sliceTint=Math.round(v*20)/20}});
-   label(X,y0+570,section.on?L.secHelp[settings.secHold]:L.secOff,{size:28});
-   if(settings.cut===2)label(X,y0+610,L.cutHelp,{size:26,color:'#9fb3c3'});
+   if(planes.length<MAX_PLANES)btn(800,y0,184,L.addPlane,false,()=>{addPlane()},{size:26});
+   // one row per plane: colour name, clip on/off, flip (one-side), remove
+   planes.forEach((pl,i)=>{const y=y0+86+i*76,col='#'+pl.color.toString(16).padStart(6,'0');
+    label(X,y+36,L.planeN+(i+1),{color:col,bold:true});
+    btn(250,y,190,pl.cut?L.clipOn:L.clipOff,pl.cut,()=>{pl.cut=!pl.cut;if(pl.cut&&settings.cut===2)chooseSide(pl)},{color:col,size:26});
+    if(settings.cut===2&&pl.cut)btn(452,y,170,L.flip,false,()=>{pl.side=-pl.side},{size:26});
+    btn(640,y,150,L.remove,false,()=>removePlane(pl),{size:26});
+   });
+   const yb2=y0+86+MAX_PLANES*76;
+   choice(yb2,L.cut,L.cutModes.map((t,i)=>({label:t,value:i})),settings.cut|0,v=>{if(v===2&&settings.cut!==2)planes.forEach(chooseSide);settings.cut=v;saveSettings(settings)});
+   choice(yb2+90,L.hold,L.holdModes.map((t,i)=>({label:t,value:i})),settings.secHold,v=>{if(section.held)fixPlane();settings.secHold=v;saveSettings(settings)});
+   choice(yb2+180,L.cap,[{label:L.offOn[0],value:0},{label:L.offOn[1],value:1}],settings.cap?1:0,v=>{settings.cap=v;saveSettings(settings)});
+   label(X,yb2+306,L.sl);
+   w.push({type:'slider',x:CX+26,y:yb2+270,w:470,h:72,value:settings.sliceOpacity,text:Math.round(settings.sliceOpacity*100)+'%',set:v=>{settings.sliceOpacity=Math.round(v*20)/20}});
+   label(X,yb2+396,L.tint);
+   w.push({type:'slider',x:CX+26,y:yb2+360,w:470,h:72,value:settings.sliceTint,text:settings.sliceTint?Math.round(settings.sliceTint*100)+'%':L.offOn[0],set:v=>{settings.sliceTint=Math.round(v*20)/20}});
+   label(X,yb2+470,section.on?L.secHelp[settings.secHold]:L.secOff,{size:26});
+   label(X,yb2+506,L.byHelp,{size:24,color:'#9fb3c3'});
   }else if(ui.tab===2){
    choice(y0,L.r,VRES.map((r,i)=>({label:r?Math.round(r*100)+'%':L.auto,value:i})),settings.vres,v=>{settings.vres=v;applyQuality()});
    choice(y0+90,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
@@ -724,26 +756,35 @@ export async function startVrView({language='ja',mode='vr'}={}){
    // xr-standard buttons: 4 = A/X toggles the menu, 5 = B/Y the section
    const bt=c.userData.source?.gamepad?.buttons;
    const a=!!bt?.[4]?.pressed;if(a&&!c.userData.aDown)setMenuOpen(!ui.open);c.userData.aDown=a;
-   const b=!!bt?.[5]?.pressed;if(b&&!c.userData.bDown)setSection(!section.on,c);c.userData.bDown=b;
+   // B/Y: short press shows / hides the sections, long press adds one
+   const b=!!bt?.[5]?.pressed,nowB=performance.now();
+   if(b&&!c.userData.bDown){c.userData.bAt=nowB;c.userData.bLong=false;c.add(ring);ring.visible=true}
+   if(b&&!c.userData.bLong){const f=Math.min(1,(nowB-c.userData.bAt)/LONG_PRESS);ringGeo.setDrawRange(0,Math.max(2,Math.round(f*33)));
+    if(f>=1){c.userData.bLong=true;ring.visible=false;if(planes.length>=MAX_PLANES){pulse(c,0.15,30);ui.flash=L.maxPlanes;ui.flashUntil=nowB+2000;menu.refresh()}else{addPlane(c);pulse(c,0.6,50)}}}
+   if(!b&&c.userData.bDown){if(ring.parent===c)ring.visible=false;if(!c.userData.bLong)setSection(!section.on)}
+   c.userData.bDown=b;
   }
   menu.setHover(hover);
   // section frame colour: yellow held, cyan fixed, white when a grip would take it
-  if(section.on)frameMat.color.setHex(section.held?0xffcc44:controllers.some(nearPlane)?0xffffff:0x44ddff);
+  // frame colour: own colour; white while held or when a hand could take it
+  if(section.on){const near=new Set(controllers.map(nearestPlane));for(const pl of planes)pl.mat.color.setHex(pl===section.heldPlane||near.has(pl)?0xffffff:pl.color)}
   const st=section.on?(section.held?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}
   if(material){
    const u=material.uniforms;
-   if(section.on){
-    // plane in the volume's object space. 'near': the normal is flipped so
-    // the eye is on the removed side; 'one side': the side chosen when it
-    // was set (section.side) stays removed wherever the viewer goes
-    scene.updateMatrixWorld();planeObj.getWorldPosition(tmpP);tmpN.set(1,0,0).transformDirection(planeObj.matrixWorld);
-    tmpQ.copy(tmpP).add(tmpN);mesh.worldToLocal(tmpP);mesh.worldToLocal(tmpQ);tmpN.subVectors(tmpQ,tmpP).normalize();
-    tmpE.copy(head);mesh.worldToLocal(tmpE);if(settings.cut===2){if(section.side<0)tmpN.negate()}else if(tmpN.dot(tmpE)-tmpN.dot(tmpP)>0)tmpN.negate();
-    arrow.visible=settings.cut===2;arrow.scale.x=-section.side;
-    u.cutPlane.value.set(tmpN.x,tmpN.y,tmpN.z,tmpN.dot(tmpP));
-   }
-   u.cutOn.value=section.on&&settings.cut?1:0;u.capOn.value=settings.cap?1:0;u.sliceTint.value=+settings.sliceTint||0;u.sliceOpacity.value=section.on?settings.sliceOpacity:0;
+   // planes in the volume's object space. 'near': the normal is flipped so
+   // the eye is on the removed side; 'one side': the plane's chosen side
+   // stays removed wherever the viewer goes
+   let n=0,cutBits=0;
+   if(section.on){scene.updateMatrixWorld();tmpE.copy(head);mesh.worldToLocal(tmpE);
+    for(const pl of planes){
+     pl.obj.getWorldPosition(tmpP);tmpN.set(1,0,0).transformDirection(pl.obj.matrixWorld);
+     tmpQ.copy(tmpP).add(tmpN);mesh.worldToLocal(tmpP);mesh.worldToLocal(tmpQ);tmpN.subVectors(tmpQ,tmpP).normalize();
+     if(settings.cut===2){if(pl.side<0)tmpN.negate()}else if(tmpN.dot(tmpE)-tmpN.dot(tmpP)>0)tmpN.negate();
+     pl.arrow.visible=settings.cut===2&&pl.cut;pl.arrow.scale.x=-pl.side;
+     u.cutPlanes.value[n].set(tmpN.x,tmpN.y,tmpN.z,tmpN.dot(tmpP));if(pl.cut&&settings.cut)cutBits|=1<<n;n++;
+    }}
+   u.planeCount.value=n;u.planeCut.value=cutBits;u.capOn.value=settings.cap?1:0;u.sliceTint.value=+settings.sliceTint||0;u.sliceOpacity.value=section.on?settings.sliceOpacity:0;
    u.sliceWindow.value.set(+wc.value||0,Math.max(1,+ww.value||1));
    for(let i=0;i<4;i++){
     const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
@@ -804,7 +845,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
   volTex?.dispose();brickTex?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();badge.userData.dispose();
-  background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});
+  background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);
  };
@@ -857,7 +898,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
     stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
-    cutPlane:{value:new THREE.Vector4(0,0,1,0)},cutOn:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null}}});
+    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;
