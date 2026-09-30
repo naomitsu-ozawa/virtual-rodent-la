@@ -2874,9 +2874,38 @@ Morning: with 距離場 on, the 詳細 line should show where the factor settles
 and the volume GPU ms; if it settles below 100 % with the GPU ms at 80 % of
 the budget, the per-pixel work at the XR size is the limit (see build 369).
 
-## Handoff (after build 370)
+## Build 371 — review fixes for builds 368–370
 
-State: build 370 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+A code review (high effort) of the three overnight commits found seven
+points; all fixed:
+- WGSL uniform-brick crossing `continue`d past the section cap and MPR
+  plane compositing, so a cap or plane inside a uniform brick of a
+  translucent segment was not drawn. Now the jump falls through: the cap /
+  planes inside [t, nextT] are composited, no sample is taken, lastIndex is
+  kept, and the previous sample for the next surface search is the last
+  point inside the brick. Harness with an axial MPR plane at 60 % inside
+  the soft tissue: 0.5 % of channels differ from the old shader (same as
+  without the plane); the plane is drawn.
+- isTabletRuntime(): mobile OS in the UA (iPad, Android, OculusBrowser /
+  Quest) only; a touch-screen laptop stays a desktop for the caps.
+- English prepare panel lacked the 距離場 phase name.
+- Practice project: never replaces a project the user already loaded; a
+  bundled project that did not apply to the sample is dropped (no repeated
+  mismatch footer on later series).
+- distance-field.js: scratch buffers allocated once for all channels,
+  async with a yield and progress per channel (prepare panel shows n / C).
+- The samples probe restores the clear colour (the direct 100 % path
+  cleared the XR layer with alpha 0 after a probe).
+- The VR low-resolution target grows with the factor in use instead of
+  being allocated at the maximum (AUTO_MAX = 1 would have meant a full-size
+  target that is never used at 100 %).
+Checks: lint, 404 unit tests, boot-check, vr-slice-check (0 diff), both
+shader harnesses (counts unchanged), e2e sample-project + folder-project +
+smoke: 11 passed (local CDN mirror).
+
+## Handoff (after build 371)
+
+State: build 371 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -2908,7 +2937,7 @@ B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
 C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
 D. Goal (owner): VR auto resolution held at 100 % at the normal size.
-   Builds 368–370: fewer fetches per sample / brick, uniform-brick crossing,
+   Builds 368–371: fewer fetches per sample / brick, uniform-brick crossing,
    fast surface search, distance-field sphere tracing (all switchable),
    samples-per-pixel probe, GPU-timed auto controller up to 100 %. Open:
    the device numbers decide whether per-ray work or the pixel count is the

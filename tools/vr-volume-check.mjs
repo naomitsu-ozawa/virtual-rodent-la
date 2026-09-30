@@ -44,7 +44,7 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const v=hu(x,y,z),o=((z*N+y)*N+x)*2;for(let s=0;s<2;s++){const [a,c]=SEG[s],d=Math.min(v-a,c-v);cls[o+s]=Math.max(0,Math.min(255,Math.round(127.5+d/2048*255)))}}
  const clsTex=new THREE.Data3DTexture(cls,N,N,N);clsTex.format=THREE.RGFormat;clsTex.type=THREE.UnsignedByteType;clsTex.minFilter=clsTex.magFilter=THREE.LinearFilter;clsTex.unpackAlignment=1;clsTex.needsUpdate=true;
  const dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
- const {buildDistanceBytes}=await import('/distance-field.js');const t0=performance.now();const dist=buildDistanceBytes({data:cls,C:2,chan:[0,1,-1,-1]},[N,N,N]);const distMs=performance.now()-t0;
+ const {buildDistanceBytes}=await import('/distance-field.js');const t0=performance.now();const dist=await buildDistanceBytes({data:cls,C:2,chan:[0,1,-1,-1]},[N,N,N]);const distMs=performance.now()-t0;
  const distTex=new THREE.Data3DTexture(dist.data,N,N,N);distTex.format=THREE.RGFormat;distTex.type=THREE.UnsignedByteType;distTex.minFilter=distTex.magFilter=THREE.NearestFilter;distTex.unpackAlignment=1;distTex.needsUpdate=true;
  const half=1.65,scale=3.3/N,step=scale*0.85;
  const uniforms=()=>({vol:{value:vol},bricks:{value:bricks},halfExt:{value:new THREE.Vector3(half,half,half)},texDims:{value:new THREE.Vector3(N,N,N)},brickDims:{value:new THREE.Vector3(bx,bx,bx)},

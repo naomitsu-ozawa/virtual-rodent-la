@@ -12,12 +12,13 @@
 // Pure module (no DOM), unit-tested.
 const INF=0x3fffffff;
 // inside: Uint8Array (non-zero = inside), dims [w,h,d]; returns Uint8Array
-export function chamferDistanceBytes(inside,dims){
- const [w,h,d]=dims,n=w*h*d,D=new Int32Array(n),wh=w*h;
+// scratch: optional {D:Int32Array(n), a, b, dil: Uint8Array(n)} reused across channels (build 371)
+export function chamferDistanceBytes(inside,dims,scratch=null){
+ const [w,h,d]=dims,n=w*h*d,wh=w*h,D=scratch?.D||new Int32Array(n);
  // seeds: voxels with a 26-neighbour of the other class = dilate(inside) and
  // not erode(inside), with separable 3-tap max / min passes (build 370: the
  // direct 27-neighbour test took most of the build time at 256³)
- const a=new Uint8Array(n),b=new Uint8Array(n);
+ const a=scratch?.a||new Uint8Array(n),b=scratch?.b||new Uint8Array(n);
  const axisPass=(src,dst,op)=>{
   // x axis
   for(let z=0;z<d;z++)for(let y=0;y<h;y++){const r=z*wh+y*w;for(let x=0;x<w;x++){let v=src[r+x];const l=x>0?src[r+x-1]:v,rr=x<w-1?src[r+x+1]:v;dst[r+x]=op?(v|l|rr):(v&l&rr)}}
@@ -34,7 +35,7 @@ export function chamferDistanceBytes(inside,dims){
  };
  for(let i=0;i<n;i++)a[i]=inside[i]?1:0;
  axisPass(a,b,1); // b = dilate(inside)
- const dil=b.slice();axisPass(a,b,0); // b = erode(inside)
+ const dil=scratch?.dil||new Uint8Array(n);dil.set(b);axisPass(a,b,0); // b = erode(inside)
  for(let i=0;i<n;i++)D[i]=(dil[i]&&!b[i])?0:INF;
  // chamfer passes: forward over the 13 already-visited neighbours (z-1
  // layer: 9, y-1 row: 3, x-1: 1), backward over their mirrors; interior
@@ -56,13 +57,18 @@ export function chamferDistanceBytes(inside,dims){
  return out;
 }
 // cls: {data, C, chan} as built by the VR view (bytes per channel, >= 128
-// inside); returns the same layout with distance bytes
-export function buildDistanceBytes(cls,dims){
+// inside); resolves to the same layout with distance bytes. One set of
+// scratch buffers for all channels, a yield and onProgress(done, total)
+// between channels (a 256³ channel takes about 1.7 s)
+export async function buildDistanceBytes(cls,dims,onProgress=null){
  const n=dims[0]*dims[1]*dims[2],C=cls.C,out=new Uint8Array(n*C),inside=new Uint8Array(n);
+ const scratch={D:new Int32Array(n),a:new Uint8Array(n),b:new Uint8Array(n),dil:new Uint8Array(n)};
  for(let c=0;c<C;c++){
+  onProgress?.(c,C);await new Promise(r=>setTimeout(r,0));
   for(let i=0;i<n;i++)inside[i]=cls.data[i*C+c]>=128?1:0;
-  const dist=chamferDistanceBytes(inside,dims);
+  const dist=chamferDistanceBytes(inside,dims,scratch);
   for(let i=0;i<n;i++)out[i*C+c]=dist[i];
  }
+ onProgress?.(C,C);
  return{data:out,C,chan:cls.chan};
 }

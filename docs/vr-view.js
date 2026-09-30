@@ -8,13 +8,13 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build370';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build370';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build370';
-import { sceneState } from './state.js?v=20260930-build370';
-import { buildDistanceBytes } from './distance-field.js?v=20260930-build370';
-import { tr } from './i18n.js?v=20260930-build370';
-import { wc, ww } from './ui-shell.js?v=20260930-build370';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build371';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build371';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build371';
+import { sceneState } from './state.js?v=20260930-build371';
+import { buildDistanceBytes } from './distance-field.js?v=20260930-build371';
+import { tr } from './i18n.js?v=20260930-build371';
+import { wc, ww } from './ui-shell.js?v=20260930-build371';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -528,7 +528,7 @@ export async function prepareVrData(onProgress=()=>{}){
   onProgress({phase:'cls',done:0,total:1});await tick();t0=performance.now();
   const small=half||vd,cls=buildClsData(small,vd.calibration,edit);times.cls=performance.now()-t0;
   onProgress({phase:'dist',done:0,total:1});await tick();t0=performance.now();
-  const dist=cls?buildDistanceBytes(cls,small.dims):null;times.dist=performance.now()-t0;
+  const dist=cls?await buildDistanceBytes(cls,small.dims,(a,b)=>onProgress({phase:'dist',done:a,total:b})):null;times.dist=performance.now()-t0;
   return{key,vd,half,edit,cls,dist,times};
  })();
  preparing={key,promise};
@@ -541,7 +541,7 @@ export function showPreparePanel({language='ja',mode='vr',onStart}){
  const panel=document.createElement('div');panel.id='vr-prepare-panel';
  Object.assign(panel.style,{position:'fixed',left:'50%',top:'50%',transform:'translate(-50%,-50%)',zIndex:'10000',background:'#141c24f2',color:'#fff',padding:'20px 24px',borderRadius:'14px',width:'min(92vw,440px)',font:'15px system-ui,sans-serif',boxShadow:'0 8px 30px #0008'});
  panel.innerHTML='<strong style="font-size:18px"></strong><div class="ph" style="margin:12px 0 6px;color:#cfe3f0"></div><div style="height:10px;background:#26313b;border-radius:5px;overflow:hidden"><div class="bar" style="height:100%;width:0;background:#2d6cdf"></div></div><div class="tm" style="margin-top:10px;color:#9fb3c3;font-size:13px;white-space:pre-line"></div><div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button type="button" class="cancel"></button><button type="button" class="start" disabled></button></div>';
- const q=c=>panel.querySelector(c),names=ja?{copy:'3D画面から写す',read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ',dist:'距離場'}:{copy:'Copy from the 3D view',read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification'};
+ const q=c=>panel.querySelector(c),names=ja?{copy:'3D画面から写す',read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ',dist:'距離場'}:{copy:'Copy from the 3D view',read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification',dist:'Distance field'};
  q('strong').textContent=(mode==='ar'?'AR':'VR')+(ja?'の準備':' preparation');q('.cancel').textContent=ja?'閉じる':'Close';q('.start').textContent=mode==='ar'?(ja?'ARを開始':'Start AR'):(ja?'VRを開始':'Start VR');
  Object.assign(q('.start').style,{background:'#2d6cdf',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 18px',fontSize:'16px'});Object.assign(q('.cancel').style,{background:'#26313b',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 14px'});
  const order=['read','half','mask','cls','dist'],allPhases=['copy',...order];
@@ -918,10 +918,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const probeTarget=new THREE.WebGLRenderTarget(48,48,{depthBuffer:false}),probePx=new Uint8Array(48*48*4);
  const measureSamples=()=>{
   if(!mesh||!material||!rayMesh)return;
-  const sub=renderer.xr.getCamera().cameras[0]||camera,prev=renderer.getRenderTarget(),wasXr=renderer.xr.enabled,d0=material.uniforms.diag.value;
+  const sub=renderer.xr.getCamera().cameras[0]||camera,prev=renderer.getRenderTarget(),wasXr=renderer.xr.enabled,d0=material.uniforms.diag.value,clearC=renderer.getClearColor(new THREE.Color()),clearA=renderer.getClearAlpha();
   material.uniforms.diag.value=2;renderer.xr.enabled=false;renderer.setRenderTarget(probeTarget);renderer.setClearColor(0x000000,0);renderer.clear();
   scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);renderer.render(volScene,sub);renderer.readRenderTargetPixels(probeTarget,0,0,48,48,probePx);
-  renderer.setRenderTarget(prev);renderer.xr.enabled=wasXr;material.uniforms.diag.value=d0;
+  renderer.setRenderTarget(prev);renderer.xr.enabled=wasXr;material.uniforms.diag.value=d0;renderer.setClearColor(clearC,clearA);
   let sum=0,n=0;for(let i=0;i<probePx.length;i+=4)if(probePx[i+3]>0){sum+=probePx[i]/255*1024;n++}
   ui.sampleLine=n?L.samples+(sum/n).toFixed(0)+L.samplesNote:'';
  };
@@ -1025,9 +1025,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
     const xrTarget=renderer.getRenderTarget(),w=xrTarget?.width||1,h=xrTarget?.height||1;
     renderer.xr.updateCamera(camera);const xrCam=renderer.xr.getCamera();
     // auto: one target at the largest factor, only the viewports shrink
-    const fmax=auto?AUTO_MAX:f,tw=Math.max(1,Math.ceil(w*fmax)),th=Math.max(1,Math.ceil(h*fmax));
-    if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw,th,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
-    else if(lowTarget.width!==tw||lowTarget.height!==th)lowTarget.setSize(tw,th);
+    // build 371: the target grows to the factor in use (never shrinks) instead of being allocated at the maximum
+    const tw0=Math.max(1,Math.ceil(w*f)),th0=Math.max(1,Math.ceil(h*f));
+    if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw0,th0,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+    else if(lowTarget.width<tw0||lowTarget.height<th0)lowTarget.setSize(Math.max(lowTarget.width,tw0),Math.max(lowTarget.height,th0));
+    const tw=lowTarget.width,th=lowTarget.height;
     scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);
     renderer.xr.enabled=false;renderer.setRenderTarget(lowTarget);
     renderer.setClearColor(0x000000,0);lowTarget.scissorTest=false;renderer.clear(true,false,false);

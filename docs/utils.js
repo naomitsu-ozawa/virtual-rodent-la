@@ -23,8 +23,8 @@ export function isIPadRuntime(){return /iPad/i.test(navigator.userAgent||'')||((
 // Windows/Linux behave like the Mac). A desktop is a device without touch input.
 // Before, only a Mac counted, so Windows and Linux got smaller budgets and the old UI.
 export function isDesktopRuntime(){return (navigator.maxTouchPoints||0)===0&&!isIPhoneRuntime()}
-// build 368: touch devices that are not iPads (Meta Quest browser, Android tablets) get the iPad memory / texture caps
-export function isTabletRuntime(){return isIPadRuntime()||(!isDesktopRuntime()&&!isIPhoneRuntime())}
+// build 368/371: the iPad memory / texture caps also for the Meta Quest browser and Android tablets (mobile OS in the UA); a touch-screen laptop stays a desktop
+export function isTabletRuntime(){return isIPadRuntime()||/Android|OculusBrowser|Quest/i.test(navigator.userAgent||'')}
 export const frameYield=()=>new Promise(resolve=>setTimeout(resolve,0));
 export function niceCtStep(span){
  const target=Math.max(Math.abs(span)/700,1e-6),power=10**Math.floor(Math.log10(target)),scaled=target/power;

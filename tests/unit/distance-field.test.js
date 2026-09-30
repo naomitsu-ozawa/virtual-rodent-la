@@ -35,10 +35,10 @@ describe('distance field (chamfer 3-4-5 lower bound)',()=>{
   let zeros=0;for(let i=0;i<bytes.length;i++)if(bytes[i]===0)zeros++;
   expect(zeros).toBeGreaterThan(200);
  });
- it('packs one byte per classification channel',()=>{
+ it('packs one byte per classification channel',async()=>{
   const N=8,n=N*N*N,C=2,data=new Uint8Array(n*C);
   for(let i=0;i<n;i++){data[i*C]=i<n/2?200:10;data[i*C+1]=10}
-  const r=buildDistanceBytes({data,C,chan:[0,1,-1,-1]},[N,N,N]);
+  const r=await buildDistanceBytes({data,C,chan:[0,1,-1,-1]},[N,N,N]);
   expect(r.C).toBe(2);expect(r.data.length).toBe(n*C);
   // channel 1 is all outside → no boundary → capped at 255 everywhere
   expect(r.data[1]).toBe(255);
