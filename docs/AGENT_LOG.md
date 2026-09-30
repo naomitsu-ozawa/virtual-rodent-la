@@ -2401,3 +2401,5 @@ pressed. Both hold modes now: press the chosen button near the frame (white)
 to hold, release to leave it fixed in the volume. The section always appears
 fixed through the volume centre facing the viewer. The old trigger toggle
 (fix / pick up) is gone.
+
+Owner: Linux Chrome check done (works). VR check of builds 345–347 pending.
