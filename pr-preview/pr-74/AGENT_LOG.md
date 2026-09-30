@@ -2456,3 +2456,13 @@ Quest (詳細 → 組織内スキップ オン/オフ). (2) not done: a threshol
 filtered classification can miss thin structures (accuracy) and a
 conservative version saves little over the brick test; revisit only if (1)
 is not enough.
+
+## Build 352 — practice data cached
+
+Owner: do not download the practice DICOM every time. loadSampleDemo keeps
+each slice in Cache Storage (virtual-rodent-sample-v1, like the public
+demo's cache) and reads it from there on the next open; fetch on a miss,
+cache errors fall back to the network. Local check: 512 slices 22 s first,
+0.3 s second (footer: キャッシュから 512), same bytes.
+Owner also: the slowdown is not the enlarging but showing two segments;
+testing build 351 now.
