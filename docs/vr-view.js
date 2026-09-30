@@ -8,11 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build352';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build352';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build352';
-import { tr } from './i18n.js?v=20260930-build352';
-import { wc, ww } from './ui-shell.js?v=20260930-build352';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build353';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build353';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build353';
+import { tr } from './i18n.js?v=20260930-build353';
+import { wc, ww } from './ui-shell.js?v=20260930-build353';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -46,7 +46,6 @@ uniform float stepSize;
 // count heat map (blue = few iterations, red = 1024 or more), 3 no shading at
 // hits (no refinement, no gradient), 4 no empty-space skipping
 uniform int diag;
-uniform int skipInside; // 1: jump through bricks lying wholly inside the current segment
 uniform vec3 calib; // slope, intercept, signedBias
 uniform vec4 segA[4]; // min, max, opacity, enabled
 uniform vec4 segC[4]; // rgb, w=1: simple display (no refinement, no gradient)
@@ -89,25 +88,10 @@ int segmentIndexAt(vec3 tc){
  for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc))return s;}
  return -1;
 }
-// brick texel: HU min, max, and (b) bits of segments whose processing mask
-// allows the whole brick (build 351)
-bool brickMayContain(vec4 bm){
- for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&a.y>=bm.x&&a.x<=bm.y)return true;}
+bool brickMayContain(vec3 tc){
+ vec2 mm=texture(bricks,clamp(tc,vec3(0.0),vec3(0.999999))).rg;
+ for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y)return true;}
  return false;
-}
-// segment that every sample in this brick belongs to, or -1: its HU range
-// covers the brick's min..max, its mask allows the whole brick, and no
-// earlier visible segment's range touches the brick (segmentIndexAt takes
-// the first match). Inside such a brick the index cannot change, so the ray
-// may jump to the brick exit without sampling (build 351)
-int uniformSegment(vec4 bm){
- int bits=int(bm.z+0.5);
- for(int s=0;s<4;s++){
-  vec4 a=segA[s];if(a.w<=0.5)continue;
-  if(a.x<=bm.x&&bm.y<=a.y&&(((editMask>>s)&1)==0||((bits>>s)&1)==1))return s;
-  if(a.y>=bm.x&&a.x<=bm.y)return -1;
- }
- return -1;
 }
 // distance along dir (object space) to leave the current brick
 float brickExit(vec3 tc,vec3 dir){
@@ -165,11 +149,9 @@ void main(){
    sliceDone=true;
   }
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
-  vec4 bm=texture(bricks,clamp(tc0,vec3(0.0),vec3(0.999999)));
-  bool canSample=diag==4||brickMayContain(bm);
+  bool canSample=diag==4||brickMayContain(tc0);
   float nextT=t+step;
   if(!canSample){nextT=t+max(brickExit(tc0,dir)+step*0.05,step);lastIndex=-1;}
-  else if(skipInside>0&&lastIndex>=0&&diag!=4&&uniformSegment(bm)==lastIndex){nextT=t+max(brickExit(tc0,dir)+step*0.05,step);}
   else{
    int idx=segmentIndexAt(tc0);
    if(idx!=lastIndex){
@@ -387,7 +369,7 @@ let running=null;
 // Quest, no background drawn and the clear is transparent
 export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
- const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;settings.skipDiag=0;
+ const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;
  const ar=mode==='ar',renderer=new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
@@ -402,13 +384,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','画質','詳細'],follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',skipD:'組織内スキップ（診断）',editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Quality','Details'],follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',skipD:'Skip inside tissue (diag.)',editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Section',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
@@ -505,7 +487,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  let autoF=0.5,autoFrames=0,autoAt=performance.now();
  let frames=0,fpsAt=performance.now(),fps=0;
  const applyQuality=()=>{
-  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;material.uniforms.skipInside.value=settings.skipDiag?0:1;useData(settings.data|0)}
+  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;useData(settings.data|0)}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
   if(rates.length&&session.updateTargetFrameRate)session.updateTargetFrameRate(rates[Math.min(settings.rate,rates.length-1)]).catch(()=>{});
   saveSettings(settings);frames=0;fpsAt=performance.now();
@@ -549,7 +531,6 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }else{
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});
    choice(y0+100,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
-   choice(y0+370,L.skipD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.skipDiag|0,v=>{settings.skipDiag=v;applyQuality()});
    choice(y0+280,L.editD,L.editDv.map((t,i)=>({label:t,value:i})),settings.editDiag|0,v=>{settings.editDiag=v;refreshEdits()});
    choice(y0+190,'',L.dv.slice(3).map((t,i)=>({label:t,value:i+3})),settings.diag,v=>{settings.diag=v;applyQuality()});
   }
@@ -703,35 +684,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const gl=renderer.getContext(),maxDim=gl.getParameter(gl.MAX_3D_TEXTURE_SIZE)||2048;
   const vd=await buildVolumeData(maxDim,(a,b)=>{ui.status=L.preparing+a+' / '+b;menu.refresh()});
   if(!running)return;
-  // processed segments: built once when VR starts (edits cannot change in
-  // VR), on a grid of at most 256 per side (texture coordinates are
-  // normalised, so it serves both data sizes); the filter follows the
-  // diagnostic setting (0 smooth, 1 nearest, 2 off)
-  const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
-  let editTex=null,editActive=0,editData=null;const editDims=Math.max(...vd.dims)>256?vd.dims.map(n=>Math.max(1,n>>1)):vd.dims;
-  {let m;try{m=buildEditMask(editDims)}catch(e){console.error(e);m={activeMask:0,data:null}}
-   if(m.activeMask&&m.data){editTex=new THREE.Data3DTexture(m.data,...editDims);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.unpackAlignment=1;editActive=m.activeMask;editData=m.data}}
-  // per brick: which segments' masks allow every voxel of it (+1 voxel)
-  const editUniformBits=(dims,bd)=>{
-   const out=new Float32Array(bd[0]*bd[1]*bd[2]);
-   if(!editData){out.fill(15);return out}
-   const [w,h,d]=dims,[mw,mh,md]=editDims,rx=mw/w,ry=mh/h,rz=md/d;
-   for(let k=0;k<bd[2];k++)for(let j=0;j<bd[1];j++)for(let i=0;i<bd[0];i++){
-    const x0=Math.max(0,Math.floor((i*BRICK-1)*rx)),x1=Math.min(mw-1,Math.ceil(((i+1)*BRICK+1)*rx)),y0=Math.max(0,Math.floor((j*BRICK-1)*ry)),y1=Math.min(mh-1,Math.ceil(((j+1)*BRICK+1)*ry)),z0=Math.max(0,Math.floor((k*BRICK-1)*rz)),z1=Math.min(md-1,Math.ceil(((k+1)*BRICK+1)*rz));
-    let bits=15&~editActive;
-    for(let s=0;s<4;s++){if(!(editActive>>s&1))continue;let all=true;
-     for(let z=z0;z<=z1&&all;z++)for(let y=y0;y<=y1&&all;y++){let o=((z*mh+y)*mw+x0)*4+s;for(let x=x0;x<=x1;x++,o+=4)if(editData[o]!==255){all=false;break}}
-     if(all)bits|=1<<s}
-    out[(k*bd[1]+j)*bd[0]+i]=bits;
-   }
-   return out;
-  };
   const makeTextures=d=>{
    const v=new THREE.Data3DTexture(d.data,...d.dims);v.format=THREE.RGFormat;v.type=THREE.UnsignedByteType;
    v.minFilter=v.magFilter=THREE.LinearFilter;v.unpackAlignment=1;v.needsUpdate=true;
-   const n=d.brickDims[0]*d.brickDims[1]*d.brickDims[2],eb=editUniformBits(d.dims,d.brickDims),bd=new Float32Array(n*4);
-   for(let i=0;i<n;i++){bd[i*4]=d.bricks[i*2];bd[i*4+1]=d.bricks[i*2+1];bd[i*4+2]=eb[i]}
-   const b=new THREE.Data3DTexture(bd,...d.brickDims);b.format=THREE.RGBAFormat;b.type=THREE.FloatType;
+   const b=new THREE.Data3DTexture(d.bricks,...d.brickDims);b.format=THREE.RGFormat;b.type=THREE.FloatType;
    b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
    return{v,b,dims:d.dims,brickDims:d.brickDims};
   };
@@ -743,6 +699,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
    info=t.dims.join('×')+(vd.filtered?L.filtered:'');
    refreshEdits();
   };
+  // processed segments: built once when VR starts (edits cannot change in
+  // VR), on a grid of at most 256 per side (texture coordinates are
+  // normalised, so it serves both data sizes); the filter follows the
+  // diagnostic setting (0 smooth, 1 nearest, 2 off)
+  const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
+  let editTex=null,editActive=0;
+  {const g=Math.max(...vd.dims)>256?vd.dims.map(n=>Math.max(1,n>>1)):vd.dims;
+   let m;try{m=buildEditMask(g)}catch(e){console.error(e);m={activeMask:0,data:null}}
+   if(m.activeMask&&m.data){editTex=new THREE.Data3DTexture(m.data,...g);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.unpackAlignment=1;editActive=m.activeMask}}
   refreshEdits=()=>{
    if(!material)return;const mode=settings.editDiag|0;
    if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
@@ -752,7 +717,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   disposeExtra=()=>{half?.v.dispose();half?.b.dispose()};
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
-    stepSize:{value:vd.step},diag:{value:0},skipInside:{value:1},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
+    stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
     cutPlane:{value:new THREE.Vector4(0,0,1,0)},cutOn:{value:0},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},editMask:{value:0},editTex:{value:null}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box

@@ -2466,3 +2466,12 @@ cache errors fall back to the network. Local check: 512 slices 22 s first,
 0.3 s second (footer: キャッシュから 512), same bytes.
 Owner also: the slowdown is not the enlarging but showing two segments;
 testing build 351 now.
+
+## Build 353 — build 351 skip reverted
+
+Owner, build 351 with two segments: 組織内スキップ off = normally
+comfortable, on = low resolution and stuttering. Reverted (vr-view.js back to
+build 350): the skip made the brick texel RGBA32F (16 bytes instead of 8,
+read at every step, also with the skip off) and added per-step branching;
+the phantom's fewer loop iterations did not pay for that on the Quest.
+Lesson: count bytes read per step, not only iterations.
