@@ -8,11 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice } from './medical-volume.js?v=20260930-build347';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20260930-build347';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build347';
-import { tr } from './i18n.js?v=20260930-build347';
-import { wc, ww } from './ui-shell.js?v=20260930-build347';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build348';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build348';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build348';
+import { tr } from './i18n.js?v=20260930-build348';
+import { wc, ww } from './ui-shell.js?v=20260930-build348';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -53,6 +53,11 @@ uniform vec4 segC[4]; // rgb, w=1: simple display (no refinement, no gradient)
 // dot(cutPlane.xyz,p) >= cutPlane.w (the far side from the eye). cutOn clips
 // the volume; sliceOpacity > 0 draws the oblique CT slice on the plane,
 // resampled every frame from sliceVol (the 512 data) with the app's window
+// processed segments / edits (build 348): the same keep/exclude runs the
+// WebGPU volume uses (gpuVolumeEditDescriptors), rasterised to one byte per
+// voxel; bit s = voxel allowed for segment s, only for segments in editMask
+uniform int editMask;
+uniform sampler3D editTex;
 uniform vec4 cutPlane;
 uniform int cutOn;
 uniform float sliceOpacity;
@@ -72,9 +77,14 @@ float huAt(vec3 tc0){
  vec2 q=texture(vol,tc).rg*255.0;
  return (q.x+q.y*256.0-calib.z)*calib.x+calib.y;
 }
+bool editAllows(int s,vec3 tc){
+ if(((editMask>>s)&1)==0)return true;
+ int bits=int(texture(editTex,clamp(tc,vec3(0.0),vec3(0.999999))).r*255.0+0.5);
+ return ((bits>>s)&1)==1;
+}
 int segmentIndexAt(vec3 tc){
  float v=huAt(tc);
- for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&v>=a.x&&v<=a.y)return s;}
+ for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc))return s;}
  return -1;
 }
 bool brickMayContain(vec3 tc){
@@ -195,6 +205,34 @@ function halveVolume(vd){
   const v=Math.round(acc/8),o=((z*th+y)*tw+x)*2;out[o]=v&255;out[o+1]=v>>8;
  }
  return{...vd,data:out,dims:[tw,th,td],...computeBricks(out,[tw,th,td],vd.calibration)};
+}
+
+// processed-segment mask on the VR texture grid (dims): the WebGPU edit runs
+// mapped with the same gpuRunsForTexture (exclude runs dilated by one on a
+// reduced grid, as the WebGPU volume does)
+function buildEditMask(dims){
+ const v=gpuVolumeTarget();if(!v)return{activeMask:0,data:null};
+ const descs=gpuVolumeEditDescriptors(),[w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],reduced=w!==v.columns||h!==v.rows||d!==v.slices;
+ let activeMask=0,data=null;
+ SEGMENT_PRESET_ORDER.slice(0,4).forEach((key,si)=>{
+  const desc=descs[key];if(!desc?.runs)return;
+  const runs=gpuRunsForTexture(desc.runs,sourceDims,dims,{dilate:reduced&&desc.mode==='exclude'?1:0});
+  data||=new Uint8Array(w*h*d);const bit=1<<si;activeMask|=bit;
+  if(desc.mode==='exclude')for(let i=0;i<data.length;i++)data[i]|=bit;
+  for(let z=0;z<d;z++){const rec=runs?.[z];if(!rec?.length)continue;
+   for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;
+    if(desc.mode==='keep')for(let x=rec[i+1];x<=rec[i+2];x++)data[o+x]|=bit;
+    else for(let x=rec[i+1];x<=rec[i+2];x++)data[o+x]&=~bit;
+   }
+  }
+ });
+ return{activeMask,data};
+}
+// cheap change check for the edits: revisions and run identities per segment
+const editIds=new WeakMap();let editIdNext=1;
+const idOf=o=>{if(!o)return 0;let i=editIds.get(o);if(!i){i=editIdNext++;editIds.set(o,i)}return i};
+function editSignature(){
+ return SEGMENT_PRESET_ORDER.map(k=>{const st=segmentEditState[k],seg=segmentState[k]||{};return [st?.revision|0,idOf(st?.baseRuns),idOf(st?.keepRuns),idOf(st?.excludeRuns),seg.active?1:0,seg.enabled?1:0,seg.opening,seg.closing,seg.holeFill?1:0,seg.minComponent,seg.surfaceMm,seg.thicknessMm].join(',')}).join('|');
 }
 
 // rg8-packed u16 texture of the current volume, built with the same plan,
@@ -368,7 +406,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3,info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3,info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  const segMode={};
@@ -636,6 +674,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
    ui.fpsLine=fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
    ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info;
+   refreshEdits();
    if(ui.tab===3||ui.flash)menu.refresh();
    if(ui.flash&&now>ui.flashUntil)ui.flash='';
    for(const k in sums){sums[k]=0;counts[k]=0}
@@ -643,7 +682,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  volTex?.dispose();brickTex?.dispose();disposeExtra();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();badge.userData.dispose();
+  volTex?.dispose();brickTex?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();badge.userData.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});
   renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);
@@ -666,12 +705,27 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const t=i===1?(half||=makeTextures(halveVolume(vd))):full;
    material.uniforms.vol.value=t.v;material.uniforms.bricks.value=t.b;material.uniforms.texDims.value.set(...t.dims);material.uniforms.brickDims.value.set(...t.brickDims);
    info=t.dims.join('×')+(vd.filtered?L.filtered:'');
+   refreshEdits();
   };
+  // processed segments: rebuilt when the edits or the data grid change
+  // (checked with the fps update, once a second)
+  const dummyEdit=new THREE.Data3DTexture(new Uint8Array(1),1,1,1);dummyEdit.format=THREE.RedFormat;dummyEdit.needsUpdate=true;
+  let editTex=null,editKey='';
+  refreshEdits=()=>{
+   if(!material)return;
+   const dims=material.uniforms.texDims.value.toArray().map(Math.round),key=editSignature()+'#'+dims.join('x');
+   if(key===editKey)return;editKey=key;
+   let m;try{m=buildEditMask(dims)}catch(e){console.error(e);m={activeMask:0,data:null}}
+   editTex?.dispose();editTex=null;
+   if(m.activeMask&&m.data){editTex=new THREE.Data3DTexture(m.data,...dims);editTex.format=THREE.RedFormat;editTex.type=THREE.UnsignedByteType;editTex.minFilter=editTex.magFilter=THREE.NearestFilter;editTex.unpackAlignment=1;editTex.needsUpdate=true}
+   material.uniforms.editMask.value=m.activeMask|0;material.uniforms.editTex.value=editTex||dummyEdit;
+  };
+  disposeEdits=()=>{editTex?.dispose();dummyEdit.dispose()};
   disposeExtra=()=>{half?.v.dispose();half?.b.dispose()};
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
     stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
-    cutPlane:{value:new THREE.Vector4(0,0,1,0)},cutOn:{value:0},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v}}});
+    cutPlane:{value:new THREE.Vector4(0,0,1,0)},cutOn:{value:0},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},editMask:{value:0},editTex:{value:null}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;

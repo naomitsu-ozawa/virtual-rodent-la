@@ -641,7 +641,7 @@ export function reduceSliceArea(packed,sw,xs,ys,tw,th,rowStride,out,rowSum=new F
  }
  return out;
 }
-function gpuRunsForTexture(runs,sourceDims,textureDims,{dilate=0}={}){
+export function gpuRunsForTexture(runs,sourceDims,textureDims,{dilate=0}={}){
  const [sw,sh,sd]=sourceDims,[tw,th,td]=textureDims;
  if(!runs)return null;
  if(sw===tw&&sh===th&&sd===td)return dilate?gpuDilateRuns(runs,tw,th,td,dilate):runs;

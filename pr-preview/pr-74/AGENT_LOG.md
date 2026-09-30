@@ -2403,3 +2403,17 @@ fixed through the volume centre facing the viewer. The old trigger toggle
 (fix / pick up) is gone.
 
 Owner: Linux Chrome check done (works). VR check of builds 345–347 pending.
+
+## Build 348 — VR/AR show processed segments (edits)
+
+Owner: CT adjustments (e.g. fat excluded next to air) not in VR/AR — raw
+thresholds only (a known prototype limitation). Now shared with the WebGPU
+volume: gpuVolumeEditDescriptors() (keep / exclude runs for Opening, Closing,
+hole filling, min component, 空気との境界から除外, thin-part removal, and
+kept/removed edits) mapped with the same gpuRunsForTexture (now exported;
+exclude dilated by one on a reduced grid) and rasterised into one byte per
+voxel on the current VR grid (bit s = allowed for segment s). The ray
+shader tests it in segmentIndexAt, like editAllows in volumeShader. The mask
+is rebuilt when the data size changes or the edit signature changes (checked
+once a second), so edits made in the app while in VR appear too. Headless:
+mask 0 hides, mask 1 shows.
