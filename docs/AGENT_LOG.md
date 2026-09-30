@@ -2437,3 +2437,22 @@ edited boundary steps between voxels as the head moves. Now RGBA (one channel
 per segment), linear filtering, allowed where ≥ 0.5 (smooth boundary), on a
 grid of at most 256 per side, built once at VR start. 詳細 → 加工マスク
 (診断): なめらか / ボクセル / オフ, to confirm the cause on the device.
+
+## Build 351 — VR/AR: skip bricks wholly inside the current segment
+
+Owner: resolution too low; asked to optimise the volume rendering itself.
+Proposal was (1) jump through bricks lying wholly inside the current tissue,
+(2) a precomputed classification texture for traversal. Implemented (1)
+only: exact, no image change. Brick texture is RGBA32F: HU min, max, and bits
+of segments whose processing mask allows the whole brick (+1 voxel, on the
+mask grid). uniformSegment(): the segment whose HU range covers the brick,
+mask allows it, and no earlier visible segment's range touches it; when that
+equals the segment the ray is already inside, the ray jumps to the brick
+exit. Headless: images with and without the skip identical (max diff 1/255);
+loop count on a 160³ phantom (sphere of 1200 inside a 600 shell, noise)
+73.8 → 50.3 per pixel (−32 %); on a small 48³ phantom −4 %, so the gain
+depends on how much uniform tissue the rays cross — to be measured on the
+Quest (詳細 → 組織内スキップ オン/オフ). (2) not done: a thresholded,
+filtered classification can miss thin structures (accuracy) and a
+conservative version saves little over the brick test; revisit only if (1)
+is not enough.
