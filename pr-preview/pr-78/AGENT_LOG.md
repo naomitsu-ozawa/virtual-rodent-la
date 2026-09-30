@@ -2690,9 +2690,29 @@ and the panel rendered headless JA / EN, nothing outside the canvas. Needs a
 Quest check: panel position on the hand (may need to move up / tilt), button
 size for the ray, snap direction.
 
-## Handoff (after build 365)
+## Build 366 — start placement waits for the head pose; menu grab
 
-State: build 365 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: at VR/AR start the volume and the menu appear too low (near the
+floor). Cause from the code: bringVolumeFront() ran as soon as the data was
+ready and placeMenuNow() on the first frame, both from the XR camera, which
+sits at the origin (floor height, −Z) until the first viewer pose arrives.
+Since build 358/359 the data is prepared before the session, so the volume
+was placed before any pose (earlier the 20 s DICOM read hid this). Fix: both
+placements wait, in the loop, for the first frame where
+frame.getViewerPose(referenceSpace) is non-null (poseOk). Diagnostic: the
+詳細 tab shows "初期配置: 姿勢取得 フレーム N / 配置 フレーム M / 頭の高さ
+h m" so the device confirms it (h should be ≈ eye height with local-floor).
+Menu grab (owner): grip while the ray points at the open menu attaches the
+menu to that hand; on release it stays there facing the head, and
+メニューの位置 switches to 固定 (follow would pull it back). The lazy follow
+is off while held. Help line added under the A/X line in 表示.
+Checks: lint, 397 unit tests, boot-check OK; 表示 / 詳細 tabs rendered
+headless. Needs a Quest check: start height, the 詳細 line values, grabbing
+the menu.
+
+## Handoff (after build 366)
+
+State: build 366 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
