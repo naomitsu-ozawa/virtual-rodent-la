@@ -2510,3 +2510,16 @@ the slice still use HU. f is linear in HU, so its trilinear 0.5 crossing is
 the HU threshold (8-bit steps = 8 HU). Headless vs the HU path (160³ phantom,
 two segments): identical except grazing silhouette pixels (mean abs diff
 0.23/255). 512³ data keeps the HU + mask path. 詳細 → 事前計算 (診断) on/off.
+
+## Build 357 — VR/AR section cap and slice colouring
+
+Owner: does the section cap properly? (No: the ray only started at the plane
+and the cut face was shaded with the HU gradient, so it looked mottled.) And
+the slice should carry the segment colouring. Now: キャップ (on by default)
+paints the cut face where a visible segment is, flat, segment colour mixed
+22 % with white and lit by the plane normal (as the app's section cap); the
+ray then continues inside that segment. スライスの色付け slider (0 = off,
+default 50 %) mixes the segment colour into the grey slice where
+segmentIndexAt finds a visible segment (classification / mask included, so
+it matches the 3D). Headless: cap lighter flat colour, slice grey matches
+the window, tint 100 % gives the segment colour.
