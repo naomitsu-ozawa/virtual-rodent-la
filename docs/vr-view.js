@@ -8,11 +8,11 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build357';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build357';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20260930-build357';
-import { tr } from './i18n.js?v=20260930-build357';
-import { wc, ww } from './ui-shell.js?v=20260930-build357';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build358';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build358';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build358';
+import { tr } from './i18n.js?v=20260930-build358';
+import { wc, ww } from './ui-shell.js?v=20260930-build358';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -397,6 +397,84 @@ function showShotsPanel(ja){
  panel.append(grid);document.body.append(panel);
 }
 
+// ---- preparation before the session (build 358) ----
+// Everything the VR view needs from the CPU side is built here, before the
+// session starts, and kept for the same data / filter / segments / edits,
+// so entering again (or switching VR <-> AR) skips it. requestSession must
+// follow a click, so a fresh preparation ends with a start button.
+const editIds=new WeakMap();let editIdNext=1;
+const idOf=o=>{if(!o)return 0;let i=editIds.get(o);if(!i){i=editIdNext++;editIds.set(o,i)}return i};
+export function vrDataKey(){
+ const v=gpuVolumeTarget();if(!v?.series)return '';
+ const segs=SEGMENT_PRESET_ORDER.map(k=>{const g=segmentState[k]||{},st=segmentEditState[k]||{};
+  return [g.active?1:0,g.enabled?1:0,g.min,g.max,g.opening,g.closing,g.holeFill?1:0,g.minComponent,g.surfaceMm,g.thicknessMm,st.revision|0,idOf(st.baseRuns),idOf(st.keepRuns),idOf(st.excludeRuns)].join(',')});
+ return [v.series.id,v.filterSignature||'',...segs].join('|');
+}
+// classification bytes for a grid of at most 256 (see segmentIndexAt)
+function buildClsData(t,calibration,edit){
+ const [w,h,d]=t.dims,n=w*h*d,src=t.data,[slope,intercept,bias]=calibration;
+ const segs=SEGMENT_PRESET_ORDER.slice(0,4).map(k=>segmentState[k]);
+ const chan=[-1,-1,-1,-1];let nc=0;segs.forEach((g,i)=>{if(g?.active&&g.enabled)chan[i]=nc++});
+ if(!nc)return null;const C=nc===1?1:nc===2?2:4,out=new Uint8Array(n*C);
+ const maskOk=edit.data&&edit.dims.join()===t.dims.join();
+ for(let si=0;si<4;si++){
+  const seg=segs[si];if(chan[si]<0)continue;const lo=+seg.min,hi=+seg.max,masked=maskOk&&(edit.active>>si&1),ch=chan[si];
+  for(let i=0;i<n;i++){
+   const hu=((src[i*2]|(src[i*2+1]<<8))-bias)*slope+intercept,dd=Math.min(hu-lo,hi-hu);
+   let f=Math.round((0.5+dd/2048)*255);f=f<0?0:f>255?255:f;
+   if(masked&&edit.data[i*4+si]<128)f=0;
+   out[i*C+ch]=f;
+  }
+ }
+ return{data:out,C,chan};
+}
+let prepared=null,preparing=null;
+export function vrReady(){return !!prepared&&prepared.key===vrDataKey()}
+const maxTexture3D=()=>{try{const c=document.createElement('canvas'),g=c.getContext('webgl2');const m=g?.getParameter(g.MAX_3D_TEXTURE_SIZE)||2048;g?.getExtension('WEBGL_lose_context')?.loseContext();return m}catch{return 2048}};
+// phases reported as {phase, done, total}; timings (ms) returned with the data
+export async function prepareVrData(onProgress=()=>{}){
+ const key=vrDataKey();if(!key)throw new Error('VR: open a DICOM series first');
+ if(prepared?.key===key)return prepared;
+ if(preparing?.key===key)return preparing.promise;
+ const promise=(async()=>{
+  prepared=null;const times={},tick=async()=>new Promise(r=>setTimeout(r,0));
+  let t0=performance.now();
+  const vd=await buildVolumeData(maxTexture3D(),(a,b)=>onProgress({phase:'read',done:a,total:b}));
+  times.read=performance.now()-t0;
+  onProgress({phase:'half',done:0,total:1});await tick();t0=performance.now();
+  const half=Math.max(...vd.dims)>256?halveVolume(vd):null;times.half=performance.now()-t0;
+  onProgress({phase:'mask',done:0,total:1});await tick();t0=performance.now();
+  const editDims=half?half.dims:vd.dims;let m;try{m=buildEditMask(editDims)}catch(e){console.error(e);m={activeMask:0,data:null}}
+  const edit={dims:editDims,data:m.activeMask?m.data:null,active:m.activeMask|0};times.mask=performance.now()-t0;
+  onProgress({phase:'cls',done:0,total:1});await tick();t0=performance.now();
+  const small=half||vd,cls=buildClsData(small,vd.calibration,edit);times.cls=performance.now()-t0;
+  return{key,vd,half,edit,cls,times};
+ })();
+ preparing={key,promise};
+ try{prepared=await promise;return prepared}finally{if(preparing?.promise===promise)preparing=null}
+}
+// page panel: progress while preparing, then the start button (a click, so
+// the session may start)
+export function showPreparePanel({language='ja',mode='vr',onStart}){
+ const ja=language==='ja';document.getElementById('vr-prepare-panel')?.remove();
+ const panel=document.createElement('div');panel.id='vr-prepare-panel';
+ Object.assign(panel.style,{position:'fixed',left:'50%',top:'50%',transform:'translate(-50%,-50%)',zIndex:'10000',background:'#141c24f2',color:'#fff',padding:'20px 24px',borderRadius:'14px',width:'min(92vw,440px)',font:'15px system-ui,sans-serif',boxShadow:'0 8px 30px #0008'});
+ panel.innerHTML='<strong style="font-size:18px"></strong><div class="ph" style="margin:12px 0 6px;color:#cfe3f0"></div><div style="height:10px;background:#26313b;border-radius:5px;overflow:hidden"><div class="bar" style="height:100%;width:0;background:#2d6cdf"></div></div><div class="tm" style="margin-top:10px;color:#9fb3c3;font-size:13px;white-space:pre-line"></div><div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button type="button" class="cancel"></button><button type="button" class="start" disabled></button></div>';
+ const q=c=>panel.querySelector(c),names=ja?{read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ'}:{read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification'};
+ q('strong').textContent=(mode==='ar'?'AR':'VR')+(ja?'の準備':' preparation');q('.cancel').textContent=ja?'閉じる':'Close';q('.start').textContent=mode==='ar'?(ja?'ARを開始':'Start AR'):(ja?'VRを開始':'Start VR');
+ Object.assign(q('.start').style,{background:'#2d6cdf',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 18px',fontSize:'16px'});Object.assign(q('.cancel').style,{background:'#26313b',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 14px'});
+ const order=['read','half','mask','cls'];
+ q('.cancel').onclick=()=>panel.remove();
+ q('.start').onclick=()=>{panel.remove();onStart()};
+ document.body.append(panel);
+ const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'?' '+done+' / '+total:'');const i=order.indexOf(phase),f=(i+(phase==='read'&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%'};
+ prepareVrData(report).then(p=>{
+  q('.bar').style.width='100%';q('.ph').textContent=ja?'準備ができました':'Ready';
+  q('.tm').textContent=order.filter(k=>p.times[k]!=null).map(k=>names[k]+': '+(p.times[k]/1000).toFixed(1)+' s').join('\n');
+  q('.start').disabled=false;q('.start').focus();
+ },e=>{console.error(e);q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e)});
+}
+
 let running=null;
 // mode 'vr': own background; 'ar' (build 343): immersive-ar passthrough on
 // Quest, no background drawn and the clear is transparent
@@ -724,8 +802,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
  };
  session.addEventListener('end',cleanup,{once:true});
  try{
-  const gl=renderer.getContext(),maxDim=gl.getParameter(gl.MAX_3D_TEXTURE_SIZE)||2048;
-  const vd=await buildVolumeData(maxDim,(a,b)=>{ui.status=L.preparing+a+' / '+b;menu.refresh()});
+  // prepared before the session (or now, if the data changed meanwhile)
+  const P=await prepareVrData(({phase,done,total})=>{ui.status=L.preparing+(phase==='read'?done+' / '+total:phase);menu.refresh()});
+  const vd=P.vd;
   if(!running)return;
   const makeTextures=d=>{
    const v=new THREE.Data3DTexture(d.data,...d.dims);v.format=THREE.RGFormat;v.type=THREE.UnsignedByteType;
@@ -734,37 +813,21 @@ export async function startVrView({language='ja',mode='vr'}={}){
    b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
    return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null};
   };
-  // classification texture for a data grid: thresholds fixed in VR, mask
-  // folded in (editData is on the same grid when it is at most 256)
-  const buildCls=t=>{
-   const [w,h,d]=t.dims,n=w*h*d,src=t.src,[slope,intercept,bias]=vd.calibration;
-   const segs=SEGMENT_PRESET_ORDER.slice(0,4).map(k=>segmentState[k]);
-   // one byte per active segment (1, 2 or 4 channels), so one or two
-   // segments read no more bytes than the HU texture
-   const chan=[-1,-1,-1,-1];let nc=0;segs.forEach((g,i)=>{if(g?.active&&g.enabled)chan[i]=nc++});
-   if(!nc)return null;const C=nc===1?1:nc===2?2:4,out=new Uint8Array(n*C);
-   const maskOk=editData&&editDims.join()===t.dims.join();
-   for(let si=0;si<4;si++){
-    const seg=segs[si];if(chan[si]<0)continue;const lo=+seg.min,hi=+seg.max,masked=maskOk&&(editActive>>si&1),ch=chan[si];
-    for(let i=0;i<n;i++){
-     const hu=((src[i*2]|(src[i*2+1]<<8))-bias)*slope+intercept,dd=Math.min(hu-lo,hi-hu);
-     let f=Math.round((0.5+dd/2048)*255);f=f<0?0:f>255?255:f;
-     if(masked&&editData[i*4+si]<128)f=0;
-     out[i*C+ch]=f;
-    }
-   }
-   const c=new THREE.Data3DTexture(out,w,h,d);c.format=C===1?THREE.RedFormat:C===2?THREE.RGFormat:THREE.RGBAFormat;c.userData.chan=chan;c.type=THREE.UnsignedByteType;c.minFilter=c.magFilter=THREE.LinearFilter;c.unpackAlignment=1;c.needsUpdate=true;
-   return c;
+  // classification texture from the prepared bytes (only on the ≤256 grid)
+  const clsTexture=t=>{
+   const c=P.cls;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
+   const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.userData.chan=c.chan;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;
+   return x;
   };
   const full=makeTextures(vd);let half=null;volTex=full.v;brickTex=full.b;
   // 512 / 256 data (256 made on first use, kept for the session)
   useData=i=>{
-   const t=i===1?(half||=makeTextures(halveVolume(vd))):full;
+   const t=i===1&&P.half?(half||=makeTextures(P.half)):full;
    material.uniforms.vol.value=t.v;material.uniforms.bricks.value=t.b;material.uniforms.texDims.value.set(...t.dims);material.uniforms.brickDims.value.set(...t.brickDims);
    info=t.dims.join('×')+(vd.filtered?L.filtered:'');
    // classification only on grids of at most 256 (512³ × 4 bytes is too big);
    // built on first use from this grid's data and the processing mask
-   if(Math.max(...t.dims)<=256&&!t.cls&&!(settings.clsDiag|0)){try{t.cls=buildCls(t)}catch(e){console.error(e);t.cls=null}}
+   if(Math.max(...t.dims)<=256&&!t.cls&&!(settings.clsDiag|0))t.cls=clsTexture(t);
    const on=!!t.cls&&!(settings.clsDiag|0);
    material.uniforms.useCls.value=on?1:0;material.uniforms.clsTex.value=t.cls||dummyEdit;if(t.cls)material.uniforms.clsChan.value.set(...t.cls.userData.chan);
    refreshEdits();
@@ -774,11 +837,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // normalised, so it serves both data sizes); the filter follows the
   // diagnostic setting (0 smooth, 1 nearest, 2 off)
   const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
-  let editTex=null,editActive=0,editData=null;
-  const editDims=Math.max(...vd.dims)>256?vd.dims.map(n=>Math.max(1,n>>1)):vd.dims;
-  {const g=editDims;
-   let m;try{m=buildEditMask(g)}catch(e){console.error(e);m={activeMask:0,data:null}}
-   if(m.activeMask&&m.data){editData=m.data;editTex=new THREE.Data3DTexture(m.data,...g);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.unpackAlignment=1;editActive=m.activeMask}}
+  let editTex=null;const editActive=P.edit.active;
+  if(P.edit.data){editTex=new THREE.Data3DTexture(P.edit.data,...P.edit.dims);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.unpackAlignment=1}
   refreshEdits=()=>{
    if(!material)return;const mode=settings.editDiag|0;
    if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
