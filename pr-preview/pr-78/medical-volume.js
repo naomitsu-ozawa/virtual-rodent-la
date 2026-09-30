@@ -166,17 +166,17 @@ fn previewContains(seg:u32,tc0:vec3<f32>)->bool{
  if(lo>start){return p.x<=(previewIntervals[lo-1u]>>16u);}
  return false;
 }
-fn analysisOverlayAt(tc0:vec3<f32>)->u32{
- if(analysisOverlay[0]==0u){return 0u;}
+fn regionIndexAt(tc0:vec3<f32>)->u32{
  let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
- if(u.section.w>0.5){
-  let word=textureLoad(regionTex,vec3<i32>(i32(p.x>>3u),i32(p.y),i32(p.z)),0).r;
-  let k=(word>>((p.x&7u)*4u))&15u;
-  if(k==0u){return 0u;}
-  if(k<15u){return analysisOverlay[analysisOverlay[0]+k];}
- }
+ let word=textureLoad(regionTex,vec3<i32>(i32(p.x>>3u),i32(p.y),i32(p.z)),0).r;
+ return (word>>((p.x&7u)*4u))&15u;
+}
+fn analysisOverlayRow(tc0:vec3<f32>)->u32{
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
+ let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
  let row=p.z*dims.y+p.y;
  let start=analysisOverlay[1u+row];
  let finish=analysisOverlay[2u+row];
@@ -185,6 +185,31 @@ fn analysisOverlayAt(tc0:vec3<f32>)->u32{
  loop{if(lo>=hi){break;}let mid=(lo+hi)/2u;if((analysisOverlay[mid*2u]&65535u)<=p.x){lo=mid+1u;}else{hi=mid;}}
  if(lo>start/2u){let i=(lo-1u)*2u;if(p.x<=(analysisOverlay[i]>>16u)){return analysisOverlay[i+1u];}}
  return 0u;
+}
+fn analysisOverlayAt(tc0:vec3<f32>)->u32{
+ if(analysisOverlay[0]==0u){return 0u;}
+ if(u.section.w>0.5){
+  let k=regionIndexAt(tc0);
+  if(k==0u){return 0u;}
+  if(k<15u){return analysisOverlay[analysisOverlay[0]+k];}
+ }
+ return analysisOverlayRow(tc0);
+}
+// build 375: region colour near a surface hit from the index texture alone:
+// the hit voxel first, then the candidates insideVoxelTc would try (the hit
+// lies between the inside and the outside voxel). No HU fetches; a coloured
+// hit costs one texture load.
+fn regionOverlayNear(tc0:vec3<f32>,dir:vec3<f32>,inward:vec3<f32>)->u32{
+ let di=objToTc(inward);let dr=objToTc(dir);
+ // candidates in order: tc0, +di*0.5, +di*1.0, +dr*0.5, +dr*1.0, +di*1.5 (one loop body: the inlined code stays small)
+ var p=tc0;var r=0u;
+ for(var k:u32=0u;k<6u;k=k+1u){
+  p=tc0+select(di,dr,k==3u||k==4u)*(0.5*f32(k)-select(0.0,1.0,k>=3u));
+  r=regionIndexAt(p);if(r!=0u){break;}
+ }
+ if(r==0u){return 0u;}
+ if(r<15u){return analysisOverlay[analysisOverlay[0]+r];}
+ return analysisOverlayRow(p);
 }
 fn appliedCutContains(seg:u32,tc0:vec3<f32>)->bool{
  let activeMask=appliedCutRows[0];
@@ -422,12 +447,15 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      let a=u.segments[u32(idx)*2u];
      // inward = towards the segment's range: up the gradient when entered from below its minimum, else down
      let inward=select(-n,n,hvPrev<-1e8||hvPrev<a.x);
-     var tcv=tc;if(analysisOverlay[0]!=0u||previewRows[0]!=0u){tcv=insideVoxelTc(tc,dir,inward,u32(idx));}
+     // build 375: regions only on the segments that have one (mask word at the colour table start); with the index texture the lookup needs no inside-voxel search
+     let anyRegion=analysisOverlay[0]!=0u&&(analysisOverlay[analysisOverlay[0]]&(1u<<u32(idx)))!=0u;
+     let regionByTexture=anyRegion&&u.section.w>0.5;
+     var tcv=tc;if(previewRows[0]!=0u||(anyRegion&&!regionByTexture)){tcv=insideVoxelTc(tc,dir,inward,u32(idx));}
      let isCutPreview=previewContains(u32(idx),tcv);
      var col=u.segments[u32(idx)*2u+1u].rgb;
      var alpha=clamp(a.z,0.03,1.0);
      var lit=col*diffuse+vec3<f32>(spec);
-     let overlay=select(0u,analysisOverlayAt(tcv),!isCutPreview);
+     var overlay=0u;if(anyRegion&&!isCutPreview){if(regionByTexture){overlay=regionOverlayNear(tc,dir,inward);}else{overlay=analysisOverlayAt(tcv);}}
      if(overlay!=0u){
       col=vec3<f32>(f32((overlay>>16u)&255u),f32((overlay>>8u)&255u),f32(overlay&255u))/255.0;
       let focused=(overlay&0x1000000u)!=0u;
@@ -927,7 +955,7 @@ export class MedicalVolumeRenderer{
   this.device.queue.writeBuffer(this.analysisOverlayBuffer,0,new Uint32Array([0,0]));
   this.analysisOverlaySignature='';this.rebuildBindGroup();
  }
- // regions: [{runs (per-slice y,x0,x1 triples in source voxels), color (0xRRGGBB), focused}].
+ // regions: [{runs (per-slice y,x0,x1 triples in source voxels), color (0xRRGGBB), focused, segments (shader segment indices, optional)}].
  // Reduced textures point-sample the source, so thin cortical shells would
  // miss most texels (speckled colouring); dilate by one texel as the cut
  // preview does.
@@ -949,6 +977,9 @@ export class MedicalVolumeRenderer{
    for(let z=0;z<d;z++){const rec=g[z];if(rec)for(let i=0;i<rec.length;i+=3){const row=z*h+rec[i],c=cursor[row];data[c]=((rec[i+2]&65535)<<16)|(rec[i+1]&65535);data[c+1]=word>>>0;cursor[row]=c+2}}
   }
   for(let ri=0;ri<Math.min(grids.length,14);ri++)data[tableStart+1+ri]=(((regions[ri].color>>>0)&0xffffff)|(regions[ri].focused?0x1000000:0)|0x80000000)>>>0;
+  // build 375: data[tableStart] = mask of the segment indices that have a shown region (unknown segment: all); hits on other segments skip the lookup
+  let segMask=0;for(let ri=0;ri<grids.length;ri++){if(!grids[ri])continue;const segs=regions[ri].segments;if(!segs?.length||segs.some(i=>!(i>=0&&i<8)))segMask=0xff;else for(const i of segs)segMask|=1<<i}
+  data[tableStart]=segMask;
   // build 373: the shader binary-searches each row, so its pairs must be sorted by x0 (regions were appended in region order)
   for(let r=0;r<rowCount;r++){const a=data[1+r],b=data[2+r];if(b-a<=2)continue;const pairs=[];for(let c=a;c<b;c+=2)pairs.push([data[c],data[c+1]]);pairs.sort((x,y)=>(x[0]&65535)-(y[0]&65535));for(let k=0;k<pairs.length;k++){data[a+k*2]=pairs[k][0];data[a+k*2+1]=pairs[k][1]}}
   if(data.byteLength>this.device.limits.maxStorageBufferBindingSize)throw new Error('GPU analysis overlay exceeds storage buffer limit');
@@ -1192,10 +1223,16 @@ fn word(i:u32)->u32{
  // 1 / 0.7 / 0.5 / 0.35, at most every 300 ms, kept between drags
  adaptDragScale(){
   if(!this.interactive||!(this.lastFrameMs>0))return;
-  const now=performance.now();if(now-(this._dragScaleAt||0)<300)return;
+  const now=performance.now(),ms=this.lastFrameMs;
   const steps=[1,0.7,0.5,0.35],cur=this.dragScale||1,i=steps.indexOf(cur)<0?0:steps.indexOf(cur);let next=cur;
-  if(this.lastFrameMs>10&&i<steps.length-1)next=steps[i+1];else if(this.lastFrameMs<5&&i>0)next=steps[i-1];
-  if(next!==cur){this.dragScale=next;this._dragScaleAt=now;this.resize()}
+  // build 375: no single-sample decisions (the owner saw the size flip while the numbers read 60 fps): down when two
+  // measurements in a row exceed 9 ms; up only when the time predicted for the larger size (pixels scale with the step)
+  // stays under 7 ms for three measurements and the current size has been held 600 ms
+  const h=this._dragHist=this._dragHist||[];h.push(ms);if(h.length>3)h.shift();
+  const held=now-(this._dragScaleAt||0);
+  if(i<steps.length-1&&h.length>=2&&h[h.length-1]>9&&h[h.length-2]>9&&held>=300)next=steps[i+1];
+  else if(i>0&&h.length>=3&&h.every(v=>v*steps[i-1]/steps[i]<7)&&held>=600)next=steps[i-1];
+  if(next!==cur){this.dragScale=next;this._dragScaleAt=now;h.length=0;this.resize()}
  }
  setInteractive(active,tier=0){
   const next=!!active,nextTier=next?Math.max(0,Math.min(2,Math.round(+tier||0))):0;
@@ -1207,7 +1244,12 @@ fn word(i:u32)->u32{
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
   const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;if(globalThis.__vrlSettings?.get?.('showPerf')===false){el.textContent='';return}
   const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
-  el.textContent=' · 3D '+Math.round(ms)+' ms'+(this.interactive&&(this.dragScale||1)<1?' ×'+this.dragScale:'')+' · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)':'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+  el.textContent=' · 3D '+Math.round(ms)+' ms'+(this.interactive&&(this.dragScale||1)<1?' ×'+this.dragScale:'')+' · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)'+this.gapStats():'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+ }
+ // frames in the last second while dragging: count, longest gap, gaps over 20 ms (a 60 Hz frame missed)
+ gapStats(){
+  const g=this._gaps;if(!this.interactive||!g?.length)return'';let n=0,mx=0,drops=0;for(let k=1;k<g.length;k+=2){n++;if(g[k]>mx)mx=g[k];if(g[k]>20)drops++}
+  return' [1秒: '+n+' 枚, 最大 '+Math.round(mx)+' ms, 落ち '+drops+']';
  }
  dropLowTargets(){for(const t of (this.lowTargets||new Map()).values())t.texture.destroy?.();this.lowTargets=new Map()}
  // one texture per drag size, kept until the canvas size changes
@@ -1286,7 +1328,10 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
   // not the ray casting alone): wait = GPU work queued before this frame,
   // lastFrameMs = this volume pass after that, gap = time between frames
   const fq=this.device.queue,measure=!this._frameTimerPending&&fq.onSubmittedWorkDone,now=performance.now();
-  if(this._lastRenderAt)this.frameGapMs=now-this._lastRenderAt;this._lastRenderAt=now;
+  if(this._lastRenderAt){this.frameGapMs=now-this._lastRenderAt;
+   // build 375: per-second frame statistics for the status bar (a single gap sample hid the dropped frames)
+   if(this.interactive&&this.frameGapMs<250){const g=this._gaps=this._gaps||[];g.push(now,this.frameGapMs);while(g.length&&g[0]<now-1000)g.splice(0,2)}}
+  this._lastRenderAt=now;
   let before=null;if(measure){this._frameTimerPending=true;before=fq.onSubmittedWorkDone().then(()=>performance.now())}
   fq.submit([encoder.finish()]);
   if(measure){const t0=now;Promise.all([before,fq.onSubmittedWorkDone().then(()=>performance.now())]).then(([tb,te])=>{this.queueWaitMs=Math.max(0,tb-t0);this.lastFrameMs=te-Math.max(t0,tb);this._frameTimerPending=false;this.adaptDragScale();this.showFrameTime()},()=>{this._frameTimerPending=false})}
