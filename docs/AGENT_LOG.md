@@ -2635,9 +2635,39 @@ to the CT window; asked for a beginner-friendly tidy-up.
 All five tabs rendered headless (JA / EN, mocked state) and checked for
 overlap and bounds. lint, unit tests, boot-check OK. Needs a Quest check.
 
-## Handoff (after build 363)
+## Build 364 — section selection, round 1 (handoff item B)
 
-State: build 363 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Design (Fable): ray pick, numbered handles, a selected plane, thumbstick
+scrolling. Implementation by an Opus 5.5 subagent from a written brief,
+reviewed here (help text split into two lines to fit the menu width).
+- Ray pick: each frame has an invisible DoubleSide hit quad; the ray turns
+  white and stops at the frame it points at (menu and menu tag first). The
+  hold button (grip or trigger, as chosen) takes the near frame, else the
+  pointed one, so a plane can be grabbed and moved from a distance
+  (takePlane attaches it to the controller keeping its world transform).
+- Handles: a 3.4 cm square with the plane's number (1–4, matching the menu
+  rows) in the plane colour outside one corner; the corner cycles with the
+  index and the numbers are redrawn after add / remove. Canvas texture,
+  depthTest off, renderOrder 3.
+- Selected plane (section.selected): set by add, take, or pressing the
+  plane's name button in the 断面 tab (the name is now a button); shown as a
+  double frame (inner loop, since WebGL line width is always 1 px). Removing
+  the selected plane selects the last remaining one.
+- Thumbstick Y (xr-standard axes[3], dead zone 0.15, squared response, both
+  hands summed) moves the selected plane along its own normal at 5 cm/s in
+  world units at full deflection, the same speed whether the plane is fixed
+  in the scaled holder or held (parent world scale divides the step). dt is
+  clamped to 50 ms.
+Checks: lint, 397 unit tests, boot-check OK; vr-slice-check unchanged
+(byte-identical output); headless geometry check of makePlane (ray hit at
+0.3 m from both faces, miss outside the square, handle position, translateX)
+by the subagent; 断面 tab rendered headless with a selected plane. Needs a
+Quest check: pointing / far grab, handle legibility (the digit is mirrored
+from the back face), scroll speed and dead zone, the double frame.
+
+## Handoff (after build 364)
+
+State: build 364 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -2664,14 +2694,12 @@ npm run bump-build for every pushed change and log it here.
 Next work (owner-approved list; recommended model / effort):
 A. Done in build 361 (cause: 60 % default opacity over the dome; VR window
    tab added). Open: Quest check of the slice at 100 % and of the new tab.
-B. Section selection, round 1: pick the frame the ray points at (grab from a
-   distance), coloured handle + number per frame at offset corners, a
-   "selected plane" (thicker frame), thumbstick moves the selected plane
-   along its normal (slice scrolling). Fable 5.1 high.
+B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
+   scroll). Open: Quest check; scroll speed (5 cm/s) may need tuning.
 C. Round 2: snap plane to axial / coronal / sagittal, left-hand section
    panel, slim the big menu. Fable 5.1 high (design), Opus 5.5 high (impl).
 D. Complex shapes: precomputed normals, fewer refinement steps; verify by
    image comparison and device fps. Fable 5.1 high–max.
 E. First-run VR guide (3 steps, controller labels). Sonnet 5.5 medium.
-Order: B → C → D → E (A done, pending device check). Headless tools used so far: see the build
+Order: C → D → E (A, B done, pending device checks). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
