@@ -2620,14 +2620,29 @@ Owner also asked for a flip button for the one-side clip; the 断面 tab
 already has 向きを反転 per plane (shown when 切り取り = 片側 and the plane
 clips) — asked whether a controller button is wanted instead.
 
-## Handoff (after build 362)
+## Build 363 — VR menu tidy-up for beginners (section / slice tabs)
 
-State: build 362 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: could not find the flip button; wanted the slice opacity slider next
+to the CT window; asked for a beginner-friendly tidy-up.
+- Tab 3 renamed CT値 → スライス / Slice and now holds everything about the
+  slice image: opacity, colouring, window centre / width (−/＋, presets).
+- 断面 tab keeps the planes: on/off, ＋追加, one row per plane (切る / 向きを
+  反転 / 消す), then 切り取り with a one-line explanation of the chosen mode
+  (オフ / 手前 / 片側; 片側 says the arrow side is removed and 反転 swaps it),
+  キャップ, 持ち方, hold help, B/Y help. 向きを反転 still appears only in
+  片側 for a plane that clips (in 手前 the side follows the eye).
+- 表示 tab unchanged.
+All five tabs rendered headless (JA / EN, mocked state) and checked for
+overlap and bounds. lint, unit tests, boot-check OK. Needs a Quest check.
+
+## Handoff (after build 363)
+
+State: build 363 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
-copied from the WebGPU texture, practice data cached, VR-local CT window tab,
-slice opacity default 70 %). main = build 360; PR #78 (preview
+copied from the WebGPU texture, practice data cached, スライス tab with
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 360; PR #78 (preview
 /pr-preview/pr-78/) awaits the owner's Quest check and merge instruction.
 
 How the owner checks a build: open a PR from the work branch; the pages
