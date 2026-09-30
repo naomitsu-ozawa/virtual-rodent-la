@@ -2347,3 +2347,181 @@ Everything else (data, volume pass, menu, grab) is the same code. Each button
 shows only when isSessionSupported says so.
 
 Owner, build 343 on Quest: VR and AR both fine (no problems).
+
+## Build 344 — VR/AR hand-held section with oblique slice
+
+Owner: wants section analysis in VR, moving the plane freely, with the slice
+image shown at the plane's angle and a chosen opacity. B/Y (xr-standard
+button 5) toggles a square frame on that controller (plane normal = the
+controller's local X, held like a blade); the holding hand's trigger leaves
+the plane fixed in the volume (attached to the volume holder), trigger again
+picks it up. Every frame the plane goes to the volume's object space and its
+normal is flipped so the eye is on the removed side. Ray shader: optional clip
+to the kept half-space (手前を切り取る) and the oblique CT slice composited in
+depth order at the plane crossing, resampled per pixel from the 512 texture
+with the app's window centre/width (wc/ww), opacity off/30/60/100 %. Headless
+check: slice grey 0.5 at window 200/100 on HU 200, 50 % premultiplied, clip
+keeps the far half.
+
+## Build 345 — VR/AR menu redesign, grip/trigger section hold, screenshots
+
+Owner: beginner-friendly UI, menu not fixed in space; section hold and menu
+position both selectable; wants screenshots. Menu rebuilt (canvas widgets:
+buttons, labels, sliders): header (title, close), tabs 表示 / 断面 / 画質 /
+詳細, one status line (section held / fixed, flashes), name-left /
+buttons-right rows. Menu position: follows lazily (moves back in front when
+the head turns >≈35° or it is >0.45 m off; front-left, below eye level) or
+fixed, chosen in 表示. A/X toggles the menu; when closed a メニュー tag on the
+left controller opens it. Input: trigger = select (buttons, slider drag),
+grip = grab; the trigger no longer grabs the volume. Section hold: grip
+(grip near the frame holds, release fixes it; frame white when grippable,
+yellow held, cyan fixed; appears fixed through the volume centre facing the
+viewer) or trigger (old behaviour); B/Y still toggles. Slice opacity is a
+0–100 % slider (5 % steps). 正面に戻す brings the volume and menu in front.
+Screenshot: the left eye re-rendered at 1600 px wide into an offscreen target
+(menu, tag and rays hidden, full-resolution volume), read back to PNG; kept
+until the session ends, then a panel on the page offers each for saving
+(AR: passthrough is not in the image, background transparent). Haptic pulse
+on presses. Menu layouts rendered headless and checked (light segment
+colours get dark text).
+
+## Build 346 — section clip: one-side mode
+
+Owner: besides clipping the near side, wants a mode that removes one side
+only, so the 3D stays when looking from the other side. 切り取り is now
+オフ / 手前 / 片側. 片側: the removed half is fixed to the frame (section.side
+along its local X), chosen as the viewer's half when the section appears or
+the mode is picked; 向きを反転 swaps it; an arrow on the frame points at the
+removed half. 手前 unchanged (flips towards the eye every frame).
+
+## Build 347 — section held only while pressed
+
+Owner: hold the section like the volume, only while the trigger or grip is
+pressed. Both hold modes now: press the chosen button near the frame (white)
+to hold, release to leave it fixed in the volume. The section always appears
+fixed through the volume centre facing the viewer. The old trigger toggle
+(fix / pick up) is gone.
+
+Owner: Linux Chrome check done (works). VR check of builds 345–347 pending.
+
+## Build 348 — VR/AR show processed segments (edits)
+
+Owner: CT adjustments (e.g. fat excluded next to air) not in VR/AR — raw
+thresholds only (a known prototype limitation). Now shared with the WebGPU
+volume: gpuVolumeEditDescriptors() (keep / exclude runs for Opening, Closing,
+hole filling, min component, 空気との境界から除外, thin-part removal, and
+kept/removed edits) mapped with the same gpuRunsForTexture (now exported;
+exclude dilated by one on a reduced grid) and rasterised into one byte per
+voxel on the current VR grid (bit s = allowed for segment s). The ray
+shader tests it in segmentIndexAt, like editAllows in volumeShader. The mask
+is rebuilt when the data size changes or the edit signature changes (checked
+once a second), so edits made in the app while in VR appear too. Headless:
+mask 0 hides, mask 1 shows.
+
+## Build 349 — no periodic edit check
+
+Owner, build 348: screen flickers, suspects the once-a-second update. The
+periodic edit-signature check is removed (not verified on the device whether
+it rebuilt; not kept either way). The processed-segment mask is built at VR
+start and on a data-size change only; 加工を再読み込み (menu header) takes
+edits made in the app during VR. Other periodic work left: auto resolution
+(every 0.5 s) — if the flicker remains, fix the resolution (画質 → 50 %) to
+check whether it is that.
+
+## Build 350 — processed mask smooth, built once; flicker diagnostic
+
+Owner, build 349: still flickers badly with a fixed resolution; edits cannot
+be made in VR, so the reload button was waste (removed). Suspected cause
+(not yet measured): the build 348 mask is nearest-sampled per voxel, so the
+edited boundary steps between voxels as the head moves. Now RGBA (one channel
+per segment), linear filtering, allowed where ≥ 0.5 (smooth boundary), on a
+grid of at most 256 per side, built once at VR start. 詳細 → 加工マスク
+(診断): なめらか / ボクセル / オフ, to confirm the cause on the device.
+
+## Build 351 — VR/AR: skip bricks wholly inside the current segment
+
+Owner: resolution too low; asked to optimise the volume rendering itself.
+Proposal was (1) jump through bricks lying wholly inside the current tissue,
+(2) a precomputed classification texture for traversal. Implemented (1)
+only: exact, no image change. Brick texture is RGBA32F: HU min, max, and bits
+of segments whose processing mask allows the whole brick (+1 voxel, on the
+mask grid). uniformSegment(): the segment whose HU range covers the brick,
+mask allows it, and no earlier visible segment's range touches it; when that
+equals the segment the ray is already inside, the ray jumps to the brick
+exit. Headless: images with and without the skip identical (max diff 1/255);
+loop count on a 160³ phantom (sphere of 1200 inside a 600 shell, noise)
+73.8 → 50.3 per pixel (−32 %); on a small 48³ phantom −4 %, so the gain
+depends on how much uniform tissue the rays cross — to be measured on the
+Quest (詳細 → 組織内スキップ オン/オフ). (2) not done: a thresholded,
+filtered classification can miss thin structures (accuracy) and a
+conservative version saves little over the brick test; revisit only if (1)
+is not enough.
+
+## Build 352 — practice data cached
+
+Owner: do not download the practice DICOM every time. loadSampleDemo keeps
+each slice in Cache Storage (virtual-rodent-sample-v1, like the public
+demo's cache) and reads it from there on the next open; fetch on a miss,
+cache errors fall back to the network. Local check: 512 slices 22 s first,
+0.3 s second (footer: キャッシュから 512), same bytes.
+Owner also: the slowdown is not the enlarging but showing two segments;
+testing build 351 now.
+
+## Build 353 — build 351 skip reverted
+
+Owner, build 351: comfortable with one segment, heavy with two; the skip
+did not help ("オンでも遅いまま", I first misread this as the skip making it
+slower). Reverted anyway (vr-view.js back to build 350): no measured gain,
+and it made the brick texel RGBA32F (16 bytes read at every step instead of
+8) plus per-step branching.
+
+## Build 354 — VR/AR segment opacity 100 % by default
+
+Owner: in VR/AR the segments need not be see-through by default (the
+section tool shows the inside); keep it settable. VR-only opacity per
+segment starts at 100 % (the app's opacity is neither used nor changed), so
+rays end at the first surface (acc > 0.985) instead of crossing
+semi-transparent tissue — expected to relieve the two-segment load (to be
+measured). 表示 tab: name with %, display mode, opacity slider (5–100 %).
+
+## Build 355 — practice data load checked
+
+Owner: practice data slow to load — network or code? Measured locally
+(Chromium, local server, button to 'loaded'): first 9.2 s (fetch 3.8 s +
+cache writes that each lane awaited), second 1.1 s from the cache. So a
+repeat load is disk-bound and short; the first load moves 257 MB and is
+network-bound on the device (e.g. ≈40 s at 50 Mbit/s). Two code fixes: the
+cache write no longer blocks the next download (first load 9.2 → 7.3 s
+locally), and the cache key no longer contains the page path, so main and
+every PR preview (same origin) share one copy (before, each preview URL
+downloaded again). Old v1-by-URL entries are left unused.
+
+## Build 356 — VR/AR: precomputed classification ("compile" before viewing)
+
+Owner, build 355: processing mask on = coarse and stuttering; asked to
+compile before VR. Thresholds and edits cannot change in VR, so on the ≤256
+grid (the default 256³ data) a classification texture is built once: per
+active segment one byte f = 0.5 + (HU distance inside its range)/2048
+(clamped), set to 0 where the processing mask excludes the voxel; 1, 2 or 4
+channels (only active segments), so two segments read 2 bytes per step — the
+same as the HU texture and without the mask fetch, decode and range test.
+segmentIndexAt reads it when useCls; hit refinement uses it too; normals and
+the slice still use HU. f is linear in HU, so its trilinear 0.5 crossing is
+the HU threshold (8-bit steps = 8 HU). Headless vs the HU path (160³ phantom,
+two segments): identical except grazing silhouette pixels (mean abs diff
+0.23/255). 512³ data keeps the HU + mask path. 詳細 → 事前計算 (診断) on/off.
+
+## Build 357 — VR/AR section cap and slice colouring
+
+Owner: does the section cap properly? (No: the ray only started at the plane
+and the cut face was shaded with the HU gradient, so it looked mottled.) And
+the slice should carry the segment colouring. Now: キャップ (on by default)
+paints the cut face where a visible segment is, flat, segment colour mixed
+22 % with white and lit by the plane normal (as the app's section cap); the
+ray then continues inside that segment. スライスの色付け slider (0 = off,
+default 50 %) mixes the segment colour into the grey slice where
+segmentIndexAt finds a visible segment (classification / mask included, so
+it matches the 3D). Headless: cap lighter flat colour, slice grey matches
+the window, tint 100 % gives the segment colour.
+
+Owner, build 357: cap and slice colouring OK. Simple shapes fairly comfortable; complex shapes get heavy and the auto resolution drops.
