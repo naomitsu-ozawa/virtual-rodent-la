@@ -2944,9 +2944,45 @@ for processed segments (fat RLE) could become a bit-mask texture (16 MB per
 segment at 512³, one load instead of ~8 dependent storage reads).
 Checks: lint, 404 unit tests, boot-check, harness (overlay 0 diff).
 
-## Handoff (after build 373)
+## Build 374 — analysis colouring made the 3D view heavy: region index texture
 
-State: build 373 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (iPad, build 373): the volume view became heavy once a volume-analysis
+region was coloured. Cause (from the build 373 shader): every surface hit
+still ran analysisOverlayAt, a binary search over the row's run pairs (a
+fat region has hundreds per row: ~8 dependent storage reads per hit), and
+every hit also ran the inside-voxel search of build 372 whether or not a
+region was shown.
+- Region index texture: setAnalysisRuns also uploads an r32uint 3D texture,
+  4 bits per texture voxel (8 voxels per word along x; k = region index +
+  1, 15 = "search the row" for regions past the 14th), 67 MB at 512³, 8 MB
+  at 256³ (the iPad's reduced texture). The shader reads one word per hit
+  and takes the colour from a table appended after the run pairs
+  (analysisOverlay[0] now points at the table instead of holding 1). The
+  row search stays as the fallback (texture missing, k = 15).
+- Allocation failure: WebGPU reports it through the error scope, not by
+  throwing, so the texture is created under an out-of-memory scope and
+  dropped (row search) when the scope reports.
+- The inside-voxel search (build 372) now runs only when a region or a cut
+  preview is shown; without either the hit uses the plain sample position
+  as in build 371.
+- Binding 11 (regionTex, a 1×1×1 dummy while no region is shown); uniform
+  slot 19 w = 1 when the texture exists. rebuildBindGroup / destroy /
+  clearAnalysisRuns handle it.
+Checks: lint; 404 unit tests (overlay test updated to the new layout and the
+texture words); boot-check; WebGPU harness against the build 373 shader with
+a region: 0 differing channels with the texture, 0 with the row search
+(REGIONTEX=0), 0 without a region; a negative run with an empty texture
+differed (21657 channels), so the texture path is the one drawing the
+colour. Overlapping regions (only possible at the one-texel dilation border
+of adjacent regions on reduced textures) take the later region; the old
+search took the pair with the larger x0. Speed is not measurable here
+(SwiftShader); the iPad decides.
+Not done (follow-up if still slow): editAllows for processed segments (fat
+RLE) as a bit-mask texture, same scheme, one load per sample.
+
+## Handoff (after build 374)
+
+State: build 374 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -2985,6 +3021,10 @@ D. Goal (owner): VR auto resolution held at 100 % at the normal size.
    limit; then precomputed normals (memory!) or temporal reuse.
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
+F. iPad (builds 372–374): region colouring speckle fixed, drag lookups by
+   binary search + GPU-timed drag budget, region index texture. Open:
+   iPad check of drag fps with a coloured fat region; if still heavy, the
+   editAllows bit-mask texture (see build 373 / 374 entries).
 Order: device checks of builds 361–368 first; then whatever the owner
 reports (tablet comfort on the Quest browser, fps). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
