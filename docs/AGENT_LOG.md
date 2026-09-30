@@ -2525,3 +2525,18 @@ it matches the 3D). Headless: cap lighter flat colour, slice grey matches
 the window, tint 100 % gives the segment colour.
 
 Owner, build 357: cap and slice colouring OK. Simple shapes fairly comfortable; complex shapes get heavy and the auto resolution drops.
+
+## Build 358 — VR/AR data prepared before the session, reused
+
+Owner: switching to VR/AR takes long; prepare after pressing the button,
+skip when already prepared, otherwise show progress. The CPU-side data
+(512 plan, 256³ average, processing mask, classification bytes) is built by
+prepareVrData() and kept under a key of series, filter signature, segment
+settings and edit identities/revisions; startVrView only makes textures from
+it. Button press: prepared → the session starts at once; not prepared → a
+page panel shows the phase, progress bar and per-phase times, then a
+VRを開始 / ARを開始 button (requestSession needs a click). VR ↔ AR and
+re-entry reuse it. Headless (practice data, no segment): read 18.7 s,
+256³ 0.6 s, mask 0.0 s, classification 0.0 s — re-reading the DICOM slices
+dominates; next candidate: copy the WebGPU volume texture instead.
+Memory: the prepared data stays in the page (≈300 MB with the 512 plan).
