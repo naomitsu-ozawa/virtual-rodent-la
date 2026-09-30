@@ -318,13 +318,13 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
   let p=u.camOrigin.xyz+dir*t;
   var canSample=t<brickEnd;
   if(!canSample){let bc=brickClass(p);canSample=bc>0;uniformSeg=select(-1,bc-2,bc>=2);if(canSample){brickEnd=t+brickExitDistance(p,dir);}}
-  var nextT=t+step;
+  var nextT=t+step;var uniformJump=false;
   if(!canSample){brickEnd=-1.0;prevHv=-1e9;let skip=brickExitDistance(p,dir);nextT=t+max(skip+step*0.05,step);}
   else if(uniformSeg>=0&&uniformSeg==lastIndex&&brickEnd>t+step){
-   // inside a uniform brick of the segment the ray is already in: nothing can change until the brick is left
-   canSample=false;nextT=brickEnd+step*0.05;prevHv=-1e9;
-   // the last point inside the brick counts as the previous (inside) sample for the next surface search
-   previousT=max(t,brickEnd-step*0.05);t=nextT;continue;
+   // inside a uniform brick of the segment the ray is already in: nothing can
+   // change until the brick is left, so no sample; the cap and MPR planes
+   // inside [t, nextT] are still composited below, lastIndex is kept
+   canSample=false;uniformJump=true;nextT=brickEnd+step*0.05;prevHv=-1e9;
   }
   var capDrawn=false;
   if(capT>=t-1e-7&&capT<=nextT+1e-7){
@@ -413,7 +413,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
    }else if(idx<0){
     lastIndex=-1;
    }
-  }else if(!canSample){lastIndex=-1;previousCutIdx=-1;}
+  }else if(!canSample&&!uniformJump){lastIndex=-1;previousCutIdx=-1;}
 
   for(var pi:u32=0u;pi<3u;pi=pi+1u){
    var pt=1e30;var which:i32=-1;
@@ -439,7 +439,8 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
    if(which==0){axialT=1e30;}else if(which==1){coronalT=1e30;}else{sagittalT=1e30;}
   }
 
-  previousT=t;t=nextT;
+  // after a uniform-brick jump the last point inside the brick is the previous (inside) sample of the next surface search
+  previousT=select(t,max(t,nextT-step*0.1),uniformJump);t=nextT;
  }
  let bg=vec3<f32>(0.035,0.045,0.05);
  return vec4<f32>(acc.rgb+bg*(1.0-acc.a),1.0);

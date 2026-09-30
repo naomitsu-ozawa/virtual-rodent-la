@@ -2849,9 +2849,63 @@ soft): fps · ボリューム ms · 縮小描画 % (auto), the same with 画質 
 and サンプル数／画素 with 距離場 on / off and 表面の探索 高速 / 精密.
 Checks: lint, 404 unit tests, boot-check, vr-slice-check (0 diff), harness.
 
-## Handoff (after build 369)
+## Build 370 — VR auto resolution follows the GPU time, may reach 100 %
 
-State: build 369 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Why: the auto factor (build 340) followed the frame interval, which the
+display quantises: a small overrun shows as a halved frame rate (27 ms
+instead of 14), the controller then shrank by 0.7 per half second down to
+25 %, and only grew by 6 % per half second while the interval was under
+1.04 × budget — a bias towards low factors; AUTO_MAX was 0.8, so 100 % was
+never reached in auto. Now, when EXT_disjoint_timer_query_webgl2 is
+offered (the 詳細 line already showed GPU ms on the Quest), the factor
+follows the measured GPU time: pixel cost ∝ f², target = 80 % of the frame
+budget minus the main pass; at 100 % (direct path) the main pass holds the
+volume and is compared with the budget as a whole. Damped ×0.7 … ×1.15 per
+half second, an extra ×0.85 while frames are actually dropped (interval >
+1.5 × budget). AUTO_MAX = 1. Without the timer the interval logic stays.
+詳細 shows the controller line: 自動: GPU ボリューム x ms · 本描画 y ms /
+予算 b ms → f %.
+Distance field build: seeds by separable dilate / erode passes and chamfer
+passes with precomputed offsets: 256³ one channel 3.8 s → 1.7 s (node);
+128³ × 2 channels 593 ms headless.
+Checks: lint, 404 unit tests, boot-check, 詳細 tab rendered headless (no
+overflow, bottom 992), VR harness counts unchanged.
+Morning: with 距離場 on, the 詳細 line should show where the factor settles
+and the volume GPU ms; if it settles below 100 % with the GPU ms at 80 % of
+the budget, the per-pixel work at the XR size is the limit (see build 369).
+
+## Build 371 — review fixes for builds 368–370
+
+A code review (high effort) of the three overnight commits found seven
+points; all fixed:
+- WGSL uniform-brick crossing `continue`d past the section cap and MPR
+  plane compositing, so a cap or plane inside a uniform brick of a
+  translucent segment was not drawn. Now the jump falls through: the cap /
+  planes inside [t, nextT] are composited, no sample is taken, lastIndex is
+  kept, and the previous sample for the next surface search is the last
+  point inside the brick. Harness with an axial MPR plane at 60 % inside
+  the soft tissue: 0.5 % of channels differ from the old shader (same as
+  without the plane); the plane is drawn.
+- isTabletRuntime(): mobile OS in the UA (iPad, Android, OculusBrowser /
+  Quest) only; a touch-screen laptop stays a desktop for the caps.
+- English prepare panel lacked the 距離場 phase name.
+- Practice project: never replaces a project the user already loaded; a
+  bundled project that did not apply to the sample is dropped (no repeated
+  mismatch footer on later series).
+- distance-field.js: scratch buffers allocated once for all channels,
+  async with a yield and progress per channel (prepare panel shows n / C).
+- The samples probe restores the clear colour (the direct 100 % path
+  cleared the XR layer with alpha 0 after a probe).
+- The VR low-resolution target grows with the factor in use instead of
+  being allocated at the maximum (AUTO_MAX = 1 would have meant a full-size
+  target that is never used at 100 %).
+Checks: lint, 404 unit tests, boot-check, vr-slice-check (0 diff), both
+shader harnesses (counts unchanged), e2e sample-project + folder-project +
+smoke: 11 passed (local CDN mirror).
+
+## Handoff (after build 371)
+
+State: build 371 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -2883,11 +2937,11 @@ B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
 C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
 D. Goal (owner): VR auto resolution held at 100 % at the normal size.
-   Builds 368–369: fewer fetches per sample / brick, uniform-brick crossing,
+   Builds 368–371: fewer fetches per sample / brick, uniform-brick crossing,
    fast surface search, distance-field sphere tracing (all switchable),
-   samples-per-pixel probe. Open: the device numbers above decide whether
-   per-ray work or the pixel count is the limit; then precomputed normals
-   or temporal reuse.
+   samples-per-pixel probe, GPU-timed auto controller up to 100 %. Open:
+   the device numbers decide whether per-ray work or the pixel count is the
+   limit; then precomputed normals (memory!) or temporal reuse.
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
 Order: device checks of builds 361–368 first; then whatever the owner
