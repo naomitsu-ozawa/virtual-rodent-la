@@ -1047,6 +1047,44 @@ export class MedicalVolumeRenderer{
   };
   return run();
  }
+ // build 359: raw copy of the resident texture for the VR view (same rg8
+ // packed u16 bytes as uploaded), slice by slice in chunks, so VR need not
+ // read and filter the DICOM files again. Returns null when it cannot.
+ async readPackedTexture(onProgress=()=>{}){
+  if(!this.texture)return null;
+  const [w,h,d]=this.textureDims,plane=w*h;if(plane%2)return null;
+  const device=this.device,sliceBytes=plane*2,chunk=Math.max(1,Math.min(d,Math.floor(Math.min(32*1024*1024,device.limits.maxStorageBufferBindingSize||32*1024*1024)/sliceBytes)));
+  this.packPipeline||=device.createComputePipeline({label:'VRL texture pack',layout:'auto',compute:{module:device.createShaderModule({label:'VRL texture pack',code:`
+@group(0) @binding(0) var tex:texture_3d<f32>;
+@group(0) @binding(1) var<storage,read_write> outWords:array<u32>;
+@group(0) @binding(2) var<uniform> p:vec4<u32>; // w, h, z0, pairs
+fn word(i:u32)->u32{
+ let x=i%p.x;let y=(i/p.x)%p.y;let z=p.z+i/(p.x*p.y);
+ let q=textureLoad(tex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg;
+ return u32(round(q.x*255.0))|(u32(round(q.y*255.0))<<8u);
+}
+@compute @workgroup_size(256) fn main(@builtin(global_invocation_id) g:vec3<u32>){
+ let k=g.x+g.y*65535u*256u;if(k>=p.w){return;}
+ outWords[k]=word(k*2u)|(word(k*2u+1u)<<16u);
+}`}),entryPoint:'main'}});
+  const out=new Uint8Array(plane*d*2),bytes=chunk*sliceBytes;
+  const storage=device.createBuffer({label:'VRL texture pack out',size:bytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+  const read=device.createBuffer({label:'VRL texture pack read',size:bytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+  const uniform=device.createBuffer({label:'VRL texture pack params',size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+  try{
+   for(let z0=0;z0<d;z0+=chunk){
+    const n=Math.min(chunk,d-z0),pairs=plane*n/2,groups=Math.ceil(pairs/256);
+    device.queue.writeBuffer(uniform,0,new Uint32Array([w,h,z0,pairs]));
+    const group=device.createBindGroup({layout:this.packPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.texture.createView({dimension:'3d'})},{binding:1,resource:{buffer:storage}},{binding:2,resource:{buffer:uniform}}]});
+    const enc=device.createCommandEncoder({label:'VRL texture pack'}),pass=enc.beginComputePass();
+    pass.setPipeline(this.packPipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.min(groups,65535),Math.ceil(groups/65535));pass.end();
+    enc.copyBufferToBuffer(storage,0,read,0,n*sliceBytes);device.queue.submit([enc.finish()]);
+    await read.mapAsync(GPUMapMode.READ,0,n*sliceBytes);out.set(new Uint8Array(read.getMappedRange(0,n*sliceBytes)),z0*sliceBytes);read.unmap();
+    onProgress(z0+n,d);
+   }
+  }finally{try{if(read.mapState==='mapped')read.unmap()}catch{}storage.destroy();read.destroy();uniform.destroy()}
+  return{data:out,dims:[w,h,d]};
+ }
  setActive(active){if(!active&&typeof document!=='undefined'){const el=document.getElementById('gpu-frame-time');if(el)el.textContent=''}
   this.active=!!active;this.canvas.style.display=this.active?'block':'none';
  }
