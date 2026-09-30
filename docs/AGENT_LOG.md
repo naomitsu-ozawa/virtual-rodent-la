@@ -2523,3 +2523,5 @@ default 50 %) mixes the segment colour into the grey slice where
 segmentIndexAt finds a visible segment (classification / mask included, so
 it matches the 3D). Headless: cap lighter flat colour, slice grey matches
 the window, tint 100 % gives the segment colour.
+
+Owner, build 357: cap and slice colouring OK. Simple shapes fairly comfortable; complex shapes get heavy and the auto resolution drops.
