@@ -379,7 +379,10 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
    // inside a uniform brick of the segment the ray is already in: nothing can
    // change until the brick is left, so no sample; the cap and MPR planes
    // inside [t, nextT] are still composited below, lastIndex is kept
-   canSample=false;uniformJump=true;nextT=brickEnd+step*0.05;prevHv=-1e9;
+   // build 377: resume on the ray's own sample grid (first grid point past the brick) instead of brickEnd + 0.05 step: the
+   // latter re-phased every ray at the brick exit, so the sub-voxel shell left along an exclusion edit rendered as solid
+   // brick-sized tiles (harness: build 360 vs 368 with an exclusion edit); on the ray's grid it dithers as in build 360
+   canSample=false;uniformJump=true;nextT=t+max(ceil((brickEnd-t)/step),1.0)*step;if(nextT<=brickEnd){nextT=nextT+step;}prevHv=-1e9;
   }
   var capDrawn=false;
   if(capT>=t-1e-7&&capT<=nextT+1e-7){
@@ -949,7 +952,7 @@ export class MedicalVolumeRenderer{
   return this._regionDummy;
  }
  clearAnalysisRuns(){
-  this.regionTexture?.destroy?.();this.regionTexture=null;this.regionTexInfo='';
+  this.regionTexture?.destroy?.();this.regionTexture=null;this.regionTexInfo='';this.regionTexSignature='';
   this.analysisOverlayBuffer?.destroy?.();
   this.analysisOverlayBuffer=this.device.createBuffer({label:'VRL analysis overlay empty',size:8,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(this.analysisOverlayBuffer,0,new Uint32Array([0,0]));
@@ -959,7 +962,10 @@ export class MedicalVolumeRenderer{
  // Reduced textures point-sample the source, so thin cortical shells would
  // miss most texels (speckled colouring); dilate by one texel as the cut
  // preview does.
- setAnalysisRuns(regions,v,signature=''){
+ // textureSignature: changes only when the set of regions (ids, runs) changes; colour and focus live in the
+ // overlay buffer, so a focus or colour change keeps the region index texture (build 377: each rebuild allocated
+ // and uploaded 67 MB at 512³ on every tap)
+ setAnalysisRuns(regions,v,signature='',textureSignature=signature){
   if(signature&&signature===this.analysisOverlaySignature)return;
   if(!v||!this.textureDims||!regions?.length){this.clearAnalysisRuns();this.analysisOverlaySignature=signature;return}
   const sourceDims=[v.columns,v.rows,v.slices],gridDims=this.textureDims.slice(),[w,h,d]=gridDims;
@@ -989,7 +995,10 @@ export class MedicalVolumeRenderer{
   // build 376: filled in a mapped staging buffer and copied with one copyBufferToTexture at the 256-byte row pitch the
   // spec requires there (the iPad waited ~120 ms per frame for seconds after a writeTexture of the same data, and the
   // colouring showed stripes meanwhile: a row-wise or chunked upload). Upload time and size go to the status bar.
-  let tex=null,staging=null;this.regionTexInfo='';
+  if(textureSignature&&this.regionTexture&&textureSignature===this.regionTexSignature){
+   this.analysisOverlayBuffer?.destroy?.();this.analysisOverlayBuffer=buffer;this.analysisOverlaySignature=signature;this.rebuildBindGroup();return;
+  }
+  let tex=null,staging=null;this.regionTexInfo='';this.regionTexSignature=textureSignature;
   try{
    const tw=Math.ceil(w/8),bytesPerRow=Math.ceil(tw*4/256)*256,rowWords=bytesPerRow/4,bytes=bytesPerRow*h*d;
    this.device.pushErrorScope?.('out-of-memory');
@@ -1231,19 +1240,6 @@ fn word(i:u32)->u32{
  // measured GPU time of the volume pass: over 10 ms (a 60 Hz frame cannot
  // hold it with the present) one step down, under 5 ms one step up; steps
  // 1 / 0.7 / 0.5 / 0.35, at most every 300 ms, kept between drags
- adaptDragScale(){
-  if(!this.interactive||!(this.lastFrameMs>0))return;
-  const now=performance.now(),ms=this.lastFrameMs;
-  const steps=[1,0.7,0.5,0.35],cur=this.dragScale||1,i=steps.indexOf(cur)<0?0:steps.indexOf(cur);let next=cur;
-  // build 375: no single-sample decisions (the owner saw the size flip while the numbers read 60 fps): down when two
-  // measurements in a row exceed 9 ms; up only when the time predicted for the larger size (pixels scale with the step)
-  // stays under 7 ms for three measurements and the current size has been held 600 ms
-  const h=this._dragHist=this._dragHist||[];h.push(ms);if(h.length>3)h.shift();
-  const held=now-(this._dragScaleAt||0);
-  if(i<steps.length-1&&h.length>=2&&h[h.length-1]>9&&h[h.length-2]>9&&held>=300)next=steps[i+1];
-  else if(i>0&&h.length>=3&&h.every(v=>v*steps[i-1]/steps[i]<7)&&held>=600)next=steps[i-1];
-  if(next!==cur){this.dragScale=next;this._dragScaleAt=now;h.length=0;this.resize()}
- }
  setInteractive(active,tier=0){
   const next=!!active,nextTier=next?Math.max(0,Math.min(2,Math.round(+tier||0))):0;
   if(this.interactive===next&&this.interactionTier===nextTier)return;
@@ -1254,7 +1250,7 @@ fn word(i:u32)->u32{
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
   const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;if(globalThis.__vrlSettings?.get?.('showPerf')===false){el.textContent='';return}
   const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
-  el.textContent=' · 3D '+Math.round(ms)+' ms'+(this.interactive&&(this.dragScale||1)<1?' ×'+this.dragScale:'')+' · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)'+this.gapStats():'')+(this.regionTexInfo?' · 領域tex '+this.regionTexInfo:'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)'+this.gapStats():'')+(this.regionTexInfo?' · 領域tex '+this.regionTexInfo:'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
  }
  // frames in the last second while dragging: count, longest gap, gaps over 20 ms (a 60 Hz frame missed)
  gapStats(){
@@ -1295,7 +1291,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
   // canvas per drag/zoom reallocated its buffers (swap on the owner's Mac).
   const [w,h]=fit(Math.min(dpr,1.5),cfg?.restBudget?.()??1.0e6);
   if(force||this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;this.resizeCount=(this.resizeCount||0)+1;this.dropLowTargets()}
-  const [rw,rh]=lowered?fit(Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]),(budgets[this.interactionTier]||budgets[0])*(this.dragScale||1)):[w,h];
+  const [rw,rh]=lowered?fit(Math.min(dpr,interactiveRatios[this.interactionTier]||interactiveRatios[0]),(budgets[this.interactionTier]||budgets[0])):[w,h];
   this.renderW=Math.min(rw,w);this.renderH=Math.min(rh,h);
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
@@ -1344,7 +1340,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
   this._lastRenderAt=now;
   let before=null;if(measure){this._frameTimerPending=true;before=fq.onSubmittedWorkDone().then(()=>performance.now())}
   fq.submit([encoder.finish()]);
-  if(measure){const t0=now;Promise.all([before,fq.onSubmittedWorkDone().then(()=>performance.now())]).then(([tb,te])=>{this.queueWaitMs=Math.max(0,tb-t0);this.lastFrameMs=te-Math.max(t0,tb);this._frameTimerPending=false;this.adaptDragScale();this.showFrameTime()},()=>{this._frameTimerPending=false})}
+  if(measure){const t0=now;Promise.all([before,fq.onSubmittedWorkDone().then(()=>performance.now())]).then(([tb,te])=>{this.queueWaitMs=Math.max(0,tb-t0);this.lastFrameMs=te-Math.max(t0,tb);this._frameTimerPending=false;this.showFrameTime()},()=>{this._frameTimerPending=false})}
  }
  async pickMany(points,camera,obj,segmentState,segmentOrder,preferredKey=null){
   if(!this.active||!this.texture||!this.bindGroup||!obj||!points?.length)return points?.map(()=>null)||[];

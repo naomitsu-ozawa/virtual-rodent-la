@@ -79,4 +79,20 @@ describe('MedicalVolumeRenderer.setAnalysisRuns', () => {
     r.setAnalysisRuns([], v, 's2');
     expect([...written.at(-1).data]).toEqual([0, 0]);
   });
+
+  it('keeps the region index texture when only colour or focus change (build 377)', () => {
+    const { r, written, textures } = fakeRenderer([8, 1, 1]);
+    const v = { columns: 8, rows: 1, slices: 1 };
+    const regions = (color, focused) => [{ runs: runs(1, { 0: [0, 1, 2] }), color, focused }];
+    r.setAnalysisRuns(regions(1, false), v, 'a|1:1:0:3', 'a|1:3');
+    const tex = r.regionTexture, n = textures.length, w = written.length;
+    r.setAnalysisRuns(regions(2, true), v, 'a|1:2:1:3', 'a|1:3');
+    expect(textures.length).toBe(n); // no new upload
+    expect(r.regionTexture).toBe(tex);
+    expect(written.length).toBe(w + 1); // the overlay buffer (colour table) was rewritten
+    expect(written.at(-1).data[written.at(-1).data[0] + 1]).toBe((2 | 0x1000000 | 0x80000000) >>> 0);
+    r.setAnalysisRuns(regions(2, true), v, 'a|9:2:1:5', 'a|9:5');
+    expect(textures.length).toBe(n + 1); // a different region set rebuilds it
+    expect(r.regionTexture).not.toBe(tex);
+  });
 });

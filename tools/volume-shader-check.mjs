@@ -20,7 +20,7 @@ const srv=http.createServer((q,r)=>{r.writeHead(200,{'content-type':'text/html'}
 const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--use-webgpu-adapter=swiftshader']});
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,400))});
 await pg.goto('http://localhost:8778/');
-const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analysis,regionTexOn,regionR})=>{
+const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analysis,regionTexOn,regionR,edit})=>{
  const adapter=await navigator.gpu.requestAdapter(),device=await adapter.requestDevice();
  // phantom: 128³, unsigned u16 = HU + 1024 (slope 1, intercept -1024, bias 0):
  // soft-tissue ellipsoid (40 HU) holding a bone sphere (900 HU), a 2-voxel
@@ -42,7 +42,12 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
   const ov=overlap?1:0;for(let z=Math.max(0,k*BS-ov);z<Math.min(N,(k+1)*BS+ov);z++)for(let y=Math.max(0,j*BS-ov);y<Math.min(N,(j+1)*BS+ov);y++)for(let x=Math.max(0,i*BS-ov);x<Math.min(N,(i+1)*BS+ov);x++){const v=hu(x,y,z);if(v<lo)lo=v;if(v>hi)hi=v}
   const o=((k*bx+j)*bx+i)*2;brick[o]=lo;brick[o+1]=hi}
  const storage=arr=>{const buf=device.createBuffer({size:Math.max(16,arr.byteLength),usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(buf,0,arr);return buf};
- const brickBuf=storage(brick),zero=storage(new Uint32Array([0,0,0,0])),editRows=storage(new Uint32Array(64));
+ let editRows=storage(new Uint32Array(64)),editIntervals=null;
+ // EDIT=1: exclusion edit on segment 0 (bone): the box x 44..84, y 44..84, z 64..127 is removed (editAllows layout of setEditRuns: [activeMask, keepMask, 4 × (rowCount+1) offsets], intervals x0|x1<<16)
+ if(edit){const rowCount=N*N,offsets=new Uint32Array(2+4*(rowCount+1)),ints=[];offsets[0]=1;offsets[1]=0;
+  for(let si=0;si<4;si++){const base=2+si*(rowCount+1);for(let r=0;r<rowCount;r++){offsets[base+r]=ints.length;const z=(r/N)|0,y=r%N;if(si===0&&z>=64&&y>=44&&y<=84)ints.push((84<<16)|44)}offsets[base+rowCount]=ints.length}
+  editRows=storage(offsets);editIntervals=storage(new Uint32Array(ints.length?ints:[0]))}
+ const brickBuf=storage(brick),zero=storage(new Uint32Array([0,0,0,0]));
  // analysis overlay (medical-volume.js setAnalysisRuns layout): the bone sphere as one focused cyan region
  let overlayBuf=zero,regionTex=device.createTexture({size:{width:1,height:1,depthOrArrayLayers:1},dimension:'3d',format:'r32uint',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
  if(analysis){const rowCount=N*N,counts=new Uint32Array(rowCount),runs=[];
@@ -80,7 +85,7 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
   const pipeline=device.createRenderPipeline({layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format}]},primitive:{topology:'triangle-list'}});
   const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[
    {binding:0,resource:{buffer:uniBuf}},{binding:1,resource:tex.createView({dimension:'3d'})},{binding:2,resource:{buffer:editRows}},{binding:3,resource:{buffer:brickBuf}},{binding:4,resource:sampler},
-   {binding:5,resource:{buffer:zero}},{binding:6,resource:{buffer:zero}},{binding:7,resource:{buffer:zero}},{binding:8,resource:{buffer:zero}},{binding:9,resource:{buffer:zero}},{binding:10,resource:{buffer:overlayBuf}}].concat(code.includes('regionTex')?[{binding:11,resource:regionTex.createView({dimension:'3d'})}]:[])});
+   {binding:5,resource:{buffer:editIntervals||zero}},{binding:6,resource:{buffer:zero}},{binding:7,resource:{buffer:zero}},{binding:8,resource:{buffer:zero}},{binding:9,resource:{buffer:zero}},{binding:10,resource:{buffer:overlayBuf}}].concat(code.includes('regionTex')?[{binding:11,resource:regionTex.createView({dimension:'3d'})}]:[])});
   const times=[];let px=null;
   const passes=format==='rgba8unorm'?6:1;
   for(let i=0;i<passes;i++){
@@ -95,7 +100,7 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
  const out={A:await run(shaders.A,'A'),Ac:await run(shaders.Ac,'Ac','rgba32float')};if(shaders.B){out.B=await run(shaders.B,'B');out.Bc=await run(shaders.Bc,'Bc','rgba32float')}
  for(const k of ['Ac','Bc']){const r=out[k];if(!r||r.errs)continue;let f=0,br=0,e=0;for(let i=0;i<r.px.length;i+=4){f+=r.px[i];br+=r.px[i+1];e+=r.px[i+2]}r.sums={fetch:f,brick:br,edit:e};r.px=null}
  return{W,H,out};
-},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr,analysis,regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22)});
+},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr,analysis,regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22),edit:+(process.env.EDIT??0)});
 await b.close();srv.close();
 const {W,H,out}=result;
 for(const k of Object.keys(out)){const r=out[k];if(r.errs){console.log(k,'COMPILE ERRORS',r.errs);process.exit(1)}
