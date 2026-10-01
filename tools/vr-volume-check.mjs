@@ -75,7 +75,8 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
   const mat=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:sh.vs,fragmentShader:count?sh.fsc:sh.fs,side:THREE.BackSide,uniforms:u,transparent:false,blending:THREE.NoBlending,depthWrite:false});
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),mat);mesh.frustumCulled=false;scene.add(mesh);
   const rt=count?rtCount:rtColor;renderer.setRenderTarget(rt);renderer.setClearColor(0x000000,1);
-  const times=[];for(let i=0;i<(count?1:5);i++){renderer.clear();const t0=performance.now();renderer.render(scene,cam);renderer.getContext().finish();times.push(performance.now()-t0)}
+  // timing: SwiftShader runs the fragment work on readback, so the pixels are read inside the timed region (min of 5)
+  const tmp=new Uint8Array(W*H*4);const times=[];for(let i=0;i<(count?1:5);i++){renderer.clear();const t0=performance.now();renderer.render(scene,cam);renderer.readRenderTargetPixels(count?rtCount:rtColor,0,0,1,1,count?new Float32Array(4):tmp.subarray(0,4));renderer.getContext().finish();times.push(performance.now()-t0)}
   let px;if(count){px=new Float32Array(W*H*4);renderer.readRenderTargetPixels(rt,0,0,W,H,px);let f=0,br=0,c=0,dd=0;for(let i=0;i<px.length;i+=4){f+=px[i];br+=px[i+1];c+=px[i+2];dd+=px[i+3]}scene.remove(mesh);mat.dispose();return{sums:{fetch:f,brick:br,cls:c,dist:dd}}}
   px=new Uint8Array(W*H*4);renderer.readRenderTargetPixels(rt,0,0,W,H,px);scene.remove(mesh);mat.dispose();times.sort((a,b)=>a-b);
   const err=renderer.getContext().getError();return{ms:times[0],px:Array.from(px),glErr:err};

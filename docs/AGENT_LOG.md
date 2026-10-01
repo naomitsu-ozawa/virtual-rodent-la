@@ -3242,9 +3242,29 @@ build 381 at the old default size (fat opacity was 100 % all along).
   to build 381. Phantom (specks + soft + edit box) numbers above.
 Checks: lint, 406 unit tests, boot-check, harness.
 
-## Handoff (after build 384)
+## Build 385 — in-VR benchmark (one screenshot instead of reading numbers one by one)
 
-State: build 384 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (Quest, build 384): no graininess; bone + fat about 20 fps at the
+default and at the large size; bone only also about 20 fps when enlarged.
+Owner: relaying VR numbers by hand is a burden — benchmark here with the
+practice data and the software GPU instead. Reply: the harness here
+counts reads per pixel exactly and now times the pass (SwiftShader, CPU
+proxy), but it cannot reproduce the Quest's texture cache and bandwidth,
+so fps still needs the device. Hence this build: a benchmark in VR that
+produces one result block.
+- 画質 tab: ベンチ（約 30 秒）. 12 phases: 16.5 / 30 / 50 cm × shown
+  segments / bone only × 100 % / 50 %, each 0.8 s settle + 2 s count.
+  State (size, pose, segment modes, resolution) is restored afterwards.
+  Result lines in the 画質 tab, the console, localStorage vrl-vr-bench, and a
+  panel with a copy button on the page after leaving VR.
+- Harness timing: the pixels are read back inside the timed region
+  (SwiftShader does the fragment work on readback; the old figure was 0
+  ms). Practice data, bone + fat, build 384: 627 ms for 256².
+Checks: lint, 406 unit tests, boot-check.
+
+## Handoff (after build 385)
+
+State: build 385 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

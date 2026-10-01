@@ -8,13 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build384';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build384';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build384';
-import { sceneState } from './state.js?v=20261001-build384';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build384';
-import { tr } from './i18n.js?v=20261001-build384';
-import { wc, ww } from './ui-shell.js?v=20261001-build384';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build385';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build385';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build385';
+import { sceneState } from './state.js?v=20261001-build385';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build385';
+import { tr } from './i18n.js?v=20261001-build385';
+import { APP_BUILD } from './version.js?v=20261001-build385';
+import { wc, ww } from './ui-shell.js?v=20261001-build385';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -477,6 +478,19 @@ function makeBadge(text){
 // for saving after the session (a download from inside the headset view is
 // not reliable)
 const shots=[];
+let lastBench=null;
+function showBenchPanel(ja){
+ if(!lastBench)return;
+ document.getElementById('vr-bench-panel')?.remove();
+ const panel=document.createElement('div');panel.id='vr-bench-panel';
+ Object.assign(panel.style,{position:'fixed',left:'16px',bottom:'16px',zIndex:'9999',background:'#111a',backdropFilter:'blur(6px)',color:'#fff',padding:'12px',borderRadius:'12px',maxWidth:'min(92vw,640px)',font:'14px system-ui,sans-serif'});
+ const text=[lastBench.head,...lastBench.lines].join('\n');
+ const pre=document.createElement('pre');pre.style.cssText='margin:0 0 8px;white-space:pre-wrap;font:13px ui-monospace,monospace';pre.textContent=text;panel.append(pre);
+ const row=document.createElement('div');row.style.cssText='display:flex;gap:8px';
+ const copy=document.createElement('button');copy.type='button';copy.textContent=ja?'コピー':'Copy';copy.onclick=()=>{navigator.clipboard?.writeText(text).catch(()=>{})};
+ const close=document.createElement('button');close.type='button';close.textContent=ja?'閉じる':'Close';close.onclick=()=>panel.remove();
+ row.append(copy,close);panel.append(row);document.body.append(panel);
+}
 function showShotsPanel(ja){
  if(!shots.length)return;
  document.getElementById('vr-shots-panel')?.remove();
@@ -593,19 +607,19 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 30 秒）',benchRun:'ベンチ中 ',benchHelp:'サイズ 16.5/30/50 cm × 表示中／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（二重枠）を法線方向に動かします','レイで指した枠（白くなる）は、離れたままつかめます'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 30 s)',benchRun:'benchmark ',benchHelp:'fps at 16.5/30/50 cm × shown / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (double frame) on its normal','A frame the ray points at (turns white) can be grabbed from a distance'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: held in hand',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
  const menu=makeMenu();scene.add(menu.mesh);
- const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0};
+ const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
  let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
@@ -783,6 +797,44 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
  let autoF=0.5,autoFrames=0,autoAt=performance.now();
  let frames=0,fpsAt=performance.now(),fps=0;
+ // build 385: benchmark — 12 phases (3 sizes × shown segments / bone only × 100 % / 50 %), 0.8 s settle + 2 s count each;
+ // the state is restored afterwards and the result goes to the 画質 tab, the console, localStorage (vrl-vr-bench) and a
+ // panel on the page after the session
+ const bench={active:false,phases:[],i:-1,at:0,measureAt:0,frames:0,results:[],saved:null};
+ const shownLabel=modes=>SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active&&segmentState[k]?.enabled&&(modes[k]|0)!==2).map(k=>tr(k)).join('+')||'-';
+ const startBench=()=>{
+  if(bench.active||!mesh)return;
+  bench.phases=[];for(const s of [0.165,0.3,0.5])for(const g of ['cur','bone'])for(const r of [1,3])bench.phases.push({s,g,r});
+  bench.saved={scale:holder.scale.x,vres:settings.vres,segMode:{...segMode},pos:holder.position.clone(),quat:holder.quaternion.clone()};
+  bench.results=[];bench.i=-1;bench.active=true;nextBenchPhase();
+ };
+ const nextBenchPhase=()=>{
+  bench.i++;if(bench.i>=bench.phases.length){finishBench();return}
+  const ph=bench.phases[bench.i];
+  bringVolumeFront();holder.scale.setScalar(ph.s/3.3);
+  for(const key of SEGMENT_PRESET_ORDER)segMode[key]=ph.g==='bone'&&key!=='bone'?2:(bench.saved.segMode[key]|0);
+  settings.vres=ph.r;applyQuality();
+  bench.at=performance.now();bench.measureAt=0;bench.frames=0;
+  ui.benchLine=L.benchRun+(bench.i+1)+' / '+bench.phases.length;menu.refresh();
+ };
+ const benchTick=()=>{
+  if(!bench.active)return;const now=performance.now();
+  if(!bench.measureAt){if(now-bench.at>=800){bench.measureAt=now;bench.frames=0}return}
+  bench.frames++;
+  if(now-bench.measureAt>=2000){const ph=bench.phases[bench.i];bench.results.push({...ph,fps:bench.frames*1000/(now-bench.measureAt)});nextBenchPhase()}
+ };
+ const finishBench=()=>{
+  const sv=bench.saved;bench.active=false;
+  Object.assign(segMode,sv.segMode);settings.vres=sv.vres;applyQuality();
+  holder.position.copy(sv.pos);holder.quaternion.copy(sv.quat);holder.scale.setScalar(sv.scale);
+  const cur=shownLabel(sv.segMode),rate=targetRate(),f=(s,g,r)=>{const x=bench.results.find(e=>e.s===s&&e.g===g&&e.r===r);return x?Math.round(x.fps):'-'};
+  const lines=[0.165,0.3,0.5].map(sz=>(sz*100).toFixed(1).replace('.0','')+' cm: '+cur+' 100% '+f(sz,'cur',1)+' / 50% '+f(sz,'cur',3)+' · '+tr('bone')+' 100% '+f(sz,'bone',1)+' / 50% '+f(sz,'bone',3)+' fps');
+  const head=(ja?'VR ベンチ build ':'VR benchmark build ')+APP_BUILD+' · '+rate+' Hz · '+(ja?'自動解像度の既定サイズ ':'default size ')+(baseScale*3.3*100).toFixed(1)+' cm';
+  lastBench={head,lines,when:Date.now()};
+  try{localStorage.setItem('vrl-vr-bench',JSON.stringify(lastBench))}catch{}
+  console.log('[VR bench]',head,lines);
+  ui.benchLine=lines.join(' | ');menu.refresh();
+ };
  const applyQuality=()=>{
   if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;material.uniforms.refine.value=settings.refine|0;useData(settings.data|0)}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
@@ -856,6 +908,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0+180,L.q,L.qv.map((t,i)=>({label:t,value:i})),settings.quality,v=>{settings.quality=v;applyQuality()});
    choice(y0+270,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
    if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
+   // build 385: in-VR benchmark (the owner should not have to read numbers off the headset one by one)
+   btn(X,y0+460,460,L.bench,bench.active,()=>startBench(),{size:28});if(ui.benchLine)label(X,y0+560,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+600,L.benchHelp,{size:22,color:'#9fb3c3'});
   }else{
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
@@ -1007,6 +1061,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
    refreshCombo();
   }
+  benchTick();
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];
   if(auto){
@@ -1086,7 +1141,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
-  showShotsPanel(ja);
+  showShotsPanel(ja);showBenchPanel(ja);
  };
  session.addEventListener('end',cleanup,{once:true});
  try{
