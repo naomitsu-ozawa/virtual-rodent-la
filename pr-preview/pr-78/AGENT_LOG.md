@@ -3047,9 +3047,41 @@ Checks: lint, 404 unit tests (fake device with staging buffer and copy),
 boot-check, harness (padded copy vs writeTexture identical; vs 374: 0
 differing channels whole volume coloured, 21 at a small region's border).
 
-## Handoff (after build 376)
+## Build 377 — regressions since build 360: tiles left after a delete, drag resolution ratchet; texture kept across focus changes
 
-State: build 376 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (iPad, build 376): after a lasso select + delete, garbage stays
+behind (a problem seen before); the view is still choppy for a while after
+colouring; the drag resolution drops step by step during rotation. 改悪厳禁.
+- Garbage after a delete — measured: the harness got an exclusion edit
+  (EDIT=1: a box removed from the bone segment) and build 360 (main) was
+  compared with every build since. 368 and later differed by 6771 channels
+  (mean 37) with the edit, 2059 without; 361–367 are VR-only. Crops showed
+  the sub-voxel shell that an exclusion leaves (interpolated HU still in
+  range one sample past the excluded voxel) rendered as solid brick-sized
+  tiles with seams, where build 360 dithers it to a faint hatch. Cause: the
+  uniform-brick jump of build 368 resumed at brickEnd + 0.05 step, re-phasing
+  every ray at the brick exit, so the shell was hit coherently per brick.
+  Fix: resume on the ray's own sample grid (first grid point past the brick).
+  Harness vs build 360, exact mode: 33 channels with the edit, 36 (all diff
+  1) without — the current shader now matches build 360 apart from that.
+  Fast search (default) vs 360 with the edit: 10456 channels, mean 1.46.
+- Drag resolution ratchet — the adaptive drag budget (builds 373 / 375)
+  removed; the fixed tier budgets of build 372 are back. The ×0.7 label is
+  gone from the status bar.
+- Choppy after colouring — the overlay CPU build measured in node: 174–219
+  ms at 512³ (fat-like region, 24 M voxels), 49–92 ms at 256³: one hitch,
+  not seconds. Every focus or colour change re-ran the whole build and
+  re-allocated / re-uploaded the 67 MB texture; now setAnalysisRuns takes a
+  texture signature (ids and voxel counts) and keeps the texture when only
+  colours or focus change (unit test). The first upload remains; its time
+  is the 転送 figure of build 376. Still open on the device.
+- Harness: EDIT=1 exclusion edit on segment 0 (editAllows layout).
+Checks: lint, 405 unit tests, boot-check, harness (texture path vs row
+search byte-identical with everything coloured; 360 comparisons above).
+
+## Handoff (after build 377)
+
+State: build 377 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -3088,14 +3120,16 @@ D. Goal (owner): VR auto resolution held at 100 % at the normal size.
    limit; then precomputed normals (memory!) or temporal reuse.
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
-F. iPad (builds 372–376): region colouring speckle fixed, drag lookups by
-   binary search + GPU-timed drag budget, region index texture (uploaded
-   by one aligned buffer copy), coloured hits without HU fetches,
-   controller hysteresis, per-second frame stats, upload diagnostics.
-   Open: iPad check with a coloured fat region — read "領域tex … 転送 xx
-   ms", "待ち" in the first seconds, and "[1秒: N 枚, 最大, 落ち]"; stripes
-   still there → A/B switch to the 374 inside-voxel lookup; frames still
-   dropping → editAllows bit-mask texture or a dilated region texture.
+F. iPad (builds 372–377): region colouring speckle fixed, drag lookups by
+   binary search, region index texture (one aligned buffer copy, kept
+   across focus / colour changes), coloured hits without HU fetches,
+   per-second frame stats, upload diagnostics; the adaptive drag budget
+   was removed again (resolution ratchet); the uniform-brick jump resumes
+   on the ray's sample grid (tiles after a delete). Open: iPad check —
+   garbage after delete gone?; "領域tex … 転送 xx ms" and "待ち" right after
+   colouring; "[1秒: N 枚, 最大, 落ち]" while dragging; stripes. Compare
+   against build 360 with the harness (EDIT=1 / ANALYSIS=1) before any
+   further shader change.
 Order: device checks of builds 361–368 first; then whatever the owner
 reports (tablet comfort on the Quest browser, fps). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
