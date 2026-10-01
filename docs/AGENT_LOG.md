@@ -3422,9 +3422,16 @@ Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check, harness
 (raw shader and the variants pixel-identical to build 392 on the practice
 data with and without a section and on the phantom with specks + edit).
 
-## Handoff (after build 393)
+## Build 394 — Quest result of build 393 (log only)
 
-State: build 393 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (Quest, build 393): 初回描画 897 ms after session start; comfortable.
+No pre-393 figure exists for the same metric (it was added in 393); the
+897 ms includes the XR session setup and the wait for the first head pose
+before placement, not only GPU work.
+
+## Handoff (after build 394)
+
+State: build 394 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
