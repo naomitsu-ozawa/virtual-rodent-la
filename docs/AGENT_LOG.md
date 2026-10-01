@@ -3444,14 +3444,32 @@ Owner: merge #82 and go on with the small items.
 Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
 unchanged.
 
-## Handoff (after build 395)
+## Build 396 — VR: two sections held at once (one per hand)
 
-State: build 395 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: section work used one plane at a time; wants to move two planes
+with both hands at the same time.
+- vr-view.js: the held plane is per controller (c.userData.heldPlane)
+  instead of one section.held / heldPlane. Each hand takes a plane with the
+  chosen button (grip or trigger, 持ち方) near it or by its ray and fixes it
+  on release, independently of the other hand. A plane held by one hand is
+  excluded from the other hand's near / ray pick (no stealing; the other
+  hand's ray passes through it), so a grip then falls through to the volume
+  grab as before. fixAll() for sections off, the 持ち方 change and the bench
+  start; removing a plane (left-hand panel) clears the hand that holds it;
+  a disconnected controller drops its plane into the volume.
+- Unchanged: volume grab / two-hand scale (only hands gripping empty space),
+  thumbstick scroll moves the selected plane (the one taken last), shader
+  and image (planes are read from world matrices every frame).
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check.
+
+## Handoff (after build 396)
+
+State: build 396 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 394 (PR #82 merged 2026-10-01); builds from 395 go to a new PR.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); build 396 (two planes held at once) is in a new PR. Open: Quest check of two-hand section work; with two planes held the thumbstick moves the one taken last.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to

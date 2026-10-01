@@ -8,14 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build395';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build395';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build395';
-import { sceneState } from './state.js?v=20261001-build395';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build395';
-import { tr } from './i18n.js?v=20261001-build395';
-import { APP_BUILD } from './version.js?v=20261001-build395';
-import { wc, ww } from './ui-shell.js?v=20261001-build395';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build396';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build396';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build396';
+import { sceneState } from './state.js?v=20261001-build396';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build396';
+import { tr } from './i18n.js?v=20261001-build396';
+import { APP_BUILD } from './version.js?v=20261001-build396';
+import { wc, ww } from './ui-shell.js?v=20261001-build396';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -903,7 +903,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // thumbstick scroll (build 364): world m/s along the selected plane's normal at full deflection
  const SCROLL_SPEED=0.05;
  // selection (build 364): selected = the plane the thumbstick moves (double frame)
- const section={on:false,held:null,heldPlane:null,selected:null},planes=[];
+ // build 396: each hand holds its own plane (c.userData.heldPlane), so two planes can be moved at once
+ const section={on:false,selected:null},planes=[];
  const square=(h)=>new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-h,-h),new THREE.Vector3(0,h,-h),new THREE.Vector3(0,h,h),new THREE.Vector3(0,-h,h)]);
  // handle corner per plane index (build 364): (+y,+z), (+y,−z), (−y,−z), (−y,+z)
  const HANDLE_CORNERS=[[1,1],[1,-1],[-1,-1],[-1,1]],HANDLE=0.034;
@@ -934,12 +935,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  });
  // side that removes the viewer's half right now (what 'near' shows)
  const chooseSide=pl=>{readHead();scene.updateMatrixWorld();pl.obj.getWorldPosition(tmpA);tmpB.set(1,0,0).transformDirection(pl.obj.matrixWorld);pl.side=tmpB.dot(tmpA.subVectors(head,tmpA))>0?-1:1};
- const takePlane=(pl,c)=>{c.attach(pl.obj);section.held=c;section.heldPlane=pl;section.selected=pl;pulse(c);menu.refresh()};
- const fixPlane=()=>{const c=section.held,pl=section.heldPlane;if(pl)holder.attach(pl.obj);section.held=null;section.heldPlane=null;if(c)pulse(c,0.2);menu.refresh()};
+ const takePlane=(pl,c)=>{c.attach(pl.obj);c.userData.heldPlane=pl;section.selected=pl;pulse(c);menu.refresh()};
+ const fixPlane=c=>{const pl=c.userData.heldPlane;if(!pl)return;holder.attach(pl.obj);c.userData.heldPlane=null;pulse(c,0.2);menu.refresh()};
+ const fixAll=()=>controllers.forEach(fixPlane);
+ const heldPlanes=()=>new Set(controllers.map(c=>c.userData.heldPlane).filter(Boolean));
  const planeDist=(pl,c)=>{c.getWorldPosition(tmpA);pl.obj.getWorldPosition(tmpB);return tmpA.distanceTo(tmpB)};
- const nearestPlane=c=>{if(!section.on)return null;let best=null,bd=0.2;for(const pl of planes){const d=planeDist(pl,c);if(d<bd){bd=d;best=pl}}return best};
+ const nearestPlane=c=>{if(!section.on)return null;const hp=heldPlanes();let best=null,bd=0.2;for(const pl of planes){if(hp.has(pl))continue;const d=planeDist(pl,c);if(d<bd){bd=d;best=pl}}return best};
  // ray pick (build 364): the frame the ray points at can be grabbed from a distance; nearest hit or null
- const rayPlane=c=>{if(!section.on||!planes.length)return null;setRay(c);const x=raycaster.intersectObjects(planes.map(p=>p.hit),false)[0];if(!x)return null;const pl=planes.find(p=>p.hit===x.object);return pl?{pl,distance:x.distance}:null};
+ const rayPlane=c=>{if(!section.on||!planes.length)return null;const hp=heldPlanes(),free=planes.filter(p=>!hp.has(p));if(!free.length)return null;setRay(c);const x=raycaster.intersectObjects(free.map(p=>p.hit),false)[0];if(!x)return null;const pl=planes.find(p=>p.hit===x.object);return pl?{pl,distance:x.distance}:null};
  // new plane: through the volume centre (first) or in front of the hand
  // (added ones), facing the viewer, fixed in the volume
  const addPlane=(c=null)=>{
@@ -952,7 +955,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   tmpA.subVectors(head,pl.obj.position).normalize();pl.obj.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tmpA);pl.obj.scale.setScalar(1);
   holder.attach(pl.obj);chooseSide(pl);section.on=true;section.selected=pl;planes.forEach(p=>{p.obj.visible=true});refreshHandles();menu.refresh();return pl;
  };
- const removePlane=pl=>{if(section.heldPlane===pl){section.held=null;section.heldPlane=null}const i=planes.indexOf(pl);if(i>=0)planes.splice(i,1);disposePlane(pl);if(section.selected===pl)section.selected=planes[planes.length-1]||null;if(!planes.length)section.on=false;refreshHandles();menu.refresh()};
+ const removePlane=pl=>{for(const c of controllers)if(c.userData.heldPlane===pl)c.userData.heldPlane=null;const i=planes.indexOf(pl);if(i>=0)planes.splice(i,1);disposePlane(pl);if(section.selected===pl)section.selected=planes[planes.length-1]||null;if(!planes.length)section.on=false;refreshHandles();menu.refresh()};
  // snap (build 365): the selected plane onto a volume axis, frame edges along the other two axes.
  // axis 0 axial (normal = volume z), 1 coronal (y), 2 sagittal (x); holder space = volume object space.
  // The normal keeps its sign (removed side unchanged), position unchanged, up = volume y (coronal: z)
@@ -971,7 +974,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const planeAxis=pl=>{if(!pl)return -1;const n=normalInHolder(pl,tmpNh);for(let i=0;i<3;i++)if(Math.abs(n.dot(AXES[i]))>0.9998)return i;return -1};
  const setSection=on=>{
   if(on&&!planes.length){addPlane();return}
-  section.on=on;if(!on&&section.heldPlane)fixPlane();planes.forEach(p=>{p.obj.visible=on});menu.refresh();
+  section.on=on;if(!on)fixAll();planes.forEach(p=>{p.obj.visible=on});menu.refresh();
  };
  // long-press progress ring shown on the pressing controller
  const ringGeo=new THREE.BufferGeometry().setFromPoints(Array.from({length:33},(_,i)=>new THREE.Vector3(Math.cos(i/32*Math.PI*2)*0.025,Math.sin(i/32*Math.PI*2)*0.025,0)));
@@ -979,17 +982,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
  let dragging=null,shotRequested=false;
  for(const c of controllers){
   c.addEventListener('connected',e=>{c.userData.source=e.data;if(c.userData.source?.handedness==='left'){if(!ui.open)c.add(badge);c.add(panel.mesh)}});
-  c.addEventListener('disconnected',()=>{c.userData.source=null});
+  c.addEventListener('disconnected',()=>{fixPlane(c);c.userData.source=null});
   c.addEventListener('squeezestart',()=>{
    if(ui.open&&!menuHeld&&menuHit(c)){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
    if(!helpHeld&&c.userData.helpHit){c.attach(help.mesh);helpHeld=c;helpMoving=false;settings.help=2;saveSettings(settings);pulse(c);menu.refresh();return}
-   if(settings.secHold===0&&!section.held){const pl=nearestPlane(c)||c.userData.rayPlane;if(pl){takePlane(pl,c);return}}
+   if(settings.secHold===0&&!c.userData.heldPlane){const pl=nearestPlane(c)||c.userData.rayPlane;if(pl){takePlane(pl,c);return}}
    grabbing.add(c);regrab();
   });
   c.addEventListener('squeezeend',()=>{
    if(menuHeld===c){scene.attach(menu.mesh);menuHeld=null;readHead();menu.mesh.lookAt(head);pulse(c,0.2);return}
    if(helpHeld===c){scene.attach(help.mesh);helpHeld=null;readHead();help.mesh.lookAt(head);pulse(c,0.2);return}
-   if(section.held===c&&settings.secHold===0){fixPlane();return}
+   if(c.userData.heldPlane&&settings.secHold===0){fixPlane(c);return}
    if(grabbing.delete(c))regrab();
   });
   // trigger: menu first (button or slider drag), then the menu tag, then the
@@ -1000,9 +1003,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
    if(badgeHit(c)){setMenuOpen(true);pulse(c);return}
    const ph=panelHit(c);if(ph){const i=panel.hit(ph.uv);if(i>=0){panel.press(i);pulse(c);return}}
-   if(settings.secHold===1&&!section.held){const pl=nearestPlane(c)||c.userData.rayPlane;if(pl)takePlane(pl,c)}
+   if(settings.secHold===1&&!c.userData.heldPlane){const pl=nearestPlane(c)||c.userData.rayPlane;if(pl)takePlane(pl,c)}
   });
-  c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(section.held===c&&settings.secHold===1)fixPlane()});
+  c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(c.userData.heldPlane&&settings.secHold===1)fixPlane(c)});
  }
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
@@ -1015,6 +1018,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const shownLabel=modes=>SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active&&segmentState[k]?.enabled&&(modes[k]|0)!==2).map(k=>tr(k)).join('+')||'-';
  const startBench=()=>{
   if(bench.active||!mesh)return;
+  fixAll(); // build 396: the bench moves the plane in the volume's space
   // build 391 (owner: the bench must emulate real use): every phase runs with a section plane sweeping through the
   // volume and the volume slowly turning; segment sets: as shown, bone + fat, bone only
   const canShow=k=>!!(segmentState[k]?.active&&segmentState[k]?.enabled);
@@ -1082,7 +1086,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const yb=MENU_H-110;
    // build 365: 持ち方 moved here from the 断面 tab (room for the snap row)
    choice(yb-370,L.helpT,L.helpModes.map((t,i)=>({label:t,value:i})),settings.help|0,v=>{settings.help=v;saveSettings(settings);if(v===1)helpMoving=true});
-   choice(yb-280,L.hold,L.holdModes.map((t,i)=>({label:t,value:i})),settings.secHold,v=>{if(section.held)fixPlane();settings.secHold=v;saveSettings(settings)});
+   choice(yb-280,L.hold,L.holdModes.map((t,i)=>({label:t,value:i})),settings.secHold,v=>{fixAll();settings.secHold=v;saveSettings(settings)});
    choice(yb-190,L.menuPos,[{label:L.follow,value:0},{label:L.fixed,value:1}],settings.menuMode,v=>{settings.menuMode=v;saveSettings(settings)});
    label(X,yb-96,L.menuKey,{size:26,color:'#9fb3c3'});label(X,yb-60,L.menuGrab,{size:26,color:'#9fb3c3'});
    btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow();placeHelpNow()});btn(X+320,yb,320,L.shot,false,()=>{shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
@@ -1253,8 +1257,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(section.on&&sp&&scroll&&dt){const ps=sp.obj.parent?sp.obj.parent.getWorldScale(tmpS).x||1:1;sp.obj.translateX(-scroll*SCROLL_SPEED*dt/ps)}
   // frame colour: own colour; white while held or when a hand could take it
   // (near or pointed by a ray); the selected plane gets the inner loop
-  if(section.on){const near=new Set(controllers.flatMap(c=>[nearestPlane(c),c.userData.rayPlane]));for(const pl of planes){pl.mat.color.setHex(pl===section.heldPlane||near.has(pl)?0xffffff:pl.color);pl.inner.visible=pl===section.selected}}
-  const st=section.on?(section.held?L.stHeld:L.stFixed):L.stNone;
+  if(section.on){const near=new Set(controllers.flatMap(c=>[nearestPlane(c),c.userData.rayPlane,c.userData.heldPlane]));for(const pl of planes){pl.mat.color.setHex(near.has(pl)?0xffffff:pl.color);pl.inner.visible=pl===section.selected}}
+  const st=section.on?(controllers.some(c=>c.userData.heldPlane)?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}
   if(material){
    const u=material.uniforms;
