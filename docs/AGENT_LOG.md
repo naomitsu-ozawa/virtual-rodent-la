@@ -3378,9 +3378,19 @@ missing; the bench should operate the volume, not show it still.
   "16.5 cm 断面を動かしながら: 表示中 … · 骨+脂肪 … · 骨 …".
 Checks: lint, 406 unit tests, boot-check.
 
-## Handoff (after build 391)
+## Build 392 — Quest benchmark of build 391 (log only)
 
-State: build 391 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner's in-VR benchmark (build 391, sweeping section + turning volume):
+every one of the 12 conditions at 72 fps (16.5 / 30 cm × shown, bone +
+fat, bone × 100 / 50 %); bone + fat comfortable in use. Also: VR mode is
+noticeably more comfortable than AR (passthrough), which the owner had
+been using for the tests so far — the passthrough compositing takes part
+of the frame budget on the Quest. Goal D closed for the owner's use
+(section work at the default size and at 30 cm).
+
+## Handoff (after build 392)
+
+State: build 392 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -3411,8 +3421,9 @@ B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
 C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
 D. Goal (owner): VR auto resolution held at 100 % at the normal size —
-   met in build 387 (Quest bench: 72 fps at the 16.5 cm default with bone +
-   soft + fat at 100 %; 30 cm 57 fps, 50 cm 39 fps). Builds 368–387: fewer
+   met: build 391 bench (section sweeping, volume turning, bone + fat /
+   shown / bone, 16.5 and 30 cm, 100 and 50 %) all at 72 fps; AR
+   (passthrough) is slower than VR mode. Builds 368–387: fewer
    fetches, distance field (now in the classification alpha, one fetch per
    step), tight ray loop, search after the march. Open: larger sizes at
    100 % (non-exact options: step 1.0 voxel, two search iterations;
