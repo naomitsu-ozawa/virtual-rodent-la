@@ -3518,14 +3518,31 @@ Help text updated. Per-controller loop re-read for use-before-define and
 shadowing (none). Checks: lint, 406 unit tests, boot-check,
 vr-gpu-prepare-check.
 
-## Handoff (after build 399)
+## Build 400 — VR sections: single frame, thinner glow, calmer palette
 
-State: build 399 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (build 399): the double frame has lost its meaning — one frame for
+all; the glow on the selected / pointed frame should be thinner; a
+smarter colour scheme including the lasers.
+- Inner loop (selected = thumbstick target) removed; the selected plane is
+  still shown by its coloured name button in the 断面 tab and on the
+  left-hand panel. Help text updated.
+- Glow band 8 mm → 3 mm (±1.5 mm around the frame line), opacity 0.95.
+- Palette: planes soft gold 0xf2d27a, sky 0x8ec5ff, rose 0xf5a3c7, mint
+  0x9be3b0 (one pastel family, dark text on the handles and buttons);
+  hands vivid orange 0xff7a3d (right) and indigo 0x7c6cff (left), outside
+  the plane hues so a glow never reads as a plane colour. Ray end dot
+  6 → 4 mm. Idle beam unchanged (0.6 m, 35 %).
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
+and volume image unchanged.
+
+## Handoff (after build 400)
+
+State: build 400 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–399 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near) are in PR #84. Open: Quest check of 399 (colours: left blue vs cyan plane, idle beam 0.6 m); with two planes held the thumbstick moves the one taken last.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–400 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near, single frame, calmer palette) are in PR #84. Open: Quest check of 400 (palette, 3 mm glow, idle beam 0.6 m); with two planes held the thumbstick moves the one taken last.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
