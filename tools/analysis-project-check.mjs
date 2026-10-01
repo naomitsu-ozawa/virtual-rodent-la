@@ -39,6 +39,7 @@ const r=await pg.evaluate(async()=>{
  const {project,binaries}=dl.gatherProject(),bytes=pf.packProject(project,binaries),un=pf.unpackProject(bytes);
  seg.clearAnalysisHighlight();const cleared=st.analysisRegions.length;
  await dl.applyProject(un);
+ await new Promise(r=>setTimeout(r,3000)); // a delayed clear (debounced segment invalidation) would show here
  const after=st.analysisRegions.map(r=>({color:r.color,visible:r.visible,voxels:r.voxels,key:r.key}));
  // deletion linked: exclude half of the first box, trim the results to the edit
  const refs=ops.snapshotAnalysisRegionsForSegment('bone'),es=sg.segmentEditState.bone;es.excludeRuns=box(200,204,200,209,200,219);
