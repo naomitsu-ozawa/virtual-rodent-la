@@ -8,13 +8,13 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build383';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build383';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build383';
-import { sceneState } from './state.js?v=20261001-build383';
-import { buildDistanceBytes } from './distance-field.js?v=20261001-build383';
-import { tr } from './i18n.js?v=20261001-build383';
-import { wc, ww } from './ui-shell.js?v=20261001-build383';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build384';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build384';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build384';
+import { sceneState } from './state.js?v=20261001-build384';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build384';
+import { tr } from './i18n.js?v=20261001-build384';
+import { wc, ww } from './ui-shell.js?v=20261001-build384';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -113,6 +113,7 @@ uniform ivec4 clsChan; // channel of each segment (-1: none); only active segmen
 // voxel side of that grid. Nearest sampling.
 uniform sampler3D distTex;
 uniform int useDist;
+uniform int distInCls; // build 384: the combined distance field (min over the shown segments) is the classification texture's alpha: one fetch per step
 uniform float voxelMin;
 float distAt(vec3 tc){
  vec4 q=texture(distTex,clamp(tc,vec3(0.0),vec3(0.999999)))*255.0;float m=255.0;
@@ -122,11 +123,14 @@ float distAt(vec3 tc){
 // the value the last segmentIndexAt sampled (build 368): HU, or the
 // classification vector; the surface search reuses it as the outside sample
 float gHu=0.0;vec4 gQ=vec4(0.0);
+int segmentIndexFromQ(vec4 q){
+ gQ=q;
+ for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&q[c]>=0.5)return s;}
+ return -1;
+}
 int segmentIndexAt(vec3 tc){
  if(useCls>0){
-  vec4 q=texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999)));gQ=q;
-  for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&q[c]>=0.5)return s;}
-  return -1;
+  return segmentIndexFromQ(texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999))));
  }
  float v=huAt(tc);gHu=v;
  for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc))return s;}
@@ -228,7 +232,15 @@ void main(){
    }
   }
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
-  if(useDist>0&&diag!=4){
+  bool haveQ=false;vec4 qHere=vec4(0.0);
+  if(distInCls>0&&useCls>0&&diag!=4){
+   // build 384: one fetch serves the jump test (alpha) and the classification below. The alpha is filtered
+   // trilinearly: every corner value is a lower bound of the distance to the seeds and the distance is
+   // 1-Lipschitz, so the surface is at least dd - 1.74 voxels away; jump dd - 1.8 when that is 0.9 or more
+   qHere=texture(clsTex,clamp(tc0,vec3(0.0),vec3(0.999999)));haveQ=true;float dd=qHere.a*255.0;
+   if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+  }
+  else if(useDist>0&&diag!=4){
    // build 381: the field is read only when a jump is possible. One step moves the sampled voxel by at most one per
    // axis (chamfer 5 = 1.5 in field units, floor: +2), so after a read of 0 the next value is at most 2 and the read is
    // skipped; the bound grows by distInc per skipped step (steps longer than a voxel: more). Same jumps, same image.
@@ -245,7 +257,7 @@ void main(){
    nextT=brickEnd+step*0.05;previousT=max(t,brickEnd-step*0.05);prevValid=false;t=nextT;continue;
   }
   else{
-   int idx=segmentIndexAt(tc0);
+   int idx=haveQ?segmentIndexFromQ(qHere):segmentIndexAt(tc0);
    float curF=idx>=0?segValue(idx):-1.0;
    if(idx!=lastIndex){
     if(idx>=0){
@@ -595,7 +607,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  const segMode={};
@@ -993,6 +1005,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     u.segA.value[i].set(seg?.min||0,seg?.max||0,segOpacity[key]??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
     color.set(seg?.color||'#ffffff');u.segC.value[i].set(color.r,color.g,color.b,segMode[key]===1?1:0);
    }
+   refreshCombo();
   }
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];
@@ -1070,7 +1083,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
+  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);
@@ -1115,7 +1128,21 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(on&&!t.dist&&P.dist)t.dist=distTexture(t);
    const onD=on&&!!t.dist&&!(settings.distDiag|0);
    material.uniforms.useDist.value=onD?1:0;material.uniforms.distTex.value=t.dist||dummyEdit;material.uniforms.voxelMin.value=Math.min(2*vd.halfExt[0]/t.dims[0],2*vd.halfExt[1]/t.dims[1],2*vd.halfExt[2]/t.dims[2]);
+   // build 384: classification + combined distance in one RGBA texture (needs a free channel: at most three segments stored)
+   comboT=onD&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3)?t:null;comboMask=-1;refreshCombo();
    refreshEdits();
+  };
+  // the alpha depends on which segments are shown: rebuilt (about 0.2 s at 256³) when that set changes
+  refreshCombo=()=>{
+   const t=comboT;
+   if(!t){material.uniforms.distInCls.value=0;return}
+   let mask=0;for(let i=0;i<4;i++){const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];if(seg?.active&&seg?.enabled&&segMode[key]!==2)mask|=1<<i}
+   if(mask===comboMask)return;comboMask=mask;
+   const data=combineClassificationDistance(P.cls,P.dist,mask,t.combo?.image?.data||null);
+   if(!data){material.uniforms.distInCls.value=0;return}
+   if(!t.combo){const x=new THREE.Data3DTexture(data,...t.dims);x.format=THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;t.combo=x}
+   t.combo.needsUpdate=true;
+   material.uniforms.clsTex.value=t.combo;material.uniforms.clsChan.value.set(...P.cls.chan);material.uniforms.distInCls.value=1;
   };
   // processed segments: built once when VR starts (edits cannot change in
   // VR), on a grid of at most 256 per side (texture coordinates are
@@ -1134,7 +1161,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
     stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
-    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},distTex:{value:null},useDist:{value:0},voxelMin:{value:0.01}}});
+    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},distTex:{value:null},useDist:{value:0},distInCls:{value:0},voxelMin:{value:0.01}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;

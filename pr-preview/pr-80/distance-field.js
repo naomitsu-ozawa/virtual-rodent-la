@@ -72,3 +72,22 @@ export async function buildDistanceBytes(cls,dims,onProgress=null){
  onProgress?.(C,C);
  return{data:out,C,chan:cls.chan};
 }
+// build 384: the classification bytes and the per-segment distance bytes
+// share one RGBA texture: channels as in cls (chan), alpha = the smallest
+// distance over the enabled segments (bit s of mask), 255 when none. One
+// fetch per ray step then serves the jump test and the classification.
+// Needs a free channel: at most three segments stored (chan < 3).
+export function combineClassificationDistance(cls,dist,mask,out=null){
+ const C=cls.C,n=cls.data.length/C,chan=cls.chan;
+ if(chan.some(c=>c>=3))return null;
+ const res=out&&out.length===n*4?out:new Uint8Array(n*4);
+ const used=[];for(let s=0;s<4;s++)if(chan[s]>=0)used.push(chan[s]);
+ const on=[];for(let s=0;s<4;s++)if(chan[s]>=0&&((mask>>s)&1))on.push(chan[s]);
+ for(let i=0;i<n;i++){
+  const b=i*C,o=i*4;
+  for(const c of used)res[o+c]=cls.data[b+c];
+  let m=255;for(const c of on){const v=dist.data[b+c];if(v<m)m=v}
+  res[o+3]=m;
+ }
+ return res;
+}
