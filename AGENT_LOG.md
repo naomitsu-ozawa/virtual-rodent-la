@@ -2570,3 +2570,624 @@ for one-side mode, remove. B/Y: short press shows / hides, long press
 at 4 a short message. Grip/trigger takes the nearest frame. Menu 断面 tab:
 rows per plane (切る/切らない, 向きを反転, 消す), ＋追加. Headless shader
 check with 0/1/2 planes, clip bits and slices; menu layout rendered.
+
+## Build 361 — VR slice window: cause measured, opacity default, VR window tab
+
+Owner (handoff item A): the VR slice did not look like the 2D view with the
+same window. Measured before changing anything:
+- The real VR fragment shader run headless (SwiftShader WebGL2, synthetic HU
+  ramp, window 300/400) matches the 2D formula (mpr-render.js
+  round((HU-low)*255/ww)) byte for byte at 100 % slice opacity: difference 0
+  on every row. Window values (the same wc/ww sliders), the ramp formula and
+  the rg8 decode were not the cause.
+- At the VR default opacity 60 % the slice is blended over the dark dome:
+  black lifts to 21–25, white caps at 174–178, mid greys −25…−64. Inside a
+  visible segment the cap fills the rest (−1…−5 from the 2D tint), so bone
+  looked right while soft tissue looked dark and flat — the "wrong window"
+  impression.
+- Colour space: three 0.186 makes the Quest projection layer with gl.RGBA8
+  and adds no colour conversion to a ShaderMaterial. The WebXR core and Layers
+  specs require the compositor to treat RGBA8 layer pixels as sRGB-encoded
+  (no gamma conversion), so the raw 0.5 the shader writes shows like the 2D
+  canvas byte 128; the menu (three built-in material, sRGB encode) relies on
+  the same rule. Not confirmed on the device, spec + code only.
+- Secondary, unchanged: the slice is drawn inside the reduced-resolution pass
+  (auto 25–80 %) so it is softer than 2D; trilinear resampling.
+Changes:
+- DEFAULTS.sliceOpacity 0.6 → 1. Settings key vrl-vr-settings-3 → -4; the old
+  key is migrated once with sliceOpacity forced to 1, other values kept.
+- New menu tab CT値 / Window (index 2; 画質 → 3, 詳細 → 4, fps refresh on
+  tab 4). VR-local window vrWindow {c,w}: starts from the app's wc/ww when the
+  session starts, feeds the sliceWindow uniform every frame, never written
+  back to the app and not persisted. Centre slider over the app slider range
+  (wc.min..wc.max), width over 1..ww.max, 10 HU steps, −/＋ buttons of 10 HU,
+  presets アプリの値 / 全範囲 / 骨 (500/2000) / 軟部 (40/400).
+- tools/vr-slice-check.mjs (npm run vr-slice-check, PW_CHROMIUM needed): the
+  headless shader-vs-2D table above, kept for regression checks.
+Checks: lint, 397 unit tests, boot-check OK; vr-slice-check 100 % rows all 0;
+menu tab rendered headless in JA and EN (no overlap, widest x 1004, bottom
+y ≈ 650). Implementation by a Sonnet 5.5 subagent from a written brief;
+reviewed and fixed here (slider text overlapped the −/＋ buttons, width could
+round to 0, step constant out of the label table). Needs a Quest check: slice
+grey vs the 2D view at 100 %, the new tab's sliders with the controller.
+
+## Build 362 — slice opacity default 70 %
+
+Owner, after build 361: keep some see-through, default about 70 %.
+DEFAULTS.sliceOpacity 0.7; settings key -5, older keys (-4, -3) migrated
+once with the slice opacity reset to the new default, other values kept.
+Owner also asked for a flip button for the one-side clip; the 断面 tab
+already has 向きを反転 per plane (shown when 切り取り = 片側 and the plane
+clips) — asked whether a controller button is wanted instead.
+
+## Build 363 — VR menu tidy-up for beginners (section / slice tabs)
+
+Owner: could not find the flip button; wanted the slice opacity slider next
+to the CT window; asked for a beginner-friendly tidy-up.
+- Tab 3 renamed CT値 → スライス / Slice and now holds everything about the
+  slice image: opacity, colouring, window centre / width (−/＋, presets).
+- 断面 tab keeps the planes: on/off, ＋追加, one row per plane (切る / 向きを
+  反転 / 消す), then 切り取り with a one-line explanation of the chosen mode
+  (オフ / 手前 / 片側; 片側 says the arrow side is removed and 反転 swaps it),
+  キャップ, 持ち方, hold help, B/Y help. 向きを反転 still appears only in
+  片側 for a plane that clips (in 手前 the side follows the eye).
+- 表示 tab unchanged.
+All five tabs rendered headless (JA / EN, mocked state) and checked for
+overlap and bounds. lint, unit tests, boot-check OK. Needs a Quest check.
+
+## Build 364 — section selection, round 1 (handoff item B)
+
+Design (Fable): ray pick, numbered handles, a selected plane, thumbstick
+scrolling. Implementation by an Opus 5.5 subagent from a written brief,
+reviewed here (help text split into two lines to fit the menu width).
+- Ray pick: each frame has an invisible DoubleSide hit quad; the ray turns
+  white and stops at the frame it points at (menu and menu tag first). The
+  hold button (grip or trigger, as chosen) takes the near frame, else the
+  pointed one, so a plane can be grabbed and moved from a distance
+  (takePlane attaches it to the controller keeping its world transform).
+- Handles: a 3.4 cm square with the plane's number (1–4, matching the menu
+  rows) in the plane colour outside one corner; the corner cycles with the
+  index and the numbers are redrawn after add / remove. Canvas texture,
+  depthTest off, renderOrder 3.
+- Selected plane (section.selected): set by add, take, or pressing the
+  plane's name button in the 断面 tab (the name is now a button); shown as a
+  double frame (inner loop, since WebGL line width is always 1 px). Removing
+  the selected plane selects the last remaining one.
+- Thumbstick Y (xr-standard axes[3], dead zone 0.15, squared response, both
+  hands summed) moves the selected plane along its own normal at 5 cm/s in
+  world units at full deflection, the same speed whether the plane is fixed
+  in the scaled holder or held (parent world scale divides the step). dt is
+  clamped to 50 ms.
+Checks: lint, 397 unit tests, boot-check OK; vr-slice-check unchanged
+(byte-identical output); headless geometry check of makePlane (ray hit at
+0.3 m from both faces, miss outside the square, handle position, translateX)
+by the subagent; 断面 tab rendered headless with a selected plane. Needs a
+Quest check: pointing / far grab, handle legibility (the digit is mirrored
+from the back face), scroll speed and dead zone, the double frame.
+
+## Build 365 — section selection, round 2: snap to axis, left-hand panel (item C)
+
+Design (Fable), implementation by an Opus 5.5 subagent from a brief, reviewed
+here (one change: the 断面 tab also refreshes when the panel's state key
+changes, so its snap buttons follow a hand-rotated plane).
+- Snap: 軸位 / 冠状 / 矢状 buttons put the selected plane's normal on the
+  volume z / y / x axis (holder space = object space), frame edges along the
+  other two axes (up = volume y, coronal: z), normal sign kept (removed side
+  unchanged), position unchanged. Works while held (converted into the
+  controller's frame). Buttons light when the normal is within about 1° of
+  the axis. Row in the 断面 tab under the plane rows; 持ち方 moved to the
+  表示 tab above メニューの位置 to make room.
+- Left-hand panel: makeMenu now takes (W, H, width in m); a 640×232 canvas
+  0.17 m wide sits on the left controller at (0, 0.10, 0.03), tilted like the
+  menu tag, visible while sections are on. Row 1: selected plane name (its
+  colour), 軸位 / 冠状 / 矢状. Row 2: 向きを反転 (片側 only), 切る／切らない,
+  消す, ＋追加. The other hand's ray presses it; ray priority is menu → tag →
+  panel → frame. Redrawn when its state key changes, hidden in screenshots.
+Checks: lint, 397 unit tests, boot-check OK; vr-slice-check output identical;
+headless snap check (holder rotated and scaled, plane under holder and under
+a rotated controller, 12 cases: normal·axis = ±1, edge·up = 1); tabs 0 / 1
+and the panel rendered headless JA / EN, nothing outside the canvas. Needs a
+Quest check: panel position on the hand (may need to move up / tilt), button
+size for the ray, snap direction.
+
+## Build 366 — start placement waits for the head pose; menu grab
+
+Owner: at VR/AR start the volume and the menu appear too low (near the
+floor). Cause from the code: bringVolumeFront() ran as soon as the data was
+ready and placeMenuNow() on the first frame, both from the XR camera, which
+sits at the origin (floor height, −Z) until the first viewer pose arrives.
+Since build 358/359 the data is prepared before the session, so the volume
+was placed before any pose (earlier the 20 s DICOM read hid this). Fix: both
+placements wait, in the loop, for the first frame where
+frame.getViewerPose(referenceSpace) is non-null (poseOk). Diagnostic: the
+詳細 tab shows "初期配置: 姿勢取得 フレーム N / 配置 フレーム M / 頭の高さ
+h m" so the device confirms it (h should be ≈ eye height with local-floor).
+Menu grab (owner): grip while the ray points at the open menu attaches the
+menu to that hand; on release it stays there facing the head, and
+メニューの位置 switches to 固定 (follow would pull it back). The lazy follow
+is off while held. Help line added under the A/X line in 表示.
+Checks: lint, 397 unit tests, boot-check OK; 表示 / 詳細 tabs rendered
+headless. Needs a Quest check: start height, the 詳細 line values, grabbing
+the menu.
+
+## Build 367 — help board (controls) front-right, grabbable
+
+Owner: show the controls on the right side of the view; must be movable by
+hand like the menu. A canvas board (820×560 px, 0.32 m wide, labels only,
+makeMenu reused) placed front-right, mirrored from the menu, lazily
+following the head like the menu (lazyFollow now shared by both). Contents
+follow the state: without sections the basics (grip, two-hand scale, A/X,
+B/Y, menu grab); with sections the section controls (point / approach +
+hold button, thumbstick scroll, left-hand board, B/Y); with the menu open
+the last line says trigger = menu buttons / sliders. Grip while the ray hits
+the board moves it (ray priority menu → tag → panel → board → frame); on
+release it stays facing the head and the setting becomes 固定. 表示 tab:
+操作方法 = 非表示 / ついて来る / 固定 (settings.help, default follow);
+正面に戻す also re-places the board; hidden in screenshots. This covers
+handoff item E in its simplest form (no first-run steps).
+Checks: lint, 397 unit tests, boot-check OK; board (JA/EN, both states) and
+表示 tab rendered headless, every label width measured against its canvas.
+Needs a Quest check: board position (front-right, 0.34 m right of centre),
+text size, whether it gets in the way.
+
+## Build 368 — overnight tasks: 3D speed (all platforms), tablet profile, practice project
+
+Owner (evening, no mid-way checks possible): 1. speed up the 3D drawing on
+VR / PC / iPad without losing quality; 2. Quest as comfortable as the iPad
+for analysis and 3D editing; 3. a developer-supplied project file for the
+practice data. Approach: measure the shader work headlessly (fetch counts,
+exact images), change only what keeps the image, put a switch on the one
+change that is not bit-identical.
+
+### 1. Volume shaders (docs/medical-volume.js WGSL, docs/vr-view.js GLSL)
+New tools: tools/volume-shader-check.mjs (SwiftShader WebGPU, real WGSL,
+128³ phantom: soft ellipsoid 35 %, bone sphere, 2-voxel plate, hollow tube;
+per-pixel counts of HU fetches / brick reads / edit lookups via injected
+counters, image compare of two file versions, PNGs) and
+tools/vr-volume-check.mjs (same phantom through three.js WebGL2, HU and
+classification paths, counts + compare). SwiftShader time is not used (CPU
+proxy, the log of build 330 already said so); counts are the measure.
+Changes, all three shaders / paths:
+- one HU fetch per sample (WGSL had two: raw index + edited index);
+- brick min/max read once per brick (brickEnd = exit distance), not per
+  sample; WGSL brickExitDistance now uses the texture grid like
+  brickMayContain (it used the source grid: shorter skips on reduced
+  textures);
+- bricks carry one voxel of overlap (WGSL brick shader; VR already did), so
+  every trilinear sample inside a brick lies within its min..max;
+- uniform bricks: a brick whose min..max lies inside one enabled segment's
+  range (no earlier segment overlapping, no edit / cut mask on it) is crossed
+  without sampling by a ray already inside that segment (translucent soft
+  tissue interiors); the last point inside the brick becomes the previous
+  sample of the next surface search;
+- surface search: 6 bisections → 2 secant guesses on the sampled value (HU,
+  or the classification value in VR) + 1 bisection when the boundary is an
+  iso-value (no mask on the segment, previous sample measured and outside);
+  else 6 bisections as before. Setting 描画 › 表面の探索 高速 / 精密
+  (app-settings refine, default fast; uniform mprVisible.w) and VR 詳細 ›
+  表面の探索 (settings.refine, uniform refine).
+Measured on the phantom (per pixel, whole 384² image, half background):
+- WGSL: HU fetches 43.0 → 18.9, brick reads 28.5 → 12.7, edit lookups
+  14.2 → 8.0. Exact mode + old bricks: image identical (0 differing
+  channels). New bricks + uniform crossing, exact search: 0.5 % of channels
+  differ (silhouette pixels, sub-voxel hit shifts), mean 6/255. Fast search:
+  4.4 % of channels differ, mean 2.4/255 (shading at the hit point), max 88
+  on isolated silhouette pixels.
+- GLSL HU path: fetches 22.3 → 16.0, brick reads 19.6 → 5.0; cls path: cls
+  fetches 19.9 → 13.6, brick reads 19.6 → 5.0; same difference pattern
+  (0.45 % / mean 6 exact, 7 % / mean 2 fast).
+Not done: precomputed normal textures (memory: 48 MB at 256³, 384 MB at
+512³) — the gradient is 6 fetches per hit, about 4 % of the fetches here.
+Real-device fps still to be measured by the owner (Mac status bar 3D ms,
+iPad, Quest 詳細 tab).
+
+### 2. Tablet profile (Quest browser)
+No device here, so only what is safe: utils.isTabletRuntime() = iPad, or a
+touch device that is neither desktop nor iPhone (Quest browser, Android
+tablets). It now selects the iPad caps: GPU volume cache 1.5 GB, source
+slice cache 192 MB, orthogonal cache 256 MB, volume read 1.5 GB, gpuSide
+'full' removed from the quality control (512 fallback in state.js for any
+touch device). Status label shows 'tablet 512' on such devices (iPad keeps
+'iPad'). The shader work above is the main speed lever there too. Comfort
+of analysis / editing with the controller pointer is not measurable here:
+the owner should try lasso / cut on the Quest browser and report.
+
+### 3. Practice data + bundled project (Opus 5.5 subagent, reviewed)
+sampleDemoBtn: after loadSampleDemo, fetch demo/sample1/project.vrlab
+(no-cache, not stored in the sample Cache Storage); if present it becomes
+pendingProject and the existing selectSeries / applyPendingProject path
+applies it (fingerprint checked). Missing file: silent; broken file:
+console.warn. README in docs/demo/sample1 explains: save a project from the
+practice data, rename to project.vrlab, put it next to index.json. No
+project file added (the owner saves one). e2e tests/e2e/sample-project.spec.js
+(stubbed index / slices / project; applied, and 404 case).
+
+Checks: lint, 397 unit tests, boot-check, vr-slice-check (100 %: 0 diff),
+both shader harnesses; e2e sample-project + folder-project + smoke: 11
+passed (run with a local HTTPS mirror of the CDN modules, since the
+container blocks cdn.jsdelivr.net / esm.sh for Chromium; the plain
+`npx playwright test` needs network and a matching Chromium build).
+
+## Build 369 — VR sphere tracing with a distance field; samples-per-pixel probe
+
+Owner clarified the goal of task 1: not pixel-identical images but the VR
+auto resolution (25–80 % today) staying at 100 % at the normal viewing size
+(the enlarge-slowdown is a separate, mostly solved matter). 100 % is 4–16×
+the pixels of the auto levels, so the per-pixel work must drop by that
+much, or the resolution stays adaptive. No device tonight, so the work that
+can be done headless was done, with a probe for the morning.
+- docs/distance-field.js (unit-tested): per classification channel a byte
+  per voxel, a lower bound of the distance (voxels) to the voxels around
+  the segment's surface (seeds = voxels with a 26-neighbour of the other
+  class; chamfer 3-4-5 × 0.9 / 3, floored). Built in prepareVrData after the
+  classification (phase 距離場, ~1.1 s for 128³ × 2 channels headless; 256³
+  is 8× the voxels, so several seconds on the page), uploaded as a nearest-
+  sampled RGBA8 texture on the classification grid.
+- Shader: with useDist the ray reads the distance first and jumps (d − 2)
+  voxels whenever d ≥ 3 (no surface can lie in the jump), samples at the
+  fine step only within ~2 voxels of a surface; bricks are not read at all
+  in this mode. Requires the classification path (≤ 256 grid); 512 data
+  keeps the old path. 詳細 › 距離場（診断）オン／オフ for A/B on the device.
+- Probe: 詳細 shows サンプル数／画素 (loop-count diagnostic on a 48×48
+  target from the left eye once a second, mean over covered pixels).
+Measured (phantom, per pixel, whole image, cls path, old → new incl. build
+368): soft 35 % + bone: cls fetches 19.9 → 11.0, brick reads 19.6 → 0,
+distance fetches 13.5, HU (gradient) 2.3: total 41.8 → 26.8 (−36 %). Bone
+only (opaque): 5.1 + 5.6 + 0.8 = 11.5 → 1.7 + 2.9 + 0.8 = 5.4 (−53 %).
+Images: surfaces intact (thin plate, tube); differences only on silhouette /
+facet pixels (1.7–2.6 % of channels, mean 5–8/255), from sub-voxel hit
+shifts as the sample phase changes.
+What remains per surface hit: ~3 fine approach samples, the search (3 or 6
+fetches), the gradient (6 HU fetches) — precomputed normals would remove 5
+per hit (48 MB at 256³). The bone-only cost is already ~5 fetches per pixel:
+if the device still cannot hold 100 %, the limit is the pixel count itself
+(Quest 3: ~9 MP per frame at 100 %) and not the per-ray work, so the auto
+resolution stays the right tool and the next lever would be temporal reuse
+(previous-frame hit depth), not the shader.
+Morning measurements wanted (詳細 tab, normal size, bone only and bone +
+soft): fps · ボリューム ms · 縮小描画 % (auto), the same with 画質 › 100 %,
+and サンプル数／画素 with 距離場 on / off and 表面の探索 高速 / 精密.
+Checks: lint, 404 unit tests, boot-check, vr-slice-check (0 diff), harness.
+
+## Build 370 — VR auto resolution follows the GPU time, may reach 100 %
+
+Why: the auto factor (build 340) followed the frame interval, which the
+display quantises: a small overrun shows as a halved frame rate (27 ms
+instead of 14), the controller then shrank by 0.7 per half second down to
+25 %, and only grew by 6 % per half second while the interval was under
+1.04 × budget — a bias towards low factors; AUTO_MAX was 0.8, so 100 % was
+never reached in auto. Now, when EXT_disjoint_timer_query_webgl2 is
+offered (the 詳細 line already showed GPU ms on the Quest), the factor
+follows the measured GPU time: pixel cost ∝ f², target = 80 % of the frame
+budget minus the main pass; at 100 % (direct path) the main pass holds the
+volume and is compared with the budget as a whole. Damped ×0.7 … ×1.15 per
+half second, an extra ×0.85 while frames are actually dropped (interval >
+1.5 × budget). AUTO_MAX = 1. Without the timer the interval logic stays.
+詳細 shows the controller line: 自動: GPU ボリューム x ms · 本描画 y ms /
+予算 b ms → f %.
+Distance field build: seeds by separable dilate / erode passes and chamfer
+passes with precomputed offsets: 256³ one channel 3.8 s → 1.7 s (node);
+128³ × 2 channels 593 ms headless.
+Checks: lint, 404 unit tests, boot-check, 詳細 tab rendered headless (no
+overflow, bottom 992), VR harness counts unchanged.
+Morning: with 距離場 on, the 詳細 line should show where the factor settles
+and the volume GPU ms; if it settles below 100 % with the GPU ms at 80 % of
+the budget, the per-pixel work at the XR size is the limit (see build 369).
+
+## Build 371 — review fixes for builds 368–370
+
+A code review (high effort) of the three overnight commits found seven
+points; all fixed:
+- WGSL uniform-brick crossing `continue`d past the section cap and MPR
+  plane compositing, so a cap or plane inside a uniform brick of a
+  translucent segment was not drawn. Now the jump falls through: the cap /
+  planes inside [t, nextT] are composited, no sample is taken, lastIndex is
+  kept, and the previous sample for the next surface search is the last
+  point inside the brick. Harness with an axial MPR plane at 60 % inside
+  the soft tissue: 0.5 % of channels differ from the old shader (same as
+  without the plane); the plane is drawn.
+- isTabletRuntime(): mobile OS in the UA (iPad, Android, OculusBrowser /
+  Quest) only; a touch-screen laptop stays a desktop for the caps.
+- English prepare panel lacked the 距離場 phase name.
+- Practice project: never replaces a project the user already loaded; a
+  bundled project that did not apply to the sample is dropped (no repeated
+  mismatch footer on later series).
+- distance-field.js: scratch buffers allocated once for all channels,
+  async with a yield and progress per channel (prepare panel shows n / C).
+- The samples probe restores the clear colour (the direct 100 % path
+  cleared the XR layer with alpha 0 after a probe).
+- The VR low-resolution target grows with the factor in use instead of
+  being allocated at the maximum (AUTO_MAX = 1 would have meant a full-size
+  target that is never used at 100 %).
+Checks: lint, 404 unit tests, boot-check, vr-slice-check (0 diff), both
+shader harnesses (counts unchanged), e2e sample-project + folder-project +
+smoke: 11 passed (local CDN mirror).
+
+## Build 372 — analysis region colouring was speckled / striped (WebGPU volume)
+
+Owner (iPad, build 371 screenshot): a selected analysis region (fat, cyan)
+shows as cyan / orange stripes along the depth contours. Reproduced headless
+with the harness (ANALYSIS=1: the bone sphere as a focused region): the OLD
+shader shows the same speckle, so it was not caused by builds 368–371 but
+made visible by this use. Cause: the region and cut-preview run tables are
+looked up at the floor voxel of the surface hit; the hit lies on the
+trilinear iso-surface between an outside and an inside voxel centre, so the
+floor voxel is the outside one about half of the time and the region test
+fails there. Fix: insideVoxelTc() looks up the first voxel whose own stored
+value is inside the segment's range among: the hit voxel, half / one / one
+and a half voxels inward (along the gradient, towards the range), half / one
+voxel along the ray (grazing hits). Harness: the region sphere is now cyan
+apart from a few pixels (before: half speckled); images without a region
+unchanged (fetch counts 18.9 / 12.7 / 8.0 as in build 368).
+Checks: lint, 404 unit tests, boot-check, harness.
+
+## Build 373 — 3D drag fps on the iPad: run-table lookups by binary search, GPU-timed drag budget
+
+Owner (iPad, build 372, fat segment + analysis region, zoomed in): low fps
+while dragging, choppy when enlarged. Status bar in the screenshot: 3D 13 ms
+at 541×332 (interaction tier 2 already), 間隔 33 ms (30 fps). 13 ms for
+0.18 MP is ~70 ns per pixel: the per-pixel work, not the pixel count. When
+zoomed in every pixel is a hit, and each hit ran analysisOverlayAt, a
+linear scan over the row's run pairs (a fat region has hundreds per row);
+previewContains / appliedCutContains scanned likewise.
+- All three lookups now binary-search the row (sorted, disjoint intervals;
+  editAllows already did). setAnalysisRuns sorts each row's pairs by x0
+  (regions were appended in region order). Harness with a region: image
+  identical to build 372 (0 differing channels).
+- Adaptive drag budget: while dragging, the tier's pixel budget is scaled by
+  the measured GPU time of the volume pass (steps 1 / 0.7 / 0.5 / 0.35, one
+  step down over 10 ms, one step up under 5 ms, at most every 300 ms, kept
+  between drags); the frame-time line shows ×0.7 etc. A 60 Hz frame with
+  present needs the pass under ~8–10 ms; 13 ms fell to 30 fps.
+Not done (follow-up if still slow): the per-sample editAllows binary search
+for processed segments (fat RLE) could become a bit-mask texture (16 MB per
+segment at 512³, one load instead of ~8 dependent storage reads).
+Checks: lint, 404 unit tests, boot-check, harness (overlay 0 diff).
+
+## Build 374 — analysis colouring made the 3D view heavy: region index texture
+
+Owner (iPad, build 373): the volume view became heavy once a volume-analysis
+region was coloured. Cause (from the build 373 shader): every surface hit
+still ran analysisOverlayAt, a binary search over the row's run pairs (a
+fat region has hundreds per row: ~8 dependent storage reads per hit), and
+every hit also ran the inside-voxel search of build 372 whether or not a
+region was shown.
+- Region index texture: setAnalysisRuns also uploads an r32uint 3D texture,
+  4 bits per texture voxel (8 voxels per word along x; k = region index +
+  1, 15 = "search the row" for regions past the 14th), 67 MB at 512³, 8 MB
+  at 256³ (the iPad's reduced texture). The shader reads one word per hit
+  and takes the colour from a table appended after the run pairs
+  (analysisOverlay[0] now points at the table instead of holding 1). The
+  row search stays as the fallback (texture missing, k = 15).
+- Allocation failure: WebGPU reports it through the error scope, not by
+  throwing, so the texture is created under an out-of-memory scope and
+  dropped (row search) when the scope reports.
+- The inside-voxel search (build 372) now runs only when a region or a cut
+  preview is shown; without either the hit uses the plain sample position
+  as in build 371.
+- Binding 11 (regionTex, a 1×1×1 dummy while no region is shown); uniform
+  slot 19 w = 1 when the texture exists. rebuildBindGroup / destroy /
+  clearAnalysisRuns handle it.
+Checks: lint; 404 unit tests (overlay test updated to the new layout and the
+texture words); boot-check; WebGPU harness against the build 373 shader with
+a region: 0 differing channels with the texture, 0 with the row search
+(REGIONTEX=0), 0 without a region; a negative run with an empty texture
+differed (21657 channels), so the texture path is the one drawing the
+colour. Overlapping regions (only possible at the one-texel dilation border
+of adjacent regions on reduced textures) take the later region; the old
+search took the pair with the larger x0. Speed is not measurable here
+(SwiftShader); the iPad decides.
+Not done (follow-up if still slow): editAllows for processed segments (fat
+RLE) as a bit-mask texture, same scheme, one load per sample.
+
+## Build 375 — coloured hits without HU fetches, drag controller hysteresis, per-second frame stats
+
+Owner (iPad, build 374): comfortable without a coloured region; with one
+the ×0.7 / ×0.5 size factor appeared and the view was choppy while the
+status bar read about 60 fps; it smoothed out after dragging for a while.
+Facts from the code: the 間隔 figure is one gap sample every 250 ms, so
+dropped frames between samples are invisible; the drag controller decided
+on a single GPU measurement (down over 10 ms, up under 5 ms, every 300 ms),
+so a size flip every 300 ms is possible when the time does not scale with
+the pixel count (build 279 saw that); with a region every hit still paid the
+inside-voxel search (1–6 HU fetches) before the texture lookup.
+- Shader: hits on segments without a shown region skip the region lookup
+  entirely (a segment mask word at the colour table start,
+  data[tableStart]; analysis-ops passes the region's segment indices,
+  unknown → all). With the index texture the lookup is regionOverlayNear:
+  the same six candidates as insideVoxelTc (hit voxel first), read from the
+  region texture only — a coloured hit costs one texture load, no HU fetch;
+  insideVoxelTc now runs only for a cut preview or the row-search fallback.
+  Semantics: the first candidate with a region instead of the region at the
+  first in-segment candidate: differs only at a region's border inside its
+  own segment (harness: 21 of 442368 channels, 7 pixels, at the sphere's
+  edge; whole volume coloured: 0 differing channels; no region: 0).
+  Inlining six lookups into the hit block cost +16 % on the SwiftShader CPU
+  proxy even when not executed; as one loop body with arithmetic offsets
+  the proxy is +3 % (run-to-run noise about 3 %). Metal decides.
+- Drag controller: down when two measurements in a row exceed 9 ms (300 ms
+  hold), up only when the time predicted for the larger size (pixels scale
+  with the step) stays under 7 ms for three measurements and the size was
+  held 600 ms; history cleared on a change.
+- Status bar while dragging: "[1秒: N 枚, 最大 xx ms, 落ち n]" — frames in
+  the last second, longest gap, gaps over 20 ms. Reads a dropped-frame
+  count directly instead of one gap sample.
+- Harness: REGIONR (region radius, default 22; 200 = everything coloured),
+  huVoxel fetches counted.
+Checks: lint, 404 unit tests (segment mask), boot-check, harness as above.
+Not done: if the iPad still drops frames with a coloured fat region, the
+next candidates are the editAllows bit-mask texture (build 373 note) and
+a dilated region texture (one load per hit, ±1 texel bleed).
+
+## Build 376 — region texture uploaded by one aligned buffer copy; upload diagnostics
+
+Owner (iPad, build 375): for a few seconds after colouring a region the
+view was choppy with 待ち (GPU queue wait) about 120 ms, then about 3 ms;
+and the striped colouring of build 371 was back. The analysis itself
+finishes before the colour appears, so the queued GPU work must be the
+region texture upload (queue.writeTexture, 67 MB at 512³, 128–256 bytes
+per row): an implementation that copies it row by row or in chunks keeps
+the queue busy for seconds, and rows not yet copied read as "no region" —
+stripes — until it finishes. Unverified on the device; this build makes
+the upload one copy and reports it.
+- setAnalysisRuns fills the index words straight into a mapped staging
+  buffer (mappedAtCreation, rows padded to the 256-byte pitch that
+  copyBufferToTexture requires by spec) and copies with one
+  copyBufferToTexture; the staging buffer is destroyed when the queue
+  reports the copy done. Harness image with the padded copy is
+  byte-identical to the writeTexture one (whole volume coloured).
+- Status bar while a region is shown: "領域tex 64×512×512 67 MB 転送 xx ms"
+  (size, and the time from the copy's submit to onSubmittedWorkDone), or
+  "領域tex なし（reason）→ 行検索" when the allocation was refused.
+- The 375 lookup (regionOverlayNear) is unchanged: it colours a superset of
+  the 374 hits with the same texture, so it cannot by itself produce the
+  stripes; if they persist with the copy above, the next step is the 374
+  inside-voxel path behind a switch for an A/B on the device.
+Checks: lint, 404 unit tests (fake device with staging buffer and copy),
+boot-check, harness (padded copy vs writeTexture identical; vs 374: 0
+differing channels whole volume coloured, 21 at a small region's border).
+
+## Build 377 — regressions since build 360: tiles left after a delete, drag resolution ratchet; texture kept across focus changes
+
+Owner (iPad, build 376): after a lasso select + delete, garbage stays
+behind (a problem seen before); the view is still choppy for a while after
+colouring; the drag resolution drops step by step during rotation. 改悪厳禁.
+- Garbage after a delete — measured: the harness got an exclusion edit
+  (EDIT=1: a box removed from the bone segment) and build 360 (main) was
+  compared with every build since. 368 and later differed by 6771 channels
+  (mean 37) with the edit, 2059 without; 361–367 are VR-only. Crops showed
+  the sub-voxel shell that an exclusion leaves (interpolated HU still in
+  range one sample past the excluded voxel) rendered as solid brick-sized
+  tiles with seams, where build 360 dithers it to a faint hatch. Cause: the
+  uniform-brick jump of build 368 resumed at brickEnd + 0.05 step, re-phasing
+  every ray at the brick exit, so the shell was hit coherently per brick.
+  Fix: resume on the ray's own sample grid (first grid point past the brick).
+  Harness vs build 360, exact mode: 33 channels with the edit, 36 (all diff
+  1) without — the current shader now matches build 360 apart from that.
+  Fast search (default) vs 360 with the edit: 10456 channels, mean 1.46.
+- Drag resolution ratchet — the adaptive drag budget (builds 373 / 375)
+  removed; the fixed tier budgets of build 372 are back. The ×0.7 label is
+  gone from the status bar.
+- Choppy after colouring — the overlay CPU build measured in node: 174–219
+  ms at 512³ (fat-like region, 24 M voxels), 49–92 ms at 256³: one hitch,
+  not seconds. Every focus or colour change re-ran the whole build and
+  re-allocated / re-uploaded the 67 MB texture; now setAnalysisRuns takes a
+  texture signature (ids and voxel counts) and keeps the texture when only
+  colours or focus change (unit test). The first upload remains; its time
+  is the 転送 figure of build 376. Still open on the device.
+- Harness: EDIT=1 exclusion edit on segment 0 (editAllows layout).
+Checks: lint, 405 unit tests, boot-check, harness (texture path vs row
+search byte-identical with everything coloured; 360 comparisons above).
+
+## Build 378 — harness: scattered specks and an edit that deletes exactly them (no app change)
+
+Owner (iPad, build 377, screenshot): after lasso select + delete, dust
+stays around the spine. Measured: tools/volume-shader-check.mjs got
+SPECKS=1 (400 single-voxel 500 HU bone specks in the soft tissue, seeded)
+and EDIT=2 (exclusion of exactly those voxels). Build 360 vs 377, exact
+mode: 9 differing channels without the edit, 4 with it (all diff 1); the
+deleted specks leave nothing — no ghost shell. The lasso / edit modules
+(lasso, edit-tools, analysis-ops, run-length, segment-runs, mask-ops,
+segment-ui, scene-view) are identical to build 360 apart from the version
+query. So the dust is not drawn after being deleted; it was not selected
+(the lasso keeps components touching the loop, build 197). Asked the owner
+to check with メッシュで確認 and whether the dust lay inside the loop, and
+for the 領域tex 転送 / 待ち figures right after colouring. Only the version
+changed in docs/.
+
+## Build 379 — lasso and edit-mask diagnostics (dust after lasso delete still reported)
+
+Owner (build 377/378): "治ってない" to the dust left after lasso select +
+delete. Nothing in the lasso / edit path differs from build 360 and the
+deletion rendering matches it headlessly (build 378), so this build makes
+the app report what happened on the device:
+- After a lasso: footer "囲んで選択（輪の中に完全に入った部品 / 全部品）:
+  bone: 12/340, …" per target segment; "— 選択なし" when nothing qualified.
+  A small first number with a large second one means the components were
+  judged as touching or outside the loop (projection / loop geometry); a
+  large first number with dust still drawn means the GPU mask is wrong.
+- Status bar: "編集 0:exclude 1234区間 2:keep 98765区間" — the segment index,
+  mode and interval count of the edit mask the volume shader is using,
+  cleared with the edits.
+Checks: lint, 405 unit tests, boot-check.
+
+## Build 380 — deleted voxels no longer leak into neighbouring samples (ghost cloud after a delete)
+
+Owner (iPad, build 379, screenshot): after lasso select + delete of a
+noisy blob, a sparse boxy cloud stays where the blob was; status bar
+"編集 0:exclude 15449区間" (the exclusion reached the GPU). Reproduced
+headlessly: SPECKS=2 adds a blob of random HU 100..700 and EDIT=2 excludes
+exactly its voxels >= 300. Build 360 shows the same cloud after the
+exclusion (so it was not introduced on this branch; the owner remembers it
+fixed — whatever fixed it then was not in main's shader). Cause: the edit
+mask is tested at the sample's own voxel, but the trilinear HU of a sample
+in an allowed cell next to an excluded high-HU voxel is still in range, so
+each excluded voxel leaves face-aligned slivers (the boxy look).
+- Fix (shader, exclude-mode masks only, i.e. lasso / region deletes and
+  cuts; keep-mode processed segments unchanged): a sample that passes the
+  raw range and its own voxel's mask is re-evaluated with the excluded
+  corner voxels of its interpolation cell replaced by air (editInsidePair:
+  one binary search per corner row for x and x+1, so 4 searches; the 8
+  nearest-voxel HU loads only when a corner is excluded).
+- Harness vs build 360: noisy blob excluded — the bone ghost is gone (the
+  blob's sub-threshold voxels still show as soft tissue, which is right);
+  box exclusion — the hatched shell on the plate is gone, cut face clean;
+  no edit — 36 channels (diff 1); specks — 68 channels. HU fetches with
+  the blob edit 25.9 per pixel (20.1 without an edit).
+Checks: lint, 405 unit tests, boot-check, harness as above, region
+colouring texture vs row search byte-identical.
+
+## Handoff (after build 380)
+
+State: build 380 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+volume, 256³ default, auto resolution, precomputed classification with
+processing mask, up to 4 section planes with cap / slice colouring / clip
+modes, beginner menu, screenshots, data prepared before the session and
+copied from the WebGPU texture, practice data cached, スライス tab with
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 360; PR #78 (preview
+/pr-preview/pr-78/) awaits the owner's Quest check and merge instruction.
+
+How the owner checks a build: open a PR from the work branch; the pages
+workflow deploys docs/ to
+https://naomitsu-ozawa.github.io/virtual-rodent-la/pr-preview/pr-<N>/ and the
+owner opens that URL on the Quest / iPad / Mac. Always give that preview URL
+(not only the PR link) when reporting a pushed build.
+
+Owner rules (keep): reply in Japanese; no meshes in the GPU volume view;
+never guess — measure first or ship a diagnostic build; run lint, unit tests
+and boot-check before pushing (boot-check needs PW_CHROMIUM=/opt/pw-browsers/chromium);
+merge only when the owner says so; answer questions without implementing;
+swap is forbidden (disk cache OK); research-grade accuracy; no platform
+branching except VR (share what can be shared); do not break what works on
+Mac/iPad; no wasted features (e.g. nothing can be edited inside VR); when a
+solution is not in sight, stop and prepare a handoff. Bump the build with
+npm run bump-build for every pushed change and log it here.
+
+Next work (owner-approved list; recommended model / effort):
+A. Done in build 361 (cause: 60 % default opacity over the dome; VR window
+   tab added). Open: Quest check of the slice at 100 % and of the new tab.
+B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
+   scroll). Open: Quest check; scroll speed (5 cm/s) may need tuning.
+C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
+   Open: Quest check of the panel placement.
+D. Goal (owner): VR auto resolution held at 100 % at the normal size.
+   Builds 368–371: fewer fetches per sample / brick, uniform-brick crossing,
+   fast surface search, distance-field sphere tracing (all switchable),
+   samples-per-pixel probe, GPU-timed auto controller up to 100 %. Open:
+   the device numbers decide whether per-ray work or the pixel count is the
+   limit; then precomputed normals (memory!) or temporal reuse.
+E. Help board done in build 367 (state-dependent controls, front-right).
+   A first-run 3-step guide is still open if the owner wants it.
+F. iPad (builds 372–377): region colouring speckle fixed, drag lookups by
+   binary search, region index texture (one aligned buffer copy, kept
+   across focus / colour changes), coloured hits without HU fetches,
+   per-second frame stats, upload diagnostics; the adaptive drag budget
+   was removed again (resolution ratchet); the uniform-brick jump resumes
+   on the ray's sample grid (tiles after a delete). Open: iPad check —
+   garbage after delete gone?; "領域tex … 転送 xx ms" and "待ち" right after
+   colouring; "[1秒: N 枚, 最大, 落ち]" while dragging; stripes. Compare
+   against build 360 with the harness (EDIT=1 / ANALYSIS=1) before any
+   further shader change.
+Order: device checks of builds 361–368 first; then whatever the owner
+reports (tablet comfort on the Quest browser, fps). Headless tools used so far: see the build
+entries above (shader tests via tools/boot-check.mjs with page.evaluate).

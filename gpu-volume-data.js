@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20260930-build360';
-import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20260930-build360';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20260930-build360';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20260930-build360';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20260930-build360';
-import { request3DRender } from './scene3d.js?v=20260930-build360';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20260930-build360';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20260930-build360';
-import { tr } from './i18n.js?v=20260930-build360';
-import { fmt, isIPadRuntime, isIPhoneRuntime } from './utils.js?v=20260930-build360';
-import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20260930-build360';
-import { datasetFingerprint } from './project-file.js?v=20260930-build360';
-import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20260930-build360';
+import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20261001-build380';
+import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20261001-build380';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261001-build380';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20261001-build380';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261001-build380';
+import { request3DRender } from './scene3d.js?v=20261001-build380';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20261001-build380';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20261001-build380';
+import { tr } from './i18n.js?v=20261001-build380';
+import { fmt, isTabletRuntime, isIPhoneRuntime } from './utils.js?v=20261001-build380';
+import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20261001-build380';
+import { datasetFingerprint } from './project-file.js?v=20261001-build380';
+import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20261001-build380';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
@@ -74,7 +74,7 @@ export async function volumeCache(){
 export async function volumeCacheBudget(){
  // settings > cache: a fixed limit, or auto (below)
  const fixed=+globalThis.__vrlSettings?.get?.('cacheLimit');if(fixed>0)return fixed*2**30;
- const cap=(isIPadRuntime()?1.5:4)*2**30;
+ const cap=(isTabletRuntime()?1.5:4)*2**30;
  try{const q=(await navigator.storage?.estimate?.())?.quota||0;return Math.max(256*2**20,Math.min(cap,q?q*.3:cap))}catch{return 512*2**20}
 }
 export function gpuVolumeCacheFor(series,signature){
