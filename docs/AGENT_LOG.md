@@ -3326,14 +3326,37 @@ mode) — the Quest-browser comfort item (overnight task 2), not yet
 addressed; the editAllows binary search per sample on a 187k-interval
 mask is the likely cost (build 373 note: bit-mask texture).
 
-## Handoff (after build 388)
+## Build 389 — VR: the tight loop also serves rays with a section (slice, cut face); benchmark with section phases
 
-State: build 388 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: the benchmark is doubtful — real use is section work, and fps is
+lower there than the plain-display numbers. Correct: the tight loop of
+builds 386–387 was used only for rays without a slice or cut face, so a
+section sent every ray through the old general loop.
+- Harness: SECTION=1 puts one section plane through the centre (cut face
+  and CT slice at 70 % with tint). Practice data, bone + fat 100 %: with
+  the section 505 ms on build 388 vs 153 without.
+- Shader: a second copy of the tight march with the slice and cut-face
+  events (same order as the general loop: slices up to t + step, then the
+  cap, then the sample), chosen per ray; rays without events keep the
+  first loop. One loop with a per-ray guard around the event code made
+  SwiftShader's compiled loop twice as slow for every ray (352 ms without
+  a section), so the two copies stay separate. Section 505 → 258 ms, no
+  section 153 → 162 (noise); pixel-identical in every configuration
+  (practice data with and without section; phantom specks + soft + edit
+  box, exact search, separate field, each with the section).
+- In-VR benchmark: 16 phases = 16.5 / 30 cm × section off / on × shown /
+  bone only × 100 / 50 %; a temporary plane through the centre is added
+  when none exists and removed afterwards; "断面なし / 断面あり" lines.
+Checks: lint, 406 unit tests, boot-check, harness as above.
+
+## Handoff (after build 389)
+
+State: build 389 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 380 (PR #78 merged 2026-10-01); builds from 381 go to a new PR.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 388 (PR #80 merged 2026-10-01); builds from 389 go to a new PR.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to

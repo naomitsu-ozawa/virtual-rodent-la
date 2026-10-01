@@ -24,7 +24,7 @@ const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--u
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,300))});pg.on('pageerror',e=>console.log('PAGEERROR',String(e).slice(0,300)));
 await pg.route(/^https:\/\//,rt=>{const u=rt.request().url();if(u.includes('three.module.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.module.js','utf8')});if(u.includes('three.core.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.core.js','utf8')});return rt.abort()});
 await pg.goto('http://localhost:8779/');
-const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,fat,edit,useVol,volN,seg,segOp,distCls,cached,modes})=>{
+const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,fat,edit,useVol,volN,seg,segOp,distCls,cached,modes,section})=>{
  const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js');
  const W=useVol?256:384,H=W,renderer=new THREE.WebGLRenderer({antialias:false});renderer.setPixelRatio(1);renderer.setSize(W,H,false);
  // phantom as in tools/volume-shader-check.mjs: u16 = HU + 1024, slope 1, intercept -1024
@@ -72,6 +72,8 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  const rtColor=new THREE.WebGLRenderTarget(W,H,{depthBuffer:false}),rtCount=new THREE.WebGLRenderTarget(W,H,{depthBuffer:false,type:THREE.FloatType});
  const run=(sh,mode,count)=>{
   const u=uniforms();u.useCls.value=mode;u.useDist.value=mode&&useDist?1:0;if(boneOnly){u.segA.value[1].w=0;u.segA.value[2].w=0}if(boneFat)u.segA.value[1].w=0;
+  // SECTION=1: one section plane through the centre (normal (0.6,0.3,0.74), the half towards the camera removed), cut face and CT slice at 70 % with tint
+  if(section){const n=new THREE.Vector3(0.6,0.3,0.74).normalize();u.cutPlanes.value[0].set(n.x,n.y,n.z,0.05);u.planeCount.value=1;u.planeCut.value=1;u.capOn.value=1;u.sliceOpacity.value=0.7;u.sliceTint.value=0.5}
   const mat=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:sh.vs,fragmentShader:count?sh.fsc:sh.fs,side:THREE.BackSide,uniforms:u,transparent:false,blending:THREE.NoBlending,depthWrite:false});
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),mat);mesh.frustumCulled=false;scene.add(mesh);
   const rt=count?rtCount:rtColor;renderer.setRenderTarget(rt);renderer.setClearColor(0x000000,1);
@@ -84,7 +86,7 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  const shA={vs:A.vs,fs:A.fs,fsc:countA},shB=B?{vs:B.vs,fs:B.fs,fsc:countB}:null,out={};
  for(const mode of [0,1]){if(!modes.includes(mode?'cls':'hu'))continue;out['A'+mode]=run(shA,mode,false);out['A'+mode+'c']=run(shA,mode,true);if(shB){out['B'+mode]=run(shB,mode,false);out['B'+mode+'c']=run(shB,mode,true)}}
  return{W,H,out,distMs};
-},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0),useVol:!!VOL,volN,distCls:+(process.env.DISTCLS??0),cached:!!(clsBytes&&distBytes),modes,seg:{bone:(process.env.BONE||'300,3000').split(',').map(Number),soft:(process.env.SOFT||'-200,299').split(',').map(Number),fat:(process.env.FATR||'-250,-50').split(',').map(Number)},segOp:{bone:+(process.env.BONEOP??1),soft:+(process.env.SOFTOP??0.35),fat:+(process.env.FATOP??1)}});
+},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0),useVol:!!VOL,volN,distCls:+(process.env.DISTCLS??0),cached:!!(clsBytes&&distBytes),modes,section:+(process.env.SECTION??0),seg:{bone:(process.env.BONE||'300,3000').split(',').map(Number),soft:(process.env.SOFT||'-200,299').split(',').map(Number),fat:(process.env.FATR||'-250,-50').split(',').map(Number)},segOp:{bone:+(process.env.BONEOP??1),soft:+(process.env.SOFTOP??0.35),fat:+(process.env.FATOP??1)}});
 await b.close();srv.close();
 const {W,H,out,distMs}=result;console.log('distance field build (128³, 2 channels): '+distMs.toFixed(0)+' ms');
 import zlib from 'node:zlib';
