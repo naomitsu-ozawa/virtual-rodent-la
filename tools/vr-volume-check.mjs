@@ -25,7 +25,7 @@ const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--u
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,300))});pg.on('pageerror',e=>console.log('PAGEERROR',String(e).slice(0,300)));
 await pg.route(/^https:\/\//,rt=>{const u=rt.request().url();if(u.includes('three.module.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.module.js','utf8')});if(u.includes('three.core.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.core.js','utf8')});return rt.abort()});
 await pg.goto('http://localhost:8779/');
-const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,fat,edit,useVol,volN,seg,segOp,distCls,cached,modes,section})=>{
+const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,fat,edit,useVol,volN,seg,segOp,distCls,cached,modes,section,bgSet})=>{
  const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js');
  const W=useVol?256:384,H=W,renderer=new THREE.WebGLRenderer({antialias:false});renderer.setPixelRatio(1);renderer.setSize(W,H,false);
  // phantom as in tools/volume-shader-check.mjs: u16 = HU + 1024, slope 1, intercept -1024
@@ -77,7 +77,7 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
   if(section){const n=new THREE.Vector3(0.6,0.3,0.74).normalize();u.cutPlanes.value[0].set(n.x,n.y,n.z,0.05);u.planeCount.value=1;u.planeCut.value=1;u.capOn.value=1;u.sliceOpacity.value=0.7;u.sliceTint.value=0.5}
   const mat=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:sh.vs,fragmentShader:count?sh.fsc:sh.fs,side:THREE.BackSide,uniforms:u,transparent:false,blending:THREE.NoBlending,depthWrite:false});
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),mat);mesh.frustumCulled=false;scene.add(mesh);
-  const rt=count?rtCount:rtColor;renderer.setRenderTarget(rt);renderer.setClearColor(0x000000,1);
+  const rt=count?rtCount:rtColor;renderer.setRenderTarget(rt);renderer.setClearColor(0x000000,bgSet?0:1);
   // timing: SwiftShader runs the fragment work on readback, so the pixels are read inside the timed region (min of 5)
   const tmp=new Uint8Array(W*H*4);const times=[];for(let i=0;i<(count?1:5);i++){renderer.clear();const t0=performance.now();renderer.render(scene,cam);renderer.readRenderTargetPixels(count?rtCount:rtColor,0,0,1,1,count?new Float32Array(4):tmp.subarray(0,4));renderer.getContext().finish();times.push(performance.now()-t0)}
   let px;if(count){px=new Float32Array(W*H*4);renderer.readRenderTargetPixels(rt,0,0,W,H,px);let f=0,br=0,c=0,dd=0;for(let i=0;i<px.length;i+=4){f+=px[i];br+=px[i+1];c+=px[i+2];dd+=px[i+3]}scene.remove(mesh);mat.dispose();return{sums:{fetch:f,brick:br,cls:c,dist:dd}}}
@@ -87,7 +87,7 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  const shA={vs:A.vs,fs:A.fs,fsc:countA},shB=B?{vs:B.vs,fs:B.fs,fsc:countB}:null,out={};
  for(const mode of [0,1]){if(!modes.includes(mode?'cls':'hu'))continue;out['A'+mode]=run(shA,mode,false);out['A'+mode+'c']=run(shA,mode,true);if(shB){out['B'+mode]=run(shB,mode,false);out['B'+mode+'c']=run(shB,mode,true)}}
  return{W,H,out,distMs};
-},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0),useVol:!!VOL,volN,distCls:+(process.env.DISTCLS??0),cached:!!(clsBytes&&distBytes),modes,section:+(process.env.SECTION??0),seg:{bone:(process.env.BONE||'300,3000').split(',').map(Number),soft:(process.env.SOFT||'-200,299').split(',').map(Number),fat:(process.env.FATR||'-250,-50').split(',').map(Number)},segOp:{bone:+(process.env.BONEOP??1),soft:+(process.env.SOFTOP??0.35),fat:+(process.env.FATOP??1)}});
+},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0),useVol:!!VOL,volN,distCls:+(process.env.DISTCLS??0),cached:!!(clsBytes&&distBytes),modes,section:+(process.env.SECTION??0),bgSet:!!process.env.BG,seg:{bone:(process.env.BONE||'300,3000').split(',').map(Number),soft:(process.env.SOFT||'-200,299').split(',').map(Number),fat:(process.env.FATR||'-250,-50').split(',').map(Number)},segOp:{bone:+(process.env.BONEOP??1),soft:+(process.env.SOFTOP??0.35),fat:+(process.env.FATOP??1)}});
 await b.close();srv.close();
 const {W,H,out,distMs}=result;console.log('distance field build (128³, 2 channels): '+distMs.toFixed(0)+' ms');
 import zlib from 'node:zlib';
@@ -96,6 +96,10 @@ const png=(px,w,h)=>{const raw=Buffer.alloc((w*4+1)*h);for(let y=0;y<h;y++){raw[
  const chunk=(t,d)=>{const l=Buffer.alloc(4);l.writeUInt32BE(d.length);const td=Buffer.concat([Buffer.from(t),d]);const c=Buffer.alloc(4);c.writeUInt32BE(crc(td));return Buffer.concat([l,td,c])};
  const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(w,0);ihdr.writeUInt32BE(h,4);ihdr[8]=8;ihdr[9]=6;
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',ihdr),chunk('IDAT',zlib.deflateSync(raw)),chunk('IEND',Buffer.alloc(0))])};
+// BG=r,g,b (build 403): composite the premultiplied result over this background before the PNGs and the A/B
+// comparison, so a change of alpha alone (e.g. a transparent slice over black) is counted
+const BG=process.env.BG?process.env.BG.split(',').map(Number):null;
+if(BG)for(const k of Object.keys(out)){const r=out[k];if(!r?.px)continue;const p=r.px;for(let i=0;i<p.length;i+=4){const ia=1-p[i+3]/255;for(let j=0;j<3;j++)p[i+j]=Math.min(255,Math.round(p[i+j]+BG[j]*ia))}}
 for(const mode of [0,1]){
  const name=mode?'cls':'HU';
  for(const k of ['A','B']){const r=out[k+mode];if(!r)continue;const c=out[k+mode+'c'].sums;

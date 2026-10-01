@@ -8,15 +8,15 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build402';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build402';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build402';
-import { sceneState } from './state.js?v=20261001-build402';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build402';
-import { marchClassificationHit } from './vr-pick.js?v=20261001-build402';
-import { tr } from './i18n.js?v=20261001-build402';
-import { APP_BUILD } from './version.js?v=20261001-build402';
-import { wc, ww } from './ui-shell.js?v=20261001-build402';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build403';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build403';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build403';
+import { sceneState } from './state.js?v=20261001-build403';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build403';
+import { marchClassificationHit } from './vr-pick.js?v=20261001-build403';
+import { tr } from './i18n.js?v=20261001-build403';
+import { APP_BUILD } from './version.js?v=20261001-build403';
+import { wc, ww } from './ui-shell.js?v=20261001-build403';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -172,10 +172,12 @@ float sliceGray(vec3 p){
  float hu=(q.x+q.y*256.0-calib.z)*calib.x+calib.y;
  return clamp((hu-(sliceWindow.x-0.5*sliceWindow.y))/max(sliceWindow.y,1e-3),0.0,1.0);
 }
-vec3 sliceColor(vec3 p){
+// build 403 (owner): the black of the slice (at or below the window's lower end) is transparent at any opacity,
+// ramping to the set opacity over the first 5 % of the window; tinted pixels stay opaque (alpha = the set opacity)
+vec4 sliceColor(vec3 p){
  float g=sliceGray(p);
- if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return mix(vec3(g),segC[si].rgb,sliceTint);}
- return vec3(g);
+ if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return vec4(mix(vec3(g),segC[si].rgb,sliceTint),1.0);}
+ return vec4(vec3(g),smoothstep(0.0,0.05,g));
 }
 vec3 gradientAt(vec3 tc){
  vec3 d=1.0/max(texDims,vec3(1.0));
@@ -277,8 +279,8 @@ void main(){
    iters++;
    // slices and the cut face as in the general loop (same order: slices up to t + step, then the cap, then the sample)
    while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
-    vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-    float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
+    vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
+    float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
    }
    if(capT>=0.0){
     int ci=segmentIndexAt(texCoord(o+dir*capT));capT=-1.0;
@@ -352,8 +354,8 @@ void main(){
   iters++;
   while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
    // a slice lies before the next sample: composite it in depth order
-   vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-   float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
+   vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
+   float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
   }
   if(capT>=0.0){
    // cut face: flat, segment colour lightened, lit by the plane normal
@@ -426,8 +428,8 @@ void main(){
  }
 #endif
  while(nextSlice<nSlice&&acc.a<=0.985){
-  vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-  float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
+  vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
+  float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
  }
  if(diag==2){float h=clamp(float(iters)/1024.0,0.0,1.0);outColor=vec4(h,1.0-abs(h*2.0-1.0),1.0-h,1.0);return;}
  if(acc.a<0.004)discard;
@@ -861,7 +863,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menuHit=c=>{if(!ui.open)return null;setRay(c);return raycaster.intersectObject(menu.mesh,false)[0]||null};
  const badgeHit=c=>{if(ui.open||!badge.parent||badge.parent===c)return null;setRay(c);return raycaster.intersectObject(badge,false)[0]||null};
  // section panel (build 365): quick plane actions on the left hand (above the menu tag), shown while sections are on; the other hand's ray presses it
- const panel=makeMenu(640,232,0.17);panel.mesh.position.set(0,0.10,0.03);panel.mesh.rotation.x=-0.6;panel.mesh.visible=false;leftHand().add(panel.mesh);
+ // build 403 (owner): 10 cm to the left of the hand, so it no longer covers the volume while the left hand works on it
+ const panel=makeMenu(640,232,0.17);panel.mesh.position.set(-0.10,0.10,0.03);panel.mesh.rotation.x=-0.6;panel.mesh.visible=false;leftHand().add(panel.mesh);
  const panelHit=c=>{if(!panel.mesh.visible||!panel.mesh.parent||panel.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(panel.mesh,false)[0]||null};
  // head pose (world) from the XR camera
  const head=new THREE.Vector3(),headFwd=new THREE.Vector3(),headLeft=new THREE.Vector3(),tmpQh=new THREE.Quaternion();

@@ -3570,14 +3570,36 @@ Owner (build 401): OK. The pointer should also hit the 3D object.
 Checks: lint, unit tests (5 new), boot-check, vr-gpu-prepare-check. Shader
 and image unchanged.
 
-## Handoff (after build 402)
+## Build 403 — VR: black of the slice transparent at any opacity; left-hand panel moved aside
 
-State: build 402 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (after merging #84, main = build 402): A — the black part of the
+slice should be transparent, at any slice opacity. C — the left-hand
+panel should sit further to the side of the volume.
+- Shader: sliceColor returns alpha = smoothstep(0, 0.05, gray): at or
+  below the VR window's lower end the slice adds nothing, ramping to the
+  set opacity over the first 5 % of the window; tinted pixels keep the set
+  opacity. The three slice composites use contribution × alpha.
+- Harness (phantom, SECTION=1, BG=90,110,130 — new option: composite over
+  a background with clear alpha 0 so an alpha-only change is counted):
+  204384 of 442368 channels differ, all in the slice's air area (it was a
+  dark slab at 70 %, now the background shows); the body, cut face and
+  tinted slice are unchanged. Images sent to the owner.
+- Left-hand panel: offset (0, 0.10, 0.03) → (−0.10, 0.10, 0.03) on the
+  left controller.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check (all programs
+compile).
+Next (owner-approved): one central progress modal for every long
+operation (2D, 3D, VR preparation): shown only after a short delay,
+blocks input while shown, with a cancel button against freezes.
+
+## Handoff (after build 403)
+
+State: build 403 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–402 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near, single frame, calmer palette, new planes clip, laser hits the volume) are in PR #84; owner OK on 401. Open: Quest check of 402; with two planes held the thumbstick moves the one taken last.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); build 403 in a new PR. Next: the unified progress modal (see build 403 entry).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
