@@ -8,14 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build400';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build400';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build400';
-import { sceneState } from './state.js?v=20261001-build400';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build400';
-import { tr } from './i18n.js?v=20261001-build400';
-import { APP_BUILD } from './version.js?v=20261001-build400';
-import { wc, ww } from './ui-shell.js?v=20261001-build400';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build401';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build401';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build401';
+import { sceneState } from './state.js?v=20261001-build401';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build401';
+import { tr } from './i18n.js?v=20261001-build401';
+import { APP_BUILD } from './version.js?v=20261001-build401';
+import { wc, ww } from './ui-shell.js?v=20261001-build401';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -964,10 +964,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const rayPlane=c=>{if(!section.on||!planes.length)return null;const hp=heldPlanes(),free=planes.filter(p=>!hp.has(p));if(!free.length)return null;setRay(c);const x=raycaster.intersectObjects(free.map(p=>p.hit),false)[0];if(!x)return null;const pl=planes.find(p=>p.hit===x.object);return pl?{pl,distance:x.distance}:null};
  // new plane: through the volume centre (first) or in front of the hand
  // (added ones), facing the viewer, fixed in the volume
- const addPlane=(c=null)=>{
+ // build 401 (owner: planes are added to cut): every new plane clips; the bench keeps its old rule (only a first plane clips)
+ const addPlane=(c=null,cut=true)=>{
   if(planes.length>=MAX_PLANES)return null;
   const used=new Set(planes.map(p=>p.color)),color=PLANE_COLORS.find(x=>!used.has(x))??PLANE_COLORS[0];
-  const pl=makePlane(color,planes.length===0);planes.push(pl);
+  const pl=makePlane(color,cut);planes.push(pl);
   readHead();scene.add(pl.obj);
   if(c){c.getWorldPosition(pl.obj.position);tmpB.set(0,0,-1).transformDirection(c.matrixWorld);pl.obj.position.addScaledVector(tmpB,0.12)}
   else holder.getWorldPosition(pl.obj.position);
@@ -1042,7 +1043,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // volume and the volume slowly turning; segment sets: as shown, bone + fat, bone only
   const canShow=k=>!!(segmentState[k]?.active&&segmentState[k]?.enabled);
   bench.phases=[];for(const s of [0.165,0.3])for(const g of ['cur','bonefat','bone'])for(const r of [1,3]){if(g==='bonefat'&&!(canShow('bone')&&canShow('fat')))continue;bench.phases.push({s,g,r,sec:1})}
-  bench.tempPlane=planes.length<MAX_PLANES?addPlane():null;bench.plane=bench.tempPlane||planes[0];bench.planeBase=bench.plane.obj.position.clone();bench.noSection=false;bench.t0=performance.now();
+  bench.tempPlane=planes.length<MAX_PLANES?addPlane(null,planes.length===0):null;bench.plane=bench.tempPlane||planes[0];bench.planeBase=bench.plane.obj.position.clone();bench.noSection=false;bench.t0=performance.now();
   bench.saved={scale:holder.scale.x,vres:settings.vres,segMode:{...segMode},pos:holder.position.clone(),quat:holder.quaternion.clone()};
   bench.results=[];bench.i=-1;bench.active=true;nextBenchPhase();
  };

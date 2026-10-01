@@ -3535,14 +3535,25 @@ smarter colour scheme including the lasers.
 Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
 and volume image unchanged.
 
-## Handoff (after build 400)
+## Build 401 — VR: every added section plane clips by default
 
-State: build 400 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (build 400): looks good. Planes are added in order to cut, so a new
+plane should default to 切る. addPlane(c, cut = true): the B/Y long press,
+the ＋追加 buttons (断面 tab, left-hand panel) and the first plane all
+create clipping planes (before: only the first one clipped). The global
+clip mode (切る: 手前 by default) still decides how. The in-VR benchmark
+keeps its old rule (its temporary plane clips only when it is the first)
+so its numbers stay comparable.
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check.
+
+## Handoff (after build 401)
+
+State: build 401 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–400 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near, single frame, calmer palette) are in PR #84. Open: Quest check of 400 (palette, 3 mm glow, idle beam 0.6 m); with two planes held the thumbstick moves the one taken last.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–401 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near, single frame, calmer palette, new planes clip) are in PR #84; owner OK on 400. Open: Quest check of 401; with two planes held the thumbstick moves the one taken last.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
