@@ -3444,14 +3444,140 @@ Owner: merge #82 and go on with the small items.
 Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
 unchanged.
 
-## Handoff (after build 395)
+## Build 396 — VR: two sections held at once (one per hand)
 
-State: build 395 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: section work used one plane at a time; wants to move two planes
+with both hands at the same time.
+- vr-view.js: the held plane is per controller (c.userData.heldPlane)
+  instead of one section.held / heldPlane. Each hand takes a plane with the
+  chosen button (grip or trigger, 持ち方) near it or by its ray and fixes it
+  on release, independently of the other hand. A plane held by one hand is
+  excluded from the other hand's near / ray pick (no stealing; the other
+  hand's ray passes through it), so a grip then falls through to the volume
+  grab as before. fixAll() for sections off, the 持ち方 change and the bench
+  start; removing a plane (left-hand panel) clears the hand that holds it;
+  a disconnected controller drops its plane into the volume.
+- Unchanged: volume grab / two-hand scale (only hands gripping empty space),
+  thumbstick scroll moves the selected plane (the one taken last), shader
+  and image (planes are read from world matrices every frame).
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check.
+
+## Build 397 — VR sections: one target per hand shown, hand label on the handle
+
+Owner (Quest, build 396): two planes held at once works. But the UI does
+not show which frame a press will take, so with several planes the wrong
+one is picked; and it should show which hand (right / left) holds or held
+each plane. Cause of the wrong picks: the highlight lit every frame that
+was near any hand or under any ray, while the press took near first
+(frame centre within 20 cm) else the ray — at the 16.5 cm default size a
+ray on plane B grabbed a near plane A, with nothing showing that A wins.
+- Per hand per frame c.userData.target = the one frame its button would
+  take (near first, else the ray; none while the ray is on the menu, tag,
+  section panel or help board, or while the hand holds a plane).
+  squeezestart / selectstart take that target, so the white frame is
+  exactly the one grabbed. Only targets and held planes turn white.
+- A thin white line from the hand to its target's handle when the target
+  is picked by nearness (a ray pick already shows the ray).
+- Handle: number plus 右 / 左 (R / L) of the hand that holds or last held
+  the plane (WebXR handedness, not the controller index); redrawn only
+  when the hand changes.
+- Help texts (断面 tab) updated. Near/ray rule unchanged (offered to the
+  owner: ray first, or distance to the frame instead of its centre).
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
+and image unchanged.
+
+## Build 398 — VR: laser pointers in two colours, pointed frame glows in the hand's colour
+
+Owner (build 397): wants it visually clear — laser-pointer style with a
+different colour per hand, the pointed frame lighting up in that colour.
+- Hand colours: right 0xff4433 (red), left 0x3388ff (blue), by WebXR
+  handedness (grey when unknown); distinct from the plane colours
+  (yellow, cyan, pink, green), which the frames keep.
+- Ray: always the hand colour; to the hit (menu, tag, panel, help board,
+  frame) at full opacity with a 6 mm dot at the hit point, else a 0.6 m
+  beam at 35 % opacity (was an 8 cm light-blue stub, white on a hit).
+- Frame glow: an 8 mm band over the frame (ShapeGeometry ring, depthWrite
+  off) shown in the colour of the hand that holds the plane or whose
+  button would take it (the build 397 target: near first, else the ray).
+  Replaces the white frame; the frame lines keep the plane's colour.
+- Near-pick guide line in the hand colour; the 右 / 左 on the handle sits in
+  a disc of the hand colour.
+- Help texts updated. Shader and image of the volume unchanged.
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. The XR
+frame loop has no headless test: a use-before-define in the new loop code
+was found by reading and fixed before the push.
+
+## Build 399 — VR sections: the frame the laser points at wins over the near frame
+
+With the laser pointers (398) the near-first rule (397) would let the dot
+sit on frame B while frame A (centre within 20 cm of the hand, common at
+the 16.5 cm default) glows and is taken. Now a frame hit by the ray is the
+target; the nearest frame (guide line) only when the ray hits no frame.
+Trade-off: with the hand at A and the ray across B, the hand takes B.
+Help text updated. Per-controller loop re-read for use-before-define and
+shadowing (none). Checks: lint, 406 unit tests, boot-check,
+vr-gpu-prepare-check.
+
+## Build 400 — VR sections: single frame, thinner glow, calmer palette
+
+Owner (build 399): the double frame has lost its meaning — one frame for
+all; the glow on the selected / pointed frame should be thinner; a
+smarter colour scheme including the lasers.
+- Inner loop (selected = thumbstick target) removed; the selected plane is
+  still shown by its coloured name button in the 断面 tab and on the
+  left-hand panel. Help text updated.
+- Glow band 8 mm → 3 mm (±1.5 mm around the frame line), opacity 0.95.
+- Palette: planes soft gold 0xf2d27a, sky 0x8ec5ff, rose 0xf5a3c7, mint
+  0x9be3b0 (one pastel family, dark text on the handles and buttons);
+  hands vivid orange 0xff7a3d (right) and indigo 0x7c6cff (left), outside
+  the plane hues so a glow never reads as a plane colour. Ray end dot
+  6 → 4 mm. Idle beam unchanged (0.6 m, 35 %).
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
+and volume image unchanged.
+
+## Build 401 — VR: every added section plane clips by default
+
+Owner (build 400): looks good. Planes are added in order to cut, so a new
+plane should default to 切る. addPlane(c, cut = true): the B/Y long press,
+the ＋追加 buttons (断面 tab, left-hand panel) and the first plane all
+create clipping planes (before: only the first one clipped). The global
+clip mode (切る: 手前 by default) still decides how. The in-VR benchmark
+keeps its old rule (its temporary plane clips only when it is the first)
+so its numbers stay comparable.
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check.
+
+## Build 402 — VR: the laser also hits the volume (shown segments, clipped side removed)
+
+Owner (build 401): OK. The pointer should also hit the 3D object.
+- docs/vr-pick.js marchClassificationHit: the ray in the volume's object
+  space (box ±halfExt, the shader's texCoord mapping: y index runs down) is
+  marched in half-voxel steps over the classification bytes (nearest
+  voxel, the ≤256 grid they were built on) to the first voxel of a shown
+  segment (value ≥ 128, as the shader's 0.5); the start / end of the march
+  are cut by the clipping planes exactly as the shader does (kept where
+  n·p − w ≥ 0, this frame's cutPlanes / planeCut uniforms), so the laser
+  stops on the cut face where tissue is, not on the removed half. Edit
+  exclusions are already zero in the bytes. Unit-tested (index mapping in
+  x / y / z, clip planes with and without their bit, misses, scaled
+  direction).
+- vr-view.js: ray priority menu, tag, panel, help board, frame, then the
+  volume; a volume hit only shortens the laser and puts the dot there (it
+  does not select anything; the grip still grabs the volume anywhere).
+  No hit without classification bytes (no shown segment). Not tested:
+  the CT slice image drawn on a section is not a hit surface.
+- Cost: at most about 900 nearest-voxel reads per hand per frame on the
+  CPU, only when the ray crosses the box.
+Checks: lint, unit tests (5 new), boot-check, vr-gpu-prepare-check. Shader
+and image unchanged.
+
+## Handoff (after build 402)
+
+State: build 402 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 394 (PR #82 merged 2026-10-01); builds from 395 go to a new PR.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–402 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near, single frame, calmer palette, new planes clip, laser hits the volume) are in PR #84; owner OK on 401. Open: Quest check of 402; with two planes held the thumbstick moves the one taken last.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
