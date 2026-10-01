@@ -17,7 +17,7 @@
 // A slot is one source of work ('three', 'processing', 'load', 'vr', ...).
 // counted slots pair on/off calls (nested callers); others: the last call wins.
 // The slot started last is the one shown.
-import { currentLanguage } from './state.js?v=20261001-build405';
+import { currentLanguage } from './state.js?v=20261001-build406';
 
 export const SHOW_DELAY=400,ESCAPE_MS=10000,CANCEL_GRACE=3000;
 
@@ -59,9 +59,11 @@ function build(){
  document.body.append(root);
  const q=c=>root.querySelector(c);els={title:q('.job-title'),detail:q('.job-detail'),track:q('.job-track'),bar:q('.job-bar'),time:q('.job-time'),button:q('.job-button'),help:q('.job-help')};
  els.button.onclick=()=>{tracker.press();render()};
- // input stays blocked while shown: pointer by the full-screen root, keys here
+ // input stays blocked while shown: pointer and wheel by the full-screen root (its own non-passive wheel listener
+ // costs nothing while it is hidden), key presses here (key releases pass, so no key stays held in the app)
+ root.addEventListener('wheel',e=>e.preventDefault(),{passive:false});
  const block=e=>{if(root.classList.contains('is-hidden')||root.contains(e.target))return;e.preventDefault();e.stopPropagation()};
- for(const ev of ['keydown','keyup','keypress','wheel'])window.addEventListener(ev,block,{capture:true,passive:false});
+ for(const ev of ['keydown','keypress'])window.addEventListener(ev,block,{capture:true});
 }
 function render(){
  clearTimeout(timer);timer=0;build();if(!root)return;

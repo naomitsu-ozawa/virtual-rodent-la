@@ -8,16 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build405';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build405';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build405';
-import { sceneState } from './state.js?v=20261001-build405';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build405';
-import { marchClassificationHit } from './vr-pick.js?v=20261001-build405';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261001-build405';
-import { tr } from './i18n.js?v=20261001-build405';
-import { APP_BUILD } from './version.js?v=20261001-build405';
-import { wc, ww } from './ui-shell.js?v=20261001-build405';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build406';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build406';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build406';
+import { sceneState } from './state.js?v=20261001-build406';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build406';
+import { marchClassificationHit } from './vr-pick.js?v=20261001-build406';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261001-build406';
+import { tr } from './i18n.js?v=20261001-build406';
+import { APP_BUILD } from './version.js?v=20261001-build406';
+import { wc, ww } from './ui-shell.js?v=20261001-build406';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;

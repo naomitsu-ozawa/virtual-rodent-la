@@ -30,13 +30,20 @@ let seen=0,labels=new Set(),blocked=true,shot=false,idleSince=0,last=null;
 while(Date.now()-t0<180000){
  const s=await st();last=s;
  if(s.shown){seen++;labels.add(s.label);if(s.pe!=='auto')blocked=false;
-  if(!shot){await pg.screenshot({path:outDir+'/progress-modal-desktop.png'});await pg.setViewportSize({width:820,height:1180});await pg.waitForTimeout(150);await pg.screenshot({path:outDir+'/progress-modal-ipad.png'});await pg.setViewportSize({width:1280,height:800});shot=true}}
+  if(!shot&&s.label.includes('·')){await pg.screenshot({path:outDir+'/progress-modal-desktop.png'});shot=true}}
  if(!s.active&&!s.shown&&Date.now()-t0>3000){if(!idleSince)idleSince=Date.now();if(Date.now()-idleSince>3000)break}else idleSince=0;
  await pg.waitForTimeout(100);
 }
 const end=await st();
 console.log('modal seen in',seen,'polls; labels:',[...labels].join(' | ')||'-','; blocks input:',blocked,'; at the end: shown',end.shown,'active',end.active,'; '+((Date.now()-t0)/1000).toFixed(1)+' s');
 const ok=seen>0&&blocked&&!end.shown&&!end.active;
+// real processing paths on the loaded data: add a filter (NLM: CPU work) and a segment, watch the modal for 60 s each
+const watch=async ms=>{const seen=new Set();const t=Date.now();let idle=0;while(Date.now()-t<ms){const x=await st();if(x.shown)seen.add(x.name+': '+x.label);if(!x.active&&!x.shown){if(!idle)idle=Date.now();if(Date.now()-idle>2500&&Date.now()-t>3000)break}else idle=0;await pg.waitForTimeout(100)}const e=await st();return{seen:[...seen],endActive:e.active,endShown:e.shown,s:((Date.now()-t)/1000).toFixed(1)}};
+for(const [what,sel,val] of [['filter NLM','#filter-add-select','nlm'],['segment bone','#segment-add-select','bone']]){
+ const ok=await pg.evaluate(([sel,val,btn])=>{const s=document.querySelector(sel),b=document.querySelector(btn);if(!s||!b||s.disabled||b.disabled)return false;s.value=val;s.dispatchEvent(new Event('change'));b.click();return true},[sel,val,sel.replace('-select','-button')]);
+ if(!ok){console.log(what+': skipped (control disabled)');continue}
+ const r=await watch(90000);console.log(what+':',JSON.stringify(r));if(r.endActive||r.endShown)errors.push(what+': job left running');
+}
 // 3D rebuild with 中断: the modal shows the 'three' job with a cancel button; pressing it ends the job
 let rebuild='skipped (button disabled)';
 if(await pg.evaluate(()=>{const b=document.getElementById('filter-rebuild-3d');if(!b||b.disabled)return false;b.click();return true})){
@@ -46,12 +53,13 @@ if(await pg.evaluate(()=>{const b=document.getElementById('filter-rebuild-3d');i
   await pg.click('#job-modal .job-button');const t2=Date.now();let e=null;while(Date.now()-t2<30000){e=await st();if(!e.shown)break;await pg.waitForTimeout(100)}
   rebuild='modal "'+s3.label+'", button "'+btn+'", after 中断: '+(e.shown?'STILL SHOWN':'closed in '+((Date.now()-t2)/1000).toFixed(1)+' s');if(e.shown)errors.push('modal still shown after cancel')}}
 console.log('3D rebuild:',rebuild);
-// the 3D adapter directly (no WebGPU here, so no real 3D job): set3DBusy shows 中断, which presses the 3D cancel button
-const three=await pg.evaluate(async()=>{const m=await import('./three-status.js'+new URL(document.querySelector('script[src*="app.js"]').src).search);let pressed=0;const c=document.getElementById('three-busy-cancel');const on=()=>{pressed++};c?.addEventListener('click',on);
- m.set3DBusy(true,'3D check');await new Promise(r=>setTimeout(r,600));const b=document.querySelector('#job-modal .job-button'),v=window.__vrlBusyModal();const txt=b?.textContent||'';b?.click();
- await new Promise(r=>setTimeout(r,50));m.set3DBusy(false);await new Promise(r=>setTimeout(r,50));c?.removeEventListener('click',on);return{shown:v.visible,label:v.label,txt,pressed,after:window.__vrlBusyModal()}});
-console.log('set3DBusy: shown',three.shown,'label',three.label,'button',three.txt,'cancel pressed',three.pressed,'after: shown',three.after.visible,'active',three.after.active);
-if(!three.shown||three.pressed!==1||three.after.visible||three.after.active)errors.push('3D adapter check failed');
+// the 3D adapter directly (no WebGPU here, so no real 3D job): set3DBusy shows the modal; without a running rebuild
+// there is no 中断 (its handler stops only a rebuild), and the job ends cleanly
+const three=await pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,m=await import('./three-status.js'+v);
+ m.set3DBusy(true,'3D check');await new Promise(r=>setTimeout(r,600));const b=document.querySelector('#job-modal .job-button'),vv=window.__vrlBusyModal();const btn=b&&!b.classList.contains('is-hidden')?b.textContent:'';
+ m.set3DBusy(false);await new Promise(r=>setTimeout(r,50));return{shown:vv.visible,label:vv.label,btn,after:window.__vrlBusyModal()}});
+console.log('set3DBusy: shown',three.shown,'label',three.label,'button',JSON.stringify(three.btn),'after: shown',three.after.visible,'active',three.after.active);
+if(!three.shown||three.after.visible||three.after.active)errors.push('3D adapter check failed');
 // VR preparation: runs in the modal ('vr'), then the page panel shows up with the start button
 const vr=await pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,m=await import('./vr-view.js'+v);
  m.showPreparePanel({language:'ja',mode:'vr',onStart:()=>{}});const t0=performance.now();let seen=false,label='';
@@ -64,5 +72,10 @@ if(!vr.panel)errors.push('VR panel did not appear');
 // a short job never shows: open and close a slot within the delay
 const short=await pg.evaluate(async()=>{const m=await import('./progress-modal.js'+new URL(document.querySelector('script[src*="app.js"]').src).search);m.setBusySlot('check',true,{label:'short'});await new Promise(r=>setTimeout(r,150));const a=window.__vrlBusyModal().visible;m.setBusySlot('check',false);await new Promise(r=>setTimeout(r,500));return{during:a,after:window.__vrlBusyModal().visible}});
 console.log('short job: shown during',short.during,'after',short.after);
+// iPad-size screenshot on a fresh page laid out at that size (a synthetic job with a bar)
+{const p2=await b.newPage({viewport:{width:820,height:1180},deviceScaleFactor:1});await p2.route(/^https:\/\//,rt=>rt.abort());
+ await p2.goto('http://localhost:8765/index.html');await p2.waitForTimeout(2500);
+ await p2.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,m=await import('./progress-modal.js'+v);m.setBusySlot('processing',true,{label:'Fast NLM 3D を適用中…',counted:true});m.reportBusyProgress('processing',96,256,'96 / 256')});
+ await p2.waitForTimeout(700);await p2.screenshot({path:outDir+'/progress-modal-ipad.png'});await p2.close()}
 await b.close();srv.close();
 if(errors.length||!ok||short.during||short.after){console.error('progress modal check FAILED');process.exit(1)}console.log('progress modal check OK');
