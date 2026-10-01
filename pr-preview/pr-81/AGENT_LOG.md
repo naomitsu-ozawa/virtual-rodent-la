@@ -3365,9 +3365,22 @@ use is the likely reason), so compare rows within one run only.
 Still visible in the screenshot: the Quest browser's 2D page renders the
 WebGPU volume at 2 fps ("編集 2:keep 187049区間").
 
-## Handoff (after build 390)
+## Build 391 — in-VR benchmark emulates real use (sweeping section, turning volume, bone + fat set)
 
-State: build 390 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (build 389/390 bench): diverges from reality; bone + fat was
+missing; the bench should operate the volume, not show it still.
+- Every phase now runs with a section plane sweeping ±0.5 of the volume
+  along its normal at 0.4 Hz and the volume turning at 0.5 rad/s (a
+  temporary plane is added when fewer than four exist, else the first
+  plane is moved and put back). Segment sets: as shown, bone + fat (soft
+  and lung hidden; skipped when fat is not an active segment), bone only.
+  12 phases, 16.5 / 30 cm × 100 / 50 %, about 35 s. Result lines
+  "16.5 cm 断面を動かしながら: 表示中 … · 骨+脂肪 … · 骨 …".
+Checks: lint, 406 unit tests, boot-check.
+
+## Handoff (after build 391)
+
+State: build 391 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

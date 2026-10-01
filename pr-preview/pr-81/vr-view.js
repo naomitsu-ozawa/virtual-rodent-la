@@ -8,14 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build390';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build390';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build390';
-import { sceneState } from './state.js?v=20261001-build390';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build390';
-import { tr } from './i18n.js?v=20261001-build390';
-import { APP_BUILD } from './version.js?v=20261001-build390';
-import { wc, ww } from './ui-shell.js?v=20261001-build390';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build391';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build391';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build391';
+import { sceneState } from './state.js?v=20261001-build391';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build391';
+import { tr } from './i18n.js?v=20261001-build391';
+import { APP_BUILD } from './version.js?v=20261001-build391';
+import { wc, ww } from './ui-shell.js?v=20261001-build391';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -730,13 +730,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 45 秒）',benchRun:'ベンチ中 ',benchHelp:'16.5/30 cm × 断面なし／あり × 表示中／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（二重枠）を法線方向に動かします','レイで指した枠（白くなる）は、離れたままつかめます'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 45 s)',benchRun:'benchmark ',benchHelp:'fps at 16.5/30 cm × section off / on × shown / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (double frame) on its normal','A frame the ray points at (turns white) can be grabbed from a distance'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
@@ -923,12 +923,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // build 385: benchmark — 12 phases (3 sizes × shown segments / bone only × 100 % / 50 %), 0.8 s settle + 2 s count each;
  // the state is restored afterwards and the result goes to the 画質 tab, the console, localStorage (vrl-vr-bench) and a
  // panel on the page after the session
- const bench={active:false,phases:[],i:-1,at:0,measureAt:0,frames:0,results:[],saved:null,noSection:false,tempPlane:null};
+ const bench={active:false,phases:[],i:-1,at:0,measureAt:0,frames:0,results:[],saved:null,noSection:false,tempPlane:null,plane:null,planeBase:null,t0:0};
  const shownLabel=modes=>SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active&&segmentState[k]?.enabled&&(modes[k]|0)!==2).map(k=>tr(k)).join('+')||'-';
  const startBench=()=>{
   if(bench.active||!mesh)return;
-  bench.phases=[];for(const s of [0.165,0.3])for(const sec of [0,1])for(const g of ['cur','bone'])for(const r of [1,3])bench.phases.push({s,g,r,sec});
-  bench.tempPlane=planes.length?null:addPlane();bench.noSection=false;
+  // build 391 (owner: the bench must emulate real use): every phase runs with a section plane sweeping through the
+  // volume and the volume slowly turning; segment sets: as shown, bone + fat, bone only
+  const canShow=k=>!!(segmentState[k]?.active&&segmentState[k]?.enabled);
+  bench.phases=[];for(const s of [0.165,0.3])for(const g of ['cur','bonefat','bone'])for(const r of [1,3]){if(g==='bonefat'&&!(canShow('bone')&&canShow('fat')))continue;bench.phases.push({s,g,r,sec:1})}
+  bench.tempPlane=planes.length<MAX_PLANES?addPlane():null;bench.plane=bench.tempPlane||planes[0];bench.planeBase=bench.plane.obj.position.clone();bench.noSection=false;bench.t0=performance.now();
   bench.saved={scale:holder.scale.x,vres:settings.vres,segMode:{...segMode},pos:holder.position.clone(),quat:holder.quaternion.clone()};
   bench.results=[];bench.i=-1;bench.active=true;nextBenchPhase();
  };
@@ -936,23 +939,26 @@ export async function startVrView({language='ja',mode='vr'}={}){
   bench.i++;if(bench.i>=bench.phases.length){finishBench();return}
   const ph=bench.phases[bench.i];
   bringVolumeFront();holder.scale.setScalar(ph.s/3.3);bench.noSection=!ph.sec;
-  for(const key of SEGMENT_PRESET_ORDER)segMode[key]=ph.g==='bone'&&key!=='bone'?2:(bench.saved.segMode[key]|0);
+  for(const key of SEGMENT_PRESET_ORDER){const sv=bench.saved.segMode[key]|0;segMode[key]=ph.g==='cur'?sv:(ph.g==='bone'?(key==='bone'?(sv===2?0:sv):2):((key==='bone'||key==='fat')?(sv===2?0:sv):2))}
   settings.vres=ph.r;applyQuality();
   bench.at=performance.now();bench.measureAt=0;bench.frames=0;
   ui.benchLine=L.benchRun+(bench.i+1)+' / '+bench.phases.length;menu.refresh();
  };
  const benchTick=()=>{
   if(!bench.active)return;const now=performance.now();
+  // motion: the volume turns at 0.5 rad/s, the plane sweeps ±0.5 of the volume along its normal at 0.4 Hz
+  const tt=(now-bench.t0)/1000;holder.quaternion.copy(bench.saved.quat);holder.rotateY(0.5*tt);
+  if(bench.plane){tmpB.set(1,0,0).applyQuaternion(bench.plane.obj.quaternion);bench.plane.obj.position.copy(bench.planeBase).addScaledVector(tmpB,0.5*Math.sin(2*Math.PI*0.4*tt))}
   if(!bench.measureAt){if(now-bench.at>=800){bench.measureAt=now;bench.frames=0}return}
   bench.frames++;
   if(now-bench.measureAt>=2000){const ph=bench.phases[bench.i];bench.results.push({...ph,fps:bench.frames*1000/(now-bench.measureAt)});nextBenchPhase()}
  };
  const finishBench=()=>{
-  const sv=bench.saved;bench.active=false;bench.noSection=false;if(bench.tempPlane){removePlane(bench.tempPlane);bench.tempPlane=null}
+  const sv=bench.saved;bench.active=false;bench.noSection=false;if(bench.plane&&!bench.tempPlane)bench.plane.obj.position.copy(bench.planeBase);if(bench.tempPlane){removePlane(bench.tempPlane);bench.tempPlane=null}bench.plane=null;
   Object.assign(segMode,sv.segMode);settings.vres=sv.vres;applyQuality();
   holder.position.copy(sv.pos);holder.quaternion.copy(sv.quat);holder.scale.setScalar(sv.scale);
-  const cur=shownLabel(sv.segMode),rate=targetRate(),f=(s,g,r,sec)=>{const x=bench.results.find(e=>e.s===s&&e.g===g&&e.r===r&&e.sec===sec);return x?Math.round(x.fps):'-'};
-  const lines=[];for(const sz of [0.165,0.3])for(const sec of [0,1])lines.push((sz*100).toFixed(1).replace('.0','')+' cm '+(sec?(ja?'断面あり':'section'):(ja?'断面なし':'no section'))+': '+cur+' 100% '+f(sz,'cur',1,sec)+' / 50% '+f(sz,'cur',3,sec)+' · '+tr('bone')+' 100% '+f(sz,'bone',1,sec)+' / 50% '+f(sz,'bone',3,sec)+' fps');
+  const cur=shownLabel(sv.segMode),rate=targetRate(),f=(s,g,r)=>{const x=bench.results.find(e=>e.s===s&&e.g===g&&e.r===r);return x?Math.round(x.fps):'-'};
+  const lines=[];for(const sz of [0.165,0.3])lines.push((sz*100).toFixed(1).replace('.0','')+' cm '+(ja?'断面を動かしながら: ':'moving section: ')+cur+' 100% '+f(sz,'cur',1)+' / 50% '+f(sz,'cur',3)+' · '+tr('bone')+'+'+tr('fat')+' 100% '+f(sz,'bonefat',1)+' / 50% '+f(sz,'bonefat',3)+' · '+tr('bone')+' 100% '+f(sz,'bone',1)+' / 50% '+f(sz,'bone',3)+' fps');
   const head=(ja?'VR ベンチ build ':'VR benchmark build ')+APP_BUILD+' · '+rate+' Hz · '+(ja?'自動解像度の既定サイズ ':'default size ')+(baseScale*3.3*100).toFixed(1)+' cm';
   lastBench={head,lines,when:Date.now()};
   try{localStorage.setItem('vrl-vr-bench',JSON.stringify(lastBench))}catch{}
