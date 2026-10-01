@@ -1,9 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { processingOverlay, processingOverlayLabel, resetFilterBtn, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, smoothingType, gaussianStrength, spatialPasses, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, folderBtn, demoBtn, prog, bar, progLabel } from './ui-shell.js?v=20261001-build404';
-import { sourceVolume } from './state.js?v=20261001-build404';
-import { filterState } from './source-filters.js?v=20261001-build404';
+import { processingOverlay, processingOverlayLabel, resetFilterBtn, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, smoothingType, gaussianStrength, spatialPasses, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, folderBtn, demoBtn, prog, bar, progLabel } from './ui-shell.js?v=20261001-build405';
+import { sourceVolume } from './state.js?v=20261001-build405';
+import { filterState } from './source-filters.js?v=20261001-build405';
+import { setBusySlot } from './progress-modal.js?v=20261001-build405';
 export function setProcessingBusy(busyState,label='Processing',lockControls=true){
+ // build 405: shown in the central progress modal (calls are paired: counted slot)
+ setBusySlot('processing',busyState,{label,counted:true});
  if(processingOverlay){
   processingOverlay.classList.toggle('is-hidden',!busyState||!lockControls);
   processingOverlay.setAttribute('aria-busy',busyState?'true':'false');

@@ -8,15 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build404';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build404';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build404';
-import { sceneState } from './state.js?v=20261001-build404';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build404';
-import { marchClassificationHit } from './vr-pick.js?v=20261001-build404';
-import { tr } from './i18n.js?v=20261001-build404';
-import { APP_BUILD } from './version.js?v=20261001-build404';
-import { wc, ww } from './ui-shell.js?v=20261001-build404';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build405';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build405';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build405';
+import { sceneState } from './state.js?v=20261001-build405';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build405';
+import { marchClassificationHit } from './vr-pick.js?v=20261001-build405';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261001-build405';
+import { tr } from './i18n.js?v=20261001-build405';
+import { APP_BUILD } from './version.js?v=20261001-build405';
+import { wc, ww } from './ui-shell.js?v=20261001-build405';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -784,18 +785,23 @@ export function showPreparePanel({language='ja',mode='vr',onStart}){
  const order=['read','half','mask','cls','dist'],allPhases=['copy',...order];
  q('.cancel').onclick=()=>panel.remove();
  q('.start').onclick=()=>{panel.remove();onStart()};
- document.body.append(panel);
- const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'||phase==='copy'?' '+done+' / '+total:'');const i=Math.max(0,order.indexOf(phase==='copy'?'read':phase)),f=(i+((phase==='read'||phase==='copy')&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%'};
+ // build 405: the preparation runs in the central progress modal; the panel shows up when it is ready (timings, start button) or failed
+ panel.style.display='none';document.body.append(panel);
+ const title=q('strong').textContent,done_=()=>{setBusySlot('vr',false);panel.style.display=''};
+ setBusySlot('vr',true,{label:title});
+ const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'||phase==='copy'?' '+done+' / '+total:'');const i=Math.max(0,order.indexOf(phase==='copy'?'read':phase)),f=(i+((phase==='read'||phase==='copy')&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%';reportBusyProgress('vr',f,1,q('.ph').textContent)};
  prepareVrData(report).then(async p=>{
+  try{
   q('.bar').style.width='100%';
   // build 393: upload, compile and wait on the GPU before the session (skipped when already prepared for this data and mode)
   let g=gpuPrepared&&gpuPrepared.key===p.key&&gpuPrepared.mode===mode?gpuPrepared:null;
-  if(!g){q('.ph').textContent=ja?'GPU の準備（転送・コンパイル）':'Preparing the GPU (upload, compile)';g=await prepareVrGpu(p,mode)}
+  if(!g){q('.ph').textContent=ja?'GPU の準備（転送・コンパイル）':'Preparing the GPU (upload, compile)';reportBusyProgress('vr',1,1,q('.ph').textContent);g=await prepareVrGpu(p,mode)}
   q('.ph').textContent=ja?'準備ができました':'Ready';
   const gpuLine=g?.times?((ja?'GPU: ':'GPU: ')+(g.times.total/1000).toFixed(1)+' s'):'';
   q('.tm').textContent=allPhases.filter(k=>p.times[k]!=null).map(k=>names[k]+': '+(p.times[k]/1000).toFixed(1)+' s').concat(gpuLine?[gpuLine]:[]).join('\n');
-  q('.start').disabled=false;q('.start').focus();
- },e=>{console.error(e);q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e)});
+  }catch(e){console.error(e);done_();q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e);return}
+  done_();q('.start').disabled=false;q('.start').focus();
+ },e=>{console.error(e);done_();q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e)});
 }
 
 let running=null;

@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20261001-build404';
-import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20261001-build404';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261001-build404';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20261001-build404';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261001-build404';
-import { request3DRender } from './scene3d.js?v=20261001-build404';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20261001-build404';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20261001-build404';
-import { tr } from './i18n.js?v=20261001-build404';
-import { fmt, isTabletRuntime, isIPhoneRuntime } from './utils.js?v=20261001-build404';
-import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20261001-build404';
-import { datasetFingerprint } from './project-file.js?v=20261001-build404';
-import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20261001-build404';
+import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20261001-build405';
+import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20261001-build405';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261001-build405';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20261001-build405';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261001-build405';
+import { request3DRender } from './scene3d.js?v=20261001-build405';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20261001-build405';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20261001-build405';
+import { tr } from './i18n.js?v=20261001-build405';
+import { fmt, isTabletRuntime, isIPhoneRuntime } from './utils.js?v=20261001-build405';
+import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20261001-build405';
+import { datasetFingerprint } from './project-file.js?v=20261001-build405';
+import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20261001-build405';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
