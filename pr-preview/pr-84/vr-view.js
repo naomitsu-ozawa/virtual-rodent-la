@@ -8,14 +8,15 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build401';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build401';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build401';
-import { sceneState } from './state.js?v=20261001-build401';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build401';
-import { tr } from './i18n.js?v=20261001-build401';
-import { APP_BUILD } from './version.js?v=20261001-build401';
-import { wc, ww } from './ui-shell.js?v=20261001-build401';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build402';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build402';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build402';
+import { sceneState } from './state.js?v=20261001-build402';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build402';
+import { marchClassificationHit } from './vr-pick.js?v=20261001-build402';
+import { tr } from './i18n.js?v=20261001-build402';
+import { APP_BUILD } from './version.js?v=20261001-build402';
+import { wc, ww } from './ui-shell.js?v=20261001-build402';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -832,7 +833,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volPick=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  // segMode (normal / simple / hidden per segment) lives at module level since build 393 (shownMask); it persists across sessions
@@ -962,6 +963,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const nearestPlane=c=>{if(!section.on)return null;const hp=heldPlanes();let best=null,bd=0.2;for(const pl of planes){if(hp.has(pl))continue;const d=planeDist(pl,c);if(d<bd){bd=d;best=pl}}return best};
  // ray pick (build 364): the frame the ray points at can be grabbed from a distance; nearest hit or null
  const rayPlane=c=>{if(!section.on||!planes.length)return null;const hp=heldPlanes(),free=planes.filter(p=>!hp.has(p));if(!free.length)return null;setRay(c);const x=raycaster.intersectObjects(free.map(p=>p.hit),false)[0];if(!x)return null;const pl=planes.find(p=>p.hit===x.object);return pl?{pl,distance:x.distance}:null};
+ // volume hit (build 402, owner: the pointer should hit the 3D object too): first voxel of a shown segment on the
+ // kept side of the clipping planes (vr-pick.js); world distance or null. Frames and boards are tested first;
+ // without classification bytes there is no hit.
+ const tmpVo=new THREE.Vector3(),tmpVq=new THREE.Vector3();
+ const volumeHit=c=>{
+  const vp=volPick;if(!vp||!mesh?.parent||!material)return null;
+  const mask=shownMask(),chs=[];for(let i=0;i<4;i++)if(mask>>i&1&&vp.cls.chan[i]>=0)chs.push(vp.cls.chan[i]);if(!chs.length)return null;
+  setRay(c);const o=tmpVo.copy(raycaster.ray.origin),q=tmpVq.copy(o).add(raycaster.ray.direction);mesh.worldToLocal(o);mesh.worldToLocal(q);q.sub(o);
+  const u=material.uniforms,t=marchClassificationHit(o,q,vp.halfExt,vp.dims,vp.cls,chs,u.cutPlanes.value,u.planeCount.value,u.planeCut.value);
+  return t>=0?{distance:t}:null;
+ };
  // new plane: through the volume centre (first) or in front of the hand
  // (added ones), facing the viewer, fixed in the volume
  // build 401 (owner: planes are added to cut): every new plane clips; the bench keeps its old rule (only a first plane clips)
@@ -1254,12 +1266,12 @@ export async function startVrView({language='ja',mode='vr'}={}){
   panel.mesh.visible=section.on&&planes.length>0;
   for(const c of controllers){
    // ray priority: menu, menu tag, section panel (build 365), then a section frame (build 364)
-   const h=menuHit(c),bh=h?null:badgeHit(c),ph=h||bh?null:panelHit(c),hh=h||bh||ph?null:helpHit(c),rp=h||bh||ph||hh?null:rayPlane(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;
+   const h=menuHit(c),bh=h?null:badgeHit(c),ph=h||bh?null:panelHit(c),hh=h||bh||ph?null:helpHit(c),rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;
    // build 397: the one frame this hand's button would take, the same rule the press uses;
    // build 399: the frame the laser points at wins, the nearest frame (guide line) only when the ray hits none
    const np=h||bh||ph||hh||rp||c.userData.heldPlane?null:nearestPlane(c);c.userData.target=h||bh||ph||hh||c.userData.heldPlane?null:c.userData.rayPlane||np;
    const gd=c.userData.guide;gd.visible=!!np;gd.material.color.setHex(handColor(c));if(np){const a=gd.geometry.attributes.position;c.getWorldPosition(tmpA);np.handle.getWorldPosition(tmpB);a.setXYZ(0,tmpA.x,tmpA.y,tmpA.z);a.setXYZ(1,tmpB.x,tmpB.y,tmpB.z);a.needsUpdate=true}
-   const hc=handColor(c),hit=h||bh||ph||hh||rp,dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=!!hit;
+   const hc=handColor(c),hit=h||bh||ph||hh||rp||vh,dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=!!hit;
    if(hit){ray.scale.z=hit.distance;ray.material.opacity=1;setRay(c);raycaster.ray.at(hit.distance,dot.position);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}if(ph){const i=panel.hit(ph.uv);if(i>=0)panelHover=i}}
    else{ray.scale.z=0.6;ray.material.opacity=0.35}
    // thumbstick Y (xr-standard axes[3], up is negative), dead zone 0.15, squared response; both hands add up
@@ -1401,6 +1413,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const makeTextures=makeVolumeTextures;
   if(gpu&&gpu.key!==P.key){disposeGpuPrepared();}
   // classification texture from the prepared bytes (only on the ≤256 grid)
+  // build 402: classification bytes for the laser's volume hit (the ≤256 grid they were built on)
+  volPick=P.cls?{cls:P.cls,dims:(P.half||vd).dims,halfExt:vd.halfExt}:null;
   const clsTexture=t=>{
    const c=P.cls;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
    const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.userData.chan=c.chan;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;

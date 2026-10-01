@@ -3546,14 +3546,38 @@ keeps its old rule (its temporary plane clips only when it is the first)
 so its numbers stay comparable.
 Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check.
 
-## Handoff (after build 401)
+## Build 402 — VR: the laser also hits the volume (shown segments, clipped side removed)
 
-State: build 401 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (build 401): OK. The pointer should also hit the 3D object.
+- docs/vr-pick.js marchClassificationHit: the ray in the volume's object
+  space (box ±halfExt, the shader's texCoord mapping: y index runs down) is
+  marched in half-voxel steps over the classification bytes (nearest
+  voxel, the ≤256 grid they were built on) to the first voxel of a shown
+  segment (value ≥ 128, as the shader's 0.5); the start / end of the march
+  are cut by the clipping planes exactly as the shader does (kept where
+  n·p − w ≥ 0, this frame's cutPlanes / planeCut uniforms), so the laser
+  stops on the cut face where tissue is, not on the removed half. Edit
+  exclusions are already zero in the bytes. Unit-tested (index mapping in
+  x / y / z, clip planes with and without their bit, misses, scaled
+  direction).
+- vr-view.js: ray priority menu, tag, panel, help board, frame, then the
+  volume; a volume hit only shortens the laser and puts the dot there (it
+  does not select anything; the grip still grabs the volume anywhere).
+  No hit without classification bytes (no shown segment). Not tested:
+  the CT slice image drawn on a section is not a hit surface.
+- Cost: at most about 900 nearest-voxel reads per hand per frame on the
+  CPU, only when the ray crosses the box.
+Checks: lint, unit tests (5 new), boot-check, vr-gpu-prepare-check. Shader
+and image unchanged.
+
+## Handoff (after build 402)
+
+State: build 402 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–401 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near, single frame, calmer palette, new planes clip) are in PR #84; owner OK on 400. Open: Quest check of 401; with two planes held the thumbstick moves the one taken last.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–402 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near, single frame, calmer palette, new planes clip, laser hits the volume) are in PR #84; owner OK on 401. Open: Quest check of 402; with two planes held the thumbstick moves the one taken last.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
