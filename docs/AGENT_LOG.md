@@ -3486,14 +3486,35 @@ ray on plane B grabbed a near plane A, with nothing showing that A wins.
 Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
 and image unchanged.
 
-## Handoff (after build 397)
+## Build 398 — VR: laser pointers in two colours, pointed frame glows in the hand's colour
 
-State: build 397 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (build 397): wants it visually clear — laser-pointer style with a
+different colour per hand, the pointed frame lighting up in that colour.
+- Hand colours: right 0xff4433 (red), left 0x3388ff (blue), by WebXR
+  handedness (grey when unknown); distinct from the plane colours
+  (yellow, cyan, pink, green), which the frames keep.
+- Ray: always the hand colour; to the hit (menu, tag, panel, help board,
+  frame) at full opacity with a 6 mm dot at the hit point, else a 0.6 m
+  beam at 35 % opacity (was an 8 cm light-blue stub, white on a hit).
+- Frame glow: an 8 mm band over the frame (ShapeGeometry ring, depthWrite
+  off) shown in the colour of the hand that holds the plane or whose
+  button would take it (the build 397 target: near first, else the ray).
+  Replaces the white frame; the frame lines keep the plane's colour.
+- Near-pick guide line in the hand colour; the 右 / 左 on the handle sits in
+  a disc of the hand colour.
+- Help texts updated. Shader and image of the volume unchanged.
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. The XR
+frame loop has no headless test: a use-before-define in the new loop code
+was found by reading and fixed before the push.
+
+## Handoff (after build 398)
+
+State: build 398 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–397 (two planes held at once, one target per hand, 右/左 on the handle) are in PR #84. Open: Quest check of 397; with two planes held the thumbstick moves the one taken last.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–398 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow) are in PR #84. Open: Quest check of 398; with two planes held the thumbstick moves the one taken last.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
