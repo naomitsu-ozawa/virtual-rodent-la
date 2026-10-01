@@ -3462,14 +3462,38 @@ with both hands at the same time.
   and image (planes are read from world matrices every frame).
 Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check.
 
-## Handoff (after build 396)
+## Build 397 — VR sections: one target per hand shown, hand label on the handle
 
-State: build 396 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (Quest, build 396): two planes held at once works. But the UI does
+not show which frame a press will take, so with several planes the wrong
+one is picked; and it should show which hand (right / left) holds or held
+each plane. Cause of the wrong picks: the highlight lit every frame that
+was near any hand or under any ray, while the press took near first
+(frame centre within 20 cm) else the ray — at the 16.5 cm default size a
+ray on plane B grabbed a near plane A, with nothing showing that A wins.
+- Per hand per frame c.userData.target = the one frame its button would
+  take (near first, else the ray; none while the ray is on the menu, tag,
+  section panel or help board, or while the hand holds a plane).
+  squeezestart / selectstart take that target, so the white frame is
+  exactly the one grabbed. Only targets and held planes turn white.
+- A thin white line from the hand to its target's handle when the target
+  is picked by nearness (a ray pick already shows the ray).
+- Handle: number plus 右 / 左 (R / L) of the hand that holds or last held
+  the plane (WebXR handedness, not the controller index); redrawn only
+  when the hand changes.
+- Help texts (断面 tab) updated. Near/ray rule unchanged (offered to the
+  owner: ray first, or distance to the frame instead of its centre).
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
+and image unchanged.
+
+## Handoff (after build 397)
+
+State: build 397 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); build 396 (two planes held at once) is in a new PR. Open: Quest check of two-hand section work; with two planes held the thumbstick moves the one taken last.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–397 (two planes held at once, one target per hand, 右/左 on the handle) are in PR #84. Open: Quest check of 397; with two planes held the thumbstick moves the one taken last.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to

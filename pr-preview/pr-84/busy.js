@@ -1,8 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { processingOverlay, processingOverlayLabel, resetFilterBtn, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, smoothingType, gaussianStrength, spatialPasses, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, folderBtn, demoBtn, prog, bar, progLabel } from './ui-shell.js?v=20261001-build396';
-import { sourceVolume } from './state.js?v=20261001-build396';
-import { filterState } from './source-filters.js?v=20261001-build396';
+import { processingOverlay, processingOverlayLabel, resetFilterBtn, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, smoothingType, gaussianStrength, spatialPasses, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, folderBtn, demoBtn, prog, bar, progLabel } from './ui-shell.js?v=20261001-build397';
+import { sourceVolume } from './state.js?v=20261001-build397';
+import { filterState } from './source-filters.js?v=20261001-build397';
 export function setProcessingBusy(busyState,label='Processing',lockControls=true){
  if(processingOverlay){
   processingOverlay.classList.toggle('is-hidden',!busyState||!lockControls);
