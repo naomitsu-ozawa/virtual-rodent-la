@@ -3652,14 +3652,37 @@ work is heavy); a stop button against freezes; VR preparation included.
 Checks: lint, unit tests (9 new), boot-check, vr-gpu-prepare-check,
 progress-modal-check.
 
-## Handoff (after build 405)
+## Build 406 — progress modal: review fixes
 
-State: build 405 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+- Input blocking: the wheel is stopped by the modal's own non-passive
+  listener (a window-level non-passive wheel listener made every scroll on
+  Mac / iPad wait on the main thread, modal or not); key releases are no
+  longer swallowed (a key held when the modal appears would stay held).
+- 3D 中断 only while a 3D rebuild runs (threeDApplying): cancel3DRebuild
+  stops nothing else, so other 3D jobs (analysis, GPU volume preparation)
+  get the close fallback instead of a 中断 that does nothing; the handler
+  is called directly (a click on the disabled hidden button was ignored).
+- Load phases in the modal title (データを読み込み中 · 練習データを取得中 /
+  DICOMを確認中 / スライスを展開中 / GPUボリュームを準備中 / MPRキャッシュを作成中 /
+  3D断面キャッシュを作成中): these were only in the side panel, now behind
+  the modal.
+- progress-modal-check: real processing paths on the practice data —
+  adding Fast NLM 3D shows 'フィルターを適用中…' and ends with no job left
+  (7 s); adding the bone segment ran without a visible job (short);
+  set3DBusy without a rebuild shows no 中断 and ends cleanly; iPad-width
+  screenshot on a page laid out at 820 × 1180 (synthetic job).
+Untested headless (no WebGPU): a real 3D rebuild and its 中断.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+progress-modal-check.
+
+## Handoff (after build 406)
+
+State: build 406 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–405 in PR #85 (405: the central progress modal). Open: owner check of 403–405 on Quest / Mac / iPad.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–406 in PR #85 (405–406: the central progress modal). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
