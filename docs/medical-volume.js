@@ -441,6 +441,11 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
     let cp=u.camOrigin.xyz+dir*capT;let ctc=texCoord(cp);let capIndex=capSegmentIndex(ctc);
     if(capIndex>=0){
      var capColor=mix(u.segments[u32(capIndex)*2u+1u].rgb,vec3<f32>(1.0),0.22);
+     // build 410 (owner): analysis result colours on the section cap too (one lookup per pixel, only for a segment with results)
+     if(analysisOverlay[0]!=0u&&(analysisOverlay[analysisOverlay[0]]&(1u<<u32(capIndex)))!=0u){
+      let ov=analysisOverlayAt(ctc);
+      if(ov!=0u){capColor=mix(vec3<f32>(f32((ov>>16u)&255u),f32((ov>>8u)&255u),f32(ov&255u))/255.0,vec3<f32>(1.0),0.22);}
+     }
      if(u.sectionCap.z>0.5){
       var huv=vec2<f32>(ctc.x,ctc.y);
       if(u.section.x>1.5&&u.section.x<2.5){huv=vec2<f32>(ctc.x,ctc.z);}

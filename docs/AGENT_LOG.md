@@ -3760,14 +3760,29 @@ Checks: lint, unit tests, boot-check, analysis-project-check.
 Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
 analysis-project-check, progress-modal-check.
 
-## Handoff (after build 409)
+## Build 410 — WebGPU section cap shows the analysis result colours
 
-State: build 409 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (screenshot of the WebGPU view with a section): the colours should
+show on the cut face too, not only on the surfaces (and in VR / AR).
+- medical-volume.js cap: for a segment with results, analysisOverlayAt at
+  the cap point (region index texture, else the row search) replaces the
+  segment colour (same 22 % lift as the cap colour); the hatch still
+  applies. One lookup per cap pixel, none when there are no results.
+- tools/volume-shader-check.mjs: SECTION=1 (axial section at SECTION_Z,
+  SECTION_SIGN picks the kept side, cap 85 %).
+- Harness (phantom, ANALYSIS=1: bone sphere = one cyan region): no
+  section → 0 differing channels; SECTION_Z=0 kept side −1 → 15402 of
+  442368 channels differ (the sphere's cap turns cyan), +1 → 285.
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check.
+
+## Handoff (after build 410)
+
+State: build 410 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
