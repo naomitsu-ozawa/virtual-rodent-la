@@ -8,14 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build386';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build386';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build386';
-import { sceneState } from './state.js?v=20261001-build386';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build386';
-import { tr } from './i18n.js?v=20261001-build386';
-import { APP_BUILD } from './version.js?v=20261001-build386';
-import { wc, ww } from './ui-shell.js?v=20261001-build386';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build387';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build387';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build387';
+import { sceneState } from './state.js?v=20261001-build387';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build387';
+import { tr } from './i18n.js?v=20261001-build387';
+import { APP_BUILD } from './version.js?v=20261001-build387';
+import { wc, ww } from './ui-shell.js?v=20261001-build387';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -217,19 +217,26 @@ void main(){
   // build 386: tight loop for the common case (combined field, no slice, no cap). Same arithmetic as the general loop below
   // without its per-step slice / cap / brick / uniform-brick bookkeeping, the segment work done on the fetched vector and the
   // surface search testing the fetched classification directly (pixel-identical; practice data 609 -> 177 ms on SwiftShader)
+  // build 387: a hit that ends the ray (opaque segment) is searched and shaded after the loop, so the search does not run
+  // inside the divergent march; semi-transparent hits are handled inline as before. Same arithmetic, same order.
+  int hitIdx=-1;float hitLo=0.0;float hitHi=0.0;float hitF0=0.0;float hitF1=0.0;bool hitIso=false;
+  // per-ray constant: enabled channels as a mask (1 enabled, 0 not)
+  vec4 enM=vec4(0.0);for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5)enM[c]=1.0;}
   for(int iter=0;iter<4096;iter++){
    if(t>endT||acc.a>0.985)break;
    iters++;
-   vec3 tc0=texCoord(o+dir*t);
-   vec4 q=texture(clsTex,clamp(tc0,vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
+   vec4 q=texture(clsTex,clamp(texCoord(o+dir*t),vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
    if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
-   int idx=-1;float curF=-1.0;float maxF=-1e9;
-   for(int s=0;s<4;s++){int c=clsChan[s];if(c<0||segA[s].w<0.5)continue;float f=q[c]-0.5;maxF=max(maxF,f);if(idx<0&&f>=0.0){idx=s;curF=f;}}
+   vec4 fv=(q-0.5)*enM-(1.0-enM)*1e9;float maxF=max(max(fv.x,fv.y),max(fv.z,fv.w));
+   int idx=-1;float curF=-1.0;
+   for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&fv[c]>=0.0){idx=s;curF=fv[c];break;}}
    gQ=q;
    if(idx!=lastIndex){
     if(idx>=0){
      float lo=previousT;float hi=t;bool simple=diag==3||segC[idx].w>0.5;
-     float f1=segValue(idx);bool iso=refine==1&&((editMask>>idx)&1)==0&&prevValid&&prevF<0.0;
+     float f1=curF;bool iso=refine==1&&((editMask>>idx)&1)==0&&prevValid&&prevF<0.0;
+     float alpha=clamp(segA[idx].z,0.03,1.0);
+     if((1.0-acc.a)*alpha+acc.a>0.985&&!simple){hitIdx=idx;hitLo=lo;hitHi=hi;hitF0=prevF;hitF1=f1;hitIso=iso;lastIndex=idx;break;}
      int cIdx=clsChan[idx];
      if(!simple&&iso){float f0=prevF;
       for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
@@ -244,7 +251,6 @@ void main(){
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
-     float alpha=clamp(segA[idx].z,0.03,1.0);
      vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
@@ -252,6 +258,25 @@ void main(){
    }
    prevValid=true;prevF=idx>=0?curF:maxF;
    previousT=t;t+=step;
+  }
+  if(hitIdx>=0){
+   int idx=hitIdx;float lo=hitLo;float hi=hitHi;float f0=hitF0;float f1=hitF1;int cIdx=clsChan[idx];
+   if(hitIso){
+    for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
+     vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+     for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
+     if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
+   else for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+     for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
+     if(inside)hi=mid;else lo=mid;}
+   vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
+   vec3 n=gradientAt(tc);
+   vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
+   float diffuse=0.28+0.72*abs(dot(n,lightDir));
+   float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
+   float alpha=clamp(segA[idx].z,0.03,1.0);
+   vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+   float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
   }
  }else
  for(int iter=0;iter<4096;iter++){

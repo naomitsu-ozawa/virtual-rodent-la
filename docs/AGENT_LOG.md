@@ -3288,9 +3288,28 @@ is what the in-VR benchmark (build 385) will tell.
   cls paths): all 0.
 Checks: lint, 406 unit tests, boot-check, harness as above.
 
-## Handoff (after build 386)
+## Build 387 — VR: the ray-ending hit is searched after the march; vectorised segment test (identical, 177 → 145 ms)
 
-State: build 386 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Same bench as build 386 (practice data, bone + fat 100 %, SwiftShader ms).
+- A hit on an opaque segment (the contribution would end the ray) records
+  the bracket and breaks out of the march; the surface search and shading
+  run once after the loop, outside the divergent march. Semi-transparent
+  hits stay inline. Same arithmetic and order: 179 → 157 ms, 0 differing
+  channels.
+- Segment test on the fetched vector with an enabled-channel mask (max over
+  channels in one expression, first enabled segment by a short loop):
+  155 → 145 ms, 0 differing channels. An incremental texture coordinate
+  (origin + step × t) saved 6 % more but differed by rounding (379
+  channels): not taken.
+- Since build 385: 609 → 145 ms (−76 %), every configuration
+  pixel-identical (practice data; phantom specks + soft + edit box, bone
+  only, separate field, exact search).
+Checks: lint, 406 unit tests, boot-check, harness as above. Ready for the
+in-VR benchmark on the Quest.
+
+## Handoff (after build 387)
+
+State: build 387 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
