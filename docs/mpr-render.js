@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { wc, ww, planes, footer, state, wcVal, wwVal } from './ui-shell.js?v=20261001-build399';
-import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261001-build399';
-import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane, residentGpuUploadSeriesId, sourceMprWarmupToken } from './state.js?v=20261001-build399';
-import { analysisRunsContain, runsPlaneMask } from './run-length.js?v=20261001-build399';
-import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast, ensureMpr3DPreviewCache } from './mpr3d-overlay.js?v=20261001-build399';
-import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20261001-build399';
-import { request3DRender } from './scene3d.js?v=20261001-build399';
-import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet, currentFilterSignature } from './source-filters.js?v=20261001-build399';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20261001-build399';
-import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20261001-build399';
-import { hexRgb, formatCtValue, frameYield } from './utils.js?v=20261001-build399';
+import { wc, ww, planes, footer, state, wcVal, wwVal } from './ui-shell.js?v=20261001-build400';
+import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261001-build400';
+import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane, residentGpuUploadSeriesId, sourceMprWarmupToken } from './state.js?v=20261001-build400';
+import { analysisRunsContain, runsPlaneMask } from './run-length.js?v=20261001-build400';
+import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast, ensureMpr3DPreviewCache } from './mpr3d-overlay.js?v=20261001-build400';
+import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20261001-build400';
+import { request3DRender } from './scene3d.js?v=20261001-build400';
+import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet, currentFilterSignature } from './source-filters.js?v=20261001-build400';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20261001-build400';
+import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20261001-build400';
+import { hexRgb, formatCtValue, frameYield } from './utils.js?v=20261001-build400';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { latestOnlyRunner } from './latest-runner.js?v=20261001-build399';
+import { latestOnlyRunner } from './latest-runner.js?v=20261001-build400';
 export function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
 export function drawAnalysisOverlay(p,idx,ctx){
  if(!volumeAnalysisMode||!analysisRegions.length||!ctx)return;
