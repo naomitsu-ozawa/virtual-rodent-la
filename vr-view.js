@@ -8,14 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build394';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build394';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build394';
-import { sceneState } from './state.js?v=20261001-build394';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build394';
-import { tr } from './i18n.js?v=20261001-build394';
-import { APP_BUILD } from './version.js?v=20261001-build394';
-import { wc, ww } from './ui-shell.js?v=20261001-build394';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build395';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build395';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build395';
+import { sceneState } from './state.js?v=20261001-build395';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build395';
+import { tr } from './i18n.js?v=20261001-build395';
+import { APP_BUILD } from './version.js?v=20261001-build395';
+import { wc, ww } from './ui-shell.js?v=20261001-build395';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1006,7 +1006,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  }
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
- let autoF=0.5,autoFrames=0,autoAt=performance.now();
+ let autoF=1,autoFrames=0,autoAt=performance.now(); // build 395: starts at 100 % (72 fps there at the default size since build 387) and only drops when the frames say so
  let frames=0,fpsAt=performance.now(),fps=0;
  // build 385: benchmark — 12 phases (3 sizes × shown segments / bone only × 100 % / 50 %), 0.8 s settle + 2 s count each;
  // the state is restored afterwards and the result goes to the 画質 tab, the console, localStorage (vrl-vr-bench) and a
@@ -1302,7 +1302,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
      ui.autoLine=(ja?'自動: GPU ボリューム ':'auto: GPU volume ')+volMs.toFixed(1)+' ms · '+(ja?'本描画 ':'main ')+mainMs.toFixed(1)+' ms / '+(ja?'予算 ':'budget ')+budget.toFixed(1)+' ms → '+Math.round(autoF*100)+'%';
     }else{
      if(interval>budget*1.12)autoF=Math.max(AUTO_MIN,autoF*Math.min(0.92,Math.sqrt(budget/interval)));
-     else if(interval<budget*1.04)autoF=Math.min(AUTO_MAX,autoF*1.06);
+     else if(interval<budget*1.04)autoF=Math.min(AUTO_MAX,autoF*1.15); // build 395: 1.06 → 1.15 per half second (50 % → 100 % in about 2.5 s instead of 6)
      ui.autoLine=(ja?'自動（間隔）: ':'auto (interval): ')+interval.toFixed(1)+' ms / '+budget.toFixed(1)+' ms → '+Math.round(autoF*100)+'%';
     }
     ctrl.vol=ctrl.main=0;ctrlN.vol=ctrlN.main=0;autoFrames=0;autoAt=nowA;
@@ -1396,11 +1396,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const on=!!t.cls&&!(settings.clsDiag|0);
    material.uniforms.useCls.value=on?1:0;material.uniforms.clsTex.value=t.cls||dummyEdit;if(t.cls)material.uniforms.clsChan.value.set(...t.cls.userData.chan);
    // sphere tracing needs the classification grid (the distances describe its boundaries)
-   if(on&&!t.dist&&P.dist)t.dist=distTexture(t);
-   const onD=on&&!!t.dist&&!(settings.distDiag|0);
+   // build 395: the separate field texture (67 MB at 256³) is uploaded only when the combined texture cannot serve (four segments stored)
+   const comboOk=on&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3);
+   if(on&&!t.dist&&P.dist&&!comboOk)t.dist=distTexture(t);
+   const onD=on&&(comboOk||!!t.dist)&&!(settings.distDiag|0);
    material.uniforms.useDist.value=onD?1:0;material.uniforms.distTex.value=t.dist||dummyEdit;material.uniforms.voxelMin.value=Math.min(2*vd.halfExt[0]/t.dims[0],2*vd.halfExt[1]/t.dims[1],2*vd.halfExt[2]/t.dims[2]);
    // build 384: classification + combined distance in one RGBA texture (needs a free channel: at most three segments stored)
-   comboT=onD&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3)?t:null;comboMask=-1;refreshCombo();
+   comboT=onD&&comboOk?t:null;comboMask=-1;refreshCombo();
    refreshEdits();
   };
   // the alpha depends on which segments are shown: rebuilt (about 0.2 s at 256³) when that set changes
