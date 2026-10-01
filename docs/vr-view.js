@@ -8,15 +8,15 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build403';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build403';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build403';
-import { sceneState } from './state.js?v=20261001-build403';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build403';
-import { marchClassificationHit } from './vr-pick.js?v=20261001-build403';
-import { tr } from './i18n.js?v=20261001-build403';
-import { APP_BUILD } from './version.js?v=20261001-build403';
-import { wc, ww } from './ui-shell.js?v=20261001-build403';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build404';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build404';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build404';
+import { sceneState } from './state.js?v=20261001-build404';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build404';
+import { marchClassificationHit } from './vr-pick.js?v=20261001-build404';
+import { tr } from './i18n.js?v=20261001-build404';
+import { APP_BUILD } from './version.js?v=20261001-build404';
+import { wc, ww } from './ui-shell.js?v=20261001-build404';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -882,6 +882,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const computeHelpTarget=()=>helpTarget.copy(head).addScaledVector(headFwd,0.62).addScaledVector(headLeft,-0.34).add(new THREE.Vector3(0,-0.16,0));
  const placeHelpNow=()=>{readHead();computeHelpTarget();help.mesh.position.copy(helpTarget);help.mesh.lookAt(head);helpPlaced=true;helpMoving=false};
  const helpHit=c=>{if(!help.mesh.visible||help.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(help.mesh,false)[0]||null};
+ // build 404 (owner: the left-hand panel could not be pressed with the menu behind it): the nearest of the menu, the
+ // menu tag, the section panel and the help board along the ray wins (was a fixed order, menu first); {menu,badge,panel,help}
+ const boardHits=c=>{const all=[['menu',menuHit(c)],['badge',badgeHit(c)],['panel',panelHit(c)],['help',helpHit(c)]];let best=null;
+  for(const [k,x] of all)if(x&&(!best||x.distance<best[1].distance))best=[k,x];
+  const o={menu:null,badge:null,panel:null,help:null};if(best)o[best[0]]=best[1];return o};
  help.onDraw(()=>{
   const w=[],lines=section.on?L.helpSec.map(t=>t.replace('{h}',L.helpHold[settings.secHold|0])):L.helpBasic.slice();
   if(ui.open)lines[lines.length-1]=L.helpMenu;
@@ -1019,7 +1024,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   c.addEventListener('connected',e=>{c.userData.source=e.data;if(c.userData.source?.handedness==='left'){if(!ui.open)c.add(badge);c.add(panel.mesh)}});
   c.addEventListener('disconnected',()=>{fixPlane(c);c.userData.source=null});
   c.addEventListener('squeezestart',()=>{
-   if(ui.open&&!menuHeld&&menuHit(c)){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
+   if(ui.open&&!menuHeld&&boardHits(c).menu){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
    if(!helpHeld&&c.userData.helpHit){c.attach(help.mesh);helpHeld=c;helpMoving=false;settings.help=2;saveSettings(settings);pulse(c);menu.refresh();return}
    if(settings.secHold===0&&!c.userData.heldPlane){const pl=c.userData.target;if(pl){takePlane(pl,c);return}}
    grabbing.add(c);regrab();
@@ -1034,10 +1039,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // section panel (build 365), then the section in trigger mode (near, else
   // the one the ray points at; build 364)
   c.addEventListener('selectstart',()=>{
-   const h=menuHit(c);
+   const bd=boardHits(c),h=bd.menu;
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
-   if(badgeHit(c)){setMenuOpen(true);pulse(c);return}
-   const ph=panelHit(c);if(ph){const i=panel.hit(ph.uv);if(i>=0){panel.press(i);pulse(c);return}}
+   if(bd.badge){setMenuOpen(true);pulse(c);return}
+   const ph=bd.panel;if(ph){const i=panel.hit(ph.uv);if(i>=0){panel.press(i);pulse(c);return}}
    if(settings.secHold===1&&!c.userData.heldPlane){const pl=c.userData.target;if(pl)takePlane(pl,c)}
   });
   c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(c.userData.heldPlane&&settings.secHold===1)fixPlane(c)});
@@ -1268,8 +1273,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   let hover=-1,panelHover=-1,scroll=0;
   panel.mesh.visible=section.on&&planes.length>0;
   for(const c of controllers){
-   // ray priority: menu, menu tag, section panel (build 365), then a section frame (build 364)
-   const h=menuHit(c),bh=h?null:badgeHit(c),ph=h||bh?null:panelHit(c),hh=h||bh||ph?null:helpHit(c),rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;
+   // ray priority: the nearest board (menu, menu tag, section panel, help; build 404), then a section frame, then the volume
+   const bd=boardHits(c),h=bd.menu,bh=bd.badge,ph=bd.panel,hh=bd.help,rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;
    // build 397: the one frame this hand's button would take, the same rule the press uses;
    // build 399: the frame the laser points at wins, the nearest frame (guide line) only when the ray hits none
    const np=h||bh||ph||hh||rp||c.userData.heldPlane?null:nearestPlane(c);c.userData.target=h||bh||ph||hh||c.userData.heldPlane?null:c.userData.rayPlane||np;

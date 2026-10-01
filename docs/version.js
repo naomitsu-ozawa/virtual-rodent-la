@@ -1,4 +1,4 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-export const APP_VERSION='2026.10.01-403';
-export const APP_BUILD='403';
+export const APP_VERSION='2026.10.01-404';
+export const APP_BUILD='404';
