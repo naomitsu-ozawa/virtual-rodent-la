@@ -248,11 +248,62 @@ fn rawSegmentIndexFor(v:f32)->i32{
  }
  return -1;
 }
+// build 380: whether voxels x and x+1 of a row lie inside the segment's edit intervals (one binary search)
+fn editInsidePair(seg:u32,row:u32,x:u32)->vec2<bool>{
+ let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
+ let rowCount=dims.y*dims.z;
+ let base=2u+seg*(rowCount+1u);
+ let start=editRows[base+row];
+ let finish=editRows[base+row+1u];
+ var lo=start;var hi=finish;
+ loop{if(lo>=hi){break;}let mid=(lo+hi)/2u;if((editIntervals[mid]&65535u)<=x){lo=mid+1u;}else{hi=mid;}}
+ var in0=false;var in1=false;
+ if(lo>start){let x1=editIntervals[lo-1u]>>16u;in0=x<=x1;in1=x+1u<=x1;}
+ if(!in1&&lo<finish){in1=(editIntervals[lo]&65535u)==x+1u;}
+ return vec2<bool>(in0,in1);
+}
+// build 380: an excluded voxel must not leak into the neighbouring samples through the
+// trilinear interpolation (a deleted noisy blob stayed as a ghost cloud of face-aligned
+// slivers; the same since build 360). For a segment with an exclude-mode mask, a sample
+// that passed the raw range and its own voxel's mask is re-evaluated with the excluded
+// corner voxels of its interpolation cell replaced by air. Keep-mode (processed) masks
+// are unchanged.
+fn excludeMaskedInside(seg:u32,tc:vec3<f32>,a:vec4<f32>)->bool{
+ let dims=vec3<f32>(u.textureDims.xyz);
+ let q=tc*dims-vec3<f32>(0.5);
+ let f0=floor(q);let fr=q-f0;
+ let maxI=vec3<i32>(dims)-vec3<i32>(1);
+ var allowed=array<bool,8>(true,true,true,true,true,true,true,true);
+ var any=false;
+ for(var k:u32=0u;k<4u;k=k+1u){
+  let oy=i32(k&1u);let oz=i32(k>>1u);
+  let cy=clamp(i32(f0.y)+oy,0,maxI.y);let cz=clamp(i32(f0.z)+oz,0,maxI.z);
+  let cx=clamp(i32(f0.x),0,maxI.x);
+  let pair=editInsidePair(seg,u32(cz)*u32(dims.y)+u32(cy),u32(cx));
+  let a0=!pair.x;let a1=select(!pair.y,!pair.x,cx==maxI.x);
+  allowed[k*2u]=a0;allowed[k*2u+1u]=a1;
+  if(!a0||!a1){any=true;}
+ }
+ if(!any){return true;}
+ var acc=0.0;
+ for(var k:u32=0u;k<8u;k=k+1u){
+  let o=vec3<i32>(i32(k&1u),i32((k>>1u)&1u),i32(k>>2u));
+  let ci=clamp(vec3<i32>(f0)+o,vec3<i32>(0),maxI);
+  let w=select(1.0-fr.x,fr.x,o.x==1)*select(1.0-fr.y,fr.y,o.y==1)*select(1.0-fr.z,fr.z,o.z==1);
+  let ctc=(vec3<f32>(ci)+vec3<f32>(0.5))/dims;
+  acc=acc+w*select(-10000.0,huVoxel(ctc),allowed[k]);
+ }
+ return acc>=a.x&&acc<=a.y;
+}
 fn segmentIndexFor(v:f32,tc0:vec3<f32>)->i32{
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
+ let excludeMode=editRows[0]&~editRows[1];
  for(var s:u32=0u;s<4u;s=s+1u){
   let a=u.segments[s*2u];
-  if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){return i32(s);}
+  if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){
+   if((excludeMode&(1u<<s))!=0u&&!excludeMaskedInside(s,tc,a)){continue;}
+   return i32(s);
+  }
  }
  return -1;
 }

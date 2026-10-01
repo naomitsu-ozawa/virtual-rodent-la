@@ -30,8 +30,11 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
  const specks=new Set();if(specksOn){let seed=12345;const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff};
   while(specks.size<400){const x=Math.floor(20+rnd()*88),y=Math.floor(30+rnd()*68),z=Math.floor(16+rnd()*96);const cx=x-64,cy=y-64,cz=z-64;
    if(cx*cx/(52*52)+cy*cy/(40*40)+cz*cz/(56*56)<0.8&&cx*cx+cy*cy+cz*cz>26*26&&!(Math.abs(cy-20)<3))specks.add((z*N+y)*N+x)}}
+ // SPECKS=2: a noisy blob (x 24..56, y 70..100, z 40..80: HU uniform 100..700 per voxel, seeded); EDIT=2 then excludes exactly its voxels >= 300 (bone threshold)
+ const noise=new Map();if(specksOn===2){let seed=777;const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff};
+  for(let z=40;z<80;z++)for(let y=70;y<100;y++)for(let x=24;x<56;x++){const v=Math.floor(100+rnd()*600);noise.set((z*N+y)*N+x,v);if(v>=300)specks.add((z*N+y)*N+x)}}
  const hu=(x,y,z)=>{const cx=x-64,cy=y-64,cz=z-64;
-  let v=-1000;if(specks.has((z*N+y)*N+x))return 500;
+  let v=-1000;if(specksOn===2){const nv=noise.get((z*N+y)*N+x);if(nv!==undefined)return nv}if(specks.has((z*N+y)*N+x))return 500;
   if(cx*cx/(52*52)+cy*cy/(40*40)+cz*cz/(56*56)<1)v=40;
   if(cx*cx+cy*cy+cz*cz<22*22)v=900;
   if(Math.abs(cy-20)<1&&Math.abs(cx)<36&&Math.abs(cz)<36)v=900;

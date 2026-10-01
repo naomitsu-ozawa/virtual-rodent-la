@@ -3111,9 +3111,35 @@ the app report what happened on the device:
   cleared with the edits.
 Checks: lint, 405 unit tests, boot-check.
 
-## Handoff (after build 379)
+## Build 380 — deleted voxels no longer leak into neighbouring samples (ghost cloud after a delete)
 
-State: build 379 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (iPad, build 379, screenshot): after lasso select + delete of a
+noisy blob, a sparse boxy cloud stays where the blob was; status bar
+"編集 0:exclude 15449区間" (the exclusion reached the GPU). Reproduced
+headlessly: SPECKS=2 adds a blob of random HU 100..700 and EDIT=2 excludes
+exactly its voxels >= 300. Build 360 shows the same cloud after the
+exclusion (so it was not introduced on this branch; the owner remembers it
+fixed — whatever fixed it then was not in main's shader). Cause: the edit
+mask is tested at the sample's own voxel, but the trilinear HU of a sample
+in an allowed cell next to an excluded high-HU voxel is still in range, so
+each excluded voxel leaves face-aligned slivers (the boxy look).
+- Fix (shader, exclude-mode masks only, i.e. lasso / region deletes and
+  cuts; keep-mode processed segments unchanged): a sample that passes the
+  raw range and its own voxel's mask is re-evaluated with the excluded
+  corner voxels of its interpolation cell replaced by air (editInsidePair:
+  one binary search per corner row for x and x+1, so 4 searches; the 8
+  nearest-voxel HU loads only when a corner is excluded).
+- Harness vs build 360: noisy blob excluded — the bone ghost is gone (the
+  blob's sub-threshold voxels still show as soft tissue, which is right);
+  box exclusion — the hatched shell on the plate is gone, cut face clean;
+  no edit — 36 channels (diff 1); specks — 68 channels. HU fetches with
+  the blob edit 25.9 per pixel (20.1 without an edit).
+Checks: lint, 405 unit tests, boot-check, harness as above, region
+colouring texture vs row search byte-identical.
+
+## Handoff (after build 380)
+
+State: build 380 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
