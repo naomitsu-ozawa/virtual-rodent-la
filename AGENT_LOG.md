@@ -3326,14 +3326,76 @@ mode) — the Quest-browser comfort item (overnight task 2), not yet
 addressed; the editAllows binary search per sample on a 187k-interval
 mask is the likely cost (build 373 note: bit-mask texture).
 
-## Handoff (after build 388)
+## Build 389 — VR: the tight loop also serves rays with a section (slice, cut face); benchmark with section phases
 
-State: build 388 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: the benchmark is doubtful — real use is section work, and fps is
+lower there than the plain-display numbers. Correct: the tight loop of
+builds 386–387 was used only for rays without a slice or cut face, so a
+section sent every ray through the old general loop.
+- Harness: SECTION=1 puts one section plane through the centre (cut face
+  and CT slice at 70 % with tint). Practice data, bone + fat 100 %: with
+  the section 505 ms on build 388 vs 153 without.
+- Shader: a second copy of the tight march with the slice and cut-face
+  events (same order as the general loop: slices up to t + step, then the
+  cap, then the sample), chosen per ray; rays without events keep the
+  first loop. One loop with a per-ray guard around the event code made
+  SwiftShader's compiled loop twice as slow for every ray (352 ms without
+  a section), so the two copies stay separate. Section 505 → 258 ms, no
+  section 153 → 162 (noise); pixel-identical in every configuration
+  (practice data with and without section; phantom specks + soft + edit
+  box, exact search, separate field, each with the section).
+- In-VR benchmark: 16 phases = 16.5 / 30 cm × section off / on × shown /
+  bone only × 100 / 50 %; a temporary plane through the centre is added
+  when none exists and removed afterwards; "断面なし / 断面あり" lines.
+Checks: lint, 406 unit tests, boot-check, harness as above.
+
+## Build 390 — Quest benchmark of build 389 with section phases (log only)
+
+Owner's in-VR benchmark (build 389, 72 Hz, shown = bone + soft + fat):
+- 16.5 cm 断面なし: shown 100 % 64 / 50 % 72 · bone 72 / 72
+- 16.5 cm 断面あり: shown 100 % 72 / 50 % 72 · bone 72 / 72
+- 30 cm 断面なし: shown 100 % 38 / 50 % 61 · bone 72 / 72
+- 30 cm 断面あり: shown 100 % 65 / 50 % 71 · bone 72 / 72
+Reading: with a section the march for rays with slice / cut-face events
+is now as fast as without, and a section clips half the volume away, so
+"断面あり" comes out above "断面なし". The "断面なし" figures are below the
+build 387 run (64 vs 72 at 16.5 cm, 38 vs 57 at 30 cm, 61 vs 72 at 50 %):
+the device was slower in this run as a whole (thermal state after long
+use is the likely reason), so compare rows within one run only.
+Still visible in the screenshot: the Quest browser's 2D page renders the
+WebGPU volume at 2 fps ("編集 2:keep 187049区間").
+
+## Build 391 — in-VR benchmark emulates real use (sweeping section, turning volume, bone + fat set)
+
+Owner (build 389/390 bench): diverges from reality; bone + fat was
+missing; the bench should operate the volume, not show it still.
+- Every phase now runs with a section plane sweeping ±0.5 of the volume
+  along its normal at 0.4 Hz and the volume turning at 0.5 rad/s (a
+  temporary plane is added when fewer than four exist, else the first
+  plane is moved and put back). Segment sets: as shown, bone + fat (soft
+  and lung hidden; skipped when fat is not an active segment), bone only.
+  12 phases, 16.5 / 30 cm × 100 / 50 %, about 35 s. Result lines
+  "16.5 cm 断面を動かしながら: 表示中 … · 骨+脂肪 … · 骨 …".
+Checks: lint, 406 unit tests, boot-check.
+
+## Build 392 — Quest benchmark of build 391 (log only)
+
+Owner's in-VR benchmark (build 391, sweeping section + turning volume):
+every one of the 12 conditions at 72 fps (16.5 / 30 cm × shown, bone +
+fat, bone × 100 / 50 %); bone + fat comfortable in use. Also: VR mode is
+noticeably more comfortable than AR (passthrough), which the owner had
+been using for the tests so far — the passthrough compositing takes part
+of the frame budget on the Quest. Goal D closed for the owner's use
+(section work at the default size and at 30 cm).
+
+## Handoff (after build 392)
+
+State: build 392 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 380 (PR #78 merged 2026-10-01); builds from 381 go to a new PR.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 388 (PR #80 merged 2026-10-01); builds from 389 go to a new PR.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
@@ -3359,8 +3421,9 @@ B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
 C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
 D. Goal (owner): VR auto resolution held at 100 % at the normal size —
-   met in build 387 (Quest bench: 72 fps at the 16.5 cm default with bone +
-   soft + fat at 100 %; 30 cm 57 fps, 50 cm 39 fps). Builds 368–387: fewer
+   met: build 391 bench (section sweeping, volume turning, bone + fat /
+   shown / bone, 16.5 and 30 cm, 100 and 50 %) all at 72 fps; AR
+   (passthrough) is slower than VR mode. Builds 368–387: fewer
    fetches, distance field (now in the classification alpha, one fetch per
    step), tight ray loop, search after the march. Open: larger sizes at
    100 % (non-exact options: step 1.0 voxel, two search iterations;
