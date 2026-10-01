@@ -43,9 +43,12 @@ const r=await pg.evaluate(async()=>{
  // deletion linked: exclude half of the first box, trim the results to the edit
  const refs=ops.snapshotAnalysisRegionsForSegment('bone'),es=sg.segmentEditState.bone;es.excludeRuns=box(200,204,200,209,200,219);
  await ops.trimAnalysisRegionsAfterEdit('bone',refs);const trimmed=st.analysisRegions.map(r=>r.voxels);es.excludeRuns=null;
- return{before,cleared,after,trimmed,files:Object.keys(binaries).filter(k=>k.startsWith('analysis/')),bytes:bytes.byteLength};
+ // VR: the visible result goes into the region index (one colour), and the programs with VRL_REGIONS compile
+ const vr=await im('vr-view.js');const P=await vr.prepareVrData();const g=await vr.prepareVrGpu(P,'vr');
+ const reg={data:!!P.region?.data,colors:P.region?.colors?.length||0,list:P.region?.list?.length||0,set:P.region?.data?P.region.data.reduce((a,x)=>a+(x?1:0),0):0,gpu:!!g,programs:g?.warm?.length||0};
+ return{before,cleared,after,trimmed,reg,files:Object.keys(binaries).filter(k=>k.startsWith('analysis/')),bytes:bytes.byteLength};
 });
 console.log(JSON.stringify(r));
-const ok=!r.error&&r.cleared===0&&JSON.stringify(r.before)===JSON.stringify(r.after)&&r.files.length===2&&JSON.stringify(r.trimmed)==='[1000,125]';
+const ok=!r.error&&r.cleared===0&&JSON.stringify(r.before)===JSON.stringify(r.after)&&r.files.length===2&&JSON.stringify(r.trimmed)==='[1000,125]'&&r.reg.data&&r.reg.colors===1&&r.reg.list===1&&r.reg.gpu;
 await b.close();srv.close();
 if(errors.length||!ok){console.error('analysis project check FAILED');process.exit(1)}console.log('analysis project check OK');

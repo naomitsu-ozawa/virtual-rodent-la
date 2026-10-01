@@ -8,7 +8,8 @@ import { chromium } from '@playwright/test';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 const fileA=process.argv[2]||'docs/vr-view.js',fileB=process.argv[3]||null,outDir=process.argv[4]||'.';
 const grab=(src,name)=>{const m=src.match(new RegExp('const '+name+'=`([\\s\\S]*?)`;'));if(!m)throw new Error('shader '+name+' not found');return m[1]};
-const DEFS=(process.env.DEFINES||'').split(',').filter(Boolean).map(d=>'#define '+d+'\n').join('');
+// REGION=1 (build 409): a synthetic analysis result — colour index 1 on the half x < N/2 of the volume (cyan), with VRL_REGIONS
+const DEFS=[...(process.env.DEFINES||'').split(',').filter(Boolean),...(process.env.REGION?['VRL_REGIONS']:[])].map(d=>'#define '+d+'\n').join('');
 const load=f=>{const s=fs.readFileSync(f,'utf8');return{vs:grab(s,'vertexShader'),fs:DEFS+grab(s,'fragmentShader')}};
 const counting=code=>code
  .replace('out highp vec4 outColor;','out highp vec4 outColor;')
@@ -57,6 +58,8 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  if(!cached)for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const v=hu(x,y,z),o=((z*N+y)*N+x)*C;for(let s=0;s<3;s++){const [a,c]=SEG[s],d=Math.min(v-a,c-v);cls[o+s]=(s===0&&excluded(x,y,z))?0:Math.max(0,Math.min(255,Math.round(127.5+d/2048*255)))}}
  const clsTex=new THREE.Data3DTexture(cls,N,N,N);clsTex.format=THREE.RGBAFormat;clsTex.type=THREE.UnsignedByteType;clsTex.minFilter=clsTex.magFilter=THREE.LinearFilter;clsTex.unpackAlignment=1;clsTex.needsUpdate=true;
  // HU path edit mask (editAllows): channel 0 = 255 where bone is allowed
+ const regData=new Uint8Array(N*N*N);for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N/2;x++)regData[(z*N+y)*N+x]=1;
+ const regionTex=new THREE.Data3DTexture(regData,N,N,N);regionTex.format=THREE.RedFormat;regionTex.type=THREE.UnsignedByteType;regionTex.minFilter=regionTex.magFilter=THREE.NearestFilter;regionTex.unpackAlignment=1;regionTex.needsUpdate=true;
  const editData=new Uint8Array(N*N*N*4);for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const o=((z*N+y)*N+x)*4;editData[o]=excluded(x,y,z)?0:255;editData[o+1]=255;editData[o+2]=255;editData[o+3]=255}
  const editTex=new THREE.Data3DTexture(editData,N,N,N);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.minFilter=editTex.magFilter=THREE.LinearFilter;editTex.unpackAlignment=1;editTex.needsUpdate=true;
  const dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
@@ -68,7 +71,7 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  const half=1.65,scale=3.3/N,step=scale*0.85;
  const uniforms=()=>({vol:{value:vol},bricks:{value:bricks},halfExt:{value:new THREE.Vector3(half,half,half)},texDims:{value:new THREE.Vector3(N,N,N)},brickDims:{value:new THREE.Vector3(bx,bx,bx)},
   stepSize:{value:step},diag:{value:0},calib:{value:new THREE.Vector3(1,INTERCEPT,0)},segA:{value:[new THREE.Vector4(seg.bone[0],seg.bone[1],segOp.bone,1),new THREE.Vector4(seg.soft[0],seg.soft[1],segOp.soft,1),new THREE.Vector4(seg.fat[0],seg.fat[1],segOp.fat,(fat||useVol)?1:0),new THREE.Vector4()]},segC:{value:[new THREE.Vector4(0.91,0.86,0.72,0),new THREE.Vector4(0.85,0.55,0.42,0),new THREE.Vector4(0.95,0.85,0.35,0),new THREE.Vector4()]},
-  cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(40,400)},sliceAir:{value:air},sliceVol:{value:vol},useCls:{value:0},clsTex:{value:clsTex},clsChan:{value:new THREE.Vector4(0,1,2,-1)},editMask:{value:edit?1:0},editTex:{value:edit?editTex:dummy},distInCls:{value:distCls},refine:{value:refine},distTex:{value:distTex},useDist:{value:0},voxelMin:{value:2*half/N}});
+  cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(40,400)},sliceAir:{value:air},sliceVol:{value:vol},useCls:{value:0},clsTex:{value:clsTex},clsChan:{value:new THREE.Vector4(0,1,2,-1)},editMask:{value:edit?1:0},editTex:{value:edit?editTex:dummy},regionTex:{value:regionTex},regionC:{value:Array.from({length:14},(_,i)=>new THREE.Vector3(...(i?[1,1,1]:[0,0.85,1])))},distInCls:{value:distCls},refine:{value:refine},distTex:{value:distTex},useDist:{value:0},voxelMin:{value:2*half/N}});
  const scene=new THREE.Scene();const cam=new THREE.PerspectiveCamera(45,1,0.01,50);if(useVol)cam.position.set(2.6,1.4,3.6);else cam.position.set(3.2,2.1,4.0);cam.lookAt(0,0,0);cam.updateMatrixWorld();
  const rtColor=new THREE.WebGLRenderTarget(W,H,{depthBuffer:false}),rtCount=new THREE.WebGLRenderTarget(W,H,{depthBuffer:false,type:THREE.FloatType});
  const run=(sh,mode,count)=>{

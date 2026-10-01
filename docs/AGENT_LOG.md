@@ -3731,14 +3731,43 @@ Unchanged: any segment setting change (CT range, filters of the segment)
 still clears all results (they no longer match the segment).
 Checks: lint, unit tests, boot-check, analysis-project-check.
 
-## Handoff (after build 408)
+## Build 409 — VR / AR: analysis result colours on the volume and the slices; read-only list with volumes
 
-State: build 408 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+- prepareVrData: region index (buildRegionIndex) on the edit-mask grid —
+  one byte per voxel, 0 none, 1..14 = the distinct colours of the visible
+  regions in list order (at most 14, a later region wins on overlap),
+  rasterised with gpuRunsForTexture like the edit mask; P.region =
+  {dims, data, colors, list}. vrDataKey includes the visible regions
+  (id, colour, voxels), so changed results are prepared again.
+- Shader: regionColor(p, base) replaces the segment colour where a colour
+  is chosen — surface hits (general loop, both tight loops, the post-march
+  hit; sampled 0.75 voxel inside the surface), the cut face, the slice
+  tint — never per step. Compiled only with VRL_REGIONS (set when the data
+  has results; all variants inherit the base defines): the uniform-branch
+  version cost about 14 % on SwiftShader even without results.
+- Textures: R8 nearest; prepared in prepareVrGpu (initTexture, compiled
+  with the define) and reused by the session; disposed with the edits.
+- Menu: sixth tab 解析 (tabs share the width): colour swatch, segment,
+  mm³ per region, 10 per page with ◀ ▶, total. Read only.
+- Harness REGION=1 (synthetic index: half the volume, cyan, VRL_REGIONS):
+  no results → pixel-identical to 408 in every variant (general, combined,
+  noEvents, with a section), same fetch counts and time; with the region
+  35790 of 442368 channels differ (the coloured half), SwiftShader
+  710 → 823 ms (+16 %, only while results are shown in VR).
+- analysis-project-check also prepares VR after restoring: region index
+  built (1 colour, 1 entry, 100 voxels on the 256 grid), GPU preparation
+  with VRL_REGIONS compiles (7 materials).
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+analysis-project-check, progress-modal-check.
+
+## Handoff (after build 409)
+
+State: build 409 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to

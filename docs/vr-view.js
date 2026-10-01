@@ -8,16 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build408';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build408';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build408';
-import { sceneState } from './state.js?v=20261001-build408';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build408';
-import { marchClassificationHit } from './vr-pick.js?v=20261001-build408';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261001-build408';
-import { tr } from './i18n.js?v=20261001-build408';
-import { APP_BUILD } from './version.js?v=20261001-build408';
-import { wc, ww } from './ui-shell.js?v=20261001-build408';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build409';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build409';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build409';
+import { sceneState, analysisRegions } from './state.js?v=20261001-build409';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build409';
+import { marchClassificationHit } from './vr-pick.js?v=20261001-build409';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261001-build409';
+import { tr } from './i18n.js?v=20261001-build409';
+import { APP_BUILD } from './version.js?v=20261001-build409';
+import { wc, ww } from './ui-shell.js?v=20261001-build409';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -92,6 +92,20 @@ vec2 hitBox(vec3 o,vec3 d){
  return vec2(max(lo.x,max(lo.y,lo.z)),min(hi.x,min(hi.y,hi.z)));
 }
 vec3 texCoord(vec3 p){return vec3(p.x/(2.0*halfExt.x)+0.5,0.5-p.y/(2.0*halfExt.y),p.z/(2.0*halfExt.z)+0.5);}
+// analysis results (build 409): colour index per voxel (0 none, 1..14 = regionC), read only where a colour is
+// chosen (surface hit, cut face, slice tint), never per step; the hit is sampled a little inside the surface.
+// Compiled only with VRL_REGIONS (a session without results runs the shader as before: the branch alone cost
+// about 14 % on SwiftShader)
+#ifdef VRL_REGIONS
+uniform sampler3D regionTex;
+uniform vec3 regionC[14];
+vec3 regionColor(vec3 p,vec3 base){
+ int i=int(texture(regionTex,clamp(texCoord(p),vec3(0.0),vec3(0.999999))).r*255.0+0.5);
+ return i>0&&i<=14?regionC[i-1]:base;
+}
+#else
+vec3 regionColor(vec3 p,vec3 base){return base;}
+#endif
 float huAt(vec3 tc0){
  vec3 tc=clamp(tc0,vec3(0.0),vec3(0.999999));
  vec2 q=texture(vol,tc).rg*255.0;
@@ -182,7 +196,7 @@ vec4 sliceColor(vec3 p){
  float hu=sliceHU(p),a=smoothstep(sliceAir,sliceAir+10.0,hu);
  if(a<=0.0)return vec4(0.0);
  float g=clamp((hu-(sliceWindow.x-0.5*sliceWindow.y))/max(sliceWindow.y,1e-3),0.0,1.0);
- if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return vec4(mix(vec3(g),segC[si].rgb,sliceTint),a);}
+ if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return vec4(mix(vec3(g),regionColor(p,segC[si].rgb),sliceTint),a);}
  return vec4(vec3(g),a);
 }
 vec3 gradientAt(vec3 tc){
@@ -270,7 +284,7 @@ void main(){
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
-     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -289,11 +303,11 @@ void main(){
     float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
    }
    if(capT>=0.0){
-    int ci=segmentIndexAt(texCoord(o+dir*capT));capT=-1.0;
+    vec3 cp=o+dir*capT;int ci=segmentIndexAt(texCoord(cp));capT=-1.0;
     if(ci>=0){
      vec3 n=cutPlanes[capPlane].xyz;vec3 viewDir=-dir;vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
-     vec3 lit=mix(segC[ci].rgb,vec3(1.0),0.22)*diffuse;
+     vec3 lit=mix(regionColor(cp,segC[ci].rgb),vec3(1.0),0.22)*diffuse;
      float contribution=(1.0-acc.a)*clamp(segA[ci].z,0.03,1.0);acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
      lastIndex=ci;previousT=t;t+=step;continue;
     }
@@ -324,7 +338,7 @@ void main(){
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
-     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -350,7 +364,7 @@ void main(){
    float diffuse=0.28+0.72*abs(dot(n,lightDir));
    float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
    float alpha=clamp(segA[idx].z,0.03,1.0);
-   vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+   vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
    float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
   }
 #ifndef VRL_NO_GENERAL
@@ -365,11 +379,11 @@ void main(){
   }
   if(capT>=0.0){
    // cut face: flat, segment colour lightened, lit by the plane normal
-   int ci=segmentIndexAt(texCoord(o+dir*capT));capT=-1.0;
+   vec3 cp=o+dir*capT;int ci=segmentIndexAt(texCoord(cp));capT=-1.0;
    if(ci>=0){
     vec3 n=cutPlanes[capPlane].xyz;vec3 viewDir=-dir;vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
     float diffuse=0.28+0.72*abs(dot(n,lightDir));
-    vec3 lit=mix(segC[ci].rgb,vec3(1.0),0.22)*diffuse;
+    vec3 lit=mix(regionColor(cp,segC[ci].rgb),vec3(1.0),0.22)*diffuse;
     float contribution=(1.0-acc.a)*clamp(segA[ci].z,0.03,1.0);acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     lastIndex=ci;previousT=t;t+=step;continue;
    }
@@ -419,7 +433,7 @@ void main(){
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
      float alpha=clamp(segA[idx].z,0.03,1.0);
-     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -662,7 +676,24 @@ export function vrDataKey(){
  const v=gpuVolumeTarget();if(!v?.series)return '';
  const segs=SEGMENT_PRESET_ORDER.map(k=>{const g=segmentState[k]||{},st=segmentEditState[k]||{};
   return [g.active?1:0,g.enabled?1:0,g.min,g.max,g.opening,g.closing,g.holeFill?1:0,g.minComponent,g.surfaceMm,g.thicknessMm,st.revision|0,idOf(st.baseRuns),idOf(st.keepRuns),idOf(st.excludeRuns)].join(',')});
- return [v.series.id,v.filterSignature||'',...segs].join('|');
+ // build 409: the shown analysis results (colour, voxels) are part of the prepared data
+ const regions=shownRegions().map(r=>r.id+':'+r.color+':'+r.voxels).join(',');
+ return [v.series.id,v.filterSignature||'',...segs,regions].join('|');
+}
+// analysis results for VR (build 409): the visible regions; colour index per voxel on the given grid (0 none,
+// 1..14 = the distinct colours in list order, at most 14; a later region wins where two overlap), mapped with
+// the same gpuRunsForTexture as the edit mask; the list (colour, segments, mm³) is shown read-only in the menu
+const shownRegions=()=>analysisRegions.filter(r=>r.visible!==false&&r.runsBySlice&&r.voxels>0);
+function buildRegionIndex(dims){
+ const v=gpuVolumeTarget(),regions=shownRegions();if(!v||!regions.length)return{data:null,colors:[],list:[]};
+ const [w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],colors=[],data=new Uint8Array(w*h*d),list=[];
+ for(const r of regions){
+  const c=Number(r.color)>>>0;let k=colors.indexOf(c);if(k<0){if(colors.length>=14)continue;colors.push(c);k=colors.length-1}
+  const runs=gpuRunsForTexture(r.runsBySlice,sourceDims,dims,{dilate:0});
+  for(let z=0;z<d;z++){const rec=runs?.[z];if(!rec?.length)continue;for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;data.fill(k+1,o+rec[i+1],o+rec[i+2]+1)}}
+  list.push({color:c,mm3:r.mm3,segmentKeys:[...(r.segmentKeys||[])]});
+ }
+ return{data:colors.length?data:null,colors,list};
 }
 // classification bytes for a grid of at most 256 (see segmentIndexAt)
 function buildClsData(t,calibration,edit){
@@ -691,17 +722,18 @@ const makeVolumeTextures=d=>{
  b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
  return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null,dist:null,combo:null,comboMask:-1};
 };
+const makeRegionTexture=P=>{const g=P.region;if(!g?.data)return null;const t=new THREE.Data3DTexture(g.data,...g.dims);t.format=THREE.RedFormat;t.type=THREE.UnsignedByteType;t.minFilter=t.magFilter=THREE.NearestFilter;t.unpackAlignment=1;t.needsUpdate=true;return t};
 const makeEditTexture=P=>{if(!P.edit.data)return null;const e=new THREE.Data3DTexture(P.edit.data,...P.edit.dims);e.format=THREE.RGBAFormat;e.type=THREE.UnsignedByteType;e.unpackAlignment=1;return e};
 const makeComboTexture=(data,dims)=>{const x=new THREE.Data3DTexture(data,...dims);x.format=THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;return x};
 // shown-segment mask for the combined texture's alpha (segMode 2 = hidden)
 const shownMask=()=>{let mask=0;for(let i=0;i<4;i++){const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];if(seg?.active&&seg?.enabled&&segMode[key]!==2)mask|=1<<i}return mask};
 // build 393: shader variants (preprocessor guards in fragmentShader) sharing one uniforms object:
 // combined = without the general loop (used when the combined field is in use), noEvents = also without the slice / cut-face loop (no section)
-const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...defs};return m};return{full:base,combined:mk({VRL_NO_GENERAL:''}),noEvents:mk({VRL_NO_GENERAL:'',VRL_NO_EVENTS:''})}};
+const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...base.defines,...defs};return m};return{full:base,combined:mk({VRL_NO_GENERAL:''}),noEvents:mk({VRL_NO_GENERAL:'',VRL_NO_EVENTS:''})}};
 const rayMaterialOf=m=>{const r=m.clone();r.uniforms=m.uniforms;r.defines={...m.defines};r.blending=THREE.NoBlending;r.transparent=false;return r};
 const volumeUniforms=(vd,full,settings)=>({vol:{value:full.v},bricks:{value:full.b},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
  stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
- cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
+ cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
 // ---- GPU preparation before the session (build 393, after the Codex branch's idea) ----
 // The renderer (an XR-compatible context), the textures of the grid in use, the
 // combined classification + field texture for the shown segments, the edit mask
@@ -717,20 +749,20 @@ export async function prepareVrGpu(P,mode='vr',settings=loadSettings()){
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
  document.body.appendChild(renderer.domElement);
  const gl=renderer.getContext(),t0=performance.now(),times={};
- const assets={key:P.key,mode,renderer,full:null,half:null,edit:null,warm:[],times};
+ const assets={key:P.key,mode,renderer,full:null,half:null,edit:null,region:null,warm:[],times};
  try{
   try{await gl.makeXRCompatible?.()}catch(e){console.warn('makeXRCompatible before the session failed (setSession will retry):',e)}
   const vd=P.vd,full=makeVolumeTextures(vd);assets.full=full;
   const half=P.half?makeVolumeTextures(P.half):null;assets.half=half;
   const useHalf=(settings.data|0)===1&&!!half,t=useHalf?half:full;
   if(Math.max(...t.dims)<=256&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3)){const mask=shownMask();const data=combineClassificationDistance(P.cls,P.dist,mask);if(data){t.combo=makeComboTexture(data,t.dims);t.comboMask=mask}}
-  assets.edit=makeEditTexture(P);
-  for(const x of [full.v,full.b,half?.v,half?.b,t.combo,assets.edit].filter(Boolean))renderer.initTexture(x);
+  assets.edit=makeEditTexture(P);assets.region=makeRegionTexture(P);
+  for(const x of [full.v,full.b,half?.v,half?.b,t.combo,assets.edit,assets.region].filter(Boolean))renderer.initTexture(x);
   times.upload=performance.now()-t0;const t1=performance.now();
   // compile every program the session can use: the three volume variants, their offscreen (no blending) copies and the composite
   const u=volumeUniforms(vd,full,settings),dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
-  u.clsTex.value=dummy;u.editTex.value=dummy;u.distTex.value=dummy;
-  const base=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:u});
+  u.clsTex.value=dummy;u.editTex.value=dummy;u.distTex.value=dummy;u.regionTex.value=dummy;
+  const base=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:u,defines:P.region?.data?{VRL_REGIONS:''}:{}});
   base.transparent=true;base.depthWrite=false;base.blending=THREE.CustomBlending;base.blendSrc=THREE.OneFactor;base.blendDst=THREE.OneMinusSrcAlphaFactor;
   const vars=materialVariants(base),mats=[vars.full,vars.combined,vars.noEvents,rayMaterialOf(vars.full),rayMaterialOf(vars.combined),rayMaterialOf(vars.noEvents),
    new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:compositeVertex,fragmentShader:compositeFragment,side:THREE.BackSide,toneMapped:false,depthWrite:false,transparent:true,blending:THREE.CustomBlending,blendSrc:THREE.OneFactor,blendDst:THREE.OneMinusSrcAlphaFactor,uniforms:{img:{value:null},invSize:{value:new THREE.Vector2(1,1)},halfExt:{value:new THREE.Vector3(...vd.halfExt)}}})];
@@ -749,7 +781,7 @@ export async function prepareVrGpu(P,mode='vr',settings=loadSettings()){
 export function disposeGpuPrepared(){
  const g=gpuPrepared;if(!g)return;gpuPrepared=null;
  for(const t of [g.full,g.half])if(t){t.v.dispose();t.b.dispose();t.combo?.dispose()}
- g.edit?.dispose();g.warm.forEach(m=>m.dispose());g.renderer.dispose();g.renderer.domElement.remove();
+ g.edit?.dispose();g.region?.dispose();g.warm.forEach(m=>m.dispose());g.renderer.dispose();g.renderer.domElement.remove();
 }
 export function vrReady(){return !!prepared&&prepared.key===vrDataKey()}
 const maxTexture3D=()=>{try{const c=document.createElement('canvas'),g=c.getContext('webgl2');const m=g?.getParameter(g.MAX_3D_TEXTURE_SIZE)||2048;g?.getExtension('WEBGL_lose_context')?.loseContext();return m}catch{return 2048}};
@@ -772,7 +804,8 @@ export async function prepareVrData(onProgress=()=>{}){
   const small=half||vd,cls=buildClsData(small,vd.calibration,edit);times.cls=performance.now()-t0;
   onProgress({phase:'dist',done:0,total:1});await tick();t0=performance.now();
   const dist=cls?await buildDistanceBytes(cls,small.dims,(a,b)=>onProgress({phase:'dist',done:a,total:b})):null;times.dist=performance.now()-t0;
-  return{key,vd,half,edit,cls,dist,times};
+  let region;try{region={dims:editDims,...buildRegionIndex(editDims)}}catch(e){console.error(e);region={dims:editDims,data:null,colors:[],list:[]}}
+  return{key,vd,half,edit,cls,dist,region,times};
  })();
  preparing={key,promise};
  try{prepared=await promise;return prepared}finally{if(preparing?.promise===promise)preparing=null}
@@ -831,13 +864,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
- const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
+ const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細','解析'],anT:'解析結果（体積）',anNone:'解析結果はありません（2D/3D画面の体積解析で作成し、表示中のものがVRに入ります）',anTotal:'合計',anPage:'ページ',win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：最後に持った断面（一覧で色付き）を法線方向に動かします','つかむ枠は手の色で光ります（右＝オレンジ・左＝紫、レーザーの枠が優先）'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    handR:'右',handL:'左',secHelp:['光った枠をグリップを押す間だけ持てます（番号の下＝最後に持った手）','光った枠をトリガーを押す間だけ持てます（番号の下＝最後に持った手）'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
-  :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
+  :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details','Analysis'],anT:'Analysis results (volume)',anNone:'No analysis results (made with the volume analysis on the page; the visible ones come into VR)',anTotal:'Total',anPage:'Page',win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the plane held last (highlighted in the list) on its normal','The frame you will grab glows in the hand colour (right orange, left violet; laser wins)'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    handR:'R',handL:'L',secHelp:['Hold grip while the frame glows (under the number: last hand)','Hold the trigger while the frame glows (under the number: last hand)'],secOff:'Turn it on here or press B/Y',
@@ -846,7 +879,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volPick=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volPick=null,regionList=[],volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  // segMode (normal / simple / hidden per segment) lives at module level since build 393 (shownMask); it persists across sessions
@@ -1123,7 +1156,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   label(X,52,L.title,{bold:true,size:36,color:'#fff'});
   btn(780,18,200,L.close,false,()=>setMenuOpen(false),{size:28});
   // tabs
-  L.tabs.forEach((t,i)=>btn(X+i*196,110,184,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i}));
+  // build 409: six tabs (解析 added) share the width
+  {const tw=(MENU_W-2*X)/L.tabs.length;L.tabs.forEach((t,i)=>btn(X+i*tw,110,tw-12,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i},{size:28}))}
   const status=ui.flash&&performance.now()<ui.flashUntil?ui.flash:ui.status;
   label(X,228,status,{color:'#ffd27a'});
   const y0=270;
@@ -1188,7 +1222,20 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
    // build 385: in-VR benchmark (the owner should not have to read numbers off the headset one by one)
    btn(X,y0+460,460,L.bench,bench.active,()=>startBench(),{size:28});if(ui.benchLine)label(X,y0+560,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+600,L.benchHelp,{size:22,color:'#9fb3c3'});
-  }else{
+  }else if(ui.tab===5){
+   // build 409 (owner: show the analysis results in VR / AR): read only — colour, segment, volume; 10 per page
+   label(X,y0+10,L.anT,{bold:true,size:30});
+   if(!regionList.length)label(X,y0+70,L.anNone,{size:26,color:'#9fb3c3'});
+   else{
+    const per=10,pages=Math.ceil(regionList.length/per),pg=Math.min(ui.anPage|0,pages-1);
+    regionList.slice(pg*per,pg*per+per).forEach((r,k)=>{const y=y0+56+k*62,hex='#'+r.color.toString(16).padStart(6,'0');
+     w.push({type:'button',x:X,y,w:56,h:50,label:'',on:true,color:hex,action:()=>{}});
+     label(X+76,y+34,String(pg*per+k+1)+'. '+r.segmentKeys.map(k2=>tr(k2)).join('+'),{size:28,color:hex,bold:true});
+     label(X+520,y+34,r.mm3.toFixed(2)+' mm³',{size:28})});
+    const total=regionList.reduce((a,r)=>a+r.mm3,0);label(X,y0+56+per*62+40,L.anTotal+' '+total.toFixed(2)+' mm³ · '+regionList.length,{size:26,color:'#9fb3c3'});
+    if(pages>1){btn(MENU_W-X-300,y0+56+per*62,140,'◀',false,()=>{ui.anPage=Math.max(0,pg-1)},{size:28});btn(MENU_W-X-150,y0+56+per*62,140,'▶',false,()=>{ui.anPage=Math.min(pages-1,pg+1)},{size:28});label(MENU_W-X-470,y0+56+per*62+40,L.anPage+' '+(pg+1)+'/'+pages,{size:26,color:'#9fb3c3'})}
+   }
+  }else if(ui.tab===4){
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
    choice(y0+470,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
@@ -1438,7 +1485,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(gpu&&gpu.key!==P.key){disposeGpuPrepared();}
   // classification texture from the prepared bytes (only on the ≤256 grid)
   // build 402: classification bytes for the laser's volume hit (the ≤256 grid they were built on)
-  volPick=P.cls?{cls:P.cls,dims:(P.half||vd).dims,halfExt:vd.halfExt}:null;
+  volPick=P.cls?{cls:P.cls,dims:(P.half||vd).dims,halfExt:vd.halfExt}:null;regionList=P.region?.list||[];
   const clsTexture=t=>{
    const c=P.cls;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
    const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.userData.chan=c.chan;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;
@@ -1492,14 +1539,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // diagnostic setting (0 smooth, 1 nearest, 2 off)
   const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
   const editTex=(gpu&&gpu.key===P.key&&gpu.edit)||makeEditTexture(P),editActive=P.edit.active;
+  const regionTex=(gpu&&gpu.key===P.key&&gpu.region)||makeRegionTexture(P),regionColors=P.region?.colors||[];
   refreshEdits=()=>{
    if(!material)return;const mode=settings.editDiag|0;
    if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
    material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editTex.value=editTex||dummyEdit;
+   // build 409: analysis result colours
+   material.uniforms.regionTex.value=regionTex||dummyEdit;regionColors.forEach((c,i)=>{color.setHex(c);material.uniforms.regionC.value[i].set(color.r,color.g,color.b)});
   };
-  disposeEdits=()=>{editTex?.dispose();dummyEdit.dispose()};
+  disposeEdits=()=>{editTex?.dispose();regionTex?.dispose();dummyEdit.dispose()};
   disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();half?.dist?.dispose();half?.combo?.dispose();full.cls?.dispose();full.dist?.dispose();full.combo?.dispose()};
-  material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:volumeUniforms(vd,full,settings)});
+  material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:volumeUniforms(vd,full,settings),defines:P.region?.data?{VRL_REGIONS:''}:{}});
   material.uniforms.clsTex.value=dummyEdit;material.uniforms.editTex.value=dummyEdit;material.uniforms.distTex.value=dummyEdit;
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // build 393: variants without the unused loops, chosen per frame (same uniforms)
