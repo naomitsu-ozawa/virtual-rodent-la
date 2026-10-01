@@ -3079,9 +3079,25 @@ colouring; the drag resolution drops step by step during rotation. 改悪厳禁.
 Checks: lint, 405 unit tests, boot-check, harness (texture path vs row
 search byte-identical with everything coloured; 360 comparisons above).
 
-## Handoff (after build 377)
+## Build 378 — harness: scattered specks and an edit that deletes exactly them (no app change)
 
-State: build 377 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (iPad, build 377, screenshot): after lasso select + delete, dust
+stays around the spine. Measured: tools/volume-shader-check.mjs got
+SPECKS=1 (400 single-voxel 500 HU bone specks in the soft tissue, seeded)
+and EDIT=2 (exclusion of exactly those voxels). Build 360 vs 377, exact
+mode: 9 differing channels without the edit, 4 with it (all diff 1); the
+deleted specks leave nothing — no ghost shell. The lasso / edit modules
+(lasso, edit-tools, analysis-ops, run-length, segment-runs, mask-ops,
+segment-ui, scene-view) are identical to build 360 apart from the version
+query. So the dust is not drawn after being deleted; it was not selected
+(the lasso keeps components touching the loop, build 197). Asked the owner
+to check with メッシュで確認 and whether the dust lay inside the loop, and
+for the 領域tex 転送 / 待ち figures right after colouring. Only the version
+changed in docs/.
+
+## Handoff (after build 378)
+
+State: build 378 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

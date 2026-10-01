@@ -20,14 +20,18 @@ const srv=http.createServer((q,r)=>{r.writeHead(200,{'content-type':'text/html'}
 const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--use-webgpu-adapter=swiftshader']});
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,400))});
 await pg.goto('http://localhost:8778/');
-const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analysis,regionTexOn,regionR,edit})=>{
+const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analysis,regionTexOn,regionR,edit,specksOn})=>{
  const adapter=await navigator.gpu.requestAdapter(),device=await adapter.requestDevice();
  // phantom: 128³, unsigned u16 = HU + 1024 (slope 1, intercept -1024, bias 0):
  // soft-tissue ellipsoid (40 HU) holding a bone sphere (900 HU), a 2-voxel
  // bone plate and a hollow bone tube; air outside (-1000)
  const N=128,dims=[N,N,N],data=new Uint8Array(N*N*N*2);
+ // SPECKS=1: 400 single-voxel bone specks (500 HU) scattered in the soft tissue (seeded); EDIT=2 excludes exactly those voxels
+ const specks=new Set();if(specksOn){let seed=12345;const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff};
+  while(specks.size<400){const x=Math.floor(20+rnd()*88),y=Math.floor(30+rnd()*68),z=Math.floor(16+rnd()*96);const cx=x-64,cy=y-64,cz=z-64;
+   if(cx*cx/(52*52)+cy*cy/(40*40)+cz*cz/(56*56)<0.8&&cx*cx+cy*cy+cz*cz>26*26&&!(Math.abs(cy-20)<3))specks.add((z*N+y)*N+x)}}
  const hu=(x,y,z)=>{const cx=x-64,cy=y-64,cz=z-64;
-  let v=-1000;
+  let v=-1000;if(specks.has((z*N+y)*N+x))return 500;
   if(cx*cx/(52*52)+cy*cy/(40*40)+cz*cz/(56*56)<1)v=40;
   if(cx*cx+cy*cy+cz*cz<22*22)v=900;
   if(Math.abs(cy-20)<1&&Math.abs(cx)<36&&Math.abs(cz)<36)v=900;
@@ -45,7 +49,8 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
  let editRows=storage(new Uint32Array(64)),editIntervals=null;
  // EDIT=1: exclusion edit on segment 0 (bone): the box x 44..84, y 44..84, z 64..127 is removed (editAllows layout of setEditRuns: [activeMask, keepMask, 4 × (rowCount+1) offsets], intervals x0|x1<<16)
  if(edit){const rowCount=N*N,offsets=new Uint32Array(2+4*(rowCount+1)),ints=[];offsets[0]=1;offsets[1]=0;
-  for(let si=0;si<4;si++){const base=2+si*(rowCount+1);for(let r=0;r<rowCount;r++){offsets[base+r]=ints.length;const z=(r/N)|0,y=r%N;if(si===0&&z>=64&&y>=44&&y<=84)ints.push((84<<16)|44)}offsets[base+rowCount]=ints.length}
+  const speckRows=new Map();for(const i of specks){const x=i%N,r=(i/N)|0;(speckRows.get(r)||speckRows.set(r,[]).get(r)).push(x)}
+  for(let si=0;si<4;si++){const base=2+si*(rowCount+1);for(let r=0;r<rowCount;r++){offsets[base+r]=ints.length;const z=(r/N)|0,y=r%N;if(si===0&&edit===1&&z>=64&&y>=44&&y<=84)ints.push((84<<16)|44);if(si===0&&edit===2&&speckRows.has(r))for(const x of speckRows.get(r).sort((a,b)=>a-b))ints.push((x<<16)|x)}offsets[base+rowCount]=ints.length}
   editRows=storage(offsets);editIntervals=storage(new Uint32Array(ints.length?ints:[0]))}
  const brickBuf=storage(brick),zero=storage(new Uint32Array([0,0,0,0]));
  // analysis overlay (medical-volume.js setAnalysisRuns layout): the bone sphere as one focused cyan region
@@ -100,7 +105,7 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
  const out={A:await run(shaders.A,'A'),Ac:await run(shaders.Ac,'Ac','rgba32float')};if(shaders.B){out.B=await run(shaders.B,'B');out.Bc=await run(shaders.Bc,'Bc','rgba32float')}
  for(const k of ['Ac','Bc']){const r=out[k];if(!r||r.errs)continue;let f=0,br=0,e=0;for(let i=0;i<r.px.length;i+=4){f+=r.px[i];br+=r.px[i+1];e+=r.px[i+2]}r.sums={fetch:f,brick:br,edit:e};r.px=null}
  return{W,H,out};
-},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr,analysis,regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22),edit:+(process.env.EDIT??0)});
+},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr,analysis,regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22),edit:+(process.env.EDIT??0),specksOn:+(process.env.SPECKS??0)});
 await b.close();srv.close();
 const {W,H,out}=result;
 for(const k of Object.keys(out)){const r=out[k];if(r.errs){console.log(k,'COMPILE ERRORS',r.errs);process.exit(1)}
