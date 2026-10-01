@@ -3675,14 +3675,38 @@ Untested headless (no WebGPU): a real 3D rebuild and its 中断.
 Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
 progress-modal-check.
 
-## Handoff (after build 406)
+## Build 407 — segments start at 100 % opacity; VR slice transparent at or below a CT threshold
 
-State: build 406 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (after 406): 1 — every segment's initial opacity 100 % (translucent
+segments are heavy and feel bad); 3 — the VR slice should be transparent
+at or below the value treated as air, so that fat can be hidden too by
+raising it.
+- segments.js / ui-shell.js: bone .85, soft .28, fat .35, lung .35 → 1 (the
+  sliders' initial values too). Saved projects keep their own values (no
+  sample project file exists).
+- VR: new setting sliceAir (DEFAULTS −500 HU, スライス tab: 透明にするCT値,
+  slider −1000..+500 HU in 10 HU steps with −/＋). The slice is transparent
+  at or below it and reaches the set opacity 10 HU above; the test comes
+  before the segment tint (tinted fat can be hidden). Replaces the 403
+  window-lower-end rule: values between the threshold and the window's
+  lower end show as black again. The cap is unchanged.
+- Harness (phantom, SECTION=1, BG=90,110,130; new option AIR=<HU>) vs 406:
+  AIR=−500 1320 of 442368 channels differ (edge of the air ramp); FAT=1
+  (fat sheets) AIR=−50: 7130 differ (the fat on the slice is gone).
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+Next (owner-approved): analysis results kept as an edit (saved in the
+project, 14 colours, deletion linked — already so via
+rebuildEditedAnalysisForSegment), carried to VR / AR (colour on the
+volume and the slices, a read-only list with volumes).
+
+## Handoff (after build 407)
+
+State: build 407 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–406 in PR #85 (405–406: the central progress modal). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
