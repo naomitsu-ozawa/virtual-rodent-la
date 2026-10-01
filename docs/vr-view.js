@@ -8,14 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build385';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build385';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build385';
-import { sceneState } from './state.js?v=20261001-build385';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build385';
-import { tr } from './i18n.js?v=20261001-build385';
-import { APP_BUILD } from './version.js?v=20261001-build385';
-import { wc, ww } from './ui-shell.js?v=20261001-build385';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build386';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build386';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build386';
+import { sceneState } from './state.js?v=20261001-build386';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build386';
+import { tr } from './i18n.js?v=20261001-build386';
+import { APP_BUILD } from './version.js?v=20261001-build386';
+import { wc, ww } from './ui-shell.js?v=20261001-build386';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -213,6 +213,47 @@ void main(){
  // build 368: brickEnd = t where the current non-empty brick is left; the
  // brick min/max is fetched once per brick instead of once per sample
  float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;float lastDd=99.0;float distInc=ceil(1.5*ceil(step/max(voxelMin,1e-6)));
+ if(distInCls>0&&useCls>0&&diag!=4&&nSlice==0&&capT<0.0){
+  // build 386: tight loop for the common case (combined field, no slice, no cap). Same arithmetic as the general loop below
+  // without its per-step slice / cap / brick / uniform-brick bookkeeping, the segment work done on the fetched vector and the
+  // surface search testing the fetched classification directly (pixel-identical; practice data 609 -> 177 ms on SwiftShader)
+  for(int iter=0;iter<4096;iter++){
+   if(t>endT||acc.a>0.985)break;
+   iters++;
+   vec3 tc0=texCoord(o+dir*t);
+   vec4 q=texture(clsTex,clamp(tc0,vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
+   if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+   int idx=-1;float curF=-1.0;float maxF=-1e9;
+   for(int s=0;s<4;s++){int c=clsChan[s];if(c<0||segA[s].w<0.5)continue;float f=q[c]-0.5;maxF=max(maxF,f);if(idx<0&&f>=0.0){idx=s;curF=f;}}
+   gQ=q;
+   if(idx!=lastIndex){
+    if(idx>=0){
+     float lo=previousT;float hi=t;bool simple=diag==3||segC[idx].w>0.5;
+     float f1=segValue(idx);bool iso=refine==1&&((editMask>>idx)&1)==0&&prevValid&&prevF<0.0;
+     int cIdx=clsChan[idx];
+     if(!simple&&iso){float f0=prevF;
+      for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
+       vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+       for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
+       if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
+     else if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+       for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
+       if(inside)hi=mid;else lo=mid;}
+     vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
+     vec3 n=simple?-dir:gradientAt(tc);
+     vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
+     float diffuse=0.28+0.72*abs(dot(n,lightDir));
+     float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
+     float alpha=clamp(segA[idx].z,0.03,1.0);
+     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+     float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
+    }
+    lastIndex=idx;
+   }
+   prevValid=true;prevF=idx>=0?curF:maxF;
+   previousT=t;t+=step;
+  }
+ }else
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
   iters++;

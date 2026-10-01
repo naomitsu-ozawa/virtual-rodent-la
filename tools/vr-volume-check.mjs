@@ -18,13 +18,13 @@ const counting=code=>code
  .replace(/ outColor=acc;\n}$/,' outColor=vec4(float(nFetch),float(nBrick),float(nCls),float(nDist));\n}');
 const A=load(fileA),B=fileB?load(fileB):null;
 const nm=path.resolve('node_modules');
-const VOL=process.env.VOL||null,volBytes=VOL?fs.readFileSync(VOL):null,volN=+(process.env.DIMS||256);
-const srv=http.createServer((q,r)=>{if(q.url.startsWith('/vol.bin')){r.writeHead(200,{'content-type':'application/octet-stream'});return r.end(volBytes)}if(q.url.startsWith('/distance-field.js')){r.writeHead(200,{'content-type':'text/javascript'});return r.end(fs.readFileSync('docs/distance-field.js','utf8'))}r.writeHead(200,{'content-type':'text/html'});r.end('<!doctype html><html><body></body></html>')}).listen(8779);
+const VOL=process.env.VOL||null,volBytes=VOL?fs.readFileSync(VOL):null,volN=+(process.env.DIMS||256),clsBytes=process.env.CLS?fs.readFileSync(process.env.CLS):null,distBytes=process.env.DISTF?fs.readFileSync(process.env.DISTF):null,modes=(process.env.MODES||'hu,cls').split(',');
+const srv=http.createServer((q,r)=>{if(q.url.startsWith('/vol.bin')){r.writeHead(200,{'content-type':'application/octet-stream'});return r.end(volBytes)}if(q.url.startsWith('/cls.bin')){r.writeHead(200,{'content-type':'application/octet-stream'});return r.end(clsBytes)}if(q.url.startsWith('/dist.bin')){r.writeHead(200,{'content-type':'application/octet-stream'});return r.end(distBytes)}if(q.url.startsWith('/distance-field.js')){r.writeHead(200,{'content-type':'text/javascript'});return r.end(fs.readFileSync('docs/distance-field.js','utf8'))}r.writeHead(200,{'content-type':'text/html'});r.end('<!doctype html><html><body></body></html>')}).listen(8779);
 const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,300))});pg.on('pageerror',e=>console.log('PAGEERROR',String(e).slice(0,300)));
 await pg.route(/^https:\/\//,rt=>{const u=rt.request().url();if(u.includes('three.module.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.module.js','utf8')});if(u.includes('three.core.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.core.js','utf8')});return rt.abort()});
 await pg.goto('http://localhost:8779/');
-const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,fat,edit,useVol,volN,seg,segOp,distCls})=>{
+const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,fat,edit,useVol,volN,seg,segOp,distCls,cached,modes})=>{
  const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js');
  const W=useVol?256:384,H=W,renderer=new THREE.WebGLRenderer({antialias:false});renderer.setPixelRatio(1);renderer.setSize(W,H,false);
  // phantom as in tools/volume-shader-check.mjs: u16 = HU + 1024, slope 1, intercept -1024
@@ -51,15 +51,15 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
   const o=((k*bx+j)*bx+i)*2;mm[o]=lo;mm[o+1]=hi}
  const bricks=new THREE.Data3DTexture(mm,bx,bx,bx);bricks.format=THREE.RGFormat;bricks.type=THREE.FloatType;bricks.minFilter=bricks.magFilter=THREE.NearestFilter;bricks.unpackAlignment=1;bricks.needsUpdate=true;
  // classification (vr-view build 356): per segment 0.5 + (HU distance inside the range)/2048, one byte per channel
- const SEG=[seg.bone,seg.soft,seg.fat],C=4,cls=new Uint8Array(N*N*N*C);
+ const SEG=[seg.bone,seg.soft,seg.fat],C=4,cls=cached?new Uint8Array(await (await fetch('/cls.bin')).arrayBuffer()):new Uint8Array(N*N*N*C);
  const excluded=(x,y,z)=>edit&&z>=64&&y>=44&&y<=84&&x>=44&&x<=84;
- for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const v=hu(x,y,z),o=((z*N+y)*N+x)*C;for(let s=0;s<3;s++){const [a,c]=SEG[s],d=Math.min(v-a,c-v);cls[o+s]=(s===0&&excluded(x,y,z))?0:Math.max(0,Math.min(255,Math.round(127.5+d/2048*255)))}}
+ if(!cached)for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const v=hu(x,y,z),o=((z*N+y)*N+x)*C;for(let s=0;s<3;s++){const [a,c]=SEG[s],d=Math.min(v-a,c-v);cls[o+s]=(s===0&&excluded(x,y,z))?0:Math.max(0,Math.min(255,Math.round(127.5+d/2048*255)))}}
  const clsTex=new THREE.Data3DTexture(cls,N,N,N);clsTex.format=THREE.RGBAFormat;clsTex.type=THREE.UnsignedByteType;clsTex.minFilter=clsTex.magFilter=THREE.LinearFilter;clsTex.unpackAlignment=1;clsTex.needsUpdate=true;
  // HU path edit mask (editAllows): channel 0 = 255 where bone is allowed
  const editData=new Uint8Array(N*N*N*4);for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const o=((z*N+y)*N+x)*4;editData[o]=excluded(x,y,z)?0:255;editData[o+1]=255;editData[o+2]=255;editData[o+3]=255}
  const editTex=new THREE.Data3DTexture(editData,N,N,N);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.minFilter=editTex.magFilter=THREE.LinearFilter;editTex.unpackAlignment=1;editTex.needsUpdate=true;
  const dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
- const {buildDistanceBytes}=await import('/distance-field.js');const t0=performance.now();const dist=await buildDistanceBytes({data:cls,C:4,chan:[0,1,2,-1]},[N,N,N]);const distMs=performance.now()-t0;
+ const {buildDistanceBytes}=await import('/distance-field.js');const t0=performance.now();const dist=cached?{data:new Uint8Array(await (await fetch('/dist.bin')).arrayBuffer()),C:4,chan:[0,1,2,-1]}:await buildDistanceBytes({data:cls,C:4,chan:[0,1,2,-1]},[N,N,N]);const distMs=performance.now()-t0;
  // DISTCLS=1: write min over the shown segments' distance bytes into the classification alpha (channel 3)
  const shownCh=[0,1,2].filter(s=>!(boneOnly&&s>0)&&!(boneFat&&s===1)&&(s!==2||fat||useVol));
  if(distCls){for(let i=0;i<N*N*N;i++){let m=255;for(const c of shownCh)m=Math.min(m,dist.data[i*4+c]);cls[i*4+3]=m}clsTex.needsUpdate=true}
@@ -82,9 +82,9 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
   const err=renderer.getContext().getError();return{ms:times[0],px:Array.from(px),glErr:err};
  };
  const shA={vs:A.vs,fs:A.fs,fsc:countA},shB=B?{vs:B.vs,fs:B.fs,fsc:countB}:null,out={};
- for(const mode of [0,1]){out['A'+mode]=run(shA,mode,false);out['A'+mode+'c']=run(shA,mode,true);if(shB){out['B'+mode]=run(shB,mode,false);out['B'+mode+'c']=run(shB,mode,true)}}
+ for(const mode of [0,1]){if(!modes.includes(mode?'cls':'hu'))continue;out['A'+mode]=run(shA,mode,false);out['A'+mode+'c']=run(shA,mode,true);if(shB){out['B'+mode]=run(shB,mode,false);out['B'+mode+'c']=run(shB,mode,true)}}
  return{W,H,out,distMs};
-},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0),useVol:!!VOL,volN,distCls:+(process.env.DISTCLS??0),seg:{bone:(process.env.BONE||'300,3000').split(',').map(Number),soft:(process.env.SOFT||'-200,299').split(',').map(Number),fat:(process.env.FATR||'-250,-50').split(',').map(Number)},segOp:{bone:+(process.env.BONEOP??1),soft:+(process.env.SOFTOP??0.35),fat:+(process.env.FATOP??1)}});
+},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0),useVol:!!VOL,volN,distCls:+(process.env.DISTCLS??0),cached:!!(clsBytes&&distBytes),modes,seg:{bone:(process.env.BONE||'300,3000').split(',').map(Number),soft:(process.env.SOFT||'-200,299').split(',').map(Number),fat:(process.env.FATR||'-250,-50').split(',').map(Number)},segOp:{bone:+(process.env.BONEOP??1),soft:+(process.env.SOFTOP??0.35),fat:+(process.env.FATOP??1)}});
 await b.close();srv.close();
 const {W,H,out,distMs}=result;console.log('distance field build (128³, 2 channels): '+distMs.toFixed(0)+' ms');
 import zlib from 'node:zlib';
