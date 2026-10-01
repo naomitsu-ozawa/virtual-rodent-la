@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:demo": "RUN_DEMO_E2E=1 playwright test tests/e2e/demo.spec.js",
+    "vr-slice-check": "node tools/vr-slice-check.mjs",
     "lint": "eslint docs/",
     "bump-build": "node tools/bump-build.mjs",
     "boot-check": "node tools/boot-check.mjs"

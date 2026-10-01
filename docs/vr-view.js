@@ -8,12 +8,13 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20260930-build360';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20260930-build360';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20260930-build360';
-import { sceneState } from './state.js?v=20260930-build360';
-import { tr } from './i18n.js?v=20260930-build360';
-import { wc, ww } from './ui-shell.js?v=20260930-build360';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build380';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build380';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build380';
+import { sceneState } from './state.js?v=20261001-build380';
+import { buildDistanceBytes } from './distance-field.js?v=20261001-build380';
+import { tr } from './i18n.js?v=20261001-build380';
+import { wc, ww } from './ui-shell.js?v=20261001-build380';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -74,6 +75,9 @@ uniform float sliceOpacity;
 uniform int capOn;
 uniform float sliceTint;
 uniform vec2 sliceWindow; // center, width
+// build 368: surface search 1 = fast (2 secant guesses + 1 bisection on the
+// interpolated value), 0 = exact (6 bisections)
+uniform int refine;
 uniform sampler3D sliceVol;
 in vec3 vPos;
 in vec3 vOrigin;
@@ -100,21 +104,49 @@ bool editAllows(int s,vec3 tc){
 uniform int useCls;
 uniform sampler3D clsTex;
 uniform ivec4 clsChan; // channel of each segment (-1: none); only active segments are stored
+// distance field (build 369): per segment channel (same layout as clsTex) a
+// lower bound, in voxels, of the distance to the voxels around that
+// segment's surface (distance-field.js). With useDist > 0 the ray jumps
+// (d - 2) voxels whenever the smallest enabled distance d is at least 3
+// (sphere tracing: no surface can lie inside the jump), and samples at the
+// fine step only near surfaces. voxelMin = object-space size of the smallest
+// voxel side of that grid. Nearest sampling.
+uniform sampler3D distTex;
+uniform int useDist;
+uniform float voxelMin;
+float distAt(vec3 tc){
+ vec4 q=texture(distTex,clamp(tc,vec3(0.0),vec3(0.999999)))*255.0;float m=255.0;
+ for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5)m=min(m,q[c]);}
+ return m;
+}
+// the value the last segmentIndexAt sampled (build 368): HU, or the
+// classification vector; the surface search reuses it as the outside sample
+float gHu=0.0;vec4 gQ=vec4(0.0);
 int segmentIndexAt(vec3 tc){
  if(useCls>0){
-  vec4 q=texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999)));
+  vec4 q=texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999)));gQ=q;
   for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&q[c]>=0.5)return s;}
   return -1;
  }
- float v=huAt(tc);
+ float v=huAt(tc);gHu=v;
  for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc))return s;}
  return -1;
 }
-bool brickMayContain(vec3 tc){
+// signed distance-like value of segment s at the last sample: >= 0 inside
+float segValue(int s);
+// the largest enabled-segment value at the last sample (negative when the sample is in no segment)
+float maxSegValue(){float m=-1e9;for(int s=0;s<4;s++)if(segA[s].w>0.5)m=max(m,segValue(s));return m;}
+float segValue(int s){if(useCls>0){int c=clsChan[s];return c>=0?gQ[c]-0.5:-1.0;}vec4 a=segA[s];return gHu<a.x?gHu-a.x:a.y-gHu;}
+// build 368: 0 = no enabled segment in the brick, 1 = mixed, 2+s = every
+// sample in the brick is segment s (range holds the brick's min..max, no
+// earlier enabled segment overlaps, no processing mask on s): a ray already
+// inside s crosses it without sampling. Bricks carry one voxel of overlap.
+int brickClass(vec3 tc){
  vec2 mm=texture(bricks,clamp(tc,vec3(0.0),vec3(0.999999))).rg;
- for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y)return true;}
- return false;
+ for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){if(mm.x>=a.x&&mm.y<=a.y&&((editMask>>s)&1)==0)return 2+s;return 1;}}
+ return 0;
 }
+bool brickMayContain(vec3 tc){return brickClass(tc)>0;}
 // distance along dir (object space) to leave the current brick
 float brickExit(vec3 tc,vec3 dir){
  vec3 dtc=vec3(dir.x/(2.0*halfExt.x),-dir.y/(2.0*halfExt.y),dir.z/(2.0*halfExt.z));
@@ -173,6 +205,9 @@ void main(){
  }
  int nextSlice=0;
  float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);int iters=0;
+ // build 368: brickEnd = t where the current non-empty brick is left; the
+ // brick min/max is fetched once per brick instead of once per sample
+ float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
   iters++;
@@ -193,15 +228,32 @@ void main(){
    }
   }
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
-  bool canSample=diag==4||brickMayContain(tc0);
+  if(useDist>0&&diag!=4){
+   float dd=distAt(tc0);
+   if(dd>=3.0){float nextJ=t+(dd-2.0)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+  }
+  bool canSample=diag==4||useDist>0||t<brickEnd;
+  if(!canSample){int bc=brickClass(tc0);canSample=bc>0;uniformSeg=bc>=2?bc-2:-1;if(canSample)brickEnd=t+brickExit(tc0,dir);}
   float nextT=t+step;
-  if(!canSample){nextT=t+max(brickExit(tc0,dir)+step*0.05,step);lastIndex=-1;}
+  if(!canSample){brickEnd=-1.0;prevValid=false;nextT=t+max(brickExit(tc0,dir)+step*0.05,step);lastIndex=-1;}
+  else if(diag!=4&&uniformSeg>=0&&uniformSeg==lastIndex&&brickEnd>t+step){
+   // inside a uniform brick of the segment the ray is already in: nothing changes until it is left
+   nextT=brickEnd+step*0.05;previousT=max(t,brickEnd-step*0.05);prevValid=false;t=nextT;continue;
+  }
   else{
    int idx=segmentIndexAt(tc0);
+   float curF=idx>=0?segValue(idx):-1.0;
    if(idx!=lastIndex){
     if(idx>=0){
      float lo=previousT;float hi=t;bool simple=diag==3||segC[idx].w>0.5;
-     if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(o+dir*mid))==idx)hi=mid;else lo=mid;}
+     // fast search (build 368): the boundary is an iso-value of the sampled
+     // field (no processing mask on the segment, previous sample measured and
+     // outside): two secant guesses + one bisection instead of six bisections
+     float f1=segValue(idx);bool iso=refine==1&&((editMask>>idx)&1)==0&&prevValid&&prevF<0.0;
+     if(!simple&&iso){float f0=prevF;
+      for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
+       bool inside=segmentIndexAt(texCoord(o+dir*mid))==idx;float fm=segValue(idx);if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
+     else if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;if(segmentIndexAt(texCoord(o+dir*mid))==idx)hi=mid;else lo=mid;}
      vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
      vec3 n=simple?-dir:gradientAt(tc);
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
@@ -213,6 +265,9 @@ void main(){
     }
     lastIndex=idx;
    }
+   // outside value for the next segment's search: the largest segment value
+   // at this sample when no segment holds it (kept negative), else its own
+   prevValid=true;prevF=idx>=0?curF:maxSegValue();
   }
   previousT=t;t=nextT;
  }
@@ -303,11 +358,12 @@ async function buildVolumeData(maxDim,onProgress){
 }
 
 // VR settings kept per browser (resolution only applies when a session starts)
-const SETTINGS_KEY='vrl-vr-settings-3';
+const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is; secHold 0 grip
 // picks the section up near the frame, 1 trigger fixes / picks it up
-const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.6,data:1,quality:0,vres:0,foveation:2,rate:0};
-function loadSettings(){try{return{...DEFAULTS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return{...DEFAULTS}}}
+const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1};
+// an older key is migrated once, with the slice opacity reset to the new default
+function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);return{...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
 // smaller per axis and scaled up where the volume box covers the view. Owner,
@@ -317,7 +373,11 @@ function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v)
 // drops to 15 when the volume fills the view, 100 % is slower than 50 %: the
 // cost follows the marched pixels, so auto keeps the frame time by lowering
 // the resolution while the volume is large and raising it when small.
-const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=0.8,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+// build 370: auto may reach 100 % (was 80 %); the controller follows the GPU
+// time of the volume pass when the timer extension is offered
+const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=1,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+// VR window slider / button step in HU (build 361)
+const WIN_STEP=10;
 
 // upscales the offscreen volume image; drawn with the volume box so only the
 // covered pixels are touched
@@ -346,12 +406,13 @@ function makeBackground(){
 // or fixed, close), tabs, one status line, then the tab's widgets. Widgets:
 // {type:'button',x,y,w,h,label,on,color,action}, {type:'label',x,y,text},
 // {type:'slider',x,y,w,h,value(0..1),text,set(v)}. The trigger presses a
-// button or drags a slider while held.
+// button or drags a slider while held. Build 365: canvas size and width in
+// metres are parameters (the left-hand section panel uses a small one).
 const MENU_W=1024,MENU_H=1180;
-function makeMenu(){
- const W=MENU_W,H=MENU_H,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+function makeMenu(W=MENU_W,H=MENU_H,widthM=0.5){
+ const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
- const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.5*H/W),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
+ const mesh=new THREE.Mesh(new THREE.PlaneGeometry(widthM,widthM*H/W),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
  let widgets=[],hover=-1,draw=()=>[],dirty=true;
  const render=()=>{
   ctx.clearRect(0,0,W,H);ctx.fillStyle='rgba(14,20,27,.94)';ctx.beginPath();ctx.roundRect(0,0,W,H,30);ctx.fill();
@@ -466,7 +527,9 @@ export async function prepareVrData(onProgress=()=>{}){
   const edit={dims:editDims,data:m.activeMask?m.data:null,active:m.activeMask|0};times.mask=performance.now()-t0;
   onProgress({phase:'cls',done:0,total:1});await tick();t0=performance.now();
   const small=half||vd,cls=buildClsData(small,vd.calibration,edit);times.cls=performance.now()-t0;
-  return{key,vd,half,edit,cls,times};
+  onProgress({phase:'dist',done:0,total:1});await tick();t0=performance.now();
+  const dist=cls?await buildDistanceBytes(cls,small.dims,(a,b)=>onProgress({phase:'dist',done:a,total:b})):null;times.dist=performance.now()-t0;
+  return{key,vd,half,edit,cls,dist,times};
  })();
  preparing={key,promise};
  try{prepared=await promise;return prepared}finally{if(preparing?.promise===promise)preparing=null}
@@ -478,10 +541,10 @@ export function showPreparePanel({language='ja',mode='vr',onStart}){
  const panel=document.createElement('div');panel.id='vr-prepare-panel';
  Object.assign(panel.style,{position:'fixed',left:'50%',top:'50%',transform:'translate(-50%,-50%)',zIndex:'10000',background:'#141c24f2',color:'#fff',padding:'20px 24px',borderRadius:'14px',width:'min(92vw,440px)',font:'15px system-ui,sans-serif',boxShadow:'0 8px 30px #0008'});
  panel.innerHTML='<strong style="font-size:18px"></strong><div class="ph" style="margin:12px 0 6px;color:#cfe3f0"></div><div style="height:10px;background:#26313b;border-radius:5px;overflow:hidden"><div class="bar" style="height:100%;width:0;background:#2d6cdf"></div></div><div class="tm" style="margin-top:10px;color:#9fb3c3;font-size:13px;white-space:pre-line"></div><div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button type="button" class="cancel"></button><button type="button" class="start" disabled></button></div>';
- const q=c=>panel.querySelector(c),names=ja?{copy:'3D画面から写す',read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ'}:{copy:'Copy from the 3D view',read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification'};
+ const q=c=>panel.querySelector(c),names=ja?{copy:'3D画面から写す',read:'データ読み込み',half:'256³を作成',mask:'加工マスク',cls:'判定用データ',dist:'距離場'}:{copy:'Copy from the 3D view',read:'Reading data',half:'Building 256³',mask:'Processing mask',cls:'Classification',dist:'Distance field'};
  q('strong').textContent=(mode==='ar'?'AR':'VR')+(ja?'の準備':' preparation');q('.cancel').textContent=ja?'閉じる':'Close';q('.start').textContent=mode==='ar'?(ja?'ARを開始':'Start AR'):(ja?'VRを開始':'Start VR');
  Object.assign(q('.start').style,{background:'#2d6cdf',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 18px',fontSize:'16px'});Object.assign(q('.cancel').style,{background:'#26313b',color:'#fff',border:'0',borderRadius:'8px',padding:'10px 14px'});
- const order=['read','half','mask','cls'],allPhases=['copy',...order];
+ const order=['read','half','mask','cls','dist'],allPhases=['copy',...order];
  q('.cancel').onclick=()=>panel.remove();
  q('.start').onclick=()=>{panel.remove();onStart()};
  document.body.append(panel);
@@ -498,7 +561,8 @@ let running=null;
 // Quest, no background drawn and the clear is transparent
 export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
- const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;settings.clsDiag=0;
+ const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;settings.clsDiag=0;settings.distDiag=0;
+ const vrWindow={c:+wc.value||0,w:Math.max(1,+ww.value||1)}; // VR-local CT window (build 361): starts from the app's sliders, not written back
  const ar=mode==='ar',renderer=new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
@@ -512,15 +576,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
- const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','画質','詳細'],follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
-   sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:'片側：矢印の側を消します（見る位置を変えても同じ側）',sl:'スライス不透明度',
+ const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
+   sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（二重枠）を法線方向に動かします','レイで指した枠（白くなる）は、離れたままつかめます'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
-  :{title:'Virtual Rodent Lab',tabs:['View','Section','Quality','Details'],follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
-   sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:'One side: the arrow side is removed (stays when you move)',sl:'Slice opacity',
+  :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
+   sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (double frame) on its normal','A frame the ray points at (turns white) can be grabbed from a distance'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: held in hand',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
@@ -544,6 +608,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const setRay=c=>{tmpM.identity().extractRotation(c.matrixWorld);raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);raycaster.ray.direction.set(0,0,-1).applyMatrix4(tmpM)};
  const menuHit=c=>{if(!ui.open)return null;setRay(c);return raycaster.intersectObject(menu.mesh,false)[0]||null};
  const badgeHit=c=>{if(ui.open||!badge.parent||badge.parent===c)return null;setRay(c);return raycaster.intersectObject(badge,false)[0]||null};
+ // section panel (build 365): quick plane actions on the left hand (above the menu tag), shown while sections are on; the other hand's ray presses it
+ const panel=makeMenu(640,232,0.17);panel.mesh.position.set(0,0.10,0.03);panel.mesh.rotation.x=-0.6;panel.mesh.visible=false;leftHand().add(panel.mesh);
+ const panelHit=c=>{if(!panel.mesh.visible||!panel.mesh.parent||panel.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(panel.mesh,false)[0]||null};
  // head pose (world) from the XR camera
  const head=new THREE.Vector3(),headFwd=new THREE.Vector3(),headLeft=new THREE.Vector3(),tmpQh=new THREE.Quaternion();
  const readHead=()=>{renderer.xr.updateCamera(camera);const cam=renderer.xr.getCamera();cam.getWorldPosition(head);cam.getWorldQuaternion(tmpQh);headFwd.set(0,0,-1).applyQuaternion(tmpQh);headFwd.y=0;if(headFwd.lengthSq()<1e-6)headFwd.set(0,0,-1);headFwd.normalize();headLeft.set(headFwd.z,0,-headFwd.x)};
@@ -552,6 +619,29 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menuTarget=new THREE.Vector3();let menuMoving=false,menuPlaced=false;
  const computeMenuTarget=()=>menuTarget.copy(head).addScaledVector(headFwd,0.62).addScaledVector(headLeft,0.3).add(new THREE.Vector3(0,-0.16,0));
  const placeMenuNow=()=>{readHead();computeMenuTarget();menu.mesh.position.copy(menuTarget);menu.mesh.lookAt(head);menuPlaced=true;menuMoving=false};
+ // help board (build 367): the controls for the current state, front-right,
+ // mirrored from the menu; follows lazily, or fixed, or hidden (settings.help);
+ // no widgets, but the grip moves it like the menu
+ const help=makeMenu(820,560,0.32);help.mesh.visible=false;scene.add(help.mesh);
+ const helpTarget=new THREE.Vector3();let helpMoving=false,helpPlaced=false,helpHeld=null,helpKey='';
+ const computeHelpTarget=()=>helpTarget.copy(head).addScaledVector(headFwd,0.62).addScaledVector(headLeft,-0.34).add(new THREE.Vector3(0,-0.16,0));
+ const placeHelpNow=()=>{readHead();computeHelpTarget();help.mesh.position.copy(helpTarget);help.mesh.lookAt(head);helpPlaced=true;helpMoving=false};
+ const helpHit=c=>{if(!help.mesh.visible||help.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(help.mesh,false)[0]||null};
+ help.onDraw(()=>{
+  const w=[],lines=section.on?L.helpSec.map(t=>t.replace('{h}',L.helpHold[settings.secHold|0])):L.helpBasic.slice();
+  if(ui.open)lines[lines.length-1]=L.helpMenu;
+  w.push({type:'label',x:36,y:60,text:L.helpT,bold:true,size:36,color:'#fff'});
+  lines.forEach((t,i)=>w.push({type:'label',x:36,y:140+i*78,text:'・'+t,size:30}));
+  return w;
+ });
+ // build 366: the XR camera sits at the origin (floor height) until the first
+ // viewer pose arrives; since build 358 the data is ready before that, so the
+ // volume and menu were placed on the floor. Both now wait for a pose in the
+ // loop; 詳細 shows the frame numbers and head height for a device check
+ const poseOk=()=>{try{const f=renderer.xr.getFrame(),rs=renderer.xr.getReferenceSpace();return !!(f&&rs&&f.getViewerPose(rs))}catch{return false}};
+ let frameNo=0,poseAt=0,placePending=false;ui.placeLine='';
+ // menu grab (build 366): grip while pointing at the menu moves it with the hand; released, it stays there (position becomes fixed)
+ let menuHeld=null;
  const setMenuOpen=open=>{ui.open=open;menu.mesh.visible=open;if(open){badge.removeFromParent();placeMenuNow()}else leftHand().add(badge);badge.visible=!open;menu.refresh()};
  const bringVolumeFront=()=>{readHead();scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(head).addScaledVector(headFwd,0.55).add(new THREE.Vector3(0,-0.12,0));holder.quaternion.identity();holder.scale.setScalar(baseScale)};
  // grab: one hand moves/rotates (holder follows the controller); two hands
@@ -569,23 +659,46 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // the volume. B/Y short press shows / hides the sections, long press adds
  // one. Each plane: clip or not, side (one-side mode), own frame colour.
  const PLANE_COLORS=[0xffcc44,0x44ddff,0xff66cc,0x77ee66],MAX_PLANES=4,LONG_PRESS=600;
- const section={on:false,held:null,heldPlane:null},planes=[];
+ // thumbstick scroll (build 364): world m/s along the selected plane's normal at full deflection
+ const SCROLL_SPEED=0.05;
+ // selection (build 364): selected = the plane the thumbstick moves (double frame)
+ const section={on:false,held:null,heldPlane:null,selected:null},planes=[];
+ const square=(h)=>new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-h,-h),new THREE.Vector3(0,h,-h),new THREE.Vector3(0,h,h),new THREE.Vector3(0,-h,h)]);
+ // handle corner per plane index (build 364): (+y,+z), (+y,−z), (−y,−z), (−y,+z)
+ const HANDLE_CORNERS=[[1,1],[1,-1],[-1,-1],[-1,1]],HANDLE=0.034;
  const makePlane=(color,cut)=>{
   const obj=new THREE.Group(),mat=new THREE.LineBasicMaterial({color}),h=0.12;
-  obj.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-h,-h),new THREE.Vector3(0,h,-h),new THREE.Vector3(0,h,h),new THREE.Vector3(0,-h,h)]),mat));
+  obj.add(new THREE.LineLoop(square(h),mat));
+  // selected frame (build 364): a second loop just inside reads as a thicker frame (linewidth is always 1 px in WebGL)
+  const inner=new THREE.LineLoop(square(h-0.008),mat);inner.visible=false;obj.add(inner);
+  // ray pick (build 364): invisible quad over the frame, normal = local X; the raycaster ignores visible, DoubleSide so it is hit from both faces
+  const hit=new THREE.Mesh(new THREE.PlaneGeometry(2*h,2*h),new THREE.MeshBasicMaterial({visible:false,side:THREE.DoubleSide}));hit.rotation.y=Math.PI/2;obj.add(hit);
+  // handle (build 364): small square outside a corner with the plane's number (menu 断面1..4), drawn by refreshHandles
+  const canvas=document.createElement('canvas');canvas.width=96;canvas.height=96;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
+  const handle=new THREE.Mesh(new THREE.PlaneGeometry(HANDLE,HANDLE),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,side:THREE.DoubleSide,depthTest:false}));
+  handle.rotation.y=Math.PI/2;handle.renderOrder=3;handle.userData.ctx=canvas.getContext('2d');obj.add(handle);
   // one-side mode (build 346): side picks the kept half along local X; the
   // arrow points at the removed half
   const arrow=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,0.02,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,-0.02,0)]),mat);
   arrow.visible=false;obj.add(arrow);
-  return{obj,mat,arrow,color,cut,side:1};
+  return{obj,mat,arrow,inner,hit,handle,h,color,cut,side:1};
  };
- const disposePlane=pl=>{pl.obj.removeFromParent();pl.obj.traverse(o=>{o.geometry?.dispose()});pl.mat.dispose()};
+ const disposePlane=pl=>{pl.obj.removeFromParent();pl.obj.traverse(o=>{o.geometry?.dispose()});pl.mat.dispose();pl.hit.material.dispose();pl.handle.material.map.dispose();pl.handle.material.dispose()};
+ // number + corner of every handle from the plane's index (after add / remove, not per frame)
+ const refreshHandles=()=>planes.forEach((pl,i)=>{
+  const hd=pl.handle,ctx=hd.userData.ctx,o=pl.h+0.01+HANDLE/2,[sy,sz]=HANDLE_CORNERS[i%4];
+  ctx.clearRect(0,0,96,96);ctx.fillStyle='#'+pl.color.toString(16).padStart(6,'0');ctx.beginPath();ctx.roundRect(0,0,96,96,18);ctx.fill();
+  ctx.fillStyle='#111';ctx.font='bold 64px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1),48,52);
+  hd.material.map.needsUpdate=true;hd.position.set(0,sy*o,sz*o);
+ });
  // side that removes the viewer's half right now (what 'near' shows)
  const chooseSide=pl=>{readHead();scene.updateMatrixWorld();pl.obj.getWorldPosition(tmpA);tmpB.set(1,0,0).transformDirection(pl.obj.matrixWorld);pl.side=tmpB.dot(tmpA.subVectors(head,tmpA))>0?-1:1};
- const takePlane=(pl,c)=>{c.attach(pl.obj);section.held=c;section.heldPlane=pl;pulse(c);menu.refresh()};
+ const takePlane=(pl,c)=>{c.attach(pl.obj);section.held=c;section.heldPlane=pl;section.selected=pl;pulse(c);menu.refresh()};
  const fixPlane=()=>{const c=section.held,pl=section.heldPlane;if(pl)holder.attach(pl.obj);section.held=null;section.heldPlane=null;if(c)pulse(c,0.2);menu.refresh()};
  const planeDist=(pl,c)=>{c.getWorldPosition(tmpA);pl.obj.getWorldPosition(tmpB);return tmpA.distanceTo(tmpB)};
  const nearestPlane=c=>{if(!section.on)return null;let best=null,bd=0.2;for(const pl of planes){const d=planeDist(pl,c);if(d<bd){bd=d;best=pl}}return best};
+ // ray pick (build 364): the frame the ray points at can be grabbed from a distance; nearest hit or null
+ const rayPlane=c=>{if(!section.on||!planes.length)return null;setRay(c);const x=raycaster.intersectObjects(planes.map(p=>p.hit),false)[0];if(!x)return null;const pl=planes.find(p=>p.hit===x.object);return pl?{pl,distance:x.distance}:null};
  // new plane: through the volume centre (first) or in front of the hand
  // (added ones), facing the viewer, fixed in the volume
  const addPlane=(c=null)=>{
@@ -596,9 +709,25 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(c){c.getWorldPosition(pl.obj.position);tmpB.set(0,0,-1).transformDirection(c.matrixWorld);pl.obj.position.addScaledVector(tmpB,0.12)}
   else holder.getWorldPosition(pl.obj.position);
   tmpA.subVectors(head,pl.obj.position).normalize();pl.obj.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tmpA);pl.obj.scale.setScalar(1);
-  holder.attach(pl.obj);chooseSide(pl);section.on=true;planes.forEach(p=>{p.obj.visible=true});menu.refresh();return pl;
+  holder.attach(pl.obj);chooseSide(pl);section.on=true;section.selected=pl;planes.forEach(p=>{p.obj.visible=true});refreshHandles();menu.refresh();return pl;
  };
- const removePlane=pl=>{if(section.heldPlane===pl){section.held=null;section.heldPlane=null}const i=planes.indexOf(pl);if(i>=0)planes.splice(i,1);disposePlane(pl);if(!planes.length)section.on=false;menu.refresh()};
+ const removePlane=pl=>{if(section.heldPlane===pl){section.held=null;section.heldPlane=null}const i=planes.indexOf(pl);if(i>=0)planes.splice(i,1);disposePlane(pl);if(section.selected===pl)section.selected=planes[planes.length-1]||null;if(!planes.length)section.on=false;refreshHandles();menu.refresh()};
+ // snap (build 365): the selected plane onto a volume axis, frame edges along the other two axes.
+ // axis 0 axial (normal = volume z), 1 coronal (y), 2 sagittal (x); holder space = volume object space.
+ // The normal keeps its sign (removed side unchanged), position unchanged, up = volume y (coronal: z)
+ const AXES=[new THREE.Vector3(0,0,1),new THREE.Vector3(0,1,0),new THREE.Vector3(1,0,0)],tmpQa=new THREE.Quaternion(),tmpQb=new THREE.Quaternion(),tmpNh=new THREE.Vector3();
+ const normalInHolder=(pl,out)=>{pl.obj.getWorldQuaternion(tmpQa);holder.getWorldQuaternion(tmpQb);return out.set(1,0,0).applyQuaternion(tmpQa).applyQuaternion(tmpQb.invert())};
+ const snapPlane=(pl,axis)=>{
+  if(!pl)return;scene.updateMatrixWorld();
+  const n=AXES[axis].clone();if(n.dot(normalInHolder(pl,tmpNh))<0)n.negate();
+  const u=axis===1?new THREE.Vector3(0,0,1):new THREE.Vector3(0,1,0),w=new THREE.Vector3().crossVectors(n,u);
+  const qh=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(n,u,w));
+  // holder space -> the plane's parent (holder when fixed, the controller while held)
+  (pl.obj.parent||holder).getWorldQuaternion(tmpQa).invert();holder.getWorldQuaternion(tmpQb);
+  pl.obj.quaternion.copy(tmpQa.multiply(tmpQb).multiply(qh));menu.refresh();
+ };
+ // axis the plane's normal lies on (within about 1°), else -1: the snap buttons' on state
+ const planeAxis=pl=>{if(!pl)return -1;const n=normalInHolder(pl,tmpNh);for(let i=0;i<3;i++)if(Math.abs(n.dot(AXES[i]))>0.9998)return i;return -1};
  const setSection=on=>{
   if(on&&!planes.length){addPlane();return}
   section.on=on;if(!on&&section.heldPlane)fixPlane();planes.forEach(p=>{p.obj.visible=on});menu.refresh();
@@ -608,23 +737,29 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const ring=new THREE.Line(ringGeo,new THREE.LineBasicMaterial({color:0xffffff}));ring.position.set(0,0.035,0.02);ring.rotation.x=-0.6;ring.visible=false;
  let dragging=null,shotRequested=false;
  for(const c of controllers){
-  c.addEventListener('connected',e=>{c.userData.source=e.data;if(!ui.open&&c.userData.source?.handedness==='left')c.add(badge)});
+  c.addEventListener('connected',e=>{c.userData.source=e.data;if(c.userData.source?.handedness==='left'){if(!ui.open)c.add(badge);c.add(panel.mesh)}});
   c.addEventListener('disconnected',()=>{c.userData.source=null});
   c.addEventListener('squeezestart',()=>{
-   if(settings.secHold===0&&!section.held){const pl=nearestPlane(c);if(pl){takePlane(pl,c);return}}
+   if(ui.open&&!menuHeld&&menuHit(c)){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
+   if(!helpHeld&&c.userData.helpHit){c.attach(help.mesh);helpHeld=c;helpMoving=false;settings.help=2;saveSettings(settings);pulse(c);menu.refresh();return}
+   if(settings.secHold===0&&!section.held){const pl=nearestPlane(c)||c.userData.rayPlane;if(pl){takePlane(pl,c);return}}
    grabbing.add(c);regrab();
   });
   c.addEventListener('squeezeend',()=>{
+   if(menuHeld===c){scene.attach(menu.mesh);menuHeld=null;readHead();menu.mesh.lookAt(head);pulse(c,0.2);return}
+   if(helpHeld===c){scene.attach(help.mesh);helpHeld=null;readHead();help.mesh.lookAt(head);pulse(c,0.2);return}
    if(section.held===c&&settings.secHold===0){fixPlane();return}
    if(grabbing.delete(c))regrab();
   });
   // trigger: menu first (button or slider drag), then the menu tag, then the
-  // section in trigger mode
+  // section panel (build 365), then the section in trigger mode (near, else
+  // the one the ray points at; build 364)
   c.addEventListener('selectstart',()=>{
    const h=menuHit(c);
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
    if(badgeHit(c)){setMenuOpen(true);pulse(c);return}
-   if(settings.secHold===1&&!section.held){const pl=nearestPlane(c);if(pl)takePlane(pl,c)}
+   const ph=panelHit(c);if(ph){const i=panel.hit(ph.uv);if(i>=0){panel.press(i);pulse(c);return}}
+   if(settings.secHold===1&&!section.held){const pl=nearestPlane(c)||c.userData.rayPlane;if(pl)takePlane(pl,c)}
   });
   c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(section.held===c&&settings.secHold===1)fixPlane()});
  }
@@ -633,7 +768,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  let autoF=0.5,autoFrames=0,autoAt=performance.now();
  let frames=0,fpsAt=performance.now(),fps=0;
  const applyQuality=()=>{
-  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;useData(settings.data|0)}
+  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;material.uniforms.refine.value=settings.refine|0;useData(settings.data|0)}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
   if(rates.length&&session.updateTargetFrameRate)session.updateTargetFrameRate(rates[Math.min(settings.rate,rates.length-1)]).catch(()=>{});
   saveSettings(settings);frames=0;fpsAt=performance.now();
@@ -647,7 +782,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   label(X,52,L.title,{bold:true,size:36,color:'#fff'});
   btn(780,18,200,L.close,false,()=>setMenuOpen(false),{size:28});
   // tabs
-  L.tabs.forEach((t,i)=>btn(X+i*240,110,226,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i}));
+  L.tabs.forEach((t,i)=>btn(X+i*196,110,184,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i}));
   const status=ui.flash&&performance.now()<ui.flashUntil?ui.flash:ui.status;
   label(X,228,status,{color:'#ffd27a'});
   const y0=270;
@@ -659,51 +794,84 @@ export async function startVrView({language='ja',mode='vr'}={}){
     L.segModes.forEach((t,j)=>btn(250+j*160,y,150,t,m===j,()=>{segMode[key]=j},{color:j===0?seg.color:undefined,size:28}));
     w.push({type:'slider',x:760,y,w:210,h:72,value:op,text:'',set:v=>{segOpacity[key]=Math.max(0.05,Math.round(v*20)/20)}})});
    const yb=MENU_H-110;
-   label(X,yb-140,L.menuKey,{size:26,color:'#9fb3c3'});
-   btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow()});btn(X+320,yb,320,L.shot,false,()=>{shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
-   choice(yb-100,L.menuPos,[{label:L.follow,value:0},{label:L.fixed,value:1}],settings.menuMode,v=>{settings.menuMode=v;saveSettings(settings)});
+   // build 365: 持ち方 moved here from the 断面 tab (room for the snap row)
+   choice(yb-370,L.helpT,L.helpModes.map((t,i)=>({label:t,value:i})),settings.help|0,v=>{settings.help=v;saveSettings(settings);if(v===1)helpMoving=true});
+   choice(yb-280,L.hold,L.holdModes.map((t,i)=>({label:t,value:i})),settings.secHold,v=>{if(section.held)fixPlane();settings.secHold=v;saveSettings(settings)});
+   choice(yb-190,L.menuPos,[{label:L.follow,value:0},{label:L.fixed,value:1}],settings.menuMode,v=>{settings.menuMode=v;saveSettings(settings)});
+   label(X,yb-96,L.menuKey,{size:26,color:'#9fb3c3'});label(X,yb-60,L.menuGrab,{size:26,color:'#9fb3c3'});
+   btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow();placeHelpNow()});btn(X+320,yb,320,L.shot,false,()=>{shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
   }else if(ui.tab===1){
    choice(y0,L.sec,[{label:L.offOn[0],value:false},{label:L.offOn[1],value:true}],section.on,v=>{if(v!==section.on)setSection(v)});
    if(planes.length<MAX_PLANES)btn(800,y0,184,L.addPlane,false,()=>{addPlane()},{size:26});
    // one row per plane: colour name, clip on/off, flip (one-side), remove
    planes.forEach((pl,i)=>{const y=y0+86+i*76,col='#'+pl.color.toString(16).padStart(6,'0');
-    label(X,y+36,L.planeN+(i+1),{color:col,bold:true});
+    // build 364: the name is a button that selects the plane (thumbstick target)
+    btn(X,y,190,L.planeN+(i+1),pl===section.selected,()=>{section.selected=pl},{color:col,size:26});
     btn(250,y,190,pl.cut?L.clipOn:L.clipOff,pl.cut,()=>{pl.cut=!pl.cut;if(pl.cut&&settings.cut===2)chooseSide(pl)},{color:col,size:26});
     if(settings.cut===2&&pl.cut)btn(452,y,170,L.flip,false,()=>{pl.side=-pl.side},{size:26});
     btn(640,y,150,L.remove,false,()=>removePlane(pl),{size:26});
    });
    const yb2=y0+86+MAX_PLANES*76;
-   choice(yb2,L.cut,L.cutModes.map((t,i)=>({label:t,value:i})),settings.cut|0,v=>{if(v===2&&settings.cut!==2)planes.forEach(chooseSide);settings.cut=v;saveSettings(settings)});
-   choice(yb2+90,L.hold,L.holdModes.map((t,i)=>({label:t,value:i})),settings.secHold,v=>{if(section.held)fixPlane();settings.secHold=v;saveSettings(settings)});
-   choice(yb2+180,L.cap,[{label:L.offOn[0],value:0},{label:L.offOn[1],value:1}],settings.cap?1:0,v=>{settings.cap=v;saveSettings(settings)});
-   label(X,yb2+306,L.sl);
-   w.push({type:'slider',x:CX+26,y:yb2+270,w:470,h:72,value:settings.sliceOpacity,text:Math.round(settings.sliceOpacity*100)+'%',set:v=>{settings.sliceOpacity=Math.round(v*20)/20}});
-   label(X,yb2+396,L.tint);
-   w.push({type:'slider',x:CX+26,y:yb2+360,w:470,h:72,value:settings.sliceTint,text:settings.sliceTint?Math.round(settings.sliceTint*100)+'%':L.offOn[0],set:v=>{settings.sliceTint=Math.round(v*20)/20}});
-   label(X,yb2+470,section.on?L.secHelp[settings.secHold]:L.secOff,{size:26});
-   label(X,yb2+506,L.byHelp,{size:24,color:'#9fb3c3'});
+   // snap (build 365): the selected plane onto axial / coronal / sagittal
+   label(X,yb2+36,L.snapL);
+   const sp=section.selected;if(sp)L.snapModes.forEach((t,i)=>btn(CX+i*152,yb2,140,t,planeAxis(sp)===i,()=>snapPlane(sp,i),{size:26}));
+   // clip mode with a one-line explanation (build 363: the flip button was
+   // not found; the slice sliders moved to the スライス tab)
+   choice(yb2+90,L.cut,L.cutModes.map((t,i)=>({label:t,value:i})),settings.cut|0,v=>{if(v===2&&settings.cut!==2)planes.forEach(chooseSide);settings.cut=v;saveSettings(settings)});
+   label(X,yb2+190,L.cutHelp[settings.cut|0]||'',{size:26,color:'#9fb3c3'});
+   choice(yb2+220,L.cap,[{label:L.offOn[0],value:0},{label:L.offOn[1],value:1}],settings.cap?1:0,v=>{settings.cap=v;saveSettings(settings)});
+   label(X,yb2+340,section.on?L.secHelp[settings.secHold]:L.secOff,{size:26});
+   label(X,yb2+376,L.byHelp,{size:24,color:'#9fb3c3'});
+   label(X,yb2+412,L.scrollHelp[0],{size:24,color:'#9fb3c3'});label(X,yb2+446,L.scrollHelp[1],{size:24,color:'#9fb3c3'});
   }else if(ui.tab===2){
+   // VR-local window: slider 0..1 over the app's slider range, presets set it as given
+   const cr=[+wc.min,+wc.max],[cMin,cMax]=Number.isFinite(cr[0])&&Number.isFinite(cr[1])&&cr[0]<cr[1]?cr:[-2000,4000],wMax=Number.isFinite(+ww.max)&&+ww.max>1?+ww.max:8000,cl=(v,a,b)=>Math.min(b,Math.max(a,v));
+   label(X,y0+10,L.win,{size:26,color:'#9fb3c3'});
+   label(X,y0+86,L.sl);w.push({type:'slider',x:CX+26,y:y0+50,w:300,h:72,value:settings.sliceOpacity,text:Math.round(settings.sliceOpacity*100)+'%',set:v=>{settings.sliceOpacity=Math.round(v*20)/20}});
+   label(X,y0+176,L.tint);w.push({type:'slider',x:CX+26,y:y0+140,w:300,h:72,value:settings.sliceTint,text:settings.sliceTint?Math.round(settings.sliceTint*100)+'%':L.offOn[0],set:v=>{settings.sliceTint=Math.round(v*20)/20}});
+   const row=(y,text,key,lo,hi)=>{label(X,y+36,text);const floor=key==='w'?1:-Infinity;w.push({type:'slider',x:CX+26,y,w:300,h:72,value:cl((vrWindow[key]-lo)/(hi-lo),0,1),text:String(Math.round(vrWindow[key])),set:v=>{vrWindow[key]=Math.max(floor,Math.round((lo+v*(hi-lo))/WIN_STEP)*WIN_STEP)}});
+    btn(800,y,70,'−',false,()=>{vrWindow[key]=Math.max(floor,cl(vrWindow[key]-WIN_STEP,lo,hi))},{size:30});btn(890,y,70,'＋',false,()=>{vrWindow[key]=Math.max(floor,cl(vrWindow[key]+WIN_STEP,lo,hi))},{size:30})};
+   row(y0+250,L.wcL,'c',cMin,cMax);row(y0+340,L.wwL,'w',1,wMax);
+   [[L.pApp,+wc.value||0,Math.max(1,+ww.value||1)],[L.pFull,Math.round((cMin+cMax)/2),Math.max(1,Math.round(cMax-cMin))],[L.pBone,500,2000],[L.pSoft,40,400]].forEach(([t,c,wd],i)=>btn(X+i*244,y0+440,232,t,vrWindow.c===c&&vrWindow.w===wd,()=>{vrWindow.c=c;vrWindow.w=wd},{size:28}));
+   label(X,y0+550,L.winHelp,{size:24,color:'#9fb3c3'});
+  }else if(ui.tab===3){
    choice(y0,L.r,VRES.map((r,i)=>({label:r?Math.round(r*100)+'%':L.auto,value:i})),settings.vres,v=>{settings.vres=v;applyQuality()});
    choice(y0+90,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
    choice(y0+180,L.q,L.qv.map((t,i)=>({label:t,value:i})),settings.quality,v=>{settings.quality=v;applyQuality()});
    choice(y0+270,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
    if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
   }else{
-   label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});
-   choice(y0+100,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
-   choice(y0+370,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
-   choice(y0+280,L.editD,L.editDv.map((t,i)=>({label:t,value:i})),settings.editDiag|0,v=>{settings.editDiag=v;refreshEdits()});
-   choice(y0+190,'',L.dv.slice(3).map((t,i)=>({label:t,value:i+3})),settings.diag,v=>{settings.diag=v;applyQuality()});
+   label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
+   choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
+   choice(y0+470,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
+   choice(y0+560,L.refineL,L.refineV.map((t,i)=>({label:t,value:1-i})),settings.refine|0,v=>{settings.refine=v;applyQuality()});
+   choice(y0+650,L.distD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.distDiag|0,v=>{settings.distDiag=v;applyQuality()});
+   choice(y0+380,L.editD,L.editDv.map((t,i)=>({label:t,value:i})),settings.editDiag|0,v=>{settings.editDiag=v;refreshEdits()});
+   choice(y0+290,'',L.dv.slice(3).map((t,i)=>({label:t,value:i+3})),settings.diag,v=>{settings.diag=v;applyQuality()});
   }
   return w;
  });
+ // section panel (build 365): name of the selected plane, snap, flip / clip / remove / add; font 28, buttons 72 high
+ panel.onDraw(()=>{
+  const w=[],sp=section.selected;if(!sp)return w;
+  const col='#'+sp.color.toString(16).padStart(6,'0'),btn=(x,y,wd,label,on,action,extra={})=>w.push({type:'button',x,y,w:wd,h:72,label,on,action,size:28,...extra});
+  w.push({type:'label',x:20,y:52,text:L.planeN+(planes.indexOf(sp)+1),color:col,bold:true,size:28});
+  L.snapModes.forEach((t,i)=>btn(200+i*140,16,130,t,planeAxis(sp)===i,()=>snapPlane(sp,i)));
+  if(settings.cut===2&&sp.cut)btn(20,128,140,L.flip,false,()=>{sp.side=-sp.side;menu.refresh()},{size:24}); // 24: '向きを反転' is 141 px at 28
+  btn(180,128,160,sp.cut?L.clipOn:L.clipOff,sp.cut,()=>{sp.cut=!sp.cut;if(sp.cut&&settings.cut===2)chooseSide(sp);menu.refresh()},{color:col});
+  btn(360,128,120,L.remove,false,()=>removePlane(sp));
+  if(planes.length<MAX_PLANES)btn(500,128,120,L.addPlane,false,()=>{addPlane()});
+  return w;
+ });
+ let panelKey='';
  await renderer.xr.setSession(session);
  applyQuality();menu.refresh();
+ let lastT=0;const tmpS=new THREE.Vector3(); // scroll: previous frame time, parent scale
  const color=new THREE.Color(),tmpP=new THREE.Vector3(),tmpQ=new THREE.Vector3(),tmpN=new THREE.Vector3(),tmpE=new THREE.Vector3(),tmpD=new THREE.Vector3();
  // GPU time per pass (EXT_disjoint_timer_query_webgl2, when offered) and JS
  // time per frame, averaged over the fps window
  const gl=renderer.getContext(),timerExt=gl.getExtension('EXT_disjoint_timer_query_webgl2');
- const pending=[],sums={vol:0,main:0,js:0},counts={vol:0,main:0,js:0};let sizes='';
+ const pending=[],sums={vol:0,main:0,js:0},counts={vol:0,main:0,js:0},ctrl={vol:0,main:0},ctrlN={vol:0,main:0};let sizes='';
  const timed=(kind,fn)=>{
   if(!timerExt||pending.length>12){fn();return}
   const q=gl.createQuery();gl.beginQuery(timerExt.TIME_ELAPSED_EXT,q);fn();gl.endQuery(timerExt.TIME_ELAPSED_EXT);pending.push({q,kind});
@@ -713,7 +881,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const {q,kind}=pending[0];
    if(!gl.getQueryParameter(q,gl.QUERY_RESULT_AVAILABLE))break;
    pending.shift();
-   if(!gl.getParameter(timerExt.GPU_DISJOINT_EXT)){sums[kind]+=gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6;counts[kind]++}
+   if(!gl.getParameter(timerExt.GPU_DISJOINT_EXT)){const ms=gl.getQueryParameter(q,gl.QUERY_RESULT)/1e6;sums[kind]+=ms;counts[kind]++;if(kind in ctrl){ctrl[kind]+=ms;ctrlN[kind]++}}
    gl.deleteQuery(q);
   }
  };
@@ -723,7 +891,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const takeScreenshot=()=>{
   const sub=renderer.xr.getCamera().cameras[0];if(!sub||!mesh)return;
   const v=sub.viewport,W=1600,H=Math.max(1,Math.round(W*v.w/Math.max(1,v.z)));
-  const rt=new THREE.WebGLRenderTarget(W,H),prev=renderer.getRenderTarget(),hidden=[menu.mesh,badge,...controllers.map(c=>c.userData.ray)].filter(o=>o.visible);
+  const rt=new THREE.WebGLRenderTarget(W,H),prev=renderer.getRenderTarget(),hidden=[menu.mesh,badge,panel.mesh,help.mesh,...controllers.map(c=>c.userData.ray)].filter(o=>o.visible);
   hidden.forEach(o=>{o.visible=false});const matBefore=mesh.material;mesh.material=material;
   renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.setClearColor(ar?0x000000:BG,ar?0:1);renderer.clear();renderer.render(scene,sub);
   const px=new Uint8Array(W*H*4);renderer.readRenderTargetPixels(rt,0,0,W,H,px);
@@ -735,23 +903,50 @@ export async function startVrView({language='ja',mode='vr'}={}){
   cv.toBlob(b=>{if(b)shots.push({name,url:URL.createObjectURL(b)})},'image/png');
   ui.flash=L.shotDone+' ('+(shots.length+1)+')';ui.flashUntil=performance.now()+3000;menu.refresh();for(const c of controllers)pulse(c,0.5,40);
  };
+ // lazy follow (build 345 / 367): a board moves back in front once the head
+ // has turned well away or it is far off; returns the new 'moving' state
+ const lazyFollow=(m,target,moving,hold)=>{
+  tmpD.subVectors(m.position,head);tmpD.y=0;
+  const ang=tmpD.lengthSq()>1e-6?tmpD.normalize().angleTo(tmpE.subVectors(target,head).setY(0).normalize()):0;
+  if(ang>0.6||m.position.distanceTo(target)>0.45)moving=true;
+  if(moving&&!hold){m.position.lerp(target,0.08);m.lookAt(head);if(m.position.distanceTo(target)<0.01)moving=false}
+  return moving;
+ };
+ // samples per pixel (build 369): the loop-count diagnostic drawn to a 48×48
+ // target from the left eye once a second while 詳細 is open, averaged over
+ // the covered pixels (8-bit: steps of 4 samples)
+ const probeTarget=new THREE.WebGLRenderTarget(48,48,{depthBuffer:false}),probePx=new Uint8Array(48*48*4);
+ const measureSamples=()=>{
+  if(!mesh||!material||!rayMesh)return;
+  const sub=renderer.xr.getCamera().cameras[0]||camera,prev=renderer.getRenderTarget(),wasXr=renderer.xr.enabled,d0=material.uniforms.diag.value,clearC=renderer.getClearColor(new THREE.Color()),clearA=renderer.getClearAlpha();
+  material.uniforms.diag.value=2;renderer.xr.enabled=false;renderer.setRenderTarget(probeTarget);renderer.setClearColor(0x000000,0);renderer.clear();
+  scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);renderer.render(volScene,sub);renderer.readRenderTargetPixels(probeTarget,0,0,48,48,probePx);
+  renderer.setRenderTarget(prev);renderer.xr.enabled=wasXr;material.uniforms.diag.value=d0;renderer.setClearColor(clearC,clearA);
+  let sum=0,n=0;for(let i=0;i<probePx.length;i+=4)if(probePx[i+3]>0){sum+=probePx[i]/255*1024;n++}
+  ui.sampleLine=n?L.samples+(sum/n).toFixed(0)+L.samplesNote:'';
+ };
  renderer.setAnimationLoop(()=>{
   const js0=performance.now();if(timerExt)pollTimers();
-  readHead();
-  if(!menuPlaced)placeMenuNow();
+  const dt=lastT?Math.min(0.05,(js0-lastT)/1000):0;lastT=js0;
+  readHead();frameNo++;
+  if(!poseAt&&poseOk())poseAt=frameNo;
+  if(!menuPlaced&&poseAt)placeMenuNow();
+  if(placePending&&poseAt){placePending=false;bringVolumeFront();ui.placeLine=(ja?'初期配置: 姿勢取得 フレーム ':'placed: pose at frame ')+poseAt+(ja?' / 配置 フレーム ':' / placed at frame ')+frameNo+(ja?' / 頭の高さ ':' / head height ')+head.y.toFixed(2)+' m';if(ui.tab===4)menu.refresh()}
   // lazy follow: move back in front once the head has turned well away
-  if(ui.open&&settings.menuMode===0){
-   computeMenuTarget();tmpD.subVectors(menu.mesh.position,head);tmpD.y=0;
-   const ang=tmpD.lengthSq()>1e-6?tmpD.normalize().angleTo(tmpE.subVectors(menuTarget,head).setY(0).normalize()):0;
-   if(ang>0.6||menu.mesh.position.distanceTo(menuTarget)>0.45)menuMoving=true;
-   if(menuMoving&&!dragging){menu.mesh.position.lerp(menuTarget,0.08);menu.mesh.lookAt(head);if(menu.mesh.position.distanceTo(menuTarget)<0.01)menuMoving=false}
-  }
+  if(ui.open&&settings.menuMode===0&&!menuHeld){computeMenuTarget();menuMoving=lazyFollow(menu.mesh,menuTarget,menuMoving,!!dragging)}
+  help.mesh.visible=(settings.help|0)>0;
+  if(help.mesh.visible&&!helpPlaced&&poseAt)placeHelpNow();
+  if(help.mesh.visible&&settings.help===1&&!helpHeld){computeHelpTarget();helpMoving=lazyFollow(help.mesh,helpTarget,helpMoving,false)}
   if(twoHand){const s=Math.min(20,Math.max(0.05,twoHand.s0*handDist()/twoHand.d0));holder.scale.setScalar(s)}
-  let hover=-1;
+  let hover=-1,panelHover=-1,scroll=0;
+  panel.mesh.visible=section.on&&planes.length>0;
   for(const c of controllers){
-   const h=menuHit(c),bh=h?null:badgeHit(c),ray=c.userData.ray;
-   if(h||bh){ray.scale.z=(h||bh).distance;ray.material.color.setHex(0xffffff);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}}
+   // ray priority: menu, menu tag, section panel (build 365), then a section frame (build 364)
+   const h=menuHit(c),bh=h?null:badgeHit(c),ph=h||bh?null:panelHit(c),hh=h||bh||ph?null:helpHit(c),rp=h||bh||ph||hh?null:rayPlane(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;
+   if(h||bh||ph||hh||rp){ray.scale.z=(h||bh||ph||hh||rp).distance;ray.material.color.setHex(0xffffff);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}if(ph){const i=panel.hit(ph.uv);if(i>=0)panelHover=i}}
    else{ray.scale.z=0.08;ray.material.color.setHex(0x88ccff)}
+   // thumbstick Y (xr-standard axes[3], up is negative), dead zone 0.15, squared response; both hands add up
+   const ay=c.userData.source?.gamepad?.axes?.[3]||0,am=Math.abs(ay);if(am>0.15)scroll+=Math.sign(ay)*((am-0.15)/0.85)**2;
    if(dragging?.c===c){setRay(c);const hh=raycaster.intersectObject(menu.mesh,false)[0];if(hh)menu.drag(dragging.i,hh.uv)}
    // xr-standard buttons: 4 = A/X toggles the menu, 5 = B/Y the section
    const bt=c.userData.source?.gamepad?.buttons;
@@ -764,10 +959,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(!b&&c.userData.bDown){if(ring.parent===c)ring.visible=false;if(!c.userData.bLong)setSection(!section.on)}
    c.userData.bDown=b;
   }
-  menu.setHover(hover);
-  // section frame colour: yellow held, cyan fixed, white when a grip would take it
+  menu.setHover(hover);panel.setHover(panelHover);
+  // thumbstick scroll (build 364): the selected plane along its own normal, same world speed fixed in the scaled holder or held
+  const sp=section.selected;
+  if(section.on&&sp&&scroll&&dt){const ps=sp.obj.parent?sp.obj.parent.getWorldScale(tmpS).x||1:1;sp.obj.translateX(-scroll*SCROLL_SPEED*dt/ps)}
   // frame colour: own colour; white while held or when a hand could take it
-  if(section.on){const near=new Set(controllers.map(nearestPlane));for(const pl of planes)pl.mat.color.setHex(pl===section.heldPlane||near.has(pl)?0xffffff:pl.color)}
+  // (near or pointed by a ray); the selected plane gets the inner loop
+  if(section.on){const near=new Set(controllers.flatMap(c=>[nearestPlane(c),c.userData.rayPlane]));for(const pl of planes){pl.mat.color.setHex(pl===section.heldPlane||near.has(pl)?0xffffff:pl.color);pl.inner.visible=pl===section.selected}}
   const st=section.on?(section.held?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}
   if(material){
@@ -785,7 +983,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
      u.cutPlanes.value[n].set(tmpN.x,tmpN.y,tmpN.z,tmpN.dot(tmpP));if(pl.cut&&settings.cut)cutBits|=1<<n;n++;
     }}
    u.planeCount.value=n;u.planeCut.value=cutBits;u.capOn.value=settings.cap?1:0;u.sliceTint.value=+settings.sliceTint||0;u.sliceOpacity.value=section.on?settings.sliceOpacity:0;
-   u.sliceWindow.value.set(+wc.value||0,Math.max(1,+ww.value||1));
+   u.sliceWindow.value.set(vrWindow.c,Math.max(1,vrWindow.w));
    for(let i=0;i<4;i++){
     const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
     u.segA.value[i].set(seg?.min||0,seg?.max||0,segOpacity[key]??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
@@ -798,9 +996,25 @@ export async function startVrView({language='ja',mode='vr'}={}){
    autoFrames++;const nowA=performance.now();
    if(nowA-autoAt>=500){
     const interval=(nowA-autoAt)/autoFrames,budget=1000/(targetRate()||72);
-    if(interval>budget*1.12)autoF=Math.max(AUTO_MIN,autoF*Math.min(0.92,Math.sqrt(budget/interval)));
-    else if(interval<budget*1.04)autoF=Math.min(AUTO_MAX,autoF*1.06);
-    autoFrames=0;autoAt=nowA;
+    const volMs=ctrlN.vol?ctrl.vol/ctrlN.vol:0,mainMs=ctrlN.main?ctrl.main/ctrlN.main:0;
+    if(mainMs>0){
+     // build 370: GPU-timed control. The frame interval is quantised by the
+     // display (a small overrun shows as a halved rate), so the factor now
+     // follows the measured GPU time: pixel cost ∝ f², target = 80 % of the
+     // budget minus the rest of the frame; damped (×0.7 … ×1.15 per step)
+     let want;
+     if(autoF>=1||volMs<=0){const total=mainMs;want=total>budget*0.8?autoF*Math.sqrt(budget*0.8/total):(autoF<1?autoF*1.15:1)}
+     else{const target=Math.max(1,budget*0.8-mainMs);want=autoF*Math.sqrt(target/volMs)}
+     let next=want<autoF?Math.max(want,autoF*0.7):Math.min(want,autoF*1.15);
+     if(interval>budget*1.5)next=Math.min(next,autoF*0.85); // frames are being dropped anyway
+     autoF=Math.min(AUTO_MAX,Math.max(AUTO_MIN,next));
+     ui.autoLine=(ja?'自動: GPU ボリューム ':'auto: GPU volume ')+volMs.toFixed(1)+' ms · '+(ja?'本描画 ':'main ')+mainMs.toFixed(1)+' ms / '+(ja?'予算 ':'budget ')+budget.toFixed(1)+' ms → '+Math.round(autoF*100)+'%';
+    }else{
+     if(interval>budget*1.12)autoF=Math.max(AUTO_MIN,autoF*Math.min(0.92,Math.sqrt(budget/interval)));
+     else if(interval<budget*1.04)autoF=Math.min(AUTO_MAX,autoF*1.06);
+     ui.autoLine=(ja?'自動（間隔）: ':'auto (interval): ')+interval.toFixed(1)+' ms / '+budget.toFixed(1)+' ms → '+Math.round(autoF*100)+'%';
+    }
+    ctrl.vol=ctrl.main=0;ctrlN.vol=ctrlN.main=0;autoFrames=0;autoAt=nowA;
    }
   }
   const f=auto?autoF:(VRES[settings.vres]??1);
@@ -811,9 +1025,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
     const xrTarget=renderer.getRenderTarget(),w=xrTarget?.width||1,h=xrTarget?.height||1;
     renderer.xr.updateCamera(camera);const xrCam=renderer.xr.getCamera();
     // auto: one target at the largest factor, only the viewports shrink
-    const fmax=auto?AUTO_MAX:f,tw=Math.max(1,Math.ceil(w*fmax)),th=Math.max(1,Math.ceil(h*fmax));
-    if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw,th,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
-    else if(lowTarget.width!==tw||lowTarget.height!==th)lowTarget.setSize(tw,th);
+    // build 371: the target grows to the factor in use (never shrinks) instead of being allocated at the maximum
+    const tw0=Math.max(1,Math.ceil(w*f)),th0=Math.max(1,Math.ceil(h*f));
+    if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw0,th0,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+    else if(lowTarget.width<tw0||lowTarget.height<th0)lowTarget.setSize(Math.max(lowTarget.width,tw0),Math.max(lowTarget.height,th0));
+    const tw=lowTarget.width,th=lowTarget.height;
     scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);
     renderer.xr.enabled=false;renderer.setRenderTarget(lowTarget);
     renderer.setClearColor(0x000000,0);lowTarget.scissorTest=false;renderer.clear(true,false,false);
@@ -829,6 +1045,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }else{mesh.material=material;const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
   }
   menu.flush();
+  // section panel (build 365): redrawn when its state changes (no refresh at every call site); flush is a no-op when clean
+  const pk=[section.on,planes.length,planes.indexOf(sp),sp?.cut,sp?.side,settings.cut,planeAxis(sp)].join();
+  if(pk!==panelKey){panelKey=pk;panel.refresh();if(ui.tab===1)menu.refresh()} // the 断面 tab's snap buttons follow too
+  panel.flush();
+  const hk=[section.on,ui.open,settings.secHold].join();if(hk!==helpKey){helpKey=hk;help.refresh()}help.flush();
   sums.js+=performance.now()-js0;counts.js++;
   timed('main',()=>renderer.render(scene,camera));
   if(shotRequested){shotRequested=false;try{takeScreenshot()}catch(e){console.error(e)}}
@@ -837,14 +1058,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
    fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
    ui.fpsLine=fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
    ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info;
-   if(ui.tab===3||ui.flash)menu.refresh();
+   if(ui.tab===4)try{measureSamples()}catch(e){console.warn(e)}
+   if(ui.tab===4||ui.flash)menu.refresh();
    if(ui.flash&&now>ui.flashUntil)ui.flash='';
    for(const k in sums){sums[k]=0;counts[k]=0}
   }
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  volTex?.dispose();brickTex?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();badge.userData.dispose();
+  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);
@@ -860,12 +1082,18 @@ export async function startVrView({language='ja',mode='vr'}={}){
    v.minFilter=v.magFilter=THREE.LinearFilter;v.unpackAlignment=1;v.needsUpdate=true;
    const b=new THREE.Data3DTexture(d.bricks,...d.brickDims);b.format=THREE.RGFormat;b.type=THREE.FloatType;
    b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
-   return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null};
+   return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null,dist:null};
   };
   // classification texture from the prepared bytes (only on the ≤256 grid)
   const clsTexture=t=>{
    const c=P.cls;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
    const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.userData.chan=c.chan;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;
+   return x;
+  };
+  // distance field texture (build 369), same grid and channels as the classification, nearest sampling
+  const distTexture=t=>{
+   const c=P.dist;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
+   const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.NearestFilter;x.unpackAlignment=1;x.needsUpdate=true;
    return x;
   };
   const full=makeTextures(vd);let half=null;volTex=full.v;brickTex=full.b;
@@ -879,6 +1107,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(Math.max(...t.dims)<=256&&!t.cls&&!(settings.clsDiag|0))t.cls=clsTexture(t);
    const on=!!t.cls&&!(settings.clsDiag|0);
    material.uniforms.useCls.value=on?1:0;material.uniforms.clsTex.value=t.cls||dummyEdit;if(t.cls)material.uniforms.clsChan.value.set(...t.cls.userData.chan);
+   // sphere tracing needs the classification grid (the distances describe its boundaries)
+   if(on&&!t.dist&&P.dist)t.dist=distTexture(t);
+   const onD=on&&!!t.dist&&!(settings.distDiag|0);
+   material.uniforms.useDist.value=onD?1:0;material.uniforms.distTex.value=t.dist||dummyEdit;material.uniforms.voxelMin.value=Math.min(2*vd.halfExt[0]/t.dims[0],2*vd.halfExt[1]/t.dims[1],2*vd.halfExt[2]/t.dims[2]);
    refreshEdits();
   };
   // processed segments: built once when VR starts (edits cannot change in
@@ -894,11 +1126,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
    material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editTex.value=editTex||dummyEdit;
   };
   disposeEdits=()=>{editTex?.dispose();dummyEdit.dispose()};
-  disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();full.cls?.dispose()};
+  disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();half?.dist?.dispose();full.cls?.dispose();full.dist?.dispose()};
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
     stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
-    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null}}});
+    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},distTex:{value:null},useDist:{value:0},voxelMin:{value:0.01}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;
@@ -909,7 +1141,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   rayMesh=new THREE.Mesh(mesh.geometry,material.clone());rayMesh.material.uniforms=material.uniforms;rayMesh.material.blending=THREE.NoBlending;rayMesh.material.transparent=false;
   rayMesh.matrixAutoUpdate=false;rayMesh.matrixWorldAutoUpdate=false;rayMesh.frustumCulled=false;volScene.add(rayMesh);
   // app units (longest side 3.3) -> 0.3 m in VR, placed in front of the head
-  mesh.renderOrder=1;holder.add(mesh);baseStep=vd.step;applyQuality();bringVolumeFront();
+  mesh.renderOrder=1;holder.add(mesh);baseStep=vd.step;applyQuality();placePending=true;
   ui.status=L.stNone;menu.refresh();
  }catch(e){
   console.error(e);ui.status=L.failed+String(e.message||e).slice(0,40);menu.refresh();
