@@ -3349,9 +3349,25 @@ section sent every ray through the old general loop.
   when none exists and removed afterwards; "断面なし / 断面あり" lines.
 Checks: lint, 406 unit tests, boot-check, harness as above.
 
-## Handoff (after build 389)
+## Build 390 — Quest benchmark of build 389 with section phases (log only)
 
-State: build 389 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner's in-VR benchmark (build 389, 72 Hz, shown = bone + soft + fat):
+- 16.5 cm 断面なし: shown 100 % 64 / 50 % 72 · bone 72 / 72
+- 16.5 cm 断面あり: shown 100 % 72 / 50 % 72 · bone 72 / 72
+- 30 cm 断面なし: shown 100 % 38 / 50 % 61 · bone 72 / 72
+- 30 cm 断面あり: shown 100 % 65 / 50 % 71 · bone 72 / 72
+Reading: with a section the march for rays with slice / cut-face events
+is now as fast as without, and a section clips half the volume away, so
+"断面あり" comes out above "断面なし". The "断面なし" figures are below the
+build 387 run (64 vs 72 at 16.5 cm, 38 vs 57 at 30 cm, 61 vs 72 at 50 %):
+the device was slower in this run as a whole (thermal state after long
+use is the likely reason), so compare rows within one run only.
+Still visible in the screenshot: the Quest browser's 2D page renders the
+WebGPU volume at 2 fps ("編集 2:keep 187049区間").
+
+## Handoff (after build 390)
+
+State: build 390 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
