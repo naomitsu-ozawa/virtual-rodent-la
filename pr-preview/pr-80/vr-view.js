@@ -8,13 +8,13 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build382';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build382';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build382';
-import { sceneState } from './state.js?v=20261001-build382';
-import { buildDistanceBytes } from './distance-field.js?v=20261001-build382';
-import { tr } from './i18n.js?v=20261001-build382';
-import { wc, ww } from './ui-shell.js?v=20261001-build382';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build383';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build383';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build383';
+import { sceneState } from './state.js?v=20261001-build383';
+import { buildDistanceBytes } from './distance-field.js?v=20261001-build383';
+import { tr } from './i18n.js?v=20261001-build383';
+import { wc, ww } from './ui-shell.js?v=20261001-build383';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -595,7 +595,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3,info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  const segMode={};
@@ -941,7 +941,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   help.mesh.visible=(settings.help|0)>0;
   if(help.mesh.visible&&!helpPlaced&&poseAt)placeHelpNow();
   if(help.mesh.visible&&settings.help===1&&!helpHeld){computeHelpTarget();helpMoving=lazyFollow(help.mesh,helpTarget,helpMoving,false)}
-  if(twoHand){const s=Math.min(20,Math.max(0.05,twoHand.s0*handDist()/twoHand.d0));holder.scale.setScalar(s)}
+  if(twoHand){const s=Math.min(20,Math.max(0.025,twoHand.s0*handDist()/twoHand.d0));holder.scale.setScalar(s)}
   let hover=-1,panelHover=-1,scroll=0;
   panel.mesh.visible=section.on&&planes.length>0;
   for(const c of controllers){
