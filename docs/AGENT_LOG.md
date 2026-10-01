@@ -3307,9 +3307,28 @@ Same bench as build 386 (practice data, bone + fat 100 %, SwiftShader ms).
 Checks: lint, 406 unit tests, boot-check, harness as above. Ready for the
 in-VR benchmark on the Quest.
 
-## Handoff (after build 387)
+## Build 388 — Quest benchmark of build 387 (log only)
 
-State: build 387 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner's in-VR benchmark (build 387, 72 Hz, shown = bone + soft + fat):
+- 16.5 cm (default): shown 100 % 72 fps / 50 % 72 · bone 100 % 72 / 50 % 72
+- 30 cm: shown 100 % 57 / 50 % 72 · bone 100 % 72 / 50 % 72
+- 50 cm: shown 100 % 39 / 50 % 69 · bone 100 % 70 / 50 % 72
+Goal D (100 % at the normal size) is met at the default size, with soft
+tissue shown as well; build 381 was 16–30 fps for bone + fat at 100 %.
+The SwiftShader ablations (build 386/387) transferred to the Quest: the
+per-step bookkeeping and the divergent search were the cost, not the
+fetch count. Remaining: 30 cm at 100 % is 57 fps and 50 cm 39 fps; the
+next steps there are non-exact (step 1.0 voxel, two search iterations) or
+resolution, to be quantified on the harness before any device test.
+Seen in the same screenshot: the Quest browser's 2D page shows the
+WebGPU volume at 2 fps with "編集 2:keep 187049区間" (processed fat, keep
+mode) — the Quest-browser comfort item (overnight task 2), not yet
+addressed; the editAllows binary search per sample on a 187k-interval
+mask is the likely cost (build 373 note: bit-mask texture).
+
+## Handoff (after build 388)
+
+State: build 388 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
@@ -3339,12 +3358,13 @@ B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
    scroll). Open: Quest check; scroll speed (5 cm/s) may need tuning.
 C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
-D. Goal (owner): VR auto resolution held at 100 % at the normal size.
-   Builds 368–371: fewer fetches per sample / brick, uniform-brick crossing,
-   fast surface search, distance-field sphere tracing (all switchable),
-   samples-per-pixel probe, GPU-timed auto controller up to 100 %. Open:
-   the device numbers decide whether per-ray work or the pixel count is the
-   limit; then precomputed normals (memory!) or temporal reuse.
+D. Goal (owner): VR auto resolution held at 100 % at the normal size —
+   met in build 387 (Quest bench: 72 fps at the 16.5 cm default with bone +
+   soft + fat at 100 %; 30 cm 57 fps, 50 cm 39 fps). Builds 368–387: fewer
+   fetches, distance field (now in the classification alpha, one fetch per
+   step), tight ray loop, search after the march. Open: larger sizes at
+   100 % (non-exact options: step 1.0 voxel, two search iterations;
+   quantify on the harness first).
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
 F. iPad (builds 372–377): region colouring speckle fixed, drag lookups by
