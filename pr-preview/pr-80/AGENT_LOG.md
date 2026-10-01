@@ -3262,9 +3262,35 @@ produces one result block.
   ms). Practice data, bone + fat, build 384: 627 ms for 256².
 Checks: lint, 406 unit tests, boot-check.
 
-## Handoff (after build 385)
+## Build 386 — VR: tight ray loop for the combined-field path (pixel-identical, 609 → 177 ms on SwiftShader)
 
-State: build 385 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: optimise on the environment here with the practice data to the
+fastest state, then test on the device. Bench loop: practice 256³ volume
+(scratch sample-volume.mjs), classification and distance bytes cached
+(prep-cls.mjs → CLS= / DISTF= in the harness, MODES=cls), bone 300..3000 +
+fat −200..−20 at 100 %, soft hidden, 256² image; a run takes 10 s.
+Ablations on build 385 (SwiftShader ms, min of 5; reads per pixel 18.1 cls
++ 2.1 HU): no gradient normal 595 (image changes); simple shading (no
+search, no normal) 376; tight inner loop 330 (identical); + segment work
+on the fetched vector 268 (identical); + search without the surface search
+105 (image changes); + search testing the fetched classification directly
+177 (identical). SwiftShader's cost is dominated by per-step bookkeeping
+and divergent loops, not by fetch counts; whether the Quest behaves alike
+is what the in-VR benchmark (build 385) will tell.
+- Shader: when the combined field is in use and no slice or cap is active,
+  a tight loop runs: one fetch, jump or sample; segment index, own value and
+  the largest enabled value from that vector; the surface search tests the
+  fetched classification (first enabled segment holding the sample must be
+  the hit segment, as segmentIndexAt did). The general loop is unchanged and
+  still serves slices, caps, the separate-field path and the HU path.
+- Harness vs build 385: practice data 0 differing channels; phantom specks
+  + soft + edit box, bone only, fat sheets, separate field, no fat (HU and
+  cls paths): all 0.
+Checks: lint, 406 unit tests, boot-check, harness as above.
+
+## Handoff (after build 386)
+
+State: build 386 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
