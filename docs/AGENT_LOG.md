@@ -3388,14 +3388,48 @@ been using for the tests so far — the passthrough compositing takes part
 of the frame budget on the Quest. Goal D closed for the owner's use
 (section work at the default size and at 30 cm).
 
-## Handoff (after build 392)
+## Build 393 — VR: shader variants without the unused loops; GPU prepared before the session
 
-State: build 392 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: adopt the Codex branch's pre-session compilation; shader
+specialisation only if it measures. Measured first (practice data, bone +
+fat 100 %, SwiftShader ms, pixel-identical): without the general loop
+159 → 146 (no section), 269 → 254 (section); without the general loop and
+the event loop 165 → 141 (no section). Modest but exact, so both go in.
+- fragmentShader: preprocessor guards VRL_NO_GENERAL (drops the general
+  loop and makes the combined path unconditional) and VRL_NO_EVENTS (drops
+  the slice / cut-face copy of the march). The raw source is the full
+  shader (the harness compiles it; DEFINES=VRL_NO_GENERAL,VRL_NO_EVENTS
+  tests a variant). Session: three materials sharing one uniforms object
+  (full, combined, noEvents) and their no-blending copies for the
+  offscreen pass; chosen per frame: combined field in use and no diagnostic
+  → noEvents when planeCount is 0, else combined; otherwise full.
+- prepareVrGpu(P, mode): on the page, after prepareVrData and before the
+  start button: a renderer with an XR-compatible context, the textures of
+  both grids, the combined classification + field texture for the shown
+  segments, the edit mask, every program (seven materials) compiled with
+  compileAsync, then a GPU fence waited for. The session reuses the
+  renderer and textures (gpuPrepared, keyed by data key and mode); the
+  prepared combo texture is taken when its mask matches, so nothing is
+  rebuilt or uploaded on the first frames. Falls back to the old path when
+  preparation fails. Prep panel shows "GPU: x.x s". 詳細 tab: "初回描画 xx
+  ms" = session start → first volume draw.
+- segMode moved to module scope (shownMask); it now persists across
+  sessions on the page.
+- tools/vr-gpu-prepare-check.mjs (npm run vr-gpu-prepare-check): offline
+  app + prepareVrGpu with a 32³ synthetic volume on SwiftShader: textures,
+  combo, seven materials / four programs, no GL error.
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check, harness
+(raw shader and the variants pixel-identical to build 392 on the practice
+data with and without a section and on the phantom with specks + edit).
+
+## Handoff (after build 393)
+
+State: build 393 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 388 (PR #80 merged 2026-10-01); builds from 389 go to a new PR.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 392 (PR #81 merged 2026-10-01); builds from 393 go to a new PR.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to

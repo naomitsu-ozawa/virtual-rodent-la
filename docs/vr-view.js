@@ -8,14 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build392';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build392';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build392';
-import { sceneState } from './state.js?v=20261001-build392';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build392';
-import { tr } from './i18n.js?v=20261001-build392';
-import { APP_BUILD } from './version.js?v=20261001-build392';
-import { wc, ww } from './ui-shell.js?v=20261001-build392';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build393';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build393';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build393';
+import { sceneState } from './state.js?v=20261001-build393';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build393';
+import { tr } from './i18n.js?v=20261001-build393';
+import { APP_BUILD } from './version.js?v=20261001-build393';
+import { wc, ww } from './ui-shell.js?v=20261001-build393';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -213,7 +213,12 @@ void main(){
  // build 368: brickEnd = t where the current non-empty brick is left; the
  // brick min/max is fetched once per brick instead of once per sample
  float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;float lastDd=99.0;float distInc=ceil(1.5*ceil(step/max(voxelMin,1e-6)));
+#ifndef VRL_NO_GENERAL
  if(distInCls>0&&useCls>0&&diag!=4){
+#else
+ // build 393: variant without the general loop (compiled when the combined field is in use)
+ {
+#endif
   // build 386: tight loop for the combined-field path. Same arithmetic as the general loop below
   // without its per-step slice / cap / brick / uniform-brick bookkeeping, the segment work done on the fetched vector and the
   // surface search testing the fetched classification directly (pixel-identical; practice data 609 -> 177 ms on SwiftShader)
@@ -224,7 +229,9 @@ void main(){
   vec4 enM=vec4(0.0);for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5)enM[c]=1.0;}
   // build 389: rays with a slice or a cut face use a second copy of the march with those events (the same code in one
   // loop made SwiftShader's compiled loop twice as slow for every ray, so the two stay separate)
+#ifndef VRL_NO_EVENTS
   if(nSlice==0&&capT<0.0){
+#endif
   for(int iter=0;iter<4096;iter++){
    if(t>endT||acc.a>0.985)break;
    iters++;
@@ -262,6 +269,7 @@ void main(){
    prevValid=true;prevF=idx>=0?curF:maxF;
    previousT=t;t+=step;
   }
+#ifndef VRL_NO_EVENTS
   }else{
   for(int iter=0;iter<4096;iter++){
    if(t>endT||acc.a>0.985)break;
@@ -316,6 +324,7 @@ void main(){
    previousT=t;t+=step;
   }
   }
+#endif
   if(hitIdx>=0){
    int idx=hitIdx;float lo=hitLo;float hi=hitHi;float f0=hitF0;float f1=hitF1;int cIdx=clsChan[idx];
    if(hitIso){
@@ -335,6 +344,7 @@ void main(){
    vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
    float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
   }
+#ifndef VRL_NO_GENERAL
  }else
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
@@ -411,6 +421,9 @@ void main(){
   }
   previousT=t;t=nextT;
  }
+#else
+ }
+#endif
  while(nextSlice<nSlice&&acc.a<=0.985){
   vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
   float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
@@ -661,6 +674,74 @@ function buildClsData(t,calibration,edit){
  return{data:out,C,chan};
 }
 let prepared=null,preparing=null;
+// volume + brick textures for one grid (full 512 or the 256 copy)
+const makeVolumeTextures=d=>{
+ const v=new THREE.Data3DTexture(d.data,...d.dims);v.format=THREE.RGFormat;v.type=THREE.UnsignedByteType;
+ v.minFilter=v.magFilter=THREE.LinearFilter;v.unpackAlignment=1;v.needsUpdate=true;
+ const b=new THREE.Data3DTexture(d.bricks,...d.brickDims);b.format=THREE.RGFormat;b.type=THREE.FloatType;
+ b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
+ return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null,dist:null,combo:null,comboMask:-1};
+};
+const makeEditTexture=P=>{if(!P.edit.data)return null;const e=new THREE.Data3DTexture(P.edit.data,...P.edit.dims);e.format=THREE.RGBAFormat;e.type=THREE.UnsignedByteType;e.unpackAlignment=1;return e};
+const makeComboTexture=(data,dims)=>{const x=new THREE.Data3DTexture(data,...dims);x.format=THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;return x};
+// shown-segment mask for the combined texture's alpha (segMode 2 = hidden)
+const shownMask=()=>{let mask=0;for(let i=0;i<4;i++){const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];if(seg?.active&&seg?.enabled&&segMode[key]!==2)mask|=1<<i}return mask};
+// build 393: shader variants (preprocessor guards in fragmentShader) sharing one uniforms object:
+// combined = without the general loop (used when the combined field is in use), noEvents = also without the slice / cut-face loop (no section)
+const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...defs};return m};return{full:base,combined:mk({VRL_NO_GENERAL:''}),noEvents:mk({VRL_NO_GENERAL:'',VRL_NO_EVENTS:''})}};
+const rayMaterialOf=m=>{const r=m.clone();r.uniforms=m.uniforms;r.defines={...m.defines};r.blending=THREE.NoBlending;r.transparent=false;return r};
+const volumeUniforms=(vd,full,settings)=>({vol:{value:full.v},bricks:{value:full.b},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
+ stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
+ cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
+// ---- GPU preparation before the session (build 393, after the Codex branch's idea) ----
+// The renderer (an XR-compatible context), the textures of the grid in use, the
+// combined classification + field texture for the shown segments, the edit mask
+// and every shader variant are created, uploaded and compiled on the flat page,
+// then the GPU is waited for; the session reuses the renderer, so nothing is
+// compiled or uploaded on the first frames in the headset.
+const segMode={};
+let gpuPrepared=null;
+export async function prepareVrGpu(P,mode='vr',settings=loadSettings()){
+ disposeGpuPrepared();
+ const ar=mode==='ar',renderer=new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
+ renderer.setPixelRatio(1);renderer.setSize(8,8,false);
+ Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
+ document.body.appendChild(renderer.domElement);
+ const gl=renderer.getContext(),t0=performance.now(),times={};
+ const assets={key:P.key,mode,renderer,full:null,half:null,edit:null,warm:[],times};
+ try{
+  try{await gl.makeXRCompatible?.()}catch(e){console.warn('makeXRCompatible before the session failed (setSession will retry):',e)}
+  const vd=P.vd,full=makeVolumeTextures(vd);assets.full=full;
+  const half=P.half?makeVolumeTextures(P.half):null;assets.half=half;
+  const useHalf=(settings.data|0)===1&&!!half,t=useHalf?half:full;
+  if(Math.max(...t.dims)<=256&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3)){const mask=shownMask();const data=combineClassificationDistance(P.cls,P.dist,mask);if(data){t.combo=makeComboTexture(data,t.dims);t.comboMask=mask}}
+  assets.edit=makeEditTexture(P);
+  for(const x of [full.v,full.b,half?.v,half?.b,t.combo,assets.edit].filter(Boolean))renderer.initTexture(x);
+  times.upload=performance.now()-t0;const t1=performance.now();
+  // compile every program the session can use: the three volume variants, their offscreen (no blending) copies and the composite
+  const u=volumeUniforms(vd,full,settings),dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
+  u.clsTex.value=dummy;u.editTex.value=dummy;u.distTex.value=dummy;
+  const base=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:u});
+  base.transparent=true;base.depthWrite=false;base.blending=THREE.CustomBlending;base.blendSrc=THREE.OneFactor;base.blendDst=THREE.OneMinusSrcAlphaFactor;
+  const vars=materialVariants(base),mats=[vars.full,vars.combined,vars.noEvents,rayMaterialOf(vars.full),rayMaterialOf(vars.combined),rayMaterialOf(vars.noEvents),
+   new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:compositeVertex,fragmentShader:compositeFragment,side:THREE.BackSide,toneMapped:false,depthWrite:false,transparent:true,blending:THREE.CustomBlending,blendSrc:THREE.OneFactor,blendDst:THREE.OneMinusSrcAlphaFactor,uniforms:{img:{value:null},invSize:{value:new THREE.Vector2(1,1)},halfExt:{value:new THREE.Vector3(...vd.halfExt)}}})];
+  const sc=new THREE.Scene(),geo=new THREE.BoxGeometry(2,2,2),cam=new THREE.PerspectiveCamera();
+  for(const m of mats){const mesh=new THREE.Mesh(geo,m);mesh.frustumCulled=false;sc.add(mesh)}
+  await renderer.compileAsync(sc,cam);
+  geo.dispose();dummy.dispose();assets.warm=mats; // kept alive so the programs stay cached until the session has its own materials
+  times.compile=performance.now()-t1;const t2=performance.now();
+  // wait for the uploads and compilation to finish on the GPU while still on the page
+  const fence=gl.fenceSync?.(gl.SYNC_GPU_COMMANDS_COMPLETE,0);if(fence){gl.flush();const until=performance.now()+30000;
+   while(performance.now()<until){const r=gl.clientWaitSync(fence,0,0);if(r===gl.ALREADY_SIGNALED||r===gl.CONDITION_SATISFIED||r===gl.WAIT_FAILED)break;await new Promise(res=>setTimeout(res,5))}gl.deleteSync(fence)}
+  times.wait=performance.now()-t2;times.total=performance.now()-t0;
+  gpuPrepared=assets;return assets;
+ }catch(e){console.warn('GPU preparation before VR failed; the session will prepare on its own.',e);try{renderer.dispose();renderer.domElement.remove()}catch{}return null}
+}
+export function disposeGpuPrepared(){
+ const g=gpuPrepared;if(!g)return;gpuPrepared=null;
+ for(const t of [g.full,g.half])if(t){t.v.dispose();t.b.dispose();t.combo?.dispose()}
+ g.edit?.dispose();g.warm.forEach(m=>m.dispose());g.renderer.dispose();g.renderer.domElement.remove();
+}
 export function vrReady(){return !!prepared&&prepared.key===vrDataKey()}
 const maxTexture3D=()=>{try{const c=document.createElement('canvas'),g=c.getContext('webgl2');const m=g?.getParameter(g.MAX_3D_TEXTURE_SIZE)||2048;g?.getExtension('WEBGL_lose_context')?.loseContext();return m}catch{return 2048}};
 // phases reported as {phase, done, total}; timings (ms) returned with the data
@@ -702,9 +783,14 @@ export function showPreparePanel({language='ja',mode='vr',onStart}){
  q('.start').onclick=()=>{panel.remove();onStart()};
  document.body.append(panel);
  const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'||phase==='copy'?' '+done+' / '+total:'');const i=Math.max(0,order.indexOf(phase==='copy'?'read':phase)),f=(i+((phase==='read'||phase==='copy')&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%'};
- prepareVrData(report).then(p=>{
-  q('.bar').style.width='100%';q('.ph').textContent=ja?'準備ができました':'Ready';
-  q('.tm').textContent=allPhases.filter(k=>p.times[k]!=null).map(k=>names[k]+': '+(p.times[k]/1000).toFixed(1)+' s').join('\n');
+ prepareVrData(report).then(async p=>{
+  q('.bar').style.width='100%';
+  // build 393: upload, compile and wait on the GPU before the session (skipped when already prepared for this data and mode)
+  let g=gpuPrepared&&gpuPrepared.key===p.key&&gpuPrepared.mode===mode?gpuPrepared:null;
+  if(!g){q('.ph').textContent=ja?'GPU の準備（転送・コンパイル）':'Preparing the GPU (upload, compile)';g=await prepareVrGpu(p,mode)}
+  q('.ph').textContent=ja?'準備ができました':'Ready';
+  const gpuLine=g?.times?((ja?'GPU: ':'GPU: ')+(g.times.total/1000).toFixed(1)+' s'):'';
+  q('.tm').textContent=allPhases.filter(k=>p.times[k]!=null).map(k=>names[k]+': '+(p.times[k]/1000).toFixed(1)+' s').concat(gpuLine?[gpuLine]:[]).join('\n');
   q('.start').disabled=false;q('.start').focus();
  },e=>{console.error(e);q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e)});
 }
@@ -716,15 +802,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
  const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;settings.clsDiag=0;settings.distDiag=0;
  const vrWindow={c:+wc.value||0,w:Math.max(1,+ww.value||1)}; // VR-local CT window (build 361): starts from the app's sliders, not written back
- const ar=mode==='ar',renderer=new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
+ // build 393: a renderer prepared on the page (textures uploaded, programs compiled) is reused; otherwise a fresh one
+ const gpu=gpuPrepared&&gpuPrepared.key===vrDataKey()&&gpuPrepared.mode===mode?gpuPrepared:null;if(gpu)gpuPrepared=null;else disposeGpuPrepared();
+ const ar=mode==='ar',renderer=gpu?.renderer||new THREE.WebGLRenderer({antialias:false,alpha:ar,preserveDrawingBuffer:false});
  renderer.setPixelRatio(1);renderer.setSize(8,8,false);renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
- Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
- document.body.appendChild(renderer.domElement);
+ if(!gpu){Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});document.body.appendChild(renderer.domElement)}
+ const sessionAt=performance.now();let firstDrawMs=-1;
  // requestSession must run inside the click; the texture is built afterwards
  // while the headset shows progress
  let session;
  try{session=await navigator.xr.requestSession(ar?'immersive-ar':'immersive-vr',{optionalFeatures:['local-floor']})}
- catch(e){renderer.dispose();renderer.domElement.remove();throw e}
+ catch(e){if(gpu)gpuPrepared=gpu;else{renderer.dispose();renderer.domElement.remove()}throw e}
  running={session};
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
@@ -744,10 +832,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
- const segMode={};
+ // segMode (normal / simple / hidden per segment) lives at module level since build 393 (shownMask); it persists across sessions
  // VR opacity per segment (build 354): 100 % by default, so rays stop at the
  // first surface; the app's opacity is not used or changed
  const segOpacity={};
@@ -1221,6 +1309,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
   }
   const f=auto?autoF:(VRES[settings.vres]??1);
+  const variantKey=()=>{const u=material.uniforms;if(!(u.distInCls.value>0&&u.useCls.value>0)||(settings.diag|0))return 'full';return u.planeCount.value===0?'noEvents':'combined'};
   if(mesh){
    if(f<1){
     // own pass per eye into the small target, then the composite material
@@ -1233,7 +1322,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw0,th0,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
     else if(lowTarget.width<tw0||lowTarget.height<th0)lowTarget.setSize(Math.max(lowTarget.width,tw0),Math.max(lowTarget.height,th0));
     const tw=lowTarget.width,th=lowTarget.height;
-    scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);
+    scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);rayMesh.material=rayVariants[variantKey()];
     renderer.xr.enabled=false;renderer.setRenderTarget(lowTarget);
     renderer.setClearColor(0x000000,0);lowTarget.scissorTest=false;renderer.clear(true,false,false);
     timed('vol',()=>{for(const sub of xrCam.cameras){
@@ -1245,7 +1334,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
     lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(ar?0x000000:BG,ar?0:1);
     compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(f/tw,f/th);
     mesh.material=compMaterial;
-   }else{mesh.material=material;const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
+   }else{mesh.material=variants[variantKey()];const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
+   if(firstDrawMs<0)firstDrawMs=performance.now()-sessionAt;
   }
   menu.flush();
   // section panel (build 365): redrawn when its state changes (no refresh at every call site); flush is a no-op when clean
@@ -1259,7 +1349,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   frames++;const now=performance.now();
   if(now-fpsAt>=1000){
    fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
-   ui.fpsLine=fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
+   ui.fpsLine=(firstDrawMs>=0?(ja?'初回描画 ':'first draw ')+Math.round(firstDrawMs)+' ms · ':'')+fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
    ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info;
    if(ui.tab===4)try{measureSamples()}catch(e){console.warn(e)}
    if(ui.tab===4||ui.flash)menu.refresh();
@@ -1269,7 +1359,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
+  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();if(variants){variants.combined.dispose();variants.noEvents.dispose()}if(rayVariants)Object.values(rayVariants).forEach(m=>m.dispose());gpu?.warm.forEach(m=>m.dispose());compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);showBenchPanel(ja);
@@ -1280,13 +1370,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const P=await prepareVrData(({phase,done,total})=>{ui.status=L.preparing+(phase==='read'?done+' / '+total:phase);menu.refresh()});
   const vd=P.vd;
   if(!running)return;
-  const makeTextures=d=>{
-   const v=new THREE.Data3DTexture(d.data,...d.dims);v.format=THREE.RGFormat;v.type=THREE.UnsignedByteType;
-   v.minFilter=v.magFilter=THREE.LinearFilter;v.unpackAlignment=1;v.needsUpdate=true;
-   const b=new THREE.Data3DTexture(d.bricks,...d.brickDims);b.format=THREE.RGFormat;b.type=THREE.FloatType;
-   b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
-   return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null,dist:null};
-  };
+  const makeTextures=makeVolumeTextures;
+  if(gpu&&gpu.key!==P.key){disposeGpuPrepared();}
   // classification texture from the prepared bytes (only on the ≤256 grid)
   const clsTexture=t=>{
    const c=P.cls;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
@@ -1299,7 +1384,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.NearestFilter;x.unpackAlignment=1;x.needsUpdate=true;
    return x;
   };
-  const full=makeTextures(vd);let half=null;volTex=full.v;brickTex=full.b;
+  const full=(gpu&&gpu.key===P.key&&gpu.full)||makeTextures(vd);let half=(gpu&&gpu.key===P.key&&gpu.half)||null;volTex=full.v;brickTex=full.b;
   // 512 / 256 data (256 made on first use, kept for the session)
   useData=i=>{
    const t=i===1&&P.half?(half||=makeTextures(P.half)):full;
@@ -1322,12 +1407,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
   refreshCombo=()=>{
    const t=comboT;
    if(!t){material.uniforms.distInCls.value=0;return}
-   let mask=0;for(let i=0;i<4;i++){const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];if(seg?.active&&seg?.enabled&&segMode[key]!==2)mask|=1<<i}
-   if(mask===comboMask)return;comboMask=mask;
+   const mask=shownMask();
+   if(mask===comboMask)return;
+   // prepared on the page for this mask (build 393): no rebuild, no upload
+   if(t.combo&&t.comboMask===mask){comboMask=mask;material.uniforms.clsTex.value=t.combo;material.uniforms.clsChan.value.set(...P.cls.chan);material.uniforms.distInCls.value=1;return}
+   comboMask=mask;
    const data=combineClassificationDistance(P.cls,P.dist,mask,t.combo?.image?.data||null);
    if(!data){material.uniforms.distInCls.value=0;return}
-   if(!t.combo){const x=new THREE.Data3DTexture(data,...t.dims);x.format=THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;t.combo=x}
-   t.combo.needsUpdate=true;
+   if(!t.combo)t.combo=makeComboTexture(data,t.dims);
+   t.combo.needsUpdate=true;t.comboMask=mask;
    material.uniforms.clsTex.value=t.combo;material.uniforms.clsChan.value.set(...P.cls.chan);material.uniforms.distInCls.value=1;
   };
   // processed segments: built once when VR starts (edits cannot change in
@@ -1335,27 +1423,27 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // normalised, so it serves both data sizes); the filter follows the
   // diagnostic setting (0 smooth, 1 nearest, 2 off)
   const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
-  let editTex=null;const editActive=P.edit.active;
-  if(P.edit.data){editTex=new THREE.Data3DTexture(P.edit.data,...P.edit.dims);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.unpackAlignment=1}
+  const editTex=(gpu&&gpu.key===P.key&&gpu.edit)||makeEditTexture(P),editActive=P.edit.active;
   refreshEdits=()=>{
    if(!material)return;const mode=settings.editDiag|0;
    if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
    material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editTex.value=editTex||dummyEdit;
   };
   disposeEdits=()=>{editTex?.dispose();dummyEdit.dispose()};
-  disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();half?.dist?.dispose();full.cls?.dispose();full.dist?.dispose()};
-  material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
-   uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
-    stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
-    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},distTex:{value:null},useDist:{value:0},distInCls:{value:0},voxelMin:{value:0.01}}});
+  disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();half?.dist?.dispose();half?.combo?.dispose();full.cls?.dispose();full.dist?.dispose();full.combo?.dispose()};
+  material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:volumeUniforms(vd,full,settings)});
+  material.uniforms.clsTex.value=dummyEdit;material.uniforms.editTex.value=dummyEdit;material.uniforms.distTex.value=dummyEdit;
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
+  // build 393: variants without the unused loops, chosen per frame (same uniforms)
+  variants=materialVariants(material);
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;
   compMaterial=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:compositeVertex,fragmentShader:compositeFragment,side:THREE.BackSide,toneMapped:false,depthWrite:false,transparent:true,
    blending:THREE.CustomBlending,blendSrc:THREE.OneFactor,blendDst:THREE.OneMinusSrcAlphaFactor,uniforms:{img:{value:null},invSize:{value:new THREE.Vector2(1,1)},halfExt:{value:new THREE.Vector3(...vd.halfExt)}}});
   // the offscreen target is cleared to 0 and written with plain premultiplied
   // colour (no blending needed inside the volume pass)
-  rayMesh=new THREE.Mesh(mesh.geometry,material.clone());rayMesh.material.uniforms=material.uniforms;rayMesh.material.blending=THREE.NoBlending;rayMesh.material.transparent=false;
+  rayVariants={full:rayMaterialOf(variants.full),combined:rayMaterialOf(variants.combined),noEvents:rayMaterialOf(variants.noEvents)};
+  rayMesh=new THREE.Mesh(mesh.geometry,rayVariants.full);
   rayMesh.matrixAutoUpdate=false;rayMesh.matrixWorldAutoUpdate=false;rayMesh.frustumCulled=false;volScene.add(rayMesh);
   // app units (longest side 3.3) -> 0.3 m in VR, placed in front of the head
   mesh.renderOrder=1;holder.add(mesh);baseStep=vd.step;applyQuality();placePending=true;
