@@ -3592,14 +3592,25 @@ Next (owner-approved): one central progress modal for every long
 operation (2D, 3D, VR preparation): shown only after a short delay,
 blocks input while shown, with a cancel button against freezes.
 
-## Handoff (after build 403)
+## Build 404 — VR: the nearest board along the ray takes the press
 
-State: build 403 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (build 403): the left-hand section panel cannot be focused when the
+main menu is behind it. Cause: the ray tested the boards in a fixed order
+(menu, menu tag, panel, help board), so a menu anywhere behind the panel
+won. boardHits(c) now takes the nearest of the four hits; the frame loop
+(hover, laser length, dot), the trigger (menu buttons / sliders, tag,
+panel) and the grip (moving the menu or the help board) all use it.
+Frames and the volume still come after the boards.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+
+## Handoff (after build 404)
+
+State: build 404 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); build 403 in a new PR. Next: the unified progress modal (see build 403 entry).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–404 in PR #85. Next: the unified progress modal (see build 403 entry).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to

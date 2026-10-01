@@ -3,17 +3,17 @@
 // verbatim from app.js; each factory takes the locals they used as parameters.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { frameYield } from './utils.js?v=20261001-build403';
-import { tr } from './i18n.js?v=20261001-build403';
-import { analysisCutScreen, analysisEditTargetMode, analysisEditTool, current3DVolume, sceneState, sectionViewOpen, sectionViewPlane, setAnalysisCutScreen, setAnalysisEditTargetKey, threeRenderMode, volume } from './state.js?v=20261001-build403';
-import { planes, sectionPosition, threeEditOverlay, viewport } from './ui-shell.js?v=20261001-build403';
-import { adoptRendererGpuDevice, requestVrlGpuDevice } from './gpu-compute.js?v=20261001-build403';
-import { request3DRender } from './scene3d.js?v=20261001-build403';
-import { updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261001-build403';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261001-build403';
-import { rebindWebGpuSectionClipGroup, sectionLocalPoint, updateSectionClipPlaneWorld, updateSectionViewUi, sectionLocalStep } from './section-view.js?v=20261001-build403';
-import { renderSectionPlaneLive } from './mpr-render.js?v=20261001-build403';
-import { cutPointerVoxel } from './analysis-ops.js?v=20261001-build403';
+import { frameYield } from './utils.js?v=20261001-build404';
+import { tr } from './i18n.js?v=20261001-build404';
+import { analysisCutScreen, analysisEditTargetMode, analysisEditTool, current3DVolume, sceneState, sectionViewOpen, sectionViewPlane, setAnalysisCutScreen, setAnalysisEditTargetKey, threeRenderMode, volume } from './state.js?v=20261001-build404';
+import { planes, sectionPosition, threeEditOverlay, viewport } from './ui-shell.js?v=20261001-build404';
+import { adoptRendererGpuDevice, requestVrlGpuDevice } from './gpu-compute.js?v=20261001-build404';
+import { request3DRender } from './scene3d.js?v=20261001-build404';
+import { updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261001-build404';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261001-build404';
+import { rebindWebGpuSectionClipGroup, sectionLocalPoint, updateSectionClipPlaneWorld, updateSectionViewUi, sectionLocalStep } from './section-view.js?v=20261001-build404';
+import { renderSectionPlaneLive } from './mpr-render.js?v=20261001-build404';
+import { cutPointerVoxel } from './analysis-ops.js?v=20261001-build404';
 // Orientation axes widget attached to the camera (bottom-left XYZ).
 export function makeAxisWidget(camera){
  const axisWidget=new THREE.Group();axisWidget.name='orientation_axes';camera.add(axisWidget);
