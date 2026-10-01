@@ -3699,14 +3699,46 @@ project, 14 colours, deletion linked — already so via
 rebuildEditedAnalysisForSegment), carried to VR / AR (colour on the
 volume and the slices, a read-only list with volumes).
 
-## Handoff (after build 407)
+## Build 408 — analysis results kept like an edit: saved in the project, trimmed by edits, 14 colours
 
-State: build 407 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: keep the analysis results (colouring within a segment) as an edit,
+carry them to VR / AR (with the volume if possible), up to 14 colours,
+deletion linked.
+- Found: in the GPU volume view every edit (keep / delete selected, cut,
+  undo, redo, reset) called clearAnalysisHighlight — all results vanished;
+  only the surface view rebuilt them. Leaving the analysis mode also
+  cleared them, and nothing was saved.
+- trimAnalysisRegionsAfterEdit(key, refs) (analysis-ops.js): in the volume
+  view the edited segment's single-segment regions become the pre-edit
+  references cut to the edit state (∩ keep, − exclude), colour / flags
+  kept, voxels and mm³ recomputed, empty ones dropped (undo / redo use the
+  snapshot's analysisRefs). The surface view keeps
+  rebuildEditedAnalysisForSegment.
+- Leaving the analysis mode keeps the results (クリア clears them).
+- Project: project.analysis.regions [{key, segmentKeys, color, visible,
+  merged, groupId, runs: 'analysis/region-N.bin'}] (encodeRuns); applied
+  after the segments and edits (after the clearAnalysisHighlight there),
+  volumes recomputed from the runs. Older projects have no entry.
+- Palette: 8 → 14 colours (the first 8 unchanged).
+- downloadBlob moved to utils.js (data-load.js re-exports it) so that
+  data-load.js can import analysis-ops.js without an import cycle.
+- tools/analysis-project-check.mjs (npm run analysis-project-check):
+  practice data, bone segment, two synthetic box regions (2000 / 125
+  voxels, one hidden) → save → clear → apply: both back with colour,
+  visibility and voxels; excluding half of the first box and trimming
+  gives 1000 / 125. A real 3D analysis click is not exercised (no WebGPU).
+Unchanged: any segment setting change (CT range, filters of the segment)
+still clears all results (they no longer match the segment).
+Checks: lint, unit tests, boot-check, analysis-project-check.
+
+## Handoff (after build 408)
+
+State: build 408 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
