@@ -8,7 +8,8 @@ import { chromium } from '@playwright/test';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 const fileA=process.argv[2]||'docs/vr-view.js',fileB=process.argv[3]||null,outDir=process.argv[4]||'.';
 const grab=(src,name)=>{const m=src.match(new RegExp('const '+name+'=`([\\s\\S]*?)`;'));if(!m)throw new Error('shader '+name+' not found');return m[1]};
-const load=f=>{const s=fs.readFileSync(f,'utf8');return{vs:grab(s,'vertexShader'),fs:grab(s,'fragmentShader')}};
+const DEFS=(process.env.DEFINES||'').split(',').filter(Boolean).map(d=>'#define '+d+'\n').join('');
+const load=f=>{const s=fs.readFileSync(f,'utf8');return{vs:grab(s,'vertexShader'),fs:DEFS+grab(s,'fragmentShader')}};
 const counting=code=>code
  .replace('out highp vec4 outColor;','out highp vec4 outColor;')
  .replace('float huAt(vec3 tc0){','float huAt(vec3 tc0){nFetch++;')
