@@ -3166,9 +3166,39 @@ owner decides). VR only; the WebGPU view is untouched.
   changed 54 channels (a lost 1-voxel jump moved a hit): rejected.
 Checks: lint, 405 unit tests, boot-check, VR harness as above.
 
-## Handoff (after build 381)
+## Build 382 — VR harness on the practice data; fat opacity and the one-fetch field measured (no app change)
 
-State: build 381 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (Quest, build 381): bone + fat 16–30 fps at 100 %; soft hidden; fat
+opacity about 90 %; normal size. Owner's suggestion: measure on the
+practice data (docs/demo/sample1) instead of phantoms.
+- tools/vr-volume-check.mjs: VOL=<raw u16 file> DIMS=256 loads a real
+  volume (HU = raw − 4000, the practice data's calibration), BONE / SOFT /
+  FATR ranges and BONEOP / SOFTOP / FATOP opacities from the environment,
+  DISTCLS=1 writes the combined distance field (min over the shown
+  segments) into the classification alpha, the cls counter now wraps every
+  classification fetch. The 256³ volume is built by a scratch script
+  (2×2×2 mean of the 512 slices, as halveVolume does; histogram: soft peak
+  100–200 HU, fat about −200..−20, bone a plateau above 300).
+- Practice data, bone (300..3000) + fat (−200..−20), soft hidden, reads per
+  pixel: fat 100 %: cls 13.5 + dist 14.4 + HU 2.1 ≈ 30; fat 90 %: 26.0 +
+  25.0 + 3.6 ≈ 55 (matches the Quest's 20–25 iterations). At 90 % the ray
+  runs on to a second fat hit (0.9 < the 0.985 cut-off).
+- One-fetch variant (field in the cls alpha, scratch vr-dc2.js): 30 → 20
+  reads at 100 %, 55 → 37 at 90 %; the separate field texture goes away
+  (−67 MB at 256³). Jump rule for the trilinear field: surface ≥ dd − 1.74
+  (corner values are bounds, 1-Lipschitz), jump dd − 1.8 when dd ≥ 2.7.
+  Not pixel-identical: 15 % of channels differ by 18 on average, speckle on
+  the fat surface only (sample phase), no structure lost. Awaiting the
+  owner's decision and the fps at fat 100 %.
+- Rejected after measuring: a half-resolution first-hit pre-pass (no
+  read reduction: the cost is after the first hit, inside the near-fat
+  zone; 15697–35972 channels changed). Deferred: precomputed normals (HU
+  reads are 2.1 per pixel here, little to gain).
+Only the version changed in docs/.
+
+## Handoff (after build 382)
+
+State: build 382 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
