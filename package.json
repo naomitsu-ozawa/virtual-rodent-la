@@ -15,7 +15,8 @@
     "lint": "eslint docs/",
     "bump-build": "node tools/bump-build.mjs",
     "boot-check": "node tools/boot-check.mjs",
-    "vr-gpu-prepare-check": "node tools/vr-gpu-prepare-check.mjs"
+    "vr-gpu-prepare-check": "node tools/vr-gpu-prepare-check.mjs",
+    "progress-modal-check": "node tools/progress-modal-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

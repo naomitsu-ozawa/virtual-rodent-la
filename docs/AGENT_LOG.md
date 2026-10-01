@@ -3603,14 +3603,63 @@ panel) and the grip (moving the menu or the help board) all use it.
 Frames and the volume still come after the boards.
 Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
 
-## Handoff (after build 404)
+## Build 405 — one central progress modal for every long operation
 
-State: build 404 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: the progress of filters, 3D rebuild, CT value settings and so on is
+shown in different places; show it in one modal in the middle of the
+screen, 2D or 3D alike, for every operation now and later. Decisions:
+short operations are not shown; input is blocked while it is shown (the
+work is heavy); a stop button against freezes; VR preparation included.
+- docs/progress-modal.js: createJobTracker (slots, unit-tested) + the
+  modal. setBusySlot(name, on, {label, cancel, counted}) and
+  reportBusyProgress(name|null, done, total, detail), setBusyLabel(name,
+  text). Shown after 400 ms (SHOW_DELAY), the slot started last on top;
+  title, detail line, bar (or an indeterminate bar), elapsed seconds.
+  While shown: a full-screen layer takes the pointer, keys / wheel outside
+  the modal are swallowed. Button: 中断 when the job has a cancel path;
+  閉じる（処理は続行） after 10 s when it has none, or 3 s after a 中断
+  that did not end it — the modal can never lock the page.
+- Adapters (so the existing call sites feed it without rewrites):
+  setProcessingBusy → slot 'processing' (counted; CPU filters, filter
+  application / preview, editable segment preparation = the CT value
+  settings path, GPU readback for STL / analysis); set3DBusy → 'three'
+  (last call wins; 中断 presses the existing 3D cancel button, i.e.
+  cancel3DRebuild); set3DBusyLabel for the analysis phase counts that wrote
+  #three-busy-label directly; data-load busy() → 'load' (counted; folder,
+  demo, practice data, series decode, MPR cache); progress() /
+  byteProgress() → the bar of the job on top; segment phase progress →
+  'processing' detail. New slots: 'edit' (cut apply), 'export' (STL), 'vr'
+  (VR / AR preparation: the page panel is hidden while preparing and
+  appears with the timings and the start button when ready or failed; the
+  start stays a click, as WebXR requires).
+- The old indicators are no longer shown (CSS): #processing-overlay,
+  #three-busy (its cancel button is still used through the modal),
+  #scan-progress. Result texts stay where they were (segment card
+  done / error, footer, 3D filter badge, ready badge).
+- Labels: CPU filters "<name> を適用中…", filters "フィルターを適用中…" /
+  "フィルターのプレビューを作成中…" (were English).
+- Not in the modal (background, nobody waits on them): the quiet
+  segment prewarm (analysis-ops), MPR warmup, GPU prewarm, cache writes.
+  Not covered: project save (the save dialog / share sheet waits on the
+  user; the packing itself is synchronous).
+- tools/progress-modal-check.mjs (npm run progress-modal-check): headless
+  practice-data load — modal seen (データを読み込み中…, 13/512 …),
+  blocks input, gone with no slot active at the end (about 35 s);
+  set3DBusy shows 中断 and pressing it presses the 3D cancel button; VR
+  preparation shows 'VRの準備' and then the panel with an enabled start
+  button (8 s); a 150 ms job is never shown. No WebGPU headless, so a real
+  3D rebuild is not exercised there. Screenshots desktop / iPad width.
+Checks: lint, unit tests (9 new), boot-check, vr-gpu-prepare-check,
+progress-modal-check.
+
+## Handoff (after build 405)
+
+State: build 405 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–404 in PR #85. Next: the unified progress modal (see build 403 entry).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–405 in PR #85 (405: the central progress modal). Open: owner check of 403–405 on Quest / Mac / iPad.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
@@ -3627,6 +3676,12 @@ branching except VR (share what can be shared); do not break what works on
 Mac/iPad; no wasted features (e.g. nothing can be edited inside VR); when a
 solution is not in sight, stop and prepare a handoff. Bump the build with
 npm run bump-build for every pushed change and log it here.
+Progress (owner, build 405): every long operation shows its progress only
+through docs/progress-modal.js — setBusySlot(name, on, {label, cancel,
+counted}) / reportBusyProgress / setBusyLabel, or the adapters
+set3DBusy, setProcessingBusy, busy, progress, byteProgress. No new
+progress bars, overlays or status lines elsewhere; give a cancel path when
+the work can stop; background work nobody waits on stays out of it.
 
 Next work (owner-approved list; recommended model / effort):
 A. Done in build 361 (cause: 60 % default opacity over the dome; VR window
