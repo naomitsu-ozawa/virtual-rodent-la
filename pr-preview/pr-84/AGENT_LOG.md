@@ -3507,14 +3507,25 @@ Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. The XR
 frame loop has no headless test: a use-before-define in the new loop code
 was found by reading and fixed before the push.
 
-## Handoff (after build 398)
+## Build 399 — VR sections: the frame the laser points at wins over the near frame
 
-State: build 398 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+With the laser pointers (398) the near-first rule (397) would let the dot
+sit on frame B while frame A (centre within 20 cm of the hand, common at
+the 16.5 cm default) glows and is taken. Now a frame hit by the ray is the
+target; the nearest frame (guide line) only when the ray hits no frame.
+Trade-off: with the hand at A and the ray across B, the hand takes B.
+Help text updated. Per-controller loop re-read for use-before-define and
+shadowing (none). Checks: lint, 406 unit tests, boot-check,
+vr-gpu-prepare-check.
+
+## Handoff (after build 399)
+
+State: build 399 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–398 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow) are in PR #84. Open: Quest check of 398; with two planes held the thumbstick moves the one taken last.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–399 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near) are in PR #84. Open: Quest check of 399 (colours: left blue vs cyan plane, idle beam 0.6 m); with two planes held the thumbstick moves the one taken last.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
