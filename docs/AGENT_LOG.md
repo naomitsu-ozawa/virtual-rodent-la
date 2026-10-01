@@ -3137,15 +3137,43 @@ each excluded voxel leaves face-aligned slivers (the boxy look).
 Checks: lint, 405 unit tests, boot-check, harness as above, region
 colouring texture vs row search byte-identical.
 
-## Handoff (after build 380)
+## Build 381 — VR: distance field read only when a jump is possible (same image)
 
-State: build 380 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Quest numbers (owner, build 380, normal size): auto resolution settles at
+30–40 % with the interval controller (no GPU timer on the Quest browser);
+100 % fixed: bone only about 60 fps, bone + fat about 20 fps; JS 0.6–0.8
+ms; samples per pixel 3–8 (bone), 20–25 (bone + fat); distance field off
+adds about 6; exact search slightly slower. Cost model that fits: reads per
+pixel ≈ iterations × 2 (field + classification) + about 9 per hit (3
+search + 6 gradient); bone 19 reads → 60 fps, bone + fat 53 → 20 fps.
+Target for 72 fps at 100 %: about 16 reads per pixel. Plan agreed with the
+owner: 1 field-read elision (exact), 2 precomputed normals (exact), 3 a
+half-resolution first-hit pre-pass (not exact; harness numbers first, the
+owner decides). VR only; the WebGPU view is untouched.
+- VR harness (tools/vr-volume-check.mjs): FAT=1 fat sheets, FAT=2
+  scattered fat specks (the visceral-fat case: field below 3 nearly
+  everywhere, few early hits), SEGS=bonefat, EDIT=1 (bone box excluded,
+  folded into the classification and as an editTex for the HU path),
+  classification with 4 channels. Specks + soft: 18.8 iterations per pixel.
+- Shader: the field is read only when its value could reach 3. One step
+  moves the sampled voxel by at most one per axis (chamfer 5 → +1.5 field
+  units, floor: +2), so after a read of 0 the next read is skipped; the
+  bound grows by ceil(1.5 × ceil(step / voxel)) per skipped step and is
+  reset after a jump. Reads: specks + soft 18.8 → 12.6 per pixel, specks +
+  bone 8.4 → 5.9, no fat 13.5 → 11.0; every configuration (HU and cls
+  paths, bone only, fat sheets, edit box, exact search) pixel-identical to
+  build 380. A looser rule (skip after a read of 1) saved 1.3 more reads but
+  changed 54 channels (a lost 1-voxel jump moved a hit): rejected.
+Checks: lint, 405 unit tests, boot-check, VR harness as above.
+
+## Handoff (after build 381)
+
+State: build 381 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 360; PR #78 (preview
-/pr-preview/pr-78/) awaits the owner's Quest check and merge instruction.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 380 (PR #78 merged 2026-10-01); builds from 381 go to a new PR.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to

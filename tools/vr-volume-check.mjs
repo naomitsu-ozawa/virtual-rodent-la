@@ -23,13 +23,19 @@ const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--u
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,300))});pg.on('pageerror',e=>console.log('PAGEERROR',String(e).slice(0,300)));
 await pg.route(/^https:\/\//,rt=>{const u=rt.request().url();if(u.includes('three.module.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.module.js','utf8')});if(u.includes('three.core.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.core.js','utf8')});return rt.abort()});
 await pg.goto('http://localhost:8779/');
-const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly})=>{
+const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,fat,edit})=>{
  const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js');
  const W=384,H=384,renderer=new THREE.WebGLRenderer({antialias:false});renderer.setPixelRatio(1);renderer.setSize(W,H,false);
  // phantom as in tools/volume-shader-check.mjs: u16 = HU + 1024, slope 1, intercept -1024
  const N=128,data=new Uint8Array(N*N*N*2);
  const hu=(x,y,z)=>{const cx=x-64,cy=y-64,cz=z-64;let v=-1000;
-  if(cx*cx/(52*52)+cy*cy/(40*40)+cz*cz/(56*56)<1)v=40;if(cx*cx+cy*cy+cz*cz<22*22)v=900;
+  const e=cx*cx/(52*52)+cy*cy/(40*40)+cz*cz/(56*56);
+  if(e<1)v=40;
+  // FAT=1: thin sheets of fat (-150 HU) every 6 voxels along the ellipsoid's radial direction, with holes (seeded pattern): the distance field stays small everywhere in the body
+  if(fat===1&&e<1&&e>0.05){const r=Math.sqrt(e)*56;const sheet=Math.abs(r-6*Math.round(r/6))<0.5;const hole=((x*7+y*13+z*31)%11)<3;if(sheet&&!hole)v=-150}
+  // FAT=2: scattered single-voxel fat specks (about 1.5 % of the soft tissue, hashed): the distance field stays below 3 nearly everywhere while rays rarely hit fat before the bone (the owner's visceral-fat case)
+  if(fat===2&&e<1&&e>0.05){let h=(x*73856093)^(y*19349663)^(z*83492791);h=(h^(h>>>13))*1274126177;h=(h^(h>>>16))>>>0;if((h%1000)<15)v=-150}
+  if(cx*cx+cy*cy+cz*cz<22*22)v=900;
   if(Math.abs(cy-20)<1&&Math.abs(cx)<36&&Math.abs(cz)<36)v=900;const r=Math.hypot(cx+30,cz);if(r>8&&r<11&&Math.abs(cy)<40)v=900;return v};
  for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const q=hu(x,y,z)+1024,o=((z*N+y)*N+x)*2;data[o]=q&255;data[o+1]=q>>8}
  const vol=new THREE.Data3DTexture(data,N,N,N);vol.format=THREE.RGFormat;vol.type=THREE.UnsignedByteType;vol.minFilter=vol.magFilter=THREE.LinearFilter;vol.unpackAlignment=1;vol.needsUpdate=true;
@@ -40,20 +46,24 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
   const o=((k*bx+j)*bx+i)*2;mm[o]=lo;mm[o+1]=hi}
  const bricks=new THREE.Data3DTexture(mm,bx,bx,bx);bricks.format=THREE.RGFormat;bricks.type=THREE.FloatType;bricks.minFilter=bricks.magFilter=THREE.NearestFilter;bricks.unpackAlignment=1;bricks.needsUpdate=true;
  // classification (vr-view build 356): per segment 0.5 + (HU distance inside the range)/2048, one byte per channel
- const SEG=[[300,3000],[-200,299]],cls=new Uint8Array(N*N*N*2);
- for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const v=hu(x,y,z),o=((z*N+y)*N+x)*2;for(let s=0;s<2;s++){const [a,c]=SEG[s],d=Math.min(v-a,c-v);cls[o+s]=Math.max(0,Math.min(255,Math.round(127.5+d/2048*255)))}}
- const clsTex=new THREE.Data3DTexture(cls,N,N,N);clsTex.format=THREE.RGFormat;clsTex.type=THREE.UnsignedByteType;clsTex.minFilter=clsTex.magFilter=THREE.LinearFilter;clsTex.unpackAlignment=1;clsTex.needsUpdate=true;
+ const SEG=[[300,3000],[-200,299],[-250,-50]],C=4,cls=new Uint8Array(N*N*N*C);
+ const excluded=(x,y,z)=>edit&&z>=64&&y>=44&&y<=84&&x>=44&&x<=84;
+ for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const v=hu(x,y,z),o=((z*N+y)*N+x)*C;for(let s=0;s<3;s++){const [a,c]=SEG[s],d=Math.min(v-a,c-v);cls[o+s]=(s===0&&excluded(x,y,z))?0:Math.max(0,Math.min(255,Math.round(127.5+d/2048*255)))}}
+ const clsTex=new THREE.Data3DTexture(cls,N,N,N);clsTex.format=THREE.RGBAFormat;clsTex.type=THREE.UnsignedByteType;clsTex.minFilter=clsTex.magFilter=THREE.LinearFilter;clsTex.unpackAlignment=1;clsTex.needsUpdate=true;
+ // HU path edit mask (editAllows): channel 0 = 255 where bone is allowed
+ const editData=new Uint8Array(N*N*N*4);for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const o=((z*N+y)*N+x)*4;editData[o]=excluded(x,y,z)?0:255;editData[o+1]=255;editData[o+2]=255;editData[o+3]=255}
+ const editTex=new THREE.Data3DTexture(editData,N,N,N);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.minFilter=editTex.magFilter=THREE.LinearFilter;editTex.unpackAlignment=1;editTex.needsUpdate=true;
  const dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
- const {buildDistanceBytes}=await import('/distance-field.js');const t0=performance.now();const dist=await buildDistanceBytes({data:cls,C:2,chan:[0,1,-1,-1]},[N,N,N]);const distMs=performance.now()-t0;
- const distTex=new THREE.Data3DTexture(dist.data,N,N,N);distTex.format=THREE.RGFormat;distTex.type=THREE.UnsignedByteType;distTex.minFilter=distTex.magFilter=THREE.NearestFilter;distTex.unpackAlignment=1;distTex.needsUpdate=true;
+ const {buildDistanceBytes}=await import('/distance-field.js');const t0=performance.now();const dist=await buildDistanceBytes({data:cls,C:4,chan:[0,1,2,-1]},[N,N,N]);const distMs=performance.now()-t0;
+ const distTex=new THREE.Data3DTexture(dist.data,N,N,N);distTex.format=THREE.RGBAFormat;distTex.type=THREE.UnsignedByteType;distTex.minFilter=distTex.magFilter=THREE.NearestFilter;distTex.unpackAlignment=1;distTex.needsUpdate=true;
  const half=1.65,scale=3.3/N,step=scale*0.85;
  const uniforms=()=>({vol:{value:vol},bricks:{value:bricks},halfExt:{value:new THREE.Vector3(half,half,half)},texDims:{value:new THREE.Vector3(N,N,N)},brickDims:{value:new THREE.Vector3(bx,bx,bx)},
-  stepSize:{value:step},diag:{value:0},calib:{value:new THREE.Vector3(1,-1024,0)},segA:{value:[new THREE.Vector4(300,3000,1,1),new THREE.Vector4(-200,299,0.35,1),new THREE.Vector4(),new THREE.Vector4()]},segC:{value:[new THREE.Vector4(0.91,0.86,0.72,0),new THREE.Vector4(0.85,0.55,0.42,0),new THREE.Vector4(),new THREE.Vector4()]},
-  cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(40,400)},sliceVol:{value:vol},useCls:{value:0},clsTex:{value:clsTex},clsChan:{value:new THREE.Vector4(0,1,-1,-1)},editMask:{value:0},editTex:{value:dummy},refine:{value:refine},distTex:{value:distTex},useDist:{value:0},voxelMin:{value:2*half/N}});
+  stepSize:{value:step},diag:{value:0},calib:{value:new THREE.Vector3(1,-1024,0)},segA:{value:[new THREE.Vector4(300,3000,1,1),new THREE.Vector4(-200,299,0.35,1),new THREE.Vector4(-250,-50,1,fat?1:0),new THREE.Vector4()]},segC:{value:[new THREE.Vector4(0.91,0.86,0.72,0),new THREE.Vector4(0.85,0.55,0.42,0),new THREE.Vector4(0.95,0.85,0.35,0),new THREE.Vector4()]},
+  cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(40,400)},sliceVol:{value:vol},useCls:{value:0},clsTex:{value:clsTex},clsChan:{value:new THREE.Vector4(0,1,2,-1)},editMask:{value:edit?1:0},editTex:{value:edit?editTex:dummy},refine:{value:refine},distTex:{value:distTex},useDist:{value:0},voxelMin:{value:2*half/N}});
  const scene=new THREE.Scene();const cam=new THREE.PerspectiveCamera(45,1,0.01,50);cam.position.set(3.2,2.1,4.0);cam.lookAt(0,0,0);cam.updateMatrixWorld();
  const rtColor=new THREE.WebGLRenderTarget(W,H,{depthBuffer:false}),rtCount=new THREE.WebGLRenderTarget(W,H,{depthBuffer:false,type:THREE.FloatType});
  const run=(sh,mode,count)=>{
-  const u=uniforms();u.useCls.value=mode;u.useDist.value=mode&&useDist?1:0;if(boneOnly)u.segA.value[1].w=0;
+  const u=uniforms();u.useCls.value=mode;u.useDist.value=mode&&useDist?1:0;if(boneOnly){u.segA.value[1].w=0;u.segA.value[2].w=0}if(boneFat)u.segA.value[1].w=0;
   const mat=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:sh.vs,fragmentShader:count?sh.fsc:sh.fs,side:THREE.BackSide,uniforms:u,transparent:false,blending:THREE.NoBlending,depthWrite:false});
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),mat);mesh.frustumCulled=false;scene.add(mesh);
   const rt=count?rtCount:rtColor;renderer.setRenderTarget(rt);renderer.setClearColor(0x000000,1);
@@ -65,7 +75,7 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  const shA={vs:A.vs,fs:A.fs,fsc:countA},shB=B?{vs:B.vs,fs:B.fs,fsc:countB}:null,out={};
  for(const mode of [0,1]){out['A'+mode]=run(shA,mode,false);out['A'+mode+'c']=run(shA,mode,true);if(shB){out['B'+mode]=run(shB,mode,false);out['B'+mode+'c']=run(shB,mode,true)}}
  return{W,H,out,distMs};
-},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone'});
+},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0)});
 await b.close();srv.close();
 const {W,H,out,distMs}=result;console.log('distance field build (128³, 2 channels): '+distMs.toFixed(0)+' ms');
 import zlib from 'node:zlib';

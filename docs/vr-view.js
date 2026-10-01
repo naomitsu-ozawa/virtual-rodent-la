@@ -8,13 +8,13 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build380';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build380';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build380';
-import { sceneState } from './state.js?v=20261001-build380';
-import { buildDistanceBytes } from './distance-field.js?v=20261001-build380';
-import { tr } from './i18n.js?v=20261001-build380';
-import { wc, ww } from './ui-shell.js?v=20261001-build380';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build381';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build381';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build381';
+import { sceneState } from './state.js?v=20261001-build381';
+import { buildDistanceBytes } from './distance-field.js?v=20261001-build381';
+import { tr } from './i18n.js?v=20261001-build381';
+import { wc, ww } from './ui-shell.js?v=20261001-build381';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -207,7 +207,7 @@ void main(){
  float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);int iters=0;
  // build 368: brickEnd = t where the current non-empty brick is left; the
  // brick min/max is fetched once per brick instead of once per sample
- float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;
+ float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;float lastDd=99.0;float distInc=ceil(1.5*ceil(step/max(voxelMin,1e-6)));
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
   iters++;
@@ -229,8 +229,12 @@ void main(){
   }
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
   if(useDist>0&&diag!=4){
-   float dd=distAt(tc0);
-   if(dd>=3.0){float nextJ=t+(dd-2.0)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+   // build 381: the field is read only when a jump is possible. One step moves the sampled voxel by at most one per
+   // axis (chamfer 5 = 1.5 in field units, floor: +2), so after a read of 0 the next value is at most 2 and the read is
+   // skipped; the bound grows by distInc per skipped step (steps longer than a voxel: more). Same jumps, same image.
+   if(lastDd>=1.0){float dd=distAt(tc0);lastDd=dd;
+    if(dd>=3.0){float nextJ=t+(dd-2.0)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;lastDd=99.0;continue;}
+   }else{lastDd+=distInc;}
   }
   bool canSample=diag==4||useDist>0||t<brickEnd;
   if(!canSample){int bc=brickClass(tc0);canSample=bc>0;uniformSeg=bc>=2?bc-2:-1;if(canSample)brickEnd=t+brickExit(tc0,dir);}
