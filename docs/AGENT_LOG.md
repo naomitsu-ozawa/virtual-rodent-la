@@ -3196,9 +3196,29 @@ practice data (docs/demo/sample1) instead of phantoms.
   reads are 2.1 per pixel here, little to gain).
 Only the version changed in docs/.
 
-## Handoff (after build 382)
+## Build 383 — VR default size 16.5 cm (was 30 cm)
 
-State: build 382 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (Quest, build 382): correction — fat opacity was 100 % all along
+(the 55-read case in build 382's log is therefore not the owner's; their
+20–25 iterations at 100 % mean denser fat than the practice data's
+−200..−20 range gives here, 14). New finding: shrinking the volume with
+both hands to the smallest size made it much lighter; owner suggests that
+as the default. The cost follows the pixels the volume covers (apparent
+size squared; per-ray work does not change with size), so the smallest
+size (16.5 cm longest side at 0.55 m: about 1/3 of the pixels of 30 cm)
+is about 3× cheaper. At that size 256 voxels span about 340 Quest pixels,
+still above one pixel per voxel at 100 %, so no detail is lost on the
+panel.
+- baseScale 0.3/3.3 → 0.165/3.3 (bringVolumeFront: start and 持ち方 →
+  手前に戻す); two-hand scale minimum 0.05 → 0.025 so it can still be made
+  smaller than the default.
+- The one-fetch field (build 382 log) is still pending the owner's
+  decision.
+Checks: lint, 405 unit tests, boot-check.
+
+## Handoff (after build 383)
+
+State: build 383 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
