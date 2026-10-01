@@ -3429,14 +3429,29 @@ No pre-393 figure exists for the same metric (it was added in 393); the
 897 ms includes the XR session setup and the wait for the first head pose
 before placement, not only GPU work.
 
-## Handoff (after build 394)
+## Build 395 — VR: no separate field texture when the combined one serves; auto resolution starts at 100 %
 
-State: build 394 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: merge #82 and go on with the small items.
+- useData: the separate distance-field texture (67 MB at 256³) is created
+  and uploaded only when the combined classification + field texture
+  cannot be used (four segments stored); otherwise the combined texture
+  alone drives the sphere tracing. The field diagnostic toggle still turns
+  the field off. Memory on the Quest drops by that texture.
+- Auto resolution (interval mode, the Quest's case): starts at 100 %
+  instead of 50 % (72 fps at the default size since build 387) and ramps
+  up ×1.15 per half second instead of ×1.06 (50 % → 100 % in about 2.5 s
+  instead of 6); the down step is unchanged.
+Checks: lint, 406 unit tests, boot-check, vr-gpu-prepare-check. Shader
+unchanged.
+
+## Handoff (after build 395)
+
+State: build 395 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 392 (PR #81 merged 2026-10-01); builds from 393 go to a new PR.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 394 (PR #82 merged 2026-10-01); builds from 395 go to a new PR.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
