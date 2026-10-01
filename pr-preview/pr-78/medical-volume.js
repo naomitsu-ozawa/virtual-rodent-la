@@ -940,6 +940,7 @@ export class MedicalVolumeRenderer{
   ]});
  }
  clearEditRuns(){
+  this.editRunsInfo='';
   this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();
   this.editRowsBuffer=this.device.createBuffer({label:'VRL edit rows empty',size:8,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.editIntervalsBuffer=this.device.createBuffer({label:'VRL edit intervals empty',size:4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
@@ -1128,6 +1129,8 @@ export class MedicalVolumeRenderer{
   const intervalsBuffer=this.device.createBuffer({label:'VRL edit intervals',size:intervals.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
   this.device.queue.writeBuffer(rowsBuffer,0,offsets);this.device.queue.writeBuffer(intervalsBuffer,0,intervals);
   this.editRowsBuffer?.destroy?.();this.editIntervalsBuffer?.destroy?.();this.editRowsBuffer=rowsBuffer;this.editIntervalsBuffer=intervalsBuffer;
+  // build 379 diagnostics: what the GPU edit mask holds, per segment index (mode and interval count), for the status bar
+  this.editRunsInfo=descs.map((desc,si)=>{if(!desc)return null;let n=0;for(let z=0;z<d;z++)n+=(desc.runs?.[z]?.length||0)/3;return si+':'+desc.mode+' '+n+'区間'}).filter(Boolean).join(' ');
   this.editSignature=gridDims.join('x')+':'+String(activeMask)+':'+String(keepMask)+':'+String(cursor);this.rebuildBindGroup();
  }
  ensurePickCapacity(count){
@@ -1250,7 +1253,7 @@ fn word(i:u32)->u32{
   const now=performance.now();if(now-(this._frameShownAt||0)<250)return;this._frameShownAt=now;
   const el=typeof document!=='undefined'&&document.getElementById('gpu-frame-time');if(!el)return;if(globalThis.__vrlSettings?.get?.('showPerf')===false){el.textContent='';return}
   const ms=this.lastFrameMs;const gap=this.frameGapMs,js=globalThis.__vrlThreeRenderMs;
-  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)'+this.gapStats():'')+(this.regionTexInfo?' · 領域tex '+this.regionTexInfo:'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
+  el.textContent=' · 3D '+Math.round(ms)+' ms · 待ち '+Math.round(this.queueWaitMs||0)+' ms'+(js!=null?' · three '+Math.round(js)+' ms':'')+(gap!=null&&gap<2000?' · 間隔 '+Math.round(gap)+' ms ('+Math.round(1000/Math.max(gap,1))+' fps)'+this.gapStats():'')+(this.regionTexInfo?' · 領域tex '+this.regionTexInfo:'')+(this.editRunsInfo?' · 編集 '+this.editRunsInfo:'')+' · '+(this.renderW||this.canvas.width)+'×'+(this.renderH||this.canvas.height)+' · resize '+(this.resizeCount||0)+'/'+(globalThis.__vrlThreeResizes||0)+' · drag targets '+(this.lowTargetCount||0)+(this.interactive?' '+(document.documentElement.lang==='en'?'dragging':'操作中'):'');
  }
  // frames in the last second while dragging: count, longest gap, gaps over 20 ms (a 60 Hz frame missed)
  gapStats(){
