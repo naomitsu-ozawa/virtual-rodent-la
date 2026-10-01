@@ -3095,9 +3095,25 @@ to check with メッシュで確認 and whether the dust lay inside the loop, an
 for the 領域tex 転送 / 待ち figures right after colouring. Only the version
 changed in docs/.
 
-## Handoff (after build 378)
+## Build 379 — lasso and edit-mask diagnostics (dust after lasso delete still reported)
 
-State: build 378 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (build 377/378): "治ってない" to the dust left after lasso select +
+delete. Nothing in the lasso / edit path differs from build 360 and the
+deletion rendering matches it headlessly (build 378), so this build makes
+the app report what happened on the device:
+- After a lasso: footer "囲んで選択（輪の中に完全に入った部品 / 全部品）:
+  bone: 12/340, …" per target segment; "— 選択なし" when nothing qualified.
+  A small first number with a large second one means the components were
+  judged as touching or outside the loop (projection / loop geometry); a
+  large first number with dust still drawn means the GPU mask is wrong.
+- Status bar: "編集 0:exclude 1234区間 2:keep 98765区間" — the segment index,
+  mode and interval count of the edit mask the volume shader is using,
+  cleared with the edits.
+Checks: lint, 405 unit tests, boot-check.
+
+## Handoff (after build 379)
+
+State: build 379 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
