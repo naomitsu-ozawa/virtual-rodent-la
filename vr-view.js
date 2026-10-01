@@ -8,13 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build380';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build380';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build380';
-import { sceneState } from './state.js?v=20261001-build380';
-import { buildDistanceBytes } from './distance-field.js?v=20261001-build380';
-import { tr } from './i18n.js?v=20261001-build380';
-import { wc, ww } from './ui-shell.js?v=20261001-build380';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build388';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build388';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build388';
+import { sceneState } from './state.js?v=20261001-build388';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build388';
+import { tr } from './i18n.js?v=20261001-build388';
+import { APP_BUILD } from './version.js?v=20261001-build388';
+import { wc, ww } from './ui-shell.js?v=20261001-build388';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -113,6 +114,7 @@ uniform ivec4 clsChan; // channel of each segment (-1: none); only active segmen
 // voxel side of that grid. Nearest sampling.
 uniform sampler3D distTex;
 uniform int useDist;
+uniform int distInCls; // build 384: the combined distance field (min over the shown segments) is the classification texture's alpha: one fetch per step
 uniform float voxelMin;
 float distAt(vec3 tc){
  vec4 q=texture(distTex,clamp(tc,vec3(0.0),vec3(0.999999)))*255.0;float m=255.0;
@@ -122,11 +124,14 @@ float distAt(vec3 tc){
 // the value the last segmentIndexAt sampled (build 368): HU, or the
 // classification vector; the surface search reuses it as the outside sample
 float gHu=0.0;vec4 gQ=vec4(0.0);
+int segmentIndexFromQ(vec4 q){
+ gQ=q;
+ for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&q[c]>=0.5)return s;}
+ return -1;
+}
 int segmentIndexAt(vec3 tc){
  if(useCls>0){
-  vec4 q=texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999)));gQ=q;
-  for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&q[c]>=0.5)return s;}
-  return -1;
+  return segmentIndexFromQ(texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999))));
  }
  float v=huAt(tc);gHu=v;
  for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc))return s;}
@@ -207,7 +212,73 @@ void main(){
  float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);int iters=0;
  // build 368: brickEnd = t where the current non-empty brick is left; the
  // brick min/max is fetched once per brick instead of once per sample
- float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;
+ float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;float lastDd=99.0;float distInc=ceil(1.5*ceil(step/max(voxelMin,1e-6)));
+ if(distInCls>0&&useCls>0&&diag!=4&&nSlice==0&&capT<0.0){
+  // build 386: tight loop for the common case (combined field, no slice, no cap). Same arithmetic as the general loop below
+  // without its per-step slice / cap / brick / uniform-brick bookkeeping, the segment work done on the fetched vector and the
+  // surface search testing the fetched classification directly (pixel-identical; practice data 609 -> 177 ms on SwiftShader)
+  // build 387: a hit that ends the ray (opaque segment) is searched and shaded after the loop, so the search does not run
+  // inside the divergent march; semi-transparent hits are handled inline as before. Same arithmetic, same order.
+  int hitIdx=-1;float hitLo=0.0;float hitHi=0.0;float hitF0=0.0;float hitF1=0.0;bool hitIso=false;
+  // per-ray constant: enabled channels as a mask (1 enabled, 0 not)
+  vec4 enM=vec4(0.0);for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5)enM[c]=1.0;}
+  for(int iter=0;iter<4096;iter++){
+   if(t>endT||acc.a>0.985)break;
+   iters++;
+   vec4 q=texture(clsTex,clamp(texCoord(o+dir*t),vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
+   if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+   vec4 fv=(q-0.5)*enM-(1.0-enM)*1e9;float maxF=max(max(fv.x,fv.y),max(fv.z,fv.w));
+   int idx=-1;float curF=-1.0;
+   for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&fv[c]>=0.0){idx=s;curF=fv[c];break;}}
+   gQ=q;
+   if(idx!=lastIndex){
+    if(idx>=0){
+     float lo=previousT;float hi=t;bool simple=diag==3||segC[idx].w>0.5;
+     float f1=curF;bool iso=refine==1&&((editMask>>idx)&1)==0&&prevValid&&prevF<0.0;
+     float alpha=clamp(segA[idx].z,0.03,1.0);
+     if((1.0-acc.a)*alpha+acc.a>0.985&&!simple){hitIdx=idx;hitLo=lo;hitHi=hi;hitF0=prevF;hitF1=f1;hitIso=iso;lastIndex=idx;break;}
+     int cIdx=clsChan[idx];
+     if(!simple&&iso){float f0=prevF;
+      for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
+       vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+       for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
+       if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
+     else if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+       for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
+       if(inside)hi=mid;else lo=mid;}
+     vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
+     vec3 n=simple?-dir:gradientAt(tc);
+     vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
+     float diffuse=0.28+0.72*abs(dot(n,lightDir));
+     float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
+     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+     float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
+    }
+    lastIndex=idx;
+   }
+   prevValid=true;prevF=idx>=0?curF:maxF;
+   previousT=t;t+=step;
+  }
+  if(hitIdx>=0){
+   int idx=hitIdx;float lo=hitLo;float hi=hitHi;float f0=hitF0;float f1=hitF1;int cIdx=clsChan[idx];
+   if(hitIso){
+    for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
+     vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+     for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
+     if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
+   else for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+     for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
+     if(inside)hi=mid;else lo=mid;}
+   vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
+   vec3 n=gradientAt(tc);
+   vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
+   float diffuse=0.28+0.72*abs(dot(n,lightDir));
+   float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
+   float alpha=clamp(segA[idx].z,0.03,1.0);
+   vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+   float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
+  }
+ }else
  for(int iter=0;iter<4096;iter++){
   if(t>endT||acc.a>0.985)break;
   iters++;
@@ -228,9 +299,21 @@ void main(){
    }
   }
   vec3 p=o+dir*t;vec3 tc0=texCoord(p);
-  if(useDist>0&&diag!=4){
-   float dd=distAt(tc0);
-   if(dd>=3.0){float nextJ=t+(dd-2.0)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+  bool haveQ=false;vec4 qHere=vec4(0.0);
+  if(distInCls>0&&useCls>0&&diag!=4){
+   // build 384: one fetch serves the jump test (alpha) and the classification below. The alpha is filtered
+   // trilinearly: every corner value is a lower bound of the distance to the seeds and the distance is
+   // 1-Lipschitz, so the surface is at least dd - 1.74 voxels away; jump dd - 1.8 when that is 0.9 or more
+   qHere=texture(clsTex,clamp(tc0,vec3(0.0),vec3(0.999999)));haveQ=true;float dd=qHere.a*255.0;
+   if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+  }
+  else if(useDist>0&&diag!=4){
+   // build 381: the field is read only when a jump is possible. One step moves the sampled voxel by at most one per
+   // axis (chamfer 5 = 1.5 in field units, floor: +2), so after a read of 0 the next value is at most 2 and the read is
+   // skipped; the bound grows by distInc per skipped step (steps longer than a voxel: more). Same jumps, same image.
+   if(lastDd>=1.0){float dd=distAt(tc0);lastDd=dd;
+    if(dd>=3.0){float nextJ=t+(dd-2.0)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;lastDd=99.0;continue;}
+   }else{lastDd+=distInc;}
   }
   bool canSample=diag==4||useDist>0||t<brickEnd;
   if(!canSample){int bc=brickClass(tc0);canSample=bc>0;uniformSeg=bc>=2?bc-2:-1;if(canSample)brickEnd=t+brickExit(tc0,dir);}
@@ -241,7 +324,7 @@ void main(){
    nextT=brickEnd+step*0.05;previousT=max(t,brickEnd-step*0.05);prevValid=false;t=nextT;continue;
   }
   else{
-   int idx=segmentIndexAt(tc0);
+   int idx=haveQ?segmentIndexFromQ(qHere):segmentIndexAt(tc0);
    float curF=idx>=0?segValue(idx):-1.0;
    if(idx!=lastIndex){
     if(idx>=0){
@@ -461,6 +544,19 @@ function makeBadge(text){
 // for saving after the session (a download from inside the headset view is
 // not reliable)
 const shots=[];
+let lastBench=null;
+function showBenchPanel(ja){
+ if(!lastBench)return;
+ document.getElementById('vr-bench-panel')?.remove();
+ const panel=document.createElement('div');panel.id='vr-bench-panel';
+ Object.assign(panel.style,{position:'fixed',left:'16px',bottom:'16px',zIndex:'9999',background:'#111a',backdropFilter:'blur(6px)',color:'#fff',padding:'12px',borderRadius:'12px',maxWidth:'min(92vw,640px)',font:'14px system-ui,sans-serif'});
+ const text=[lastBench.head,...lastBench.lines].join('\n');
+ const pre=document.createElement('pre');pre.style.cssText='margin:0 0 8px;white-space:pre-wrap;font:13px ui-monospace,monospace';pre.textContent=text;panel.append(pre);
+ const row=document.createElement('div');row.style.cssText='display:flex;gap:8px';
+ const copy=document.createElement('button');copy.type='button';copy.textContent=ja?'コピー':'Copy';copy.onclick=()=>{navigator.clipboard?.writeText(text).catch(()=>{})};
+ const close=document.createElement('button');close.type='button';close.textContent=ja?'閉じる':'Close';close.onclick=()=>panel.remove();
+ row.append(copy,close);panel.append(row);document.body.append(panel);
+}
 function showShotsPanel(ja){
  if(!shots.length)return;
  document.getElementById('vr-shots-panel')?.remove();
@@ -577,21 +673,21 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 30 秒）',benchRun:'ベンチ中 ',benchHelp:'サイズ 16.5/30/50 cm × 表示中／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（二重枠）を法線方向に動かします','レイで指した枠（白くなる）は、離れたままつかめます'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 30 s)',benchRun:'benchmark ',benchHelp:'fps at 16.5/30/50 cm × shown / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (double frame) on its normal','A frame the ray points at (turns white) can be grabbed from a distance'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: held in hand',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
  const menu=makeMenu();scene.add(menu.mesh);
- const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0};
+ const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.3/3.3,info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,mesh=null,material=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  const segMode={};
@@ -767,6 +863,44 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
  let autoF=0.5,autoFrames=0,autoAt=performance.now();
  let frames=0,fpsAt=performance.now(),fps=0;
+ // build 385: benchmark — 12 phases (3 sizes × shown segments / bone only × 100 % / 50 %), 0.8 s settle + 2 s count each;
+ // the state is restored afterwards and the result goes to the 画質 tab, the console, localStorage (vrl-vr-bench) and a
+ // panel on the page after the session
+ const bench={active:false,phases:[],i:-1,at:0,measureAt:0,frames:0,results:[],saved:null};
+ const shownLabel=modes=>SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active&&segmentState[k]?.enabled&&(modes[k]|0)!==2).map(k=>tr(k)).join('+')||'-';
+ const startBench=()=>{
+  if(bench.active||!mesh)return;
+  bench.phases=[];for(const s of [0.165,0.3,0.5])for(const g of ['cur','bone'])for(const r of [1,3])bench.phases.push({s,g,r});
+  bench.saved={scale:holder.scale.x,vres:settings.vres,segMode:{...segMode},pos:holder.position.clone(),quat:holder.quaternion.clone()};
+  bench.results=[];bench.i=-1;bench.active=true;nextBenchPhase();
+ };
+ const nextBenchPhase=()=>{
+  bench.i++;if(bench.i>=bench.phases.length){finishBench();return}
+  const ph=bench.phases[bench.i];
+  bringVolumeFront();holder.scale.setScalar(ph.s/3.3);
+  for(const key of SEGMENT_PRESET_ORDER)segMode[key]=ph.g==='bone'&&key!=='bone'?2:(bench.saved.segMode[key]|0);
+  settings.vres=ph.r;applyQuality();
+  bench.at=performance.now();bench.measureAt=0;bench.frames=0;
+  ui.benchLine=L.benchRun+(bench.i+1)+' / '+bench.phases.length;menu.refresh();
+ };
+ const benchTick=()=>{
+  if(!bench.active)return;const now=performance.now();
+  if(!bench.measureAt){if(now-bench.at>=800){bench.measureAt=now;bench.frames=0}return}
+  bench.frames++;
+  if(now-bench.measureAt>=2000){const ph=bench.phases[bench.i];bench.results.push({...ph,fps:bench.frames*1000/(now-bench.measureAt)});nextBenchPhase()}
+ };
+ const finishBench=()=>{
+  const sv=bench.saved;bench.active=false;
+  Object.assign(segMode,sv.segMode);settings.vres=sv.vres;applyQuality();
+  holder.position.copy(sv.pos);holder.quaternion.copy(sv.quat);holder.scale.setScalar(sv.scale);
+  const cur=shownLabel(sv.segMode),rate=targetRate(),f=(s,g,r)=>{const x=bench.results.find(e=>e.s===s&&e.g===g&&e.r===r);return x?Math.round(x.fps):'-'};
+  const lines=[0.165,0.3,0.5].map(sz=>(sz*100).toFixed(1).replace('.0','')+' cm: '+cur+' 100% '+f(sz,'cur',1)+' / 50% '+f(sz,'cur',3)+' · '+tr('bone')+' 100% '+f(sz,'bone',1)+' / 50% '+f(sz,'bone',3)+' fps');
+  const head=(ja?'VR ベンチ build ':'VR benchmark build ')+APP_BUILD+' · '+rate+' Hz · '+(ja?'自動解像度の既定サイズ ':'default size ')+(baseScale*3.3*100).toFixed(1)+' cm';
+  lastBench={head,lines,when:Date.now()};
+  try{localStorage.setItem('vrl-vr-bench',JSON.stringify(lastBench))}catch{}
+  console.log('[VR bench]',head,lines);
+  ui.benchLine=lines.join(' | ');menu.refresh();
+ };
  const applyQuality=()=>{
   if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;material.uniforms.refine.value=settings.refine|0;useData(settings.data|0)}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
@@ -840,6 +974,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0+180,L.q,L.qv.map((t,i)=>({label:t,value:i})),settings.quality,v=>{settings.quality=v;applyQuality()});
    choice(y0+270,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
    if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
+   // build 385: in-VR benchmark (the owner should not have to read numbers off the headset one by one)
+   btn(X,y0+460,460,L.bench,bench.active,()=>startBench(),{size:28});if(ui.benchLine)label(X,y0+560,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+600,L.benchHelp,{size:22,color:'#9fb3c3'});
   }else{
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
@@ -937,7 +1073,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   help.mesh.visible=(settings.help|0)>0;
   if(help.mesh.visible&&!helpPlaced&&poseAt)placeHelpNow();
   if(help.mesh.visible&&settings.help===1&&!helpHeld){computeHelpTarget();helpMoving=lazyFollow(help.mesh,helpTarget,helpMoving,false)}
-  if(twoHand){const s=Math.min(20,Math.max(0.05,twoHand.s0*handDist()/twoHand.d0));holder.scale.setScalar(s)}
+  if(twoHand){const s=Math.min(20,Math.max(0.025,twoHand.s0*handDist()/twoHand.d0));holder.scale.setScalar(s)}
   let hover=-1,panelHover=-1,scroll=0;
   panel.mesh.visible=section.on&&planes.length>0;
   for(const c of controllers){
@@ -989,7 +1125,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
     u.segA.value[i].set(seg?.min||0,seg?.max||0,segOpacity[key]??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
     color.set(seg?.color||'#ffffff');u.segC.value[i].set(color.r,color.g,color.b,segMode[key]===1?1:0);
    }
+   refreshCombo();
   }
+  benchTick();
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];
   if(auto){
@@ -1066,10 +1204,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
+  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
-  showShotsPanel(ja);
+  showShotsPanel(ja);showBenchPanel(ja);
  };
  session.addEventListener('end',cleanup,{once:true});
  try{
@@ -1111,7 +1249,21 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(on&&!t.dist&&P.dist)t.dist=distTexture(t);
    const onD=on&&!!t.dist&&!(settings.distDiag|0);
    material.uniforms.useDist.value=onD?1:0;material.uniforms.distTex.value=t.dist||dummyEdit;material.uniforms.voxelMin.value=Math.min(2*vd.halfExt[0]/t.dims[0],2*vd.halfExt[1]/t.dims[1],2*vd.halfExt[2]/t.dims[2]);
+   // build 384: classification + combined distance in one RGBA texture (needs a free channel: at most three segments stored)
+   comboT=onD&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3)?t:null;comboMask=-1;refreshCombo();
    refreshEdits();
+  };
+  // the alpha depends on which segments are shown: rebuilt (about 0.2 s at 256³) when that set changes
+  refreshCombo=()=>{
+   const t=comboT;
+   if(!t){material.uniforms.distInCls.value=0;return}
+   let mask=0;for(let i=0;i<4;i++){const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];if(seg?.active&&seg?.enabled&&segMode[key]!==2)mask|=1<<i}
+   if(mask===comboMask)return;comboMask=mask;
+   const data=combineClassificationDistance(P.cls,P.dist,mask,t.combo?.image?.data||null);
+   if(!data){material.uniforms.distInCls.value=0;return}
+   if(!t.combo){const x=new THREE.Data3DTexture(data,...t.dims);x.format=THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;t.combo=x}
+   t.combo.needsUpdate=true;
+   material.uniforms.clsTex.value=t.combo;material.uniforms.clsChan.value.set(...P.cls.chan);material.uniforms.distInCls.value=1;
   };
   // processed segments: built once when VR starts (edits cannot change in
   // VR), on a grid of at most 256 per side (texture coordinates are
@@ -1130,7 +1282,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,
    uniforms:{vol:{value:volTex},bricks:{value:brickTex},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
     stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
-    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},distTex:{value:null},useDist:{value:0},voxelMin:{value:0.01}}});
+    cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},distTex:{value:null},useDist:{value:0},distInCls:{value:0},voxelMin:{value:0.01}}});
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // BackSide: rays start at the eye when the head is inside the box
   mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;
