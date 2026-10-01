@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chamferDistanceBytes, buildDistanceBytes } from '../../docs/distance-field.js';
+import { chamferDistanceBytes, buildDistanceBytes, combineClassificationDistance } from '../../docs/distance-field.js';
 
 // build 369: the VR sphere tracing jumps by (byte - 3) voxels, so the byte
 // must never exceed the true distance to the other class, and should not be
@@ -44,5 +44,20 @@ describe('distance field (chamfer 3-4-5 lower bound)',()=>{
   expect(r.data[1]).toBe(255);
   // channel 0: half/half → small distances
   expect(r.data[0]).toBeLessThan(8);
+ });
+
+ it('combines classification channels with the smallest enabled distance in alpha (build 384)',()=>{
+  const cls={data:new Uint8Array([200,10, 10,200, 128,128]),C:2,chan:[0,1,-1,-1]};
+  const dist={data:new Uint8Array([5,9, 2,7, 255,255]),C:2,chan:[0,1,-1,-1]};
+  const both=combineClassificationDistance(cls,dist,0b11);
+  expect([...both]).toEqual([200,10,0,5, 10,200,0,2, 128,128,0,255]);
+  const boneOnly=combineClassificationDistance(cls,dist,0b01);
+  expect([boneOnly[3],boneOnly[7],boneOnly[11]]).toEqual([5,2,255]);
+  const none=combineClassificationDistance(cls,dist,0);
+  expect([none[3],none[7]]).toEqual([255,255]);
+  // reuse of the output buffer
+  const again=combineClassificationDistance(cls,dist,0b10,both);expect(again).toBe(both);expect(both[3]).toBe(9);
+  // four stored channels: no free alpha
+  expect(combineClassificationDistance({data:new Uint8Array(4),C:4,chan:[0,1,2,3]},{data:new Uint8Array(4),C:4,chan:[0,1,2,3]},15)).toBeNull();
  });
 });

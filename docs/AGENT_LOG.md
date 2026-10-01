@@ -3216,9 +3216,35 @@ panel.
   decision.
 Checks: lint, 405 unit tests, boot-check.
 
-## Handoff (after build 383)
+## Build 384 — VR: classification and combined distance field in one texture (one fetch per step)
 
-State: build 383 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: wants to try it; and confirms bone + fat at 100 % is 20–30 fps on
+build 381 at the old default size (fat opacity was 100 % all along).
+- distance-field.js: combineClassificationDistance(cls, dist, mask, out):
+  RGBA bytes with the classification channels as stored and alpha = the
+  smallest distance over the enabled segments (255 when none); null when
+  four segments are stored (no free channel). Unit-tested.
+- vr-view.js: when the classification and the field exist on the ≤256
+  grid, at most three segments are stored and the field diagnostic is off,
+  the shader samples one RGBA texture (distInCls = 1): the alpha drives the
+  jump, the same fetch classifies the sample. The alpha is rebuilt and
+  re-uploaded when the set of shown segments changes (segment mode menu;
+  about 0.2 s at 256³). Separate-field path (build 381) unchanged and used
+  as the fallback.
+- Jump rule for the trilinear alpha: every corner value is a lower bound
+  of the distance to the seeds and the distance is 1-Lipschitz, so the
+  surface is at least dd − 1.74 voxels away; jump dd − 1.8 when dd ≥ 2.7.
+- Harness, practice data (bone 300..3000 + fat −200..−20, 100 %, soft
+  hidden): reads per pixel 30.0 (381: cls 13.5 + field 14.4 + HU 2.1) →
+  20.8 (cls 18.1 + field 0.6 + HU 2.1), −31 %. Image: 15 % of channels
+  differ, mean 18, speckle on the fat surface (sample phase after jumps of
+  a different length), no structure lost. Fallback path pixel-identical
+  to build 381. Phantom (specks + soft + edit box) numbers above.
+Checks: lint, 406 unit tests, boot-check, harness.
+
+## Handoff (after build 384)
+
+State: build 384 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
