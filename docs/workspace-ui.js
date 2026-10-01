@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { set3DBusy } from './three-status.js?v=20261001-build407';
-import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20261001-build407';
-import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20261001-build407';
-import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20261001-build407';
-import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20261001-build407';
-import { request3DRender } from './scene3d.js?v=20261001-build407';
-import { applyLanguage } from './i18n.js?v=20261001-build407';
-import { isIPadRuntime, isIPhoneRuntime, isTabletRuntime, fmt } from './utils.js?v=20261001-build407';
-import { settings } from './app-settings.js?v=20261001-build407';
+import { set3DBusy } from './three-status.js?v=20261001-build408';
+import { useWorkspaceUi, updateRenderModeControl, clearResidentMprJobs, prepareResidentGpuVolume, activateMedicalVolume, setThreeVolumeOverlay } from './data-load.js?v=20261001-build408';
+import { appVersionBadge, planes, ipadGpuQualityControl, ipadGpuQuality, footer } from './ui-shell.js?v=20261001-build408';
+import { sceneState, volume, currentLanguage, ipadGpuTargetSide, setIpadGpuTargetSide, sourceVolume, threeRenderMode, setResidentMprReadbackDisabled, setThreeRenderMode } from './state.js?v=20261001-build408';
+import { updateMprCanvasPhysicalAspect, schedulePlaneRender } from './mpr-render.js?v=20261001-build408';
+import { request3DRender } from './scene3d.js?v=20261001-build408';
+import { applyLanguage } from './i18n.js?v=20261001-build408';
+import { isIPadRuntime, isIPhoneRuntime, isTabletRuntime, fmt } from './utils.js?v=20261001-build408';
+import { settings } from './app-settings.js?v=20261001-build408';
 export function initIPadWorkspaceUi(){
  if(!useWorkspaceUi())return;
  const shell=document.querySelector('.app-shell'),workspace=document.querySelector('.workspace'),sidebar=document.querySelector('.sidebar'),sidebarScroll=document.querySelector('.sidebar-scroll'),viewer=document.querySelector('#viewer-grid'),topbar=document.querySelector('.topbar');

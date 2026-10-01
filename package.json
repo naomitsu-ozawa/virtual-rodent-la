@@ -16,7 +16,8 @@
     "bump-build": "node tools/bump-build.mjs",
     "boot-check": "node tools/boot-check.mjs",
     "vr-gpu-prepare-check": "node tools/vr-gpu-prepare-check.mjs",
-    "progress-modal-check": "node tools/progress-modal-check.mjs"
+    "progress-modal-check": "node tools/progress-modal-check.mjs",
+    "analysis-project-check": "node tools/analysis-project-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
