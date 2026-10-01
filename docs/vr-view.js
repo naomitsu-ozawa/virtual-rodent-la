@@ -8,14 +8,14 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build396';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build396';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build396';
-import { sceneState } from './state.js?v=20261001-build396';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build396';
-import { tr } from './i18n.js?v=20261001-build396';
-import { APP_BUILD } from './version.js?v=20261001-build396';
-import { wc, ww } from './ui-shell.js?v=20261001-build396';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build397';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build397';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build397';
+import { sceneState } from './state.js?v=20261001-build397';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build397';
+import { tr } from './i18n.js?v=20261001-build397';
+import { APP_BUILD } from './version.js?v=20261001-build397';
+import { wc, ww } from './ui-shell.js?v=20261001-build397';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -819,14 +819,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
-   sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（二重枠）を法線方向に動かします','レイで指した枠（白くなる）は、離れたままつかめます'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
-   secHelp:['枠の近く（白くなる）でグリップを押している間だけ持てます','枠の近く（白くなる）でトリガーを押している間だけ持てます'],secOff:'「オン」かB/Yボタンで断面を出します',
+   sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（二重枠）を法線方向に動かします','つかめる枠は白くなります（近い枠が優先・手から線）'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
+   handR:'右',handL:'左',secHelp:['白い枠をグリップを押している間だけ持てます（番号の下＝最後に持った手）','白い枠をトリガーを押している間だけ持てます（番号の下＝最後に持った手）'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
-   sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (double frame) on its normal','A frame the ray points at (turns white) can be grabbed from a distance'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
-   secHelp:['Hold grip near the frame (turns white) to move it','Hold the trigger near the frame (turns white) to move it'],secOff:'Turn it on here or press B/Y',
+   sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (double frame) on its normal','The white frame is the one you grab (a near frame wins, shown by a line)'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
+   handR:'R',handL:'L',secHelp:['Hold grip while the frame is white (under the number: last hand)','Hold the trigger while the frame is white (under the number: last hand)'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: held in hand',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
  const menu=makeMenu();scene.add(menu.mesh);
@@ -843,6 +843,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
  const controllers=[0,1].map(i=>{const c=renderer.xr.getController(i);scene.add(c);
   const ray=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1)]),new THREE.LineBasicMaterial({color:0x88ccff}));ray.scale.z=0.08;c.add(ray);c.userData.ray=ray;return c});
+ // build 397: guide line from a hand to the frame its button would take when that frame is picked by nearness (a ray pick shows the ray)
+ for(const c of controllers){const g=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0xffffff}));g.frustumCulled=false;g.visible=false;scene.add(g);c.userData.guide=g}
  const pulse=(c,v=0.35,ms=18)=>{try{c.userData.source?.gamepad?.hapticActuators?.[0]?.pulse?.(v,ms)}catch{}};
  const badge=makeBadge(L.badge);badge.visible=false;
  const leftHand=()=>controllers.find(c=>c.userData.source?.handedness==='left')||controllers[0];
@@ -923,19 +925,25 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // arrow points at the removed half
   const arrow=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,0.02,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,-0.02,0)]),mat);
   arrow.visible=false;obj.add(arrow);
-  return{obj,mat,arrow,inner,hit,handle,h,color,cut,side:1};
+  return{obj,mat,arrow,inner,hit,handle,h,color,cut,side:1,hand:null};
  };
  const disposePlane=pl=>{pl.obj.removeFromParent();pl.obj.traverse(o=>{o.geometry?.dispose()});pl.mat.dispose();pl.hit.material.dispose();pl.handle.material.map.dispose();pl.handle.material.dispose()};
  // number + corner of every handle from the plane's index (after add / remove, not per frame)
- const refreshHandles=()=>planes.forEach((pl,i)=>{
-  const hd=pl.handle,ctx=hd.userData.ctx,o=pl.h+0.01+HANDLE/2,[sy,sz]=HANDLE_CORNERS[i%4];
+ // build 397: under the number, the hand that holds or last held the plane (右 / 左)
+ const drawHandle=(pl,i)=>{
+  const hd=pl.handle,ctx=hd.userData.ctx,hand=pl.hand==='right'?L.handR:pl.hand==='left'?L.handL:'';
   ctx.clearRect(0,0,96,96);ctx.fillStyle='#'+pl.color.toString(16).padStart(6,'0');ctx.beginPath();ctx.roundRect(0,0,96,96,18);ctx.fill();
-  ctx.fillStyle='#111';ctx.font='bold 64px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1),48,52);
-  hd.material.map.needsUpdate=true;hd.position.set(0,sy*o,sz*o);
+  ctx.fillStyle='#111';ctx.textAlign='center';ctx.textBaseline='middle';
+  if(hand){ctx.font='bold 54px system-ui,sans-serif';ctx.fillText(String(i+1),48,34);ctx.font='bold 34px system-ui,sans-serif';ctx.fillText(hand,48,77)}
+  else{ctx.font='bold 64px system-ui,sans-serif';ctx.fillText(String(i+1),48,52)}
+  hd.material.map.needsUpdate=true;
+ };
+ const refreshHandles=()=>planes.forEach((pl,i)=>{
+  const o=pl.h+0.01+HANDLE/2,[sy,sz]=HANDLE_CORNERS[i%4];drawHandle(pl,i);pl.handle.position.set(0,sy*o,sz*o);
  });
  // side that removes the viewer's half right now (what 'near' shows)
  const chooseSide=pl=>{readHead();scene.updateMatrixWorld();pl.obj.getWorldPosition(tmpA);tmpB.set(1,0,0).transformDirection(pl.obj.matrixWorld);pl.side=tmpB.dot(tmpA.subVectors(head,tmpA))>0?-1:1};
- const takePlane=(pl,c)=>{c.attach(pl.obj);c.userData.heldPlane=pl;section.selected=pl;pulse(c);menu.refresh()};
+ const takePlane=(pl,c)=>{c.attach(pl.obj);c.userData.heldPlane=pl;c.userData.target=null;section.selected=pl;const hand=c.userData.source?.handedness||null;if(hand!==pl.hand){pl.hand=hand;drawHandle(pl,planes.indexOf(pl))}pulse(c);menu.refresh()};
  const fixPlane=c=>{const pl=c.userData.heldPlane;if(!pl)return;holder.attach(pl.obj);c.userData.heldPlane=null;pulse(c,0.2);menu.refresh()};
  const fixAll=()=>controllers.forEach(fixPlane);
  const heldPlanes=()=>new Set(controllers.map(c=>c.userData.heldPlane).filter(Boolean));
@@ -955,7 +963,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   tmpA.subVectors(head,pl.obj.position).normalize();pl.obj.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),tmpA);pl.obj.scale.setScalar(1);
   holder.attach(pl.obj);chooseSide(pl);section.on=true;section.selected=pl;planes.forEach(p=>{p.obj.visible=true});refreshHandles();menu.refresh();return pl;
  };
- const removePlane=pl=>{for(const c of controllers)if(c.userData.heldPlane===pl)c.userData.heldPlane=null;const i=planes.indexOf(pl);if(i>=0)planes.splice(i,1);disposePlane(pl);if(section.selected===pl)section.selected=planes[planes.length-1]||null;if(!planes.length)section.on=false;refreshHandles();menu.refresh()};
+ const removePlane=pl=>{for(const c of controllers){if(c.userData.heldPlane===pl)c.userData.heldPlane=null;if(c.userData.target===pl)c.userData.target=null}const i=planes.indexOf(pl);if(i>=0)planes.splice(i,1);disposePlane(pl);if(section.selected===pl)section.selected=planes[planes.length-1]||null;if(!planes.length)section.on=false;refreshHandles();menu.refresh()};
  // snap (build 365): the selected plane onto a volume axis, frame edges along the other two axes.
  // axis 0 axial (normal = volume z), 1 coronal (y), 2 sagittal (x); holder space = volume object space.
  // The normal keeps its sign (removed side unchanged), position unchanged, up = volume y (coronal: z)
@@ -986,7 +994,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   c.addEventListener('squeezestart',()=>{
    if(ui.open&&!menuHeld&&menuHit(c)){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
    if(!helpHeld&&c.userData.helpHit){c.attach(help.mesh);helpHeld=c;helpMoving=false;settings.help=2;saveSettings(settings);pulse(c);menu.refresh();return}
-   if(settings.secHold===0&&!c.userData.heldPlane){const pl=nearestPlane(c)||c.userData.rayPlane;if(pl){takePlane(pl,c);return}}
+   if(settings.secHold===0&&!c.userData.heldPlane){const pl=c.userData.target;if(pl){takePlane(pl,c);return}}
    grabbing.add(c);regrab();
   });
   c.addEventListener('squeezeend',()=>{
@@ -1003,7 +1011,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
    if(badgeHit(c)){setMenuOpen(true);pulse(c);return}
    const ph=panelHit(c);if(ph){const i=panel.hit(ph.uv);if(i>=0){panel.press(i);pulse(c);return}}
-   if(settings.secHold===1&&!c.userData.heldPlane){const pl=nearestPlane(c)||c.userData.rayPlane;if(pl)takePlane(pl,c)}
+   if(settings.secHold===1&&!c.userData.heldPlane){const pl=c.userData.target;if(pl)takePlane(pl,c)}
   });
   c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(c.userData.heldPlane&&settings.secHold===1)fixPlane(c)});
  }
@@ -1235,6 +1243,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
   for(const c of controllers){
    // ray priority: menu, menu tag, section panel (build 365), then a section frame (build 364)
    const h=menuHit(c),bh=h?null:badgeHit(c),ph=h||bh?null:panelHit(c),hh=h||bh||ph?null:helpHit(c),rp=h||bh||ph||hh?null:rayPlane(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;
+   // build 397: the one frame this hand's button would take (near first, else the ray), the same rule the press uses
+   const np=h||bh||ph||hh||c.userData.heldPlane?null:nearestPlane(c);c.userData.target=h||bh||ph||hh||c.userData.heldPlane?null:np||c.userData.rayPlane;
+   const gd=c.userData.guide;gd.visible=!!np;if(np){const a=gd.geometry.attributes.position;c.getWorldPosition(tmpA);np.handle.getWorldPosition(tmpB);a.setXYZ(0,tmpA.x,tmpA.y,tmpA.z);a.setXYZ(1,tmpB.x,tmpB.y,tmpB.z);a.needsUpdate=true}
    if(h||bh||ph||hh||rp){ray.scale.z=(h||bh||ph||hh||rp).distance;ray.material.color.setHex(0xffffff);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}if(ph){const i=panel.hit(ph.uv);if(i>=0)panelHover=i}}
    else{ray.scale.z=0.08;ray.material.color.setHex(0x88ccff)}
    // thumbstick Y (xr-standard axes[3], up is negative), dead zone 0.15, squared response; both hands add up
@@ -1257,7 +1268,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(section.on&&sp&&scroll&&dt){const ps=sp.obj.parent?sp.obj.parent.getWorldScale(tmpS).x||1:1;sp.obj.translateX(-scroll*SCROLL_SPEED*dt/ps)}
   // frame colour: own colour; white while held or when a hand could take it
   // (near or pointed by a ray); the selected plane gets the inner loop
-  if(section.on){const near=new Set(controllers.flatMap(c=>[nearestPlane(c),c.userData.rayPlane,c.userData.heldPlane]));for(const pl of planes){pl.mat.color.setHex(near.has(pl)?0xffffff:pl.color);pl.inner.visible=pl===section.selected}}
+  if(section.on){const near=new Set(controllers.flatMap(c=>[c.userData.target,c.userData.heldPlane]));for(const pl of planes){pl.mat.color.setHex(near.has(pl)?0xffffff:pl.color);pl.inner.visible=pl===section.selected}}
   const st=section.on?(controllers.some(c=>c.userData.heldPlane)?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}
   if(material){
