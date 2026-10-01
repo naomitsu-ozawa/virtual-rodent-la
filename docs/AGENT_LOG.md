@@ -3137,15 +3137,203 @@ each excluded voxel leaves face-aligned slivers (the boxy look).
 Checks: lint, 405 unit tests, boot-check, harness as above, region
 colouring texture vs row search byte-identical.
 
-## Handoff (after build 380)
+## Build 381 — VR: distance field read only when a jump is possible (same image)
 
-State: build 380 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Quest numbers (owner, build 380, normal size): auto resolution settles at
+30–40 % with the interval controller (no GPU timer on the Quest browser);
+100 % fixed: bone only about 60 fps, bone + fat about 20 fps; JS 0.6–0.8
+ms; samples per pixel 3–8 (bone), 20–25 (bone + fat); distance field off
+adds about 6; exact search slightly slower. Cost model that fits: reads per
+pixel ≈ iterations × 2 (field + classification) + about 9 per hit (3
+search + 6 gradient); bone 19 reads → 60 fps, bone + fat 53 → 20 fps.
+Target for 72 fps at 100 %: about 16 reads per pixel. Plan agreed with the
+owner: 1 field-read elision (exact), 2 precomputed normals (exact), 3 a
+half-resolution first-hit pre-pass (not exact; harness numbers first, the
+owner decides). VR only; the WebGPU view is untouched.
+- VR harness (tools/vr-volume-check.mjs): FAT=1 fat sheets, FAT=2
+  scattered fat specks (the visceral-fat case: field below 3 nearly
+  everywhere, few early hits), SEGS=bonefat, EDIT=1 (bone box excluded,
+  folded into the classification and as an editTex for the HU path),
+  classification with 4 channels. Specks + soft: 18.8 iterations per pixel.
+- Shader: the field is read only when its value could reach 3. One step
+  moves the sampled voxel by at most one per axis (chamfer 5 → +1.5 field
+  units, floor: +2), so after a read of 0 the next read is skipped; the
+  bound grows by ceil(1.5 × ceil(step / voxel)) per skipped step and is
+  reset after a jump. Reads: specks + soft 18.8 → 12.6 per pixel, specks +
+  bone 8.4 → 5.9, no fat 13.5 → 11.0; every configuration (HU and cls
+  paths, bone only, fat sheets, edit box, exact search) pixel-identical to
+  build 380. A looser rule (skip after a read of 1) saved 1.3 more reads but
+  changed 54 channels (a lost 1-voxel jump moved a hit): rejected.
+Checks: lint, 405 unit tests, boot-check, VR harness as above.
+
+## Build 382 — VR harness on the practice data; fat opacity and the one-fetch field measured (no app change)
+
+Owner (Quest, build 381): bone + fat 16–30 fps at 100 %; soft hidden; fat
+opacity about 90 %; normal size. Owner's suggestion: measure on the
+practice data (docs/demo/sample1) instead of phantoms.
+- tools/vr-volume-check.mjs: VOL=<raw u16 file> DIMS=256 loads a real
+  volume (HU = raw − 4000, the practice data's calibration), BONE / SOFT /
+  FATR ranges and BONEOP / SOFTOP / FATOP opacities from the environment,
+  DISTCLS=1 writes the combined distance field (min over the shown
+  segments) into the classification alpha, the cls counter now wraps every
+  classification fetch. The 256³ volume is built by a scratch script
+  (2×2×2 mean of the 512 slices, as halveVolume does; histogram: soft peak
+  100–200 HU, fat about −200..−20, bone a plateau above 300).
+- Practice data, bone (300..3000) + fat (−200..−20), soft hidden, reads per
+  pixel: fat 100 %: cls 13.5 + dist 14.4 + HU 2.1 ≈ 30; fat 90 %: 26.0 +
+  25.0 + 3.6 ≈ 55 (matches the Quest's 20–25 iterations). At 90 % the ray
+  runs on to a second fat hit (0.9 < the 0.985 cut-off).
+- One-fetch variant (field in the cls alpha, scratch vr-dc2.js): 30 → 20
+  reads at 100 %, 55 → 37 at 90 %; the separate field texture goes away
+  (−67 MB at 256³). Jump rule for the trilinear field: surface ≥ dd − 1.74
+  (corner values are bounds, 1-Lipschitz), jump dd − 1.8 when dd ≥ 2.7.
+  Not pixel-identical: 15 % of channels differ by 18 on average, speckle on
+  the fat surface only (sample phase), no structure lost. Awaiting the
+  owner's decision and the fps at fat 100 %.
+- Rejected after measuring: a half-resolution first-hit pre-pass (no
+  read reduction: the cost is after the first hit, inside the near-fat
+  zone; 15697–35972 channels changed). Deferred: precomputed normals (HU
+  reads are 2.1 per pixel here, little to gain).
+Only the version changed in docs/.
+
+## Build 383 — VR default size 16.5 cm (was 30 cm)
+
+Owner (Quest, build 382): correction — fat opacity was 100 % all along
+(the 55-read case in build 382's log is therefore not the owner's; their
+20–25 iterations at 100 % mean denser fat than the practice data's
+−200..−20 range gives here, 14). New finding: shrinking the volume with
+both hands to the smallest size made it much lighter; owner suggests that
+as the default. The cost follows the pixels the volume covers (apparent
+size squared; per-ray work does not change with size), so the smallest
+size (16.5 cm longest side at 0.55 m: about 1/3 of the pixels of 30 cm)
+is about 3× cheaper. At that size 256 voxels span about 340 Quest pixels,
+still above one pixel per voxel at 100 %, so no detail is lost on the
+panel.
+- baseScale 0.3/3.3 → 0.165/3.3 (bringVolumeFront: start and 持ち方 →
+  手前に戻す); two-hand scale minimum 0.05 → 0.025 so it can still be made
+  smaller than the default.
+- The one-fetch field (build 382 log) is still pending the owner's
+  decision.
+Checks: lint, 405 unit tests, boot-check.
+
+## Build 384 — VR: classification and combined distance field in one texture (one fetch per step)
+
+Owner: wants to try it; and confirms bone + fat at 100 % is 20–30 fps on
+build 381 at the old default size (fat opacity was 100 % all along).
+- distance-field.js: combineClassificationDistance(cls, dist, mask, out):
+  RGBA bytes with the classification channels as stored and alpha = the
+  smallest distance over the enabled segments (255 when none); null when
+  four segments are stored (no free channel). Unit-tested.
+- vr-view.js: when the classification and the field exist on the ≤256
+  grid, at most three segments are stored and the field diagnostic is off,
+  the shader samples one RGBA texture (distInCls = 1): the alpha drives the
+  jump, the same fetch classifies the sample. The alpha is rebuilt and
+  re-uploaded when the set of shown segments changes (segment mode menu;
+  about 0.2 s at 256³). Separate-field path (build 381) unchanged and used
+  as the fallback.
+- Jump rule for the trilinear alpha: every corner value is a lower bound
+  of the distance to the seeds and the distance is 1-Lipschitz, so the
+  surface is at least dd − 1.74 voxels away; jump dd − 1.8 when dd ≥ 2.7.
+- Harness, practice data (bone 300..3000 + fat −200..−20, 100 %, soft
+  hidden): reads per pixel 30.0 (381: cls 13.5 + field 14.4 + HU 2.1) →
+  20.8 (cls 18.1 + field 0.6 + HU 2.1), −31 %. Image: 15 % of channels
+  differ, mean 18, speckle on the fat surface (sample phase after jumps of
+  a different length), no structure lost. Fallback path pixel-identical
+  to build 381. Phantom (specks + soft + edit box) numbers above.
+Checks: lint, 406 unit tests, boot-check, harness.
+
+## Build 385 — in-VR benchmark (one screenshot instead of reading numbers one by one)
+
+Owner (Quest, build 384): no graininess; bone + fat about 20 fps at the
+default and at the large size; bone only also about 20 fps when enlarged.
+Owner: relaying VR numbers by hand is a burden — benchmark here with the
+practice data and the software GPU instead. Reply: the harness here
+counts reads per pixel exactly and now times the pass (SwiftShader, CPU
+proxy), but it cannot reproduce the Quest's texture cache and bandwidth,
+so fps still needs the device. Hence this build: a benchmark in VR that
+produces one result block.
+- 画質 tab: ベンチ（約 30 秒）. 12 phases: 16.5 / 30 / 50 cm × shown
+  segments / bone only × 100 % / 50 %, each 0.8 s settle + 2 s count.
+  State (size, pose, segment modes, resolution) is restored afterwards.
+  Result lines in the 画質 tab, the console, localStorage vrl-vr-bench, and a
+  panel with a copy button on the page after leaving VR.
+- Harness timing: the pixels are read back inside the timed region
+  (SwiftShader does the fragment work on readback; the old figure was 0
+  ms). Practice data, bone + fat, build 384: 627 ms for 256².
+Checks: lint, 406 unit tests, boot-check.
+
+## Build 386 — VR: tight ray loop for the combined-field path (pixel-identical, 609 → 177 ms on SwiftShader)
+
+Owner: optimise on the environment here with the practice data to the
+fastest state, then test on the device. Bench loop: practice 256³ volume
+(scratch sample-volume.mjs), classification and distance bytes cached
+(prep-cls.mjs → CLS= / DISTF= in the harness, MODES=cls), bone 300..3000 +
+fat −200..−20 at 100 %, soft hidden, 256² image; a run takes 10 s.
+Ablations on build 385 (SwiftShader ms, min of 5; reads per pixel 18.1 cls
++ 2.1 HU): no gradient normal 595 (image changes); simple shading (no
+search, no normal) 376; tight inner loop 330 (identical); + segment work
+on the fetched vector 268 (identical); + search without the surface search
+105 (image changes); + search testing the fetched classification directly
+177 (identical). SwiftShader's cost is dominated by per-step bookkeeping
+and divergent loops, not by fetch counts; whether the Quest behaves alike
+is what the in-VR benchmark (build 385) will tell.
+- Shader: when the combined field is in use and no slice or cap is active,
+  a tight loop runs: one fetch, jump or sample; segment index, own value and
+  the largest enabled value from that vector; the surface search tests the
+  fetched classification (first enabled segment holding the sample must be
+  the hit segment, as segmentIndexAt did). The general loop is unchanged and
+  still serves slices, caps, the separate-field path and the HU path.
+- Harness vs build 385: practice data 0 differing channels; phantom specks
+  + soft + edit box, bone only, fat sheets, separate field, no fat (HU and
+  cls paths): all 0.
+Checks: lint, 406 unit tests, boot-check, harness as above.
+
+## Build 387 — VR: the ray-ending hit is searched after the march; vectorised segment test (identical, 177 → 145 ms)
+
+Same bench as build 386 (practice data, bone + fat 100 %, SwiftShader ms).
+- A hit on an opaque segment (the contribution would end the ray) records
+  the bracket and breaks out of the march; the surface search and shading
+  run once after the loop, outside the divergent march. Semi-transparent
+  hits stay inline. Same arithmetic and order: 179 → 157 ms, 0 differing
+  channels.
+- Segment test on the fetched vector with an enabled-channel mask (max over
+  channels in one expression, first enabled segment by a short loop):
+  155 → 145 ms, 0 differing channels. An incremental texture coordinate
+  (origin + step × t) saved 6 % more but differed by rounding (379
+  channels): not taken.
+- Since build 385: 609 → 145 ms (−76 %), every configuration
+  pixel-identical (practice data; phantom specks + soft + edit box, bone
+  only, separate field, exact search).
+Checks: lint, 406 unit tests, boot-check, harness as above. Ready for the
+in-VR benchmark on the Quest.
+
+## Build 388 — Quest benchmark of build 387 (log only)
+
+Owner's in-VR benchmark (build 387, 72 Hz, shown = bone + soft + fat):
+- 16.5 cm (default): shown 100 % 72 fps / 50 % 72 · bone 100 % 72 / 50 % 72
+- 30 cm: shown 100 % 57 / 50 % 72 · bone 100 % 72 / 50 % 72
+- 50 cm: shown 100 % 39 / 50 % 69 · bone 100 % 70 / 50 % 72
+Goal D (100 % at the normal size) is met at the default size, with soft
+tissue shown as well; build 381 was 16–30 fps for bone + fat at 100 %.
+The SwiftShader ablations (build 386/387) transferred to the Quest: the
+per-step bookkeeping and the divergent search were the cost, not the
+fetch count. Remaining: 30 cm at 100 % is 57 fps and 50 cm 39 fps; the
+next steps there are non-exact (step 1.0 voxel, two search iterations) or
+resolution, to be quantified on the harness before any device test.
+Seen in the same screenshot: the Quest browser's 2D page shows the
+WebGPU volume at 2 fps with "編集 2:keep 187049区間" (processed fat, keep
+mode) — the Quest-browser comfort item (overnight task 2), not yet
+addressed; the editAllows binary search per sample on a 187k-interval
+mask is the likely cost (build 373 note: bit-mask texture).
+
+## Handoff (after build 388)
+
+State: build 388 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 360; PR #78 (preview
-/pr-preview/pr-78/) awaits the owner's Quest check and merge instruction.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 380 (PR #78 merged 2026-10-01); builds from 381 go to a new PR.
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
@@ -3170,12 +3358,13 @@ B. Done in build 364 (ray pick, numbered handles, selected plane, thumbstick
    scroll). Open: Quest check; scroll speed (5 cm/s) may need tuning.
 C. Done in build 365 (snap row, left-hand panel, 持ち方 moved to 表示).
    Open: Quest check of the panel placement.
-D. Goal (owner): VR auto resolution held at 100 % at the normal size.
-   Builds 368–371: fewer fetches per sample / brick, uniform-brick crossing,
-   fast surface search, distance-field sphere tracing (all switchable),
-   samples-per-pixel probe, GPU-timed auto controller up to 100 %. Open:
-   the device numbers decide whether per-ray work or the pixel count is the
-   limit; then precomputed normals (memory!) or temporal reuse.
+D. Goal (owner): VR auto resolution held at 100 % at the normal size —
+   met in build 387 (Quest bench: 72 fps at the 16.5 cm default with bone +
+   soft + fat at 100 %; 30 cm 57 fps, 50 cm 39 fps). Builds 368–387: fewer
+   fetches, distance field (now in the classification alpha, one fetch per
+   step), tight ray loop, search after the march. Open: larger sizes at
+   100 % (non-exact options: step 1.0 voxel, two search iterations;
+   quantify on the harness first).
 E. Help board done in build 367 (state-dependent controls, front-right).
    A first-run 3-step guide is still open if the owner wants it.
 F. iPad (builds 372–377): region colouring speckle fixed, drag lookups by
