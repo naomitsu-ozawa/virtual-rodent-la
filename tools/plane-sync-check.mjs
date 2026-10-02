@@ -25,14 +25,15 @@ await pg.click('#sample-demo-button');
 const t0=Date.now();while(Date.now()-t0<300000){const s=await pg.evaluate(()=>window.__vrlBusyModal?.()||{});if(!s.active&&Date.now()-t0>4000)break;await pg.waitForTimeout(500)}
 const state=()=>pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,st=await import('./state.js'+v),mo=await import('./mpr3d-overlay.js'+v);
  const tab=document.querySelector('[data-ipad-mpr].is-active')?.dataset.ipadMpr||null,main=document.querySelector('#main-view-slot .view-card')?.dataset.viewKey||null;
- return{section:st.sectionViewOpen?st.sectionViewPlane:null,overlay:['axial','coronal','sagittal'].filter(k=>mo.mpr3DVisibility[k]),tab,main}});
+ const q=st.sceneState?.obj?.quaternion,view=q?(Math.abs(q.w-1)<1e-6?'z':Math.abs(q.y+Math.SQRT1_2)<1e-6&&Math.abs(q.w-Math.SQRT1_2)<1e-6?'x':Math.abs(q.x-Math.SQRT1_2)<1e-6&&Math.abs(q.w-Math.SQRT1_2)<1e-6?'y':'other'):'no 3D object';
+ return{section:st.sectionViewOpen?st.sectionViewPlane:null,reverse:st.sectionViewReverse,overlay:['axial','coronal','sagittal'].filter(k=>mo.mpr3DVisibility[k]),tab,main,view}});
 const steps=[['section analysis: coronal','[data-section-view="coronal"]','coronal'],['workspace tab: sagittal','[data-ipad-mpr="sagittal"]','sagittal'],['3D plane button: axial (off → on)',null,'axial'],['main view: coronal','[data-view-main="coronal"]','coronal']];
 const out=[];let bad=false;
 for(const [label,sel,p] of steps){
  if(sel)await pg.evaluate(s=>document.querySelector(s)?.click(),sel);
  else await pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,mo=await import('./mpr3d-overlay.js'+v);if(mo.mpr3DVisibility.axial)document.querySelector('[data-3d-overlay="axial"]').click();document.querySelector('[data-3d-overlay="axial"]').click()});
  await pg.waitForTimeout(800);const s=await state();
- const ok=s.section===p&&s.overlay.includes(p)&&s.tab===p&&(s.main==='3d'||s.main===p);if(!ok)bad=true;out.push({label,expect:p,...s,ok});
+ const axis=p==='axial'?'z':p==='coronal'?'y':'x',ok=s.section===p&&s.reverse===true&&s.overlay.includes(p)&&s.tab===p&&(s.main==='3d'||s.main===p)&&(s.view==='no 3D object'||s.view===axis);if(!ok)bad=true;out.push({label,expect:p,...s,ok});
 }
 for(const x of out)console.log(JSON.stringify(x));
 await b.close();srv.close();
