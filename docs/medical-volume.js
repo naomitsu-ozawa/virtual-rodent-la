@@ -328,23 +328,21 @@ fn insideVoxelTc(tc0:vec3<f32>,dir:vec3<f32>,inward:vec3<f32>,seg:u32)->vec3<f32
  let a=u.segments[seg*2u];
  let di=objToTc(inward);let dr=objToTc(dir);
  var cand=array<vec3<f32>,6>(tc0,tc0+di*0.5,tc0+di*1.0,tc0+dr*0.5,tc0+dr*1.0,tc0+di*1.5);
- for(var k:u32=0u;k<6u;k=k+1u){let v=huVoxel(cand[k]);if(v>=a.x&&v<=a.y){return cand[k];}}
+ // build 417: the candidate must be a member of the segment, its own edit / processing mask entry included
+ for(var k:u32=0u;k<6u;k=k+1u){let v=huVoxel(cand[k]);if(v>=a.x&&v<=a.y&&editAllows(seg,cand[k])){return cand[k];}}
  return tc0;
 }
 fn segmentIndexAt(tc0:vec3<f32>)->i32{return segmentIndexFor(huAt(tc0),tc0);}
+// build 416 (owner: views must agree voxel for voxel; the cut face's periphery did not match): the section cap is a
+// cross-section, so it shows exactly what the 2D slice shows — the segment of the voxel at the cap point by that
+// voxel's own stored value (and the edit / processing masks), no interpolation and no segment borrowed from the
+// neighbouring slices (it searched up to 2 voxels along the normal)
 fn capSegmentIndex(tc0:vec3<f32>)->i32{
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- var idx=segmentIndexAt(tc);if(idx>=0){return idx;}
- let dims=max(u.dimsSlope.xyz,vec3<f32>(1.0));
- var axis=vec3<f32>(0.0,0.0,1.0);
- if(u.section.x>1.5&&u.section.x<2.5){axis=vec3<f32>(0.0,1.0,0.0);}
- if(u.section.x>=2.5){axis=vec3<f32>(1.0,0.0,0.0);}
- let voxelStep=axis/dims;
- for(var r:i32=1;r<=2;r=r+1){
-  let d=voxelStep*f32(r);
-  idx=segmentIndexAt(clamp(tc+d,vec3<f32>(0.0),vec3<f32>(0.999999)));if(idx>=0){return idx;}
-  idx=segmentIndexAt(clamp(tc-d,vec3<f32>(0.0),vec3<f32>(0.999999)));if(idx>=0){return idx;}
- }
+ let v=huVoxel(tc);
+ // the voxel's own edit / processing mask entry (editAllows looks up that voxel; the interpolated exclusion test of
+ // the ray march, excludeMaskedInside, is not used here)
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){return i32(s);}}
  return -1;
 }
 fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}
@@ -441,6 +439,14 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
     let cp=u.camOrigin.xyz+dir*capT;let ctc=texCoord(cp);let capIndex=capSegmentIndex(ctc);
     if(capIndex>=0){
      var capColor=mix(u.segments[u32(capIndex)*2u+1u].rgb,vec3<f32>(1.0),0.22);
+     // build 410 (owner): analysis result colours on the section cap too (one lookup per pixel, only for a segment with results)
+     // build 413: exactly the voxel at the cap point — the neighbour search of 411–412 coloured voxels that are not in the
+     // result (owner: not acceptable for research); a voxel touching the result only at an edge or corner is a separate
+     // component (6-connectivity) and keeps the segment colour
+     if(analysisOverlay[0]!=0u&&(analysisOverlay[analysisOverlay[0]]&(1u<<u32(capIndex)))!=0u){
+      let ov=analysisOverlayAt(ctc);
+      if(ov!=0u){capColor=mix(vec3<f32>(f32((ov>>16u)&255u),f32((ov>>8u)&255u),f32(ov&255u))/255.0,vec3<f32>(1.0),0.22);}
+     }
      if(u.sectionCap.z>0.5){
       var huv=vec2<f32>(ctc.x,ctc.y);
       if(u.section.x>1.5&&u.section.x<2.5){huv=vec2<f32>(ctc.x,ctc.z);}
@@ -503,13 +509,15 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      let inward=select(-n,n,hvPrev<-1e8||hvPrev<a.x);
      // build 375: regions only on the segments that have one (mask word at the colour table start); with the index texture the lookup needs no inside-voxel search
      let anyRegion=analysisOverlay[0]!=0u&&(analysisOverlay[analysisOverlay[0]]&(1u<<u32(idx)))!=0u;
-     let regionByTexture=anyRegion&&u.section.w>0.5;
-     var tcv=tc;if(previewRows[0]!=0u||(anyRegion&&!regionByTexture)){tcv=insideVoxelTc(tc,dir,inward,u32(idx));}
+     // build 417 (owner: no colour on a voxel the result does not contain): the result colour of a surface hit is the
+     // result of the one voxel that forms the surface there (insideVoxelTc: the first candidate voxel in the segment) in
+     // both the index-texture and the row path; regionOverlayNear (build 375) took any result voxel among the candidates
+     var tcv=tc;if(previewRows[0]!=0u||anyRegion){tcv=insideVoxelTc(tc,dir,inward,u32(idx));}
      let isCutPreview=previewContains(u32(idx),tcv);
      var col=u.segments[u32(idx)*2u+1u].rgb;
      var alpha=clamp(a.z,0.03,1.0);
      var lit=col*diffuse+vec3<f32>(spec);
-     var overlay=0u;if(anyRegion&&!isCutPreview){if(regionByTexture){overlay=regionOverlayNear(tc,dir,inward);}else{overlay=analysisOverlayAt(tcv);}}
+     var overlay=0u;if(anyRegion&&!isCutPreview){overlay=analysisOverlayAt(tcv);}
      if(overlay!=0u){
       col=vec3<f32>(f32((overlay>>16u)&255u),f32((overlay>>8u)&255u),f32(overlay&255u))/255.0;
       let focused=(overlay&0x1000000u)!=0u;

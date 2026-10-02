@@ -8,15 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261001-build402';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261001-build402';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261001-build402';
-import { sceneState } from './state.js?v=20261001-build402';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261001-build402';
-import { marchClassificationHit } from './vr-pick.js?v=20261001-build402';
-import { tr } from './i18n.js?v=20261001-build402';
-import { APP_BUILD } from './version.js?v=20261001-build402';
-import { wc, ww } from './ui-shell.js?v=20261001-build402';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build429';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build429';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build429';
+import { sceneState, analysisRegions } from './state.js?v=20261002-build429';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build429';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build429';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build429';
+import { tr } from './i18n.js?v=20261002-build429';
+import { APP_BUILD } from './version.js?v=20261002-build429';
+import { wc, ww } from './ui-shell.js?v=20261002-build429';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -77,6 +78,7 @@ uniform float sliceOpacity;
 uniform int capOn;
 uniform float sliceTint;
 uniform vec2 sliceWindow; // center, width
+uniform float sliceAir; // build 407: HU at or below which the slice is transparent
 // build 368: surface search 1 = fast (2 secant guesses + 1 bisection on the
 // interpolated value), 0 = exact (6 bisections)
 uniform int refine;
@@ -90,6 +92,20 @@ vec2 hitBox(vec3 o,vec3 d){
  return vec2(max(lo.x,max(lo.y,lo.z)),min(hi.x,min(hi.y,hi.z)));
 }
 vec3 texCoord(vec3 p){return vec3(p.x/(2.0*halfExt.x)+0.5,0.5-p.y/(2.0*halfExt.y),p.z/(2.0*halfExt.z)+0.5);}
+// analysis results (build 409): colour index per voxel (0 none, 1..14 = regionC), read only where a colour is
+// chosen (surface hit, cut face, slice tint), never per step; the hit is sampled a little inside the surface.
+// Compiled only with VRL_REGIONS (a session without results runs the shader as before: the branch alone cost
+// about 14 % on SwiftShader)
+#ifdef VRL_REGIONS
+uniform sampler3D regionTex;
+uniform vec3 regionC[14];
+vec3 regionColor(vec3 p,vec3 base){
+ int i=int(texture(regionTex,clamp(texCoord(p),vec3(0.0),vec3(0.999999))).r*255.0+0.5);
+ return i>0&&i<=14?regionC[i-1]:base;
+}
+#else
+vec3 regionColor(vec3 p,vec3 base){return base;}
+#endif
 float huAt(vec3 tc0){
  vec3 tc=clamp(tc0,vec3(0.0),vec3(0.999999));
  vec2 q=texture(vol,tc).rg*255.0;
@@ -167,15 +183,21 @@ float brickExit(vec3 tc,vec3 dir){
  }
  return best;
 }
-float sliceGray(vec3 p){
+float sliceHU(vec3 p){
  vec2 q=texture(sliceVol,clamp(texCoord(p),vec3(0.0),vec3(0.999999))).rg*255.0;
- float hu=(q.x+q.y*256.0-calib.z)*calib.x+calib.y;
- return clamp((hu-(sliceWindow.x-0.5*sliceWindow.y))/max(sliceWindow.y,1e-3),0.0,1.0);
+ return (q.x+q.y*256.0-calib.z)*calib.x+calib.y;
 }
-vec3 sliceColor(vec3 p){
- float g=sliceGray(p);
- if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return mix(vec3(g),segC[si].rgb,sliceTint);}
- return vec3(g);
+float sliceGray(vec3 p){
+ return clamp((sliceHU(p)-(sliceWindow.x-0.5*sliceWindow.y))/max(sliceWindow.y,1e-3),0.0,1.0);
+}
+// build 403 / 407 (owner): the slice is transparent at or below sliceAir HU (air by default; raise it to hide fat
+// as well), before any tint; it reaches the set opacity 10 HU above the threshold
+vec4 sliceColor(vec3 p){
+ float hu=sliceHU(p),a=smoothstep(sliceAir,sliceAir+10.0,hu);
+ if(a<=0.0)return vec4(0.0);
+ float g=clamp((hu-(sliceWindow.x-0.5*sliceWindow.y))/max(sliceWindow.y,1e-3),0.0,1.0);
+ if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return vec4(mix(vec3(g),regionColor(p,segC[si].rgb),sliceTint),a);}
+ return vec4(vec3(g),a);
 }
 vec3 gradientAt(vec3 tc){
  vec3 d=1.0/max(texDims,vec3(1.0));
@@ -262,7 +284,7 @@ void main(){
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
-     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -277,15 +299,15 @@ void main(){
    iters++;
    // slices and the cut face as in the general loop (same order: slices up to t + step, then the cap, then the sample)
    while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
-    vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-    float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
+    vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
+    float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
    }
    if(capT>=0.0){
-    int ci=segmentIndexAt(texCoord(o+dir*capT));capT=-1.0;
+    vec3 cp=o+dir*capT;int ci=segmentIndexAt(texCoord(cp));capT=-1.0;
     if(ci>=0){
      vec3 n=cutPlanes[capPlane].xyz;vec3 viewDir=-dir;vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
-     vec3 lit=mix(segC[ci].rgb,vec3(1.0),0.22)*diffuse;
+     vec3 lit=mix(regionColor(cp,segC[ci].rgb),vec3(1.0),0.22)*diffuse;
      float contribution=(1.0-acc.a)*clamp(segA[ci].z,0.03,1.0);acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
      lastIndex=ci;previousT=t;t+=step;continue;
     }
@@ -316,7 +338,7 @@ void main(){
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
-     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -342,7 +364,7 @@ void main(){
    float diffuse=0.28+0.72*abs(dot(n,lightDir));
    float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
    float alpha=clamp(segA[idx].z,0.03,1.0);
-   vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+   vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
    float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
   }
 #ifndef VRL_NO_GENERAL
@@ -352,16 +374,16 @@ void main(){
   iters++;
   while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
    // a slice lies before the next sample: composite it in depth order
-   vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-   float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
+   vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
+   float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
   }
   if(capT>=0.0){
    // cut face: flat, segment colour lightened, lit by the plane normal
-   int ci=segmentIndexAt(texCoord(o+dir*capT));capT=-1.0;
+   vec3 cp=o+dir*capT;int ci=segmentIndexAt(texCoord(cp));capT=-1.0;
    if(ci>=0){
     vec3 n=cutPlanes[capPlane].xyz;vec3 viewDir=-dir;vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
     float diffuse=0.28+0.72*abs(dot(n,lightDir));
-    vec3 lit=mix(segC[ci].rgb,vec3(1.0),0.22)*diffuse;
+    vec3 lit=mix(regionColor(cp,segC[ci].rgb),vec3(1.0),0.22)*diffuse;
     float contribution=(1.0-acc.a)*clamp(segA[ci].z,0.03,1.0);acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     lastIndex=ci;previousT=t;t+=step;continue;
    }
@@ -411,7 +433,7 @@ void main(){
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
      float alpha=clamp(segA[idx].z,0.03,1.0);
-     vec3 lit=segC[idx].rgb*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -426,8 +448,8 @@ void main(){
  }
 #endif
  while(nextSlice<nSlice&&acc.a<=0.985){
-  vec3 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-  float contribution=(1.0-acc.a)*sliceOpacity;acc=vec4(acc.rgb+sc*contribution,acc.a+contribution);
+  vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
+  float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
  }
  if(diag==2){float h=clamp(float(iters)/1024.0,0.0,1.0);outColor=vec4(h,1.0-abs(h*2.0-1.0),1.0-h,1.0);return;}
  if(acc.a<0.004)discard;
@@ -515,7 +537,7 @@ async function buildVolumeData(maxDim,onProgress){
 const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is; secHold 0 grip
 // picks the section up near the frame, 1 trigger fixes / picks it up
-const DEFAULTS={cap:1,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1};
+const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1,labelSize:0};
 // an older key is migrated once, with the slice opacity reset to the new default
 function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);return{...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
@@ -531,7 +553,7 @@ function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v)
 // time of the volume pass when the timer extension is offered
 const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=1,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
 // VR window slider / button step in HU (build 361)
-const WIN_STEP=10;
+const WIN_STEP=10,AIR_MIN=-1000,AIR_MAX=500;
 
 // upscales the offscreen volume image; drawn with the volume box so only the
 // covered pixels are touched
@@ -654,7 +676,26 @@ export function vrDataKey(){
  const v=gpuVolumeTarget();if(!v?.series)return '';
  const segs=SEGMENT_PRESET_ORDER.map(k=>{const g=segmentState[k]||{},st=segmentEditState[k]||{};
   return [g.active?1:0,g.enabled?1:0,g.min,g.max,g.opening,g.closing,g.holeFill?1:0,g.minComponent,g.surfaceMm,g.thicknessMm,st.revision|0,idOf(st.baseRuns),idOf(st.keepRuns),idOf(st.excludeRuns)].join(',')});
- return [v.series.id,v.filterSignature||'',...segs].join('|');
+ // build 409: the shown analysis results (colour, voxels) are part of the prepared data
+ const regions=shownRegions().map(r=>r.id+':'+r.color+':'+r.voxels).join(',');
+ return [v.series.id,v.filterSignature||'',...segs,regions].join('|');
+}
+// analysis results for VR (build 409): the visible regions; colour index per voxel on the given grid (0 none,
+// 1..14 = the distinct colours in list order, at most 14; a later region wins where two overlap), mapped with
+// the same gpuRunsForTexture as the edit mask; the list (colour, segments, mm³) is shown read-only in the menu
+const shownRegions=()=>analysisRegions.filter(r=>r.visible!==false&&r.runsBySlice&&r.voxels>0);
+function buildRegionIndex(dims){
+ const v=gpuVolumeTarget(),regions=shownRegions();if(!v||!regions.length)return{data:null,colors:[],list:[]};
+ // build 423: ids = list position + 1 per voxel (the label of the result the laser points at), up to 255 results
+ const [w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],colors=[],data=new Uint8Array(w*h*d),ids=new Uint8Array(w*h*d),list=[];
+ for(const r of regions){
+  const c=Number(r.color)>>>0;let k=colors.indexOf(c);if(k<0){if(colors.length>=14)continue;colors.push(c);k=colors.length-1}
+  const runs=gpuRunsForTexture(r.runsBySlice,sourceDims,dims,{dilate:0});
+  if(list.length>=255)break;const id=list.length+1;
+  for(let z=0;z<d;z++){const rec=runs?.[z];if(!rec?.length)continue;for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;data.fill(k+1,o+rec[i+1],o+rec[i+2]+1);ids.fill(id,o+rec[i+1],o+rec[i+2]+1)}}
+  list.push({color:c,mm3:r.mm3,segmentKeys:[...(r.segmentKeys||[])]});
+ }
+ return{data:colors.length?data:null,ids:colors.length?ids:null,colors,list};
 }
 // classification bytes for a grid of at most 256 (see segmentIndexAt)
 function buildClsData(t,calibration,edit){
@@ -683,17 +724,18 @@ const makeVolumeTextures=d=>{
  b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
  return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null,dist:null,combo:null,comboMask:-1};
 };
+const makeRegionTexture=P=>{const g=P.region;if(!g?.data)return null;const t=new THREE.Data3DTexture(g.data,...g.dims);t.format=THREE.RedFormat;t.type=THREE.UnsignedByteType;t.minFilter=t.magFilter=THREE.NearestFilter;t.unpackAlignment=1;t.needsUpdate=true;return t};
 const makeEditTexture=P=>{if(!P.edit.data)return null;const e=new THREE.Data3DTexture(P.edit.data,...P.edit.dims);e.format=THREE.RGBAFormat;e.type=THREE.UnsignedByteType;e.unpackAlignment=1;return e};
 const makeComboTexture=(data,dims)=>{const x=new THREE.Data3DTexture(data,...dims);x.format=THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;return x};
 // shown-segment mask for the combined texture's alpha (segMode 2 = hidden)
 const shownMask=()=>{let mask=0;for(let i=0;i<4;i++){const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];if(seg?.active&&seg?.enabled&&segMode[key]!==2)mask|=1<<i}return mask};
 // build 393: shader variants (preprocessor guards in fragmentShader) sharing one uniforms object:
 // combined = without the general loop (used when the combined field is in use), noEvents = also without the slice / cut-face loop (no section)
-const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...defs};return m};return{full:base,combined:mk({VRL_NO_GENERAL:''}),noEvents:mk({VRL_NO_GENERAL:'',VRL_NO_EVENTS:''})}};
+const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...base.defines,...defs};return m};return{full:base,combined:mk({VRL_NO_GENERAL:''}),noEvents:mk({VRL_NO_GENERAL:'',VRL_NO_EVENTS:''})}};
 const rayMaterialOf=m=>{const r=m.clone();r.uniforms=m.uniforms;r.defines={...m.defines};r.blending=THREE.NoBlending;r.transparent=false;return r};
 const volumeUniforms=(vd,full,settings)=>({vol:{value:full.v},bricks:{value:full.b},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
  stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
- cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
+ cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
 // ---- GPU preparation before the session (build 393, after the Codex branch's idea) ----
 // The renderer (an XR-compatible context), the textures of the grid in use, the
 // combined classification + field texture for the shown segments, the edit mask
@@ -709,20 +751,20 @@ export async function prepareVrGpu(P,mode='vr',settings=loadSettings()){
  Object.assign(renderer.domElement.style,{position:'fixed',left:'0',top:'0',width:'1px',height:'1px',opacity:'0',pointerEvents:'none'});
  document.body.appendChild(renderer.domElement);
  const gl=renderer.getContext(),t0=performance.now(),times={};
- const assets={key:P.key,mode,renderer,full:null,half:null,edit:null,warm:[],times};
+ const assets={key:P.key,mode,renderer,full:null,half:null,edit:null,region:null,warm:[],times};
  try{
   try{await gl.makeXRCompatible?.()}catch(e){console.warn('makeXRCompatible before the session failed (setSession will retry):',e)}
   const vd=P.vd,full=makeVolumeTextures(vd);assets.full=full;
   const half=P.half?makeVolumeTextures(P.half):null;assets.half=half;
   const useHalf=(settings.data|0)===1&&!!half,t=useHalf?half:full;
   if(Math.max(...t.dims)<=256&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3)){const mask=shownMask();const data=combineClassificationDistance(P.cls,P.dist,mask);if(data){t.combo=makeComboTexture(data,t.dims);t.comboMask=mask}}
-  assets.edit=makeEditTexture(P);
-  for(const x of [full.v,full.b,half?.v,half?.b,t.combo,assets.edit].filter(Boolean))renderer.initTexture(x);
+  assets.edit=makeEditTexture(P);assets.region=makeRegionTexture(P);
+  for(const x of [full.v,full.b,half?.v,half?.b,t.combo,assets.edit,assets.region].filter(Boolean))renderer.initTexture(x);
   times.upload=performance.now()-t0;const t1=performance.now();
   // compile every program the session can use: the three volume variants, their offscreen (no blending) copies and the composite
   const u=volumeUniforms(vd,full,settings),dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
-  u.clsTex.value=dummy;u.editTex.value=dummy;u.distTex.value=dummy;
-  const base=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:u});
+  u.clsTex.value=dummy;u.editTex.value=dummy;u.distTex.value=dummy;u.regionTex.value=dummy;
+  const base=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:u,defines:P.region?.data?{VRL_REGIONS:''}:{}});
   base.transparent=true;base.depthWrite=false;base.blending=THREE.CustomBlending;base.blendSrc=THREE.OneFactor;base.blendDst=THREE.OneMinusSrcAlphaFactor;
   const vars=materialVariants(base),mats=[vars.full,vars.combined,vars.noEvents,rayMaterialOf(vars.full),rayMaterialOf(vars.combined),rayMaterialOf(vars.noEvents),
    new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:compositeVertex,fragmentShader:compositeFragment,side:THREE.BackSide,toneMapped:false,depthWrite:false,transparent:true,blending:THREE.CustomBlending,blendSrc:THREE.OneFactor,blendDst:THREE.OneMinusSrcAlphaFactor,uniforms:{img:{value:null},invSize:{value:new THREE.Vector2(1,1)},halfExt:{value:new THREE.Vector3(...vd.halfExt)}}})];
@@ -741,7 +783,7 @@ export async function prepareVrGpu(P,mode='vr',settings=loadSettings()){
 export function disposeGpuPrepared(){
  const g=gpuPrepared;if(!g)return;gpuPrepared=null;
  for(const t of [g.full,g.half])if(t){t.v.dispose();t.b.dispose();t.combo?.dispose()}
- g.edit?.dispose();g.warm.forEach(m=>m.dispose());g.renderer.dispose();g.renderer.domElement.remove();
+ g.edit?.dispose();g.region?.dispose();g.warm.forEach(m=>m.dispose());g.renderer.dispose();g.renderer.domElement.remove();
 }
 export function vrReady(){return !!prepared&&prepared.key===vrDataKey()}
 const maxTexture3D=()=>{try{const c=document.createElement('canvas'),g=c.getContext('webgl2');const m=g?.getParameter(g.MAX_3D_TEXTURE_SIZE)||2048;g?.getExtension('WEBGL_lose_context')?.loseContext();return m}catch{return 2048}};
@@ -764,7 +806,8 @@ export async function prepareVrData(onProgress=()=>{}){
   const small=half||vd,cls=buildClsData(small,vd.calibration,edit);times.cls=performance.now()-t0;
   onProgress({phase:'dist',done:0,total:1});await tick();t0=performance.now();
   const dist=cls?await buildDistanceBytes(cls,small.dims,(a,b)=>onProgress({phase:'dist',done:a,total:b})):null;times.dist=performance.now()-t0;
-  return{key,vd,half,edit,cls,dist,times};
+  let region;try{region={dims:editDims,...buildRegionIndex(editDims)}}catch(e){console.error(e);region={dims:editDims,data:null,colors:[],list:[]}}
+  return{key,vd,half,edit,cls,dist,region,times};
  })();
  preparing={key,promise};
  try{prepared=await promise;return prepared}finally{if(preparing?.promise===promise)preparing=null}
@@ -782,18 +825,23 @@ export function showPreparePanel({language='ja',mode='vr',onStart}){
  const order=['read','half','mask','cls','dist'],allPhases=['copy',...order];
  q('.cancel').onclick=()=>panel.remove();
  q('.start').onclick=()=>{panel.remove();onStart()};
- document.body.append(panel);
- const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'||phase==='copy'?' '+done+' / '+total:'');const i=Math.max(0,order.indexOf(phase==='copy'?'read':phase)),f=(i+((phase==='read'||phase==='copy')&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%'};
+ // build 405: the preparation runs in the central progress modal; the panel shows up when it is ready (timings, start button) or failed
+ panel.style.display='none';document.body.append(panel);
+ const title=q('strong').textContent,done_=()=>{setBusySlot('vr',false);panel.style.display=''};
+ setBusySlot('vr',true,{label:title});
+ const report=({phase,done,total})=>{q('.ph').textContent=names[phase]+(phase==='read'||phase==='copy'?' '+done+' / '+total:'');const i=Math.max(0,order.indexOf(phase==='copy'?'read':phase)),f=(i+((phase==='read'||phase==='copy')&&total?done/total:0))/order.length;q('.bar').style.width=Math.round(f*100)+'%';reportBusyProgress('vr',f,1,q('.ph').textContent)};
  prepareVrData(report).then(async p=>{
+  try{
   q('.bar').style.width='100%';
   // build 393: upload, compile and wait on the GPU before the session (skipped when already prepared for this data and mode)
   let g=gpuPrepared&&gpuPrepared.key===p.key&&gpuPrepared.mode===mode?gpuPrepared:null;
-  if(!g){q('.ph').textContent=ja?'GPU の準備（転送・コンパイル）':'Preparing the GPU (upload, compile)';g=await prepareVrGpu(p,mode)}
+  if(!g){q('.ph').textContent=ja?'GPU の準備（転送・コンパイル）':'Preparing the GPU (upload, compile)';reportBusyProgress('vr',1,1,q('.ph').textContent);g=await prepareVrGpu(p,mode)}
   q('.ph').textContent=ja?'準備ができました':'Ready';
   const gpuLine=g?.times?((ja?'GPU: ':'GPU: ')+(g.times.total/1000).toFixed(1)+' s'):'';
   q('.tm').textContent=allPhases.filter(k=>p.times[k]!=null).map(k=>names[k]+': '+(p.times[k]/1000).toFixed(1)+' s').concat(gpuLine?[gpuLine]:[]).join('\n');
-  q('.start').disabled=false;q('.start').focus();
- },e=>{console.error(e);q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e)});
+  }catch(e){console.error(e);done_();q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e);return}
+  done_();q('.start').disabled=false;q('.start').focus();
+ },e=>{console.error(e);done_();q('.ph').textContent=(ja?'準備に失敗: ':'Preparation failed: ')+String(e.message||e)});
 }
 
 let running=null;
@@ -818,14 +866,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
- const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
+ const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細','解析'],anT:'解析結果（体積）',anNone:'解析結果はありません（2D/3D画面の体積解析で作成し、表示中のものがVRに入ります）',anTotal:'合計',anPage:'ページ',lbSize:'ラベルの大きさ',lbSizeV:['小','中','大'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',anBench:'解析の重さ（約 12 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：最後に持った断面（一覧で色付き）を法線方向に動かします','つかむ枠は手の色で光ります（右＝オレンジ・左＝紫、レーザーの枠が優先）'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    handR:'右',handL:'左',secHelp:['光った枠をグリップを押す間だけ持てます（番号の下＝最後に持った手）','光った枠をトリガーを押す間だけ持てます（番号の下＝最後に持った手）'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
-  :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
+  :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details','Analysis'],anT:'Analysis results (volume)',anNone:'No analysis results (made with the volume analysis on the page; the visible ones come into VR)',anTotal:'Total',anPage:'Page',lbSize:'Label size',lbSizeV:['Small','Medium','Large'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',anBench:'Analysis cost (about 12 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the plane held last (highlighted in the list) on its normal','The frame you will grab glows in the hand colour (right orange, left violet; laser wins)'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    handR:'R',handL:'L',secHelp:['Hold grip while the frame glows (under the number: last hand)','Hold the trigger while the frame glows (under the number: last hand)'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
@@ -833,7 +881,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volPick=null,volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volPick=null,regionList=[],volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  // segMode (normal / simple / hidden per segment) lives at module level since build 393 (shownMask); it persists across sessions
@@ -861,7 +909,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menuHit=c=>{if(!ui.open)return null;setRay(c);return raycaster.intersectObject(menu.mesh,false)[0]||null};
  const badgeHit=c=>{if(ui.open||!badge.parent||badge.parent===c)return null;setRay(c);return raycaster.intersectObject(badge,false)[0]||null};
  // section panel (build 365): quick plane actions on the left hand (above the menu tag), shown while sections are on; the other hand's ray presses it
- const panel=makeMenu(640,232,0.17);panel.mesh.position.set(0,0.10,0.03);panel.mesh.rotation.x=-0.6;panel.mesh.visible=false;leftHand().add(panel.mesh);
+ // build 403 (owner): 10 cm to the left of the hand, so it no longer covers the volume while the left hand works on it
+ const panel=makeMenu(640,232,0.17);panel.mesh.position.set(-0.10,0.10,0.03);panel.mesh.rotation.x=-0.6;panel.mesh.visible=false;leftHand().add(panel.mesh);
  const panelHit=c=>{if(!panel.mesh.visible||!panel.mesh.parent||panel.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(panel.mesh,false)[0]||null};
  // head pose (world) from the XR camera
  const head=new THREE.Vector3(),headFwd=new THREE.Vector3(),headLeft=new THREE.Vector3(),tmpQh=new THREE.Quaternion();
@@ -879,6 +928,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const computeHelpTarget=()=>helpTarget.copy(head).addScaledVector(headFwd,0.62).addScaledVector(headLeft,-0.34).add(new THREE.Vector3(0,-0.16,0));
  const placeHelpNow=()=>{readHead();computeHelpTarget();help.mesh.position.copy(helpTarget);help.mesh.lookAt(head);helpPlaced=true;helpMoving=false};
  const helpHit=c=>{if(!help.mesh.visible||help.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(help.mesh,false)[0]||null};
+ // build 404 (owner: the left-hand panel could not be pressed with the menu behind it): the nearest of the menu, the
+ // menu tag, the section panel and the help board along the ray wins (was a fixed order, menu first); {menu,badge,panel,help}
+ const boardHits=c=>{const all=[['menu',menuHit(c)],['badge',badgeHit(c)],['panel',panelHit(c)],['help',helpHit(c)]];let best=null;
+  for(const [k,x] of all)if(x&&(!best||x.distance<best[1].distance))best=[k,x];
+  const o={menu:null,badge:null,panel:null,help:null};if(best)o[best[0]]=best[1];return o};
  help.onDraw(()=>{
   const w=[],lines=section.on?L.helpSec.map(t=>t.replace('{h}',L.helpHold[settings.secHold|0])):L.helpBasic.slice();
   if(ui.open)lines[lines.length-1]=L.helpMenu;
@@ -967,12 +1021,63 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // kept side of the clipping planes (vr-pick.js); world distance or null. Frames and boards are tested first;
  // without classification bytes there is no hit.
  const tmpVo=new THREE.Vector3(),tmpVq=new THREE.Vector3();
- const volumeHit=c=>{
-  const vp=volPick;if(!vp||!mesh?.parent||!material)return null;
+ // build 424: diagnostics for the analysis cost bench (owner: VR mode with results very heavy): diagAn.noRegion draws with
+ // the shader variants without VRL_REGIONS, diagAn.noLabels skips the laser's volume march and the labels
+ const diagAn={noRegion:false,noLabels:false};
+ const volumeHit=c=>{if(c)setRay(c);return volumeHitRay()};
+ const volumeHitRay=()=>{
+  const vp=volPick;if(!vp||!mesh?.parent||!material||diagAn.noLabels)return null;
   const mask=shownMask(),chs=[];for(let i=0;i<4;i++)if(mask>>i&1&&vp.cls.chan[i]>=0)chs.push(vp.cls.chan[i]);if(!chs.length)return null;
-  setRay(c);const o=tmpVo.copy(raycaster.ray.origin),q=tmpVq.copy(o).add(raycaster.ray.direction);mesh.worldToLocal(o);mesh.worldToLocal(q);q.sub(o);
-  const u=material.uniforms,t=marchClassificationHit(o,q,vp.halfExt,vp.dims,vp.cls,chs,u.cutPlanes.value,u.planeCount.value,u.planeCut.value);
-  return t>=0?{distance:t}:null;
+  const o=tmpVo.copy(raycaster.ray.origin),q=tmpVq.copy(o).add(raycaster.ray.direction);mesh.worldToLocal(o);mesh.worldToLocal(q);q.sub(o);
+  const u=material.uniforms,hi=marchClassificationHitInfo(o,q,vp.halfExt,vp.dims,vp.cls,chs,u.cutPlanes.value,u.planeCount.value,u.planeCut.value);
+  if(!hi)return null;
+  // build 423: what was hit — the segment (channel → segment) and the result at that voxel (list position, 0 = none)
+  const si=vp.cls.chan.indexOf(hi.ch),[w,h]=vp.dims,id=vp.ids?vp.ids[hi.x+w*(hi.y+h*hi.z)]:0;
+  return{distance:hi.t,key:SEGMENT_PRESET_ORDER[si]||'',id,local:new THREE.Vector3(o.x+q.x*hi.t,o.y+q.y*hi.t,o.z+q.z*hi.t)};
+ };
+ // result labels (build 423, owner): while the 解析 tab is open or no section is shown, the laser on the volume shows a
+ // faint label of what it points at (result: colour, number as in the 解析 tab, segment, mm³; else the segment name and
+ // 解析結果なし); the trigger pins / unpins the label of a result at that point. Labels stay at their point in the volume
+ // (re-placed every frame), face the viewer, and are linked to the point by a thin line.
+ const LABEL_W=0.12,LABEL_H=0.036,pins=new Map(),tmpLb=new THREE.Vector3();
+ // build 426 (owner: smaller labels, size in the settings): 小 / 中 / 大 = 50 / 70 / 100 % of the 12 cm label (大 = up to 425)
+ // build 427 (owner: 小 is right; the pointing label at the hand): default 小; the pointing label is a chip above its own
+ // controller (never over the volume, always at reading distance), framed in that hand's laser colour, same size setting
+ const LABEL_SIZES=[0.5,0.7,1],labelScale=()=>LABEL_SIZES[settings.labelSize]??LABEL_SIZES[0];
+ // build 429 (owner: above the hand it keeps covering the volume): at the root of the laser instead — just in front of the
+ // ray origin and under the ray (target-ray space: −z along the ray), below the menu badge (y 0.05) and the section panel
+ const HAND_CHIP={left:[0,-0.03,-0.03],right:[0,-0.03,-0.03]};
+ const hoverLabelOf=c=>c.userData.hoverLabel||=Object.assign(makeLabel(),{hand:c});
+ const labelMode=()=>(ui.open&&ui.tab===5)||!section.on;
+ const makeLabel=()=>{
+  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=154;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(LABEL_W,LABEL_H),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,depthTest:false}));m.renderOrder=5;m.visible=false;
+  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,depthTest:false}));line.frustumCulled=false;line.renderOrder=5;line.visible=false;
+  scene.add(m);scene.add(line);return{m,line,ctx:canvas.getContext('2d'),tex,key:null,anchor:new THREE.Vector3(),world:new THREE.Vector3()};
+ };
+ const drawLabel=(lb,hit,faint)=>{
+  const r=hit.id?regionList[hit.id-1]:null,seg=tr(hit.key)||hit.key,hc=lb.hand?handColor(lb.hand):0,key=(r?hit.id:'n'+hit.key)+(faint?'f':'p')+hc;if(lb.key===key)return;lb.key=key;
+  const ctx=lb.ctx;ctx.clearRect(0,0,512,154);ctx.fillStyle='rgba(17,23,27,0.92)';ctx.beginPath();ctx.roundRect(4,4,504,146,26);ctx.fill();
+  if(lb.hand){ctx.strokeStyle='#'+hc.toString(16).padStart(6,'0');ctx.lineWidth=6;ctx.stroke()}
+  ctx.textBaseline='middle';ctx.fillStyle='#eef5f8';
+  if(r){const hex='#'+r.color.toString(16).padStart(6,'0');ctx.fillStyle=hex;ctx.beginPath();ctx.arc(62,77,34,0,Math.PI*2);ctx.fill();
+   ctx.fillStyle='#eef5f8';ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(hit.id+'. '+r.segmentKeys.map(k=>tr(k)).join('+'),118,50);ctx.font='40px system-ui,sans-serif';ctx.fillText(r.mm3.toFixed(2)+' mm³',118,108)}
+  else{ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(seg,34,50);ctx.font='38px system-ui,sans-serif';ctx.fillStyle='#9fb3c3';ctx.fillText(ja?'解析結果なし':'no analysis result',34,108)}
+  lb.tex.needsUpdate=true;lb.m.material.opacity=faint?0.85:1;lb.line.material.opacity=0.9;lb.faint=faint;
+ };
+ const placeLabel=lb=>{
+  const k=labelScale();lb.m.scale.setScalar(k);
+  if(lb.hand){const o=HAND_CHIP[lb.hand.userData.source?.handedness]||HAND_CHIP.right;lb.m.position.set(o[0],o[1],o[2]);lb.hand.updateWorldMatrix(true,false);lb.hand.localToWorld(lb.m.position);lb.m.lookAt(head);lb.m.visible=true;lb.line.visible=false;return}
+  lb.world.copy(lb.anchor);mesh.localToWorld(lb.world);
+  tmpLb.subVectors(head,lb.world).normalize();lb.m.position.copy(lb.world).addScaledVector(tmpLb,0.012);lb.m.position.y+=k*0.045;lb.m.lookAt(head);
+  const a=lb.line.geometry.attributes.position;a.setXYZ(0,lb.world.x,lb.world.y,lb.world.z);a.setXYZ(1,lb.m.position.x,lb.m.position.y-k*LABEL_H/2,lb.m.position.z);a.needsUpdate=true;
+  lb.m.visible=true;lb.line.visible=true;
+ };
+ const hideLabel=lb=>{if(lb){lb.m.visible=lb.line.visible=false}};
+ const togglePin=(c,hit)=>{
+  if(!hit?.id)return false;const old=pins.get(hit.id);
+  if(old){pins.delete(hit.id);old.m.removeFromParent();old.line.removeFromParent();old.tex.dispose();old.m.material.dispose();old.m.geometry.dispose();old.line.geometry.dispose();old.line.material.dispose();pulse(c,0.2);return true}
+  const lb=makeLabel();lb.anchor.copy(hit.local);drawLabel(lb,hit,false);pins.set(hit.id,lb);pulse(c);return true;
  };
  // new plane: through the volume centre (first) or in front of the hand
  // (added ones), facing the viewer, fixed in the volume
@@ -1016,7 +1121,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   c.addEventListener('connected',e=>{c.userData.source=e.data;if(c.userData.source?.handedness==='left'){if(!ui.open)c.add(badge);c.add(panel.mesh)}});
   c.addEventListener('disconnected',()=>{fixPlane(c);c.userData.source=null});
   c.addEventListener('squeezestart',()=>{
-   if(ui.open&&!menuHeld&&menuHit(c)){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
+   if(ui.open&&!menuHeld&&boardHits(c).menu){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
    if(!helpHeld&&c.userData.helpHit){c.attach(help.mesh);helpHeld=c;helpMoving=false;settings.help=2;saveSettings(settings);pulse(c);menu.refresh();return}
    if(settings.secHold===0&&!c.userData.heldPlane){const pl=c.userData.target;if(pl){takePlane(pl,c);return}}
    grabbing.add(c);regrab();
@@ -1031,11 +1136,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // section panel (build 365), then the section in trigger mode (near, else
   // the one the ray points at; build 364)
   c.addEventListener('selectstart',()=>{
-   const h=menuHit(c);
+   const bd=boardHits(c),h=bd.menu;
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
-   if(badgeHit(c)){setMenuOpen(true);pulse(c);return}
-   const ph=panelHit(c);if(ph){const i=panel.hit(ph.uv);if(i>=0){panel.press(i);pulse(c);return}}
-   if(settings.secHold===1&&!c.userData.heldPlane){const pl=c.userData.target;if(pl)takePlane(pl,c)}
+   if(bd.badge){setMenuOpen(true);pulse(c);return}
+   const ph=bd.panel;if(ph){const i=panel.hit(ph.uv);if(i>=0){panel.press(i);pulse(c);return}}
+   if(settings.secHold===1&&!c.userData.heldPlane&&section.on){const pl=c.userData.target;if(pl){takePlane(pl,c);return}}
+   // build 423: a result label is pinned / unpinned where the laser meets the volume
+   if(labelMode()&&!c.userData.target&&c.userData.volHit&&togglePin(c,c.userData.volHit))return;
   });
   c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(c.userData.heldPlane&&settings.secHold===1)fixPlane(c)});
  }
@@ -1048,6 +1155,26 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // panel on the page after the session
  const bench={active:false,phases:[],i:-1,at:0,measureAt:0,frames:0,results:[],saved:null,noSection:false,tempPlane:null,plane:null,planeBase:null,t0:0};
  const shownLabel=modes=>SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active&&segmentState[k]?.enabled&&(modes[k]|0)!==2).map(k=>tr(k)).join('+')||'-';
+ // build 424: analysis cost bench — four phases at the current size, resolution and view (0.8 s settle + 2 s count each):
+ // as is / no result colours / no laser march and labels / neither; with labels on, both hands' rays are replaced by a
+ // ray from the head to the volume centre so a label is drawn and placed every frame as when pointing at the volume
+ const anBench={active:false,i:-1,at:0,measureAt:0,frames:0,results:[],phases:[{noRegion:false,noLabels:false},{noRegion:true,noLabels:false},{noRegion:false,noLabels:true},{noRegion:true,noLabels:true}]};
+ const startAnBench=()=>{if(anBench.active||bench.active||!mesh)return;anBench.results=[];anBench.i=-1;anBench.active=true;anBenchNext()};
+ const anBenchNext=()=>{anBench.i++;if(anBench.i>=anBench.phases.length){anBenchFinish();return}Object.assign(diagAn,anBench.phases[anBench.i]);anBench.at=performance.now();anBench.measureAt=0;anBench.frames=0;ui.benchLine=L.benchRun+(anBench.i+1)+' / '+anBench.phases.length;menu.refresh()};
+ const anBenchTick=()=>{
+  if(!anBench.active)return;const now=performance.now();
+  if(!diagAn.noLabels){readHead();holder.getWorldPosition(tmpLb);raycaster.ray.origin.copy(head);raycaster.ray.direction.subVectors(tmpLb,head).normalize();
+   for(const c of controllers){const hit=volumeHitRay();if(hit){const lb=hoverLabelOf(c);drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}}}
+  if(!anBench.measureAt){if(now-anBench.at>=800){anBench.measureAt=now;anBench.frames=0}return}
+  anBench.frames++;if(now-anBench.measureAt>=2000){anBench.results.push(anBench.frames*1000/(now-anBench.measureAt));anBenchNext()}
+ };
+ const anBenchFinish=()=>{
+  anBench.active=false;diagAn.noRegion=false;diagAn.noLabels=false;const f=i=>anBench.results[i]!=null?Math.round(anBench.results[i]):'-';
+  const line=(ja?'解析の重さ: そのまま ':'analysis cost: as is ')+f(0)+(ja?' / 結果の色なし ':' / no result colours ')+f(1)+(ja?' / 札・レーザー判定なし ':' / no labels or laser march ')+f(2)+(ja?' / 両方なし ':' / neither ')+f(3)+' fps · '+(ja?'結果 ':'results ')+regionList.length+(material?.defines?.VRL_REGIONS!==undefined?' (VRL_REGIONS)':'')+' · '+(ja?'札 ':'pins ')+pins.size+' · '+(holder.scale.x*3.3*100).toFixed(1)+' cm · '+(VRES[settings.vres]?Math.round(VRES[settings.vres]*100)+'%':L.auto);
+  const headLine=(ja?'VR 解析ベンチ build ':'VR analysis bench build ')+APP_BUILD+' · '+targetRate()+' Hz';
+  lastBench={head:headLine,lines:[line],when:Date.now()};try{localStorage.setItem('vrl-vr-bench',JSON.stringify(lastBench))}catch{}
+  console.log('[VR analysis bench]',headLine,line);ui.benchLine=line;menu.refresh();
+ };
  const startBench=()=>{
   if(bench.active||!mesh)return;
   fixAll(); // build 396: the bench moves the plane in the volume's space
@@ -1104,7 +1231,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   label(X,52,L.title,{bold:true,size:36,color:'#fff'});
   btn(780,18,200,L.close,false,()=>setMenuOpen(false),{size:28});
   // tabs
-  L.tabs.forEach((t,i)=>btn(X+i*196,110,184,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i}));
+  // build 409: six tabs (解析 added) share the width
+  {const tw=(MENU_W-2*X)/L.tabs.length;L.tabs.forEach((t,i)=>btn(X+i*tw,110,tw-12,t+(i===1&&section.on?' ●':''),ui.tab===i,()=>{ui.tab=i},{size:28}))}
   const status=ui.flash&&performance.now()<ui.flashUntil?ui.flash:ui.status;
   label(X,228,status,{color:'#ffd27a'});
   const y0=270;
@@ -1156,6 +1284,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
    row(y0+250,L.wcL,'c',cMin,cMax);row(y0+340,L.wwL,'w',1,wMax);
    [[L.pApp,+wc.value||0,Math.max(1,+ww.value||1)],[L.pFull,Math.round((cMin+cMax)/2),Math.max(1,Math.round(cMax-cMin))],[L.pBone,500,2000],[L.pSoft,40,400]].forEach(([t,c,wd],i)=>btn(X+i*244,y0+440,232,t,vrWindow.c===c&&vrWindow.w===wd,()=>{vrWindow.c=c;vrWindow.w=wd},{size:28}));
    label(X,y0+550,L.winHelp,{size:24,color:'#9fb3c3'});
+   // build 407 (owner): CT value at or below which the slice is transparent (−500: air; raise it to hide fat too)
+   {const lo=AIR_MIN,hi=AIR_MAX,a=Number.isFinite(+settings.sliceAir)?+settings.sliceAir:-500,put=v=>{settings.sliceAir=cl(Math.round(v/WIN_STEP)*WIN_STEP,lo,hi)};
+    label(X,y0+640,L.airL);w.push({type:'slider',x:CX+26,y:y0+604,w:300,h:72,value:cl((a-lo)/(hi-lo),0,1),text:a+' HU',set:v=>put(lo+v*(hi-lo))});
+    btn(800,y0+604,70,'−',false,()=>put(a-WIN_STEP),{size:30});btn(890,y0+604,70,'＋',false,()=>put(a+WIN_STEP),{size:30});
+    label(X,y0+720,L.airHelp,{size:24,color:'#9fb3c3'})}
   }else if(ui.tab===3){
    choice(y0,L.r,VRES.map((r,i)=>({label:r?Math.round(r*100)+'%':L.auto,value:i})),settings.vres,v=>{settings.vres=v;applyQuality()});
    choice(y0+90,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
@@ -1163,8 +1296,22 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0+270,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
    if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
    // build 385: in-VR benchmark (the owner should not have to read numbers off the headset one by one)
-   btn(X,y0+460,460,L.bench,bench.active,()=>startBench(),{size:28});if(ui.benchLine)label(X,y0+560,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+600,L.benchHelp,{size:22,color:'#9fb3c3'});
-  }else{
+   btn(X,y0+460,460,L.bench,bench.active,()=>startBench(),{size:28});btn(X+480,y0+460,440,L.anBench,anBench.active,()=>startAnBench(),{size:28});if(ui.benchLine)label(X,y0+560,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+600,L.benchHelp,{size:22,color:'#9fb3c3'});
+  }else if(ui.tab===5){
+   // build 409 (owner: show the analysis results in VR / AR): read only — colour, segment, volume; 10 per page
+   label(X,y0+10,L.anT,{bold:true,size:30});
+   if(!regionList.length)label(X,y0+70,L.anNone,{size:26,color:'#9fb3c3'});
+   else{
+    const per=10,pages=Math.ceil(regionList.length/per),pg=Math.min(ui.anPage|0,pages-1);
+    regionList.slice(pg*per,pg*per+per).forEach((r,k)=>{const y=y0+56+k*62,hex='#'+r.color.toString(16).padStart(6,'0');
+     w.push({type:'button',x:X,y,w:56,h:50,label:'',on:true,color:hex,action:()=>{}});
+     label(X+76,y+34,String(pg*per+k+1)+'. '+r.segmentKeys.map(k2=>tr(k2)).join('+'),{size:28,color:hex,bold:true});
+     label(X+520,y+34,r.mm3.toFixed(2)+' mm³',{size:28})});
+    const total=regionList.reduce((a,r)=>a+r.mm3,0);label(X,y0+56+per*62+40,L.anTotal+' '+total.toFixed(2)+' mm³ · '+regionList.length,{size:26,color:'#9fb3c3'});
+    if(pages>1){btn(MENU_W-X-300,y0+56+per*62,140,'◀',false,()=>{ui.anPage=Math.max(0,pg-1)},{size:28});btn(MENU_W-X-150,y0+56+per*62,140,'▶',false,()=>{ui.anPage=Math.min(pages-1,pg+1)},{size:28});label(MENU_W-X-470,y0+56+per*62+40,L.anPage+' '+(pg+1)+'/'+pages,{size:26,color:'#9fb3c3'})}
+   }
+   choice(y0+770,L.lbSize,L.lbSizeV.map((t,i)=>({label:t,value:i})),settings.labelSize??1,v=>{settings.labelSize=v;saveSettings(settings)});
+  }else if(ui.tab===4){
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
    choice(y0+470,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
@@ -1265,8 +1412,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   let hover=-1,panelHover=-1,scroll=0;
   panel.mesh.visible=section.on&&planes.length>0;
   for(const c of controllers){
-   // ray priority: menu, menu tag, section panel (build 365), then a section frame (build 364)
-   const h=menuHit(c),bh=h?null:badgeHit(c),ph=h||bh?null:panelHit(c),hh=h||bh||ph?null:helpHit(c),rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;
+   // ray priority: the nearest board (menu, menu tag, section panel, help; build 404), then a section frame, then the volume
+   const bd=boardHits(c),h=bd.menu,bh=bd.badge,ph=bd.panel,hh=bd.help,rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;c.userData.volHit=vh;
    // build 397: the one frame this hand's button would take, the same rule the press uses;
    // build 399: the frame the laser points at wins, the nearest frame (guide line) only when the ray hits none
    const np=h||bh||ph||hh||rp||c.userData.heldPlane?null:nearestPlane(c);c.userData.target=h||bh||ph||hh||c.userData.heldPlane?null:c.userData.rayPlane||np;
@@ -1289,6 +1436,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
    c.userData.bDown=b;
   }
   menu.setHover(hover);panel.setHover(panelHover);
+  // build 423: faint label of what each laser points at (not when that result is already pinned); pinned labels follow the volume
+  {const on=labelMode()&&!diagAn.noLabels;if(on||pins.size)readHead();anBenchTick();
+   for(const c of controllers){const hit=on?c.userData.volHit:null;if(hit&&!(hit.id&&pins.has(hit.id))){const lb=hoverLabelOf(c);drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}else hideLabel(c.userData.hoverLabel)}
+   for(const lb of pins.values())placeLabel(lb)}
   // thumbstick scroll (build 364): the selected plane along its own normal, same world speed fixed in the scaled holder or held
   const sp=section.selected;
   if(section.on&&sp&&scroll&&dt){const ps=sp.obj.parent?sp.obj.parent.getWorldScale(tmpS).x||1:1;sp.obj.translateX(-scroll*SCROLL_SPEED*dt/ps)}
@@ -1312,7 +1463,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     }}
    if(bench.noSection){n=0;cutBits=0}
    u.planeCount.value=n;u.planeCut.value=cutBits;u.capOn.value=settings.cap?1:0;u.sliceTint.value=+settings.sliceTint||0;u.sliceOpacity.value=section.on&&!bench.noSection?settings.sliceOpacity:0;
-   u.sliceWindow.value.set(vrWindow.c,Math.max(1,vrWindow.w));
+   u.sliceWindow.value.set(vrWindow.c,Math.max(1,vrWindow.w));u.sliceAir.value=Number.isFinite(+settings.sliceAir)?+settings.sliceAir:-500;
    for(let i=0;i<4;i++){
     const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
     u.segA.value[i].set(seg?.min||0,seg?.max||0,segOpacity[key]??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
@@ -1349,6 +1500,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
   }
   const f=auto?autoF:(VRES[settings.vres]??1);
+  // build 424: the same variants without VRL_REGIONS (sharing the uniforms), built on first use by the analysis bench
+  let plain=null;
+  const plainSets=()=>{if(!plain){const base=material.clone();base.uniforms=material.uniforms;base.defines={};const vars=materialVariants(base);plain={vars,ray:{full:rayMaterialOf(vars.full),combined:rayMaterialOf(vars.combined),noEvents:rayMaterialOf(vars.noEvents)}}}return plain};
   const variantKey=()=>{const u=material.uniforms;if(!(u.distInCls.value>0&&u.useCls.value>0)||(settings.diag|0))return 'full';return u.planeCount.value===0?'noEvents':'combined'};
   if(mesh){
    if(f<1){
@@ -1362,7 +1516,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw0,th0,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
     else if(lowTarget.width<tw0||lowTarget.height<th0)lowTarget.setSize(Math.max(lowTarget.width,tw0),Math.max(lowTarget.height,th0));
     const tw=lowTarget.width,th=lowTarget.height;
-    scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);rayMesh.material=rayVariants[variantKey()];
+    scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);rayMesh.material=(diagAn.noRegion?plainSets().ray:rayVariants)[variantKey()];
     renderer.xr.enabled=false;renderer.setRenderTarget(lowTarget);
     renderer.setClearColor(0x000000,0);lowTarget.scissorTest=false;renderer.clear(true,false,false);
     timed('vol',()=>{for(const sub of xrCam.cameras){
@@ -1374,7 +1528,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(ar?0x000000:BG,ar?0:1);
     compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(f/tw,f/th);
     mesh.material=compMaterial;
-   }else{mesh.material=variants[variantKey()];const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
+   }else{mesh.material=(diagAn.noRegion?plainSets().vars:variants)[variantKey()];const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
    if(firstDrawMs<0)firstDrawMs=performance.now()-sessionAt;
   }
   menu.flush();
@@ -1414,7 +1568,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(gpu&&gpu.key!==P.key){disposeGpuPrepared();}
   // classification texture from the prepared bytes (only on the ≤256 grid)
   // build 402: classification bytes for the laser's volume hit (the ≤256 grid they were built on)
-  volPick=P.cls?{cls:P.cls,dims:(P.half||vd).dims,halfExt:vd.halfExt}:null;
+  volPick=P.cls?{cls:P.cls,dims:(P.half||vd).dims,halfExt:vd.halfExt,ids:P.region?.ids&&P.region.dims.join()===(P.half||vd).dims.join()?P.region.ids:null}:null;regionList=P.region?.list||[];
   const clsTexture=t=>{
    const c=P.cls;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
    const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.userData.chan=c.chan;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;
@@ -1468,14 +1622,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // diagnostic setting (0 smooth, 1 nearest, 2 off)
   const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
   const editTex=(gpu&&gpu.key===P.key&&gpu.edit)||makeEditTexture(P),editActive=P.edit.active;
+  const regionTex=(gpu&&gpu.key===P.key&&gpu.region)||makeRegionTexture(P),regionColors=P.region?.colors||[];
   refreshEdits=()=>{
    if(!material)return;const mode=settings.editDiag|0;
    if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
    material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editTex.value=editTex||dummyEdit;
+   // build 409: analysis result colours
+   material.uniforms.regionTex.value=regionTex||dummyEdit;regionColors.forEach((c,i)=>{color.setHex(c);material.uniforms.regionC.value[i].set(color.r,color.g,color.b)});
   };
-  disposeEdits=()=>{editTex?.dispose();dummyEdit.dispose()};
+  disposeEdits=()=>{editTex?.dispose();regionTex?.dispose();dummyEdit.dispose()};
   disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();half?.dist?.dispose();half?.combo?.dispose();full.cls?.dispose();full.dist?.dispose();full.combo?.dispose()};
-  material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:volumeUniforms(vd,full,settings)});
+  material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:volumeUniforms(vd,full,settings),defines:P.region?.data?{VRL_REGIONS:''}:{}});
   material.uniforms.clsTex.value=dummyEdit;material.uniforms.editTex.value=dummyEdit;material.uniforms.distTex.value=dummyEdit;
   material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // build 393: variants without the unused loops, chosen per frame (same uniforms)

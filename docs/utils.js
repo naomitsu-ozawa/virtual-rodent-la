@@ -44,3 +44,6 @@ export function multi(v,n){if(!v)return null;const a=v.split('\\').map(Number);r
 export function safePair(a){return[a[0],a[1]]}
 export function safeTriple(a){return[a[0],a[1],a[2]]}
 export function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+// build 408: from data-load.js (STL export and project download)
+export function downloadBlob(blob,filename){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();const url=a.href;a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}

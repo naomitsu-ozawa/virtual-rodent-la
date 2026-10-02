@@ -842,3 +842,26 @@ footer #footer:empty{display:none}
 .gpu-status-bar{height:calc(1.45em * 2 + 10px);overflow-y:auto;box-sizing:border-box}
 footer #footer{height:calc(1.5em * 2 + 10px);overflow-y:auto;box-sizing:border-box}
 footer #footer:empty{display:block}
+
+/* build 405: one progress modal for every long operation (progress-modal.js); the older
+   indicators (full-screen overlay, 3D-view overlay, side-panel bar) are no longer shown */
+#processing-overlay,#three-busy,#scan-progress{display:none!important}
+.job-modal{position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(5,8,10,.55);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);color:#eef5f8;pointer-events:auto;touch-action:none}
+.job-modal.is-hidden{display:none}
+.job-card{width:min(92vw,420px);display:grid;gap:10px;padding:18px 20px;border-radius:14px;background:rgba(17,23,27,.97);border:1px solid #344047;box-shadow:0 10px 34px rgba(0,0,0,.45);font:14px system-ui,-apple-system,sans-serif}
+.job-head{display:flex;align-items:center;gap:12px}
+.job-title{font-size:15px;line-height:1.35}
+.job-spinner{flex:none;width:22px;height:22px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:vrl-processing-spin .8s linear infinite}
+.job-detail{color:#b9c9d0;font-size:13px;line-height:1.4;word-break:break-word}
+.job-track{height:8px;border-radius:4px;background:#26313b;overflow:hidden;position:relative}
+.job-bar{height:100%;width:0;background:#4d9fd6;transition:width .2s}
+.job-track.is-indeterminate .job-bar{position:absolute;width:30%;animation:vrl-job-slide 1.2s ease-in-out infinite}
+@keyframes vrl-job-slide{from{left:-30%}to{left:100%}}
+.job-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:40px}
+.job-time{color:#8fa0a8;font-size:12px;font-variant-numeric:tabular-nums}
+.job-button{min-width:96px;min-height:40px;padding:8px 14px;border:1px solid #a95a5a;border-radius:9px;background:rgba(78,24,24,.94);color:#fff1f1;font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation}
+.job-button.is-close{border-color:#4d5d66;background:#26313b;color:#e3edf1}
+.job-button:disabled{opacity:.58;cursor:default}
+.job-button.is-hidden,.job-help.is-hidden,.job-detail.is-hidden{display:none}
+.job-help{color:#8fa0a8;font-size:12px}
+@media (prefers-reduced-motion:reduce){.job-spinner{animation-duration:1.6s}.job-track.is-indeterminate .job-bar{animation:none;width:100%;opacity:.45}}

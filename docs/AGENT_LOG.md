@@ -3570,14 +3570,567 @@ Owner (build 401): OK. The pointer should also hit the 3D object.
 Checks: lint, unit tests (5 new), boot-check, vr-gpu-prepare-check. Shader
 and image unchanged.
 
-## Handoff (after build 402)
+## Build 403 — VR: black of the slice transparent at any opacity; left-hand panel moved aside
 
-State: build 402 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (after merging #84, main = build 402): A — the black part of the
+slice should be transparent, at any slice opacity. C — the left-hand
+panel should sit further to the side of the volume.
+- Shader: sliceColor returns alpha = smoothstep(0, 0.05, gray): at or
+  below the VR window's lower end the slice adds nothing, ramping to the
+  set opacity over the first 5 % of the window; tinted pixels keep the set
+  opacity. The three slice composites use contribution × alpha.
+- Harness (phantom, SECTION=1, BG=90,110,130 — new option: composite over
+  a background with clear alpha 0 so an alpha-only change is counted):
+  204384 of 442368 channels differ, all in the slice's air area (it was a
+  dark slab at 70 %, now the background shows); the body, cut face and
+  tinted slice are unchanged. Images sent to the owner.
+- Left-hand panel: offset (0, 0.10, 0.03) → (−0.10, 0.10, 0.03) on the
+  left controller.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check (all programs
+compile).
+Next (owner-approved): one central progress modal for every long
+operation (2D, 3D, VR preparation): shown only after a short delay,
+blocks input while shown, with a cancel button against freezes.
+
+## Build 404 — VR: the nearest board along the ray takes the press
+
+Owner (build 403): the left-hand section panel cannot be focused when the
+main menu is behind it. Cause: the ray tested the boards in a fixed order
+(menu, menu tag, panel, help board), so a menu anywhere behind the panel
+won. boardHits(c) now takes the nearest of the four hits; the frame loop
+(hover, laser length, dot), the trigger (menu buttons / sliders, tag,
+panel) and the grip (moving the menu or the help board) all use it.
+Frames and the volume still come after the boards.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+
+## Build 405 — one central progress modal for every long operation
+
+Owner: the progress of filters, 3D rebuild, CT value settings and so on is
+shown in different places; show it in one modal in the middle of the
+screen, 2D or 3D alike, for every operation now and later. Decisions:
+short operations are not shown; input is blocked while it is shown (the
+work is heavy); a stop button against freezes; VR preparation included.
+- docs/progress-modal.js: createJobTracker (slots, unit-tested) + the
+  modal. setBusySlot(name, on, {label, cancel, counted}) and
+  reportBusyProgress(name|null, done, total, detail), setBusyLabel(name,
+  text). Shown after 400 ms (SHOW_DELAY), the slot started last on top;
+  title, detail line, bar (or an indeterminate bar), elapsed seconds.
+  While shown: a full-screen layer takes the pointer, keys / wheel outside
+  the modal are swallowed. Button: 中断 when the job has a cancel path;
+  閉じる（処理は続行） after 10 s when it has none, or 3 s after a 中断
+  that did not end it — the modal can never lock the page.
+- Adapters (so the existing call sites feed it without rewrites):
+  setProcessingBusy → slot 'processing' (counted; CPU filters, filter
+  application / preview, editable segment preparation = the CT value
+  settings path, GPU readback for STL / analysis); set3DBusy → 'three'
+  (last call wins; 中断 presses the existing 3D cancel button, i.e.
+  cancel3DRebuild); set3DBusyLabel for the analysis phase counts that wrote
+  #three-busy-label directly; data-load busy() → 'load' (counted; folder,
+  demo, practice data, series decode, MPR cache); progress() /
+  byteProgress() → the bar of the job on top; segment phase progress →
+  'processing' detail. New slots: 'edit' (cut apply), 'export' (STL), 'vr'
+  (VR / AR preparation: the page panel is hidden while preparing and
+  appears with the timings and the start button when ready or failed; the
+  start stays a click, as WebXR requires).
+- The old indicators are no longer shown (CSS): #processing-overlay,
+  #three-busy (its cancel button is still used through the modal),
+  #scan-progress. Result texts stay where they were (segment card
+  done / error, footer, 3D filter badge, ready badge).
+- Labels: CPU filters "<name> を適用中…", filters "フィルターを適用中…" /
+  "フィルターのプレビューを作成中…" (were English).
+- Not in the modal (background, nobody waits on them): the quiet
+  segment prewarm (analysis-ops), MPR warmup, GPU prewarm, cache writes.
+  Not covered: project save (the save dialog / share sheet waits on the
+  user; the packing itself is synchronous).
+- tools/progress-modal-check.mjs (npm run progress-modal-check): headless
+  practice-data load — modal seen (データを読み込み中…, 13/512 …),
+  blocks input, gone with no slot active at the end (about 35 s);
+  set3DBusy shows 中断 and pressing it presses the 3D cancel button; VR
+  preparation shows 'VRの準備' and then the panel with an enabled start
+  button (8 s); a 150 ms job is never shown. No WebGPU headless, so a real
+  3D rebuild is not exercised there. Screenshots desktop / iPad width.
+Checks: lint, unit tests (9 new), boot-check, vr-gpu-prepare-check,
+progress-modal-check.
+
+## Build 406 — progress modal: review fixes
+
+- Input blocking: the wheel is stopped by the modal's own non-passive
+  listener (a window-level non-passive wheel listener made every scroll on
+  Mac / iPad wait on the main thread, modal or not); key releases are no
+  longer swallowed (a key held when the modal appears would stay held).
+- 3D 中断 only while a 3D rebuild runs (threeDApplying): cancel3DRebuild
+  stops nothing else, so other 3D jobs (analysis, GPU volume preparation)
+  get the close fallback instead of a 中断 that does nothing; the handler
+  is called directly (a click on the disabled hidden button was ignored).
+- Load phases in the modal title (データを読み込み中 · 練習データを取得中 /
+  DICOMを確認中 / スライスを展開中 / GPUボリュームを準備中 / MPRキャッシュを作成中 /
+  3D断面キャッシュを作成中): these were only in the side panel, now behind
+  the modal.
+- progress-modal-check: real processing paths on the practice data —
+  adding Fast NLM 3D shows 'フィルターを適用中…' and ends with no job left
+  (7 s); adding the bone segment ran without a visible job (short);
+  set3DBusy without a rebuild shows no 中断 and ends cleanly; iPad-width
+  screenshot on a page laid out at 820 × 1180 (synthetic job).
+Untested headless (no WebGPU): a real 3D rebuild and its 中断.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+progress-modal-check.
+
+## Build 407 — segments start at 100 % opacity; VR slice transparent at or below a CT threshold
+
+Owner (after 406): 1 — every segment's initial opacity 100 % (translucent
+segments are heavy and feel bad); 3 — the VR slice should be transparent
+at or below the value treated as air, so that fat can be hidden too by
+raising it.
+- segments.js / ui-shell.js: bone .85, soft .28, fat .35, lung .35 → 1 (the
+  sliders' initial values too). Saved projects keep their own values (no
+  sample project file exists).
+- VR: new setting sliceAir (DEFAULTS −500 HU, スライス tab: 透明にするCT値,
+  slider −1000..+500 HU in 10 HU steps with −/＋). The slice is transparent
+  at or below it and reaches the set opacity 10 HU above; the test comes
+  before the segment tint (tinted fat can be hidden). Replaces the 403
+  window-lower-end rule: values between the threshold and the window's
+  lower end show as black again. The cap is unchanged.
+- Harness (phantom, SECTION=1, BG=90,110,130; new option AIR=<HU>) vs 406:
+  AIR=−500 1320 of 442368 channels differ (edge of the air ramp); FAT=1
+  (fat sheets) AIR=−50: 7130 differ (the fat on the slice is gone).
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+Next (owner-approved): analysis results kept as an edit (saved in the
+project, 14 colours, deletion linked — already so via
+rebuildEditedAnalysisForSegment), carried to VR / AR (colour on the
+volume and the slices, a read-only list with volumes).
+
+## Build 408 — analysis results kept like an edit: saved in the project, trimmed by edits, 14 colours
+
+Owner: keep the analysis results (colouring within a segment) as an edit,
+carry them to VR / AR (with the volume if possible), up to 14 colours,
+deletion linked.
+- Found: in the GPU volume view every edit (keep / delete selected, cut,
+  undo, redo, reset) called clearAnalysisHighlight — all results vanished;
+  only the surface view rebuilt them. Leaving the analysis mode also
+  cleared them, and nothing was saved.
+- trimAnalysisRegionsAfterEdit(key, refs) (analysis-ops.js): in the volume
+  view the edited segment's single-segment regions become the pre-edit
+  references cut to the edit state (∩ keep, − exclude), colour / flags
+  kept, voxels and mm³ recomputed, empty ones dropped (undo / redo use the
+  snapshot's analysisRefs). The surface view keeps
+  rebuildEditedAnalysisForSegment.
+- Leaving the analysis mode keeps the results (クリア clears them).
+- Project: project.analysis.regions [{key, segmentKeys, color, visible,
+  merged, groupId, runs: 'analysis/region-N.bin'}] (encodeRuns); applied
+  after the segments and edits (after the clearAnalysisHighlight there),
+  volumes recomputed from the runs. Older projects have no entry.
+- Palette: 8 → 14 colours (the first 8 unchanged).
+- downloadBlob moved to utils.js (data-load.js re-exports it) so that
+  data-load.js can import analysis-ops.js without an import cycle.
+- tools/analysis-project-check.mjs (npm run analysis-project-check):
+  practice data, bone segment, two synthetic box regions (2000 / 125
+  voxels, one hidden) → save → clear → apply: both back with colour,
+  visibility and voxels; excluding half of the first box and trimming
+  gives 1000 / 125. A real 3D analysis click is not exercised (no WebGPU).
+Unchanged: any segment setting change (CT range, filters of the segment)
+still clears all results (they no longer match the segment).
+Checks: lint, unit tests, boot-check, analysis-project-check.
+
+## Build 409 — VR / AR: analysis result colours on the volume and the slices; read-only list with volumes
+
+- prepareVrData: region index (buildRegionIndex) on the edit-mask grid —
+  one byte per voxel, 0 none, 1..14 = the distinct colours of the visible
+  regions in list order (at most 14, a later region wins on overlap),
+  rasterised with gpuRunsForTexture like the edit mask; P.region =
+  {dims, data, colors, list}. vrDataKey includes the visible regions
+  (id, colour, voxels), so changed results are prepared again.
+- Shader: regionColor(p, base) replaces the segment colour where a colour
+  is chosen — surface hits (general loop, both tight loops, the post-march
+  hit; sampled 0.75 voxel inside the surface), the cut face, the slice
+  tint — never per step. Compiled only with VRL_REGIONS (set when the data
+  has results; all variants inherit the base defines): the uniform-branch
+  version cost about 14 % on SwiftShader even without results.
+- Textures: R8 nearest; prepared in prepareVrGpu (initTexture, compiled
+  with the define) and reused by the session; disposed with the edits.
+- Menu: sixth tab 解析 (tabs share the width): colour swatch, segment,
+  mm³ per region, 10 per page with ◀ ▶, total. Read only.
+- Harness REGION=1 (synthetic index: half the volume, cyan, VRL_REGIONS):
+  no results → pixel-identical to 408 in every variant (general, combined,
+  noEvents, with a section), same fetch counts and time; with the region
+  35790 of 442368 channels differ (the coloured half), SwiftShader
+  710 → 823 ms (+16 %, only while results are shown in VR).
+- analysis-project-check also prepares VR after restoring: region index
+  built (1 colour, 1 entry, 100 voxels on the 256 grid), GPU preparation
+  with VRL_REGIONS compiles (7 materials).
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+analysis-project-check, progress-modal-check.
+
+## Build 410 — WebGPU section cap shows the analysis result colours
+
+Owner (screenshot of the WebGPU view with a section): the colours should
+show on the cut face too, not only on the surfaces (and in VR / AR).
+- medical-volume.js cap: for a segment with results, analysisOverlayAt at
+  the cap point (region index texture, else the row search) replaces the
+  segment colour (same 22 % lift as the cap colour); the hatch still
+  applies. One lookup per cap pixel, none when there are no results.
+- tools/volume-shader-check.mjs: SECTION=1 (axial section at SECTION_Z,
+  SECTION_SIGN picks the kept side, cap 85 %).
+- Harness (phantom, ANALYSIS=1: bone sphere = one cyan region): no
+  section → 0 differing channels; SECTION_Z=0 kept side −1 → 15402 of
+  442368 channels differ (the sphere's cap turns cyan), +1 → 285.
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check.
+
+## Build 411 — section cap: no uncoloured line along the analysis result boundary
+
+Owner (Mac, build 410 screenshot): the colour on the cut face is slightly
+off — a thin uncoloured (segment-coloured) line remains along the result
+boundaries. Cause: the cap's segment comes from interpolated HU, the
+result from whole voxels (nearest), so a cap point on the segment edge can
+lie in the voxel just outside the result. Fix: when the cap point has no
+result, the six neighbouring voxels are tried (as regionOverlayNear does
+for surface hits); only on cap pixels of a segment with results.
+Harness (phantom, ANALYSIS=1, SECTION=1 at z 0): 1353 channels differ vs
+410, all on the cap's rim — the pale bone-coloured fringe around the cyan
+cut face is gone (crops sent); without a section 0 differ.
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check.
+
+## Build 412 — section cap: the result is searched where the cap found its segment
+
+Owner (Mac, build 411): close, a few thin uncoloured lines remain.
+Cause found in the code: capSegmentIndex takes the segment from up to 2
+voxels along the section normal when the cap point itself has none, while
+411 searched the result only ±1 voxel per axis. Now: the cap point, then
+±1 and ±2 voxels along the normal (as capSegmentIndex), then the 8
+in-plane neighbours (diagonals included); first hit wins. Trade-off: on
+the cap the colour can reach 1–2 voxels past the result (display only;
+volumes are counted from the runs).
+Harness (phantom, ANALYSIS=1, SECTION=1 z 0, kept side −1) vs 411:
+REGIONR=22 486 channels differ (cap rim), REGIONR=21 501; without a
+section 0. Not reproducible on the owner's data here.
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check.
+
+## Practice-data check after build 412 (tool only, no app change)
+
+Owner: why not check on the practice data — filters may matter. Right:
+the phantom could not show it. The app's WebGPU view does not start in
+the headless Chromium here (three.js WebGPU: texture view 'swizzle'
+error), so tools/analysis-fringe-check.mjs uses the app's CPU path on
+docs/demo/sample1: fat segment (−250..−50), final runs, their largest
+connected component (= the analysis region), then segment voxels outside
+it by contact with it.
+- No filter: 5418876 fat voxels, 57413 components, largest 3788129;
+  outside it, face contact 0 (6-connectivity, as expected), edge / corner
+  contact only 18450.
+- Spatial Filter 3D (gaussian): 5682902 voxels, 13593 components, largest
+  5313034; face 0, edge / corner only 8256.
+Reading: the analysis labels components with 6-connectivity (face
+neighbours). Voxels touching the region only along an edge or a corner
+are separate components, so they stay in the segment colour — the thin
+lines along the result boundary, with and without the filter. The 411 /
+412 neighbour search on the cap hides part of them (display only).
+Owner decision needed: 26-connectivity for the analysis (those voxels
+join the region; volumes change, e.g. +18450 voxels here, and depots
+touching at a corner merge) or keep 6 and show the boundary as is.
+
+## Build 413 — section cap back to the exact voxel lookup (411–412 neighbour search removed)
+
+Owner (Mac, build 412): voxels that are not annotated get the result
+colour — not acceptable for research use. The neighbour search of 411 /
+412 is removed; the cap takes the result of exactly the voxel at the cap
+point (build 410's code; WGSL identical to 410 apart from comments).
+Harness vs 410 with SECTION=1, ANALYSIS=1: 0 differing channels. The thin
+lines along the boundary are voxels that touch the result only at an edge
+or corner (separate components under 6-connectivity, see the practice-data
+check above); they correctly keep the segment colour.
+Still approximate (pre-existing, reported to the owner): WebGPU surface
+hits use regionOverlayNear (build 375, tries points up to 1.5 voxels
+inward and along the ray), VR surface hits sample 0.75 voxel inside
+(build 409).
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check.
+
+## Build 414 — 2D drew deleted voxels after volume-view edits and air-exclusion changes
+
+Owner (Mac): while editing, 2D and 3D stopped agreeing; it happened with
+the "exclude next to air" operation.
+- tools/edit-consistency-check.mjs (npm run edit-consistency-check):
+  practice data, fat segment with air exclusion 0.3 mm, an exclusion
+  edit (box) applied as the volume-view edits do, then the air exclusion
+  changed to 0.6 mm; compares the runs 2D draws (activeMprSegments) with
+  the 3D edit mask (gpuVolumeEditDescriptors). Before the fix: after the
+  edit 749553 voxels only in 2D (deleted voxels still drawn), after the
+  air change 636528. After: 0 / 0 / 0.
+- Cause: the volume-view edits reset finalRuns and push the 3D mask, but
+  nothing rebuilt finalRuns, so 2D fell back to the base runs (or the
+  plain threshold) without the edits; a segment setting change (air
+  exclusion) also left finalRuns empty after the new base runs.
+- Fix: syncGpuVolumeEdits fires 'vrl-gpu-edits-synced'; app.js rebuilds
+  the final runs of edited segments that have none and repaints 2D (one
+  pass per burst). prepareSourceSegmentPostprocess rebuilds the final
+  runs from the new base runs when the segment has edits.
+Second report (cut-face colour shape vs 3D at the periphery): asked for a
+screenshot. Known difference: WebGPU surface hits take the result colour
+from regionOverlayNear (any result voxel up to 1.5 voxels inward / along
+the ray, build 375, for speed), while the cap now uses the exact voxel.
+Checks: lint, unit tests, boot-check, edit-consistency-check,
+analysis-project-check.
+
+## Build 415 — CT range change handled like the other segment settings
+
+Owner: changing CT values breaks many things ("it used to work").
+- edit-consistency-check now also moves the fat segment's CT range
+  (−250..−50 → −200..−80, input + change as the sliders) after the edit
+  and the air exclusion. Before the fix (414, and the same on main =
+  build 402, run from a worktree of origin/main): after the CT change
+  neither the processed runs nor the final runs existed — 3D fell back to
+  the plain threshold (air exclusion lost) and 2D to the threshold without
+  the edits. main also showed the 414 edit mismatch (749553 / 636528
+  voxels), so both are older than this session's changes.
+- Cause: min / max onchange only repainted (renderAll); the input handler
+  had already dropped the base / final runs, and nothing recomputed them,
+  pushed them to 3D or cleared the analysis results (which no longer match
+  the segment).
+- Fix: min / max onchange → invalidateSegment(true) (results cleared,
+  post-processing recomputed and pushed to 3D, 2D repainted);
+  invalidateSegment(true) also rebuilds the final runs of an edited plain
+  segment.
+- Check: SURFACE=0.3 (processed) and SURFACE=0 (plain): 0 mismatched
+  voxels after the edit, the air change and the CT change; the modal
+  showed 編集領域を準備中 on release; no job left running.
+Checks: lint, unit tests, boot-check, edit-consistency-check (both),
+analysis-project-check, vr-gpu-prepare-check.
+
+## Build 416 — WebGPU section cap = the 2D slice, voxel for voxel
+
+Owner: everything must be synchronised, no contradictions (research use);
+the cut face's colouring did not match the 3D shape at the periphery.
+- volume-shader-check IDCAP=1: a pass per file returns, for every pixel
+  whose ray reaches the cap, the voxel at the cap point, the segment the
+  cap shows and whether it takes the result colour; compared with the
+  phantom's voxel truth (that voxel's HU in the range, the edit applied,
+  inside the region).
+- Before (415): axial cap at slice 64, region radius 21 in the bone
+  sphere (22): 691 of 60385 cap pixels wrong (99 shown where the voxel is
+  not in the segment, 288 missing, the rest the wrong segment); slice 80
+  with the exclusion box: 1252 of 64629 wrong (1017 shown, 195 missing).
+- Cause: capSegmentIndex used interpolated HU and, where that found
+  nothing, took a segment from up to 2 voxels along the normal; the ray
+  march's interpolated exclusion test also applied.
+- Fix: the cap classifies the voxel at the cap point by its own stored
+  value (huVoxel) and that voxel's edit / processing mask entry
+  (editAllows); no neighbours, no interpolation. The result colour already
+  used that voxel (413).
+- After: 0 wrong at slice 64, at slice 80 with EDIT=1 and with EDIT=2
+  (specks excluded); without a section 0 differing channels.
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check IDCAP.
+
+## Build 417 — WebGPU surface hits: the result colour of the voxel that forms the surface
+
+- volume-shader-check IDHIT=1: for every bone surface hit (the segment
+  with the result) the voxel the surface is attributed to (insideVoxelTc),
+  the segment and whether it is coloured, against the voxel truth.
+- Before (416, regionOverlayNear from build 375 with the index texture):
+  region radius 21 inside the bone sphere (22): 58 coloured hits, 43 of
+  them on a voxel outside the result; radius 22: 4 of 7232.
+- Fix: the colour comes from analysisOverlayAt of insideVoxelTc's voxel
+  (the first candidate voxel that is in the segment, now with its own edit
+  / processing mask entry) in both the index-texture and the row path.
+- After: 0 coloured hits outside the result (15 / 7228 coloured); without
+  results 0 differing channels; with results 12 channels differ; SwiftShader
+  pass 3005 → 3089 ms (noise level).
+- Inherent, reported to the owner: 273 of 19394 bone hits lie where no
+  candidate voxel is a bone voxel (the interpolated iso-surface runs
+  outside the voxel set); they stay uncoloured.
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check IDHIT /
+IDCAP.
+
+## Build 418 — filter change: segmentation recomputed, stale analysis results cleared
+
+- edit-consistency-check, new last step: an analysis result is added,
+  then Spatial Filter 3D. Before: ~10 s later the fat segment's base runs
+  were still those of the old filter (signature stale) and the result was
+  still there — 2D, 3D and the result showed the pre-filter segmentation.
+- Fix: scheduleFilterRebuild fires 'vrl-filters-changed' after the
+  rebuild; app.js clears the analysis results and recomputes every
+  processed or edited active segment (prepareSourceSegmentPostprocess, or
+  the final runs + 3D sync), then repaints 2D.
+- After: base current, 2D runs = 3D mask = final runs computed for the new
+  filter (0 voxels apart), results 1 → 0. Both SURFACE=0.3 and SURFACE=0
+  pass (the plain-segment run first failed on a check bug — the 3D side of
+  a plain segment is base − exclusion, not a keep mask; fixed in the tool).
+Checks: lint, unit tests, boot-check, edit-consistency-check (both).
+
+## Build 419 — analysis result colours in the 2D views, voxel for voxel
+
+Owner: the colouring should show on the 2D side too.
+- Before: 2D drew the results as a faint overlay (18 %, 40 % focused) on
+  top of the segment colour, and only in the analysis mode.
+- mpr-render.js: a voxel of a visible result is painted in the result's
+  colour instead of its segment's, at the segment's opacity, in every mode
+  (as in 3D); exact membership from the result's runs (plane masks on
+  full-resolution planes, else run lookup); both the source-backed and the
+  in-memory plane painters. The analysis mode keeps the 2 px outline of
+  the focused result; the faint fill is gone (it would double the colour).
+- tools/result-2d-check.mjs (npm run result-2d-check): practice data, fat
+  segment, its largest component as the result; the pixels that change
+  when the result is added equal its voxels on the plane exactly — axial
+  15157 / 15157, coronal 17874 / 17874, sagittal 9281 / 9281, 0 extra,
+  0 missing.
+Checks: lint, unit tests, boot-check, result-2d-check,
+analysis-project-check.
+
+## Build 420 — one selected plane shared by the section analysis, 3D plane buttons, main view and 2D tabs
+
+Owner: when choosing a section direction (section analysis etc.) every
+place has to be set separately; choose once, everything follows.
+- app.js selectPlane(p, source): an open section switches to p, the 3D
+  view shows p's plane and hides the other two (the XYZ axes untouched),
+  a 2D main view switches to p, the workspace 2D tab selects p
+  ('vrl-plane-selected'; workspace-ui sends 'vrl-plane-chosen').
+  Sources: section analysis buttons, a 3D plane button turned on, a 2D
+  plane brought to the main view (button or drag), the workspace 2D tab.
+  Re-entrancy guard; start-up and view-mode changes do not broadcast. VR
+  keeps its own planes.
+- tools/plane-sync-check.mjs (npm run plane-sync-check): practice data;
+  section analysis → coronal, workspace tab → sagittal, 3D button → axial,
+  main view → coronal: after each, section, 3D plane, tab (and the main
+  view when it is a 2D plane) all show the chosen plane.
+Checks: lint, unit tests, boot-check, plane-sync-check, result-2d-check.
+
+## Build 421 — the 3D view follows the selected plane; section analysis reversed by default
+
+Owner: the 3D view should follow the plane choice too; the section
+analysis should cut the reversed side by default.
+- selectPlane also turns the 3D view to face the plane with the existing
+  view-button function (setAxisView, exposed on sceneState): axial → Z,
+  coronal → Y, sagittal → X.
+- sectionViewReverse starts true and is reset to true when the section
+  closes (was false).
+- plane-sync-check also asserts reverse = true and, when a 3D object
+  exists, the view axis; headless here has no 3D object (WebGL fallback
+  without a build), so the view turn is not exercised (it is the Z / Y / X
+  button's own code).
+Checks: lint, unit tests, boot-check, plane-sync-check.
+
+## Build 422 — opening the section analysis selects the plane in use
+
+Owner: when the section analysis starts, the plane currently set should
+already be selected (it opened with no plane).
+- app.js currentPlane(): the last plane chosen (selectPlane), else a 2D
+  main view, else the workspace 2D tab, else axial. The section toggle
+  opens with setSectionView(currentPlane()) and syncs as a section choice
+  (reversed side, 3D plane, tab, 3D view).
+- plane-sync-check: 2D tab → sagittal with the section closed, then open
+  the section analysis → it opens on sagittal (reversed); the other steps
+  unchanged.
+Checks: lint, unit tests, boot-check, plane-sync-check.
+
+## Build 423 — VR / AR: result labels at the laser point (faint while pointing, pinned with the trigger)
+
+Owner: while the 解析 tab is open, or when no section is shown, the trigger
+should show the analysis result of the region the laser points at, as an
+annotation in 3D. Decisions: (1) one label per result, the trigger pins /
+unpins it; (2) a faint label while just pointing; (3) no result → the
+segment name with 解析結果なし.
+- vr-pick.js marchClassificationHitInfo: the volume march also returns the
+  hit voxel and the matching channel (unit test added).
+- buildRegionIndex also stores the result's list position per voxel
+  (ids, up to 255 results) on the same grid as the classification.
+- vr-view.js: label mode = (menu open on the 解析 tab) or no section shown.
+  Faint label (55 %) per hand for the current volume hit: colour disc,
+  number as in the 解析 tab, segment, mm³; or the segment name and
+  解析結果なし. Trigger on a result (no frame targeted) pins / unpins its
+  label at that point; pinned labels follow the volume (anchored in the
+  volume's object space, re-placed each frame), face the viewer, with a
+  thin line to the point; no depth test so they stay readable. Section
+  trigger handling is unchanged when a section is shown.
+- analysis-project-check: the region ids match the region's voxels (100 on
+  the 256 grid). The XR frame loop has no headless run: Quest check needed.
+Checks: lint, unit tests (6 vr-pick), boot-check, vr-gpu-prepare-check,
+analysis-project-check.
+
+## Build 424 — diagnostic: VR analysis cost bench (no behaviour change)
+
+Owner (Quest, 423): VR mode with analysis is very heavy; the volume labels
+could not be checked. Not guessed: a bench in the 画質 tab, 解析の重さ
+(about 12 s), four phases at the current size / resolution / view, 0.8 s
+settle + 2 s count each: as is / without the result colours (the shader
+variants without VRL_REGIONS, built on first use, sharing the uniforms) /
+without the laser's volume march and labels / neither. While labels are
+on, both hands' rays are replaced by a ray from the head to the volume
+centre, so a label is drawn and placed every frame. One result line (also
+the page's bench panel after exit): fps per phase, number of results and
+whether VRL_REGIONS is compiled, pins, size, resolution.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+analysis-project-check.
+
+## Build 425 — VR: the pointing label made small and unobtrusive
+
+Owner (Quest): with the 3D-edit region selection the results could be
+viewed in VR / AR at a practical speed (the heavy case did not come back;
+the 424 bench stays available). The faint label while nothing is selected
+is in the way: smaller, unobtrusive, or gone.
+- The pointing (hover) label is half size (6 × 1.8 cm), 40 % opacity, no
+  connecting line, 1.6 cm above the dot (was full size, 55 %, line, 4.5 cm
+  above). Pinned labels unchanged.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+
+## Build 426 — VR: label size setting
+
+Owner: the labels a bit smaller still, and the size settable. Also asked
+(question, not implemented): should the faint pointing label sit at the hand
+instead of at the pointer — answered with a proposal, waiting for the owner.
+- 解析 tab: ラベルの大きさ 小 / 中 / 大 = 50 / 70 / 100 % of the 12 × 3.6 cm
+  label (大 = the 425 size); default 中. Pinned labels use it, the pointing
+  label is half of it (中: 4.2 × 1.3 cm). Stored in the VR settings
+  (labelSize), applied every frame so a change reaches labels already shown.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+
+## Build 427 — VR: pointing label at the hand, labels small by default
+
+Owner (Quest, 426): 小 was just right as the default; agreed to the proposal
+of showing the pointing label at the hand instead of at the pointer.
+- labelSize default 小 (50 %: 6 × 1.8 cm).
+- The pointing label is a chip above its own controller (target-ray space,
+  left (0.03, 0.095, 0.02) — clear of the menu badge and the section panel —
+  right (0, 0.095, 0.02)), facing the head, framed in that hand's laser
+  colour, 85 % opacity, no line, same size as pinned labels (not halved: it is
+  always at reading distance). The laser dot still marks the point; pinned
+  labels stay at their point in the volume with the line.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+
+## Build 428 — analysis results lost after loading a project with filters
+
+Owner: results saved in the project did not come back; while loading, the
+colours appeared and then vanished.
+- Cause (measured, practice data): applyProject replays the project's
+  filters; the filter rebuild that this starts ends after the results are
+  restored and dispatches 'vrl-filters-changed', whose build 418 handler
+  cleared every result. analysis-project-check passed because its project
+  had no filter.
+- Fix: state.analysisFilterSignature = filter signature of the data the
+  results belong to (set by restoreAnalysisRegions after the replay, and at
+  every 'vrl-filters-changed'); the handler clears only when the signature
+  differs. A real filter change still clears (research rule unchanged).
+- analysis-project-check FILTER=1: Gaussian filter + bone opening 1, results
+  = boxes ∩ the final runs, save → clear → apply, wait for the load's work →
+  both results back (201 / 15 voxels); then a Gaussian strength change → 0
+  results. Without the fix the same run loses the visible result (FAILED).
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+analysis-project-check (plain and FILTER=1), edit-consistency-check.
+
+## Build 429 — VR: pointing label at the root of the laser
+
+Owner (Quest): 428 works (results come back from the project). The pointing
+label above the hand keeps covering the 3D object: put it at the root of the
+laser.
+- HAND_CHIP: both hands (0, −0.03, −0.03) in target-ray space = 3 cm in front
+  of the ray origin and 3 cm under the ray (was 9.5 cm above the controller);
+  still facing the head, framed in the hand colour.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+
+## Handoff (after build 429)
+
+State: build 429 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 395 (PR #83 merged 2026-10-01); builds 396–402 (two planes held at once, one target per hand, 右/左 on the handle, two-colour laser pointers and frame glow, laser before near, single frame, calmer palette, new planes clip, laser hits the volume) are in PR #84; owner OK on 401. Open: Quest check of 402; with two planes held the thumbstick moves the one taken last.
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use; 423: VR result labels; 424: analysis cost bench; 425: small pointing label; 426: label size setting; 427: pointing label at the hand, 小 default; 428: results kept when a project with filters is loaded (owner: OK); 429: pointing label at the laser root). Open: Quest check of 429. Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
@@ -3594,6 +4147,28 @@ branching except VR (share what can be shared); do not break what works on
 Mac/iPad; no wasted features (e.g. nothing can be edited inside VR); when a
 solution is not in sight, stop and prepare a handoff. Bump the build with
 npm run bump-build for every pushed change and log it here.
+Synchronised, no contradictions (owner, after build 415; research use):
+every view (2D, WebGPU 3D, VR / AR) shows one per-voxel truth — the final
+runs (2D settings + 3D edits; 3D edits are part of it) and the analysis
+results as subsets of them. Never colour or show a voxel the data does not
+contain (the 411–412 lesson); a view that cannot match exactly (resampled
+grid, interpolated surface) is the owner's decision, measured first.
+VR / AR (owner, after build 422): a visual check; comfort over exact voxel
+agreement. 256³ stays the default (512³ selectable in the 画質 tab); the
+owner found the current VR colouring fine, so the VR approximations (hit
+colour 0.75 voxel inside, interpolated cap / slice tint) stay as they are.
+Source of truth (owner, after build 415): the segmentation adjusted in 2D
+(segment settings: CT range, air exclusion, opening, … and the 2D views)
+is the master; 3D (WebGPU volume, VR / AR) is for checking it. 3D must
+always follow what 2D holds, never the other way round; a 2D / 3D
+difference is a 3D bug unless 2D itself is stale. Measure with
+npm run edit-consistency-check.
+Progress (owner, build 405): every long operation shows its progress only
+through docs/progress-modal.js — setBusySlot(name, on, {label, cancel,
+counted}) / reportBusyProgress / setBusyLabel, or the adapters
+set3DBusy, setProcessingBusy, busy, progress, byteProgress. No new
+progress bars, overlays or status lines elsewhere; give a cancel path when
+the work can stop; background work nobody waits on stays out of it.
 
 Next work (owner-approved list; recommended model / effort):
 A. Done in build 361 (cause: 60 % default opacity over the dome; VR window
