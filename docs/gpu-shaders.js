@@ -157,10 +157,11 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  if(kind==='sigmoid')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
- let i=gid.x;if(i>=meta[3]){return;}let c=params[3];let hw=max(1.0,params[4]*0.5);let g=max(0.0,params[2])*6.0;
- // build 431: see cpuSigmoid (centre and values outside centre ± width/2 kept, strength 0 = none)
- let x=src[i];let t=(x-c)/hw;
- if(g>0.0001&&t>-1.0&&t<1.0){dst[i]=c+hw*tanh(g*t)/tanh(g);}else{dst[i]=x;}
+ let i=gid.x;if(i>=meta[3]){return;}let minv=params[0];let maxv=params[1];let strength=params[2];let centerValue=clamp(params[3],minv,maxv);
+ let range=max(1.0,maxv-minv);let gain=2.0+strength*10.0;let center=(centerValue-minv)/range;
+ let lo=1.0/(1.0+exp(gain*center));let hi=1.0/(1.0+exp(-gain*(1.0-center)));let norm=max(0.000001,hi-lo);
+ let x=clamp((src[i]-minv)/range,0.0,1.0);let y=(1.0/(1.0+exp(-gain*(x-center)))-lo)/norm;
+ dst[i]=minv+clamp(y,0.0,1.0)*range;
 }`;
  if(kind==='spikeHole')return header+`
 @compute @workgroup_size(${workgroupSize})
