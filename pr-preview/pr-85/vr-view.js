@@ -8,16 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build423';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build423';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build423';
-import { sceneState, analysisRegions } from './state.js?v=20261002-build423';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build423';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build423';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build423';
-import { tr } from './i18n.js?v=20261002-build423';
-import { APP_BUILD } from './version.js?v=20261002-build423';
-import { wc, ww } from './ui-shell.js?v=20261002-build423';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build424';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build424';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build424';
+import { sceneState, analysisRegions } from './state.js?v=20261002-build424';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build424';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build424';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build424';
+import { tr } from './i18n.js?v=20261002-build424';
+import { APP_BUILD } from './version.js?v=20261002-build424';
+import { wc, ww } from './ui-shell.js?v=20261002-build424';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -867,13 +867,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細','解析'],anT:'解析結果（体積）',anNone:'解析結果はありません（2D/3D画面の体積解析で作成し、表示中のものがVRに入ります）',anTotal:'合計',anPage:'ページ',win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
-   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
+   seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',anBench:'解析の重さ（約 12 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：最後に持った断面（一覧で色付き）を法線方向に動かします','つかむ枠は手の色で光ります（右＝オレンジ・左＝紫、レーザーの枠が優先）'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    handR:'右',handL:'左',secHelp:['光った枠をグリップを押す間だけ持てます（番号の下＝最後に持った手）','光った枠をトリガーを押す間だけ持てます（番号の下＝最後に持った手）'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details','Analysis'],anT:'Analysis results (volume)',anNone:'No analysis results (made with the volume analysis on the page; the visible ones come into VR)',anTotal:'Total',anPage:'Page',win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
-   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
+   seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',anBench:'Analysis cost (about 12 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the plane held last (highlighted in the list) on its normal','The frame you will grab glows in the hand colour (right orange, left violet; laser wins)'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    handR:'R',handL:'L',secHelp:['Hold grip while the frame glows (under the number: last hand)','Hold the trigger while the frame glows (under the number: last hand)'],secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
@@ -1021,10 +1021,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // kept side of the clipping planes (vr-pick.js); world distance or null. Frames and boards are tested first;
  // without classification bytes there is no hit.
  const tmpVo=new THREE.Vector3(),tmpVq=new THREE.Vector3();
- const volumeHit=c=>{
-  const vp=volPick;if(!vp||!mesh?.parent||!material)return null;
+ // build 424: diagnostics for the analysis cost bench (owner: VR mode with results very heavy): diagAn.noRegion draws with
+ // the shader variants without VRL_REGIONS, diagAn.noLabels skips the laser's volume march and the labels
+ const diagAn={noRegion:false,noLabels:false};
+ const volumeHit=c=>{if(c)setRay(c);return volumeHitRay()};
+ const volumeHitRay=()=>{
+  const vp=volPick;if(!vp||!mesh?.parent||!material||diagAn.noLabels)return null;
   const mask=shownMask(),chs=[];for(let i=0;i<4;i++)if(mask>>i&1&&vp.cls.chan[i]>=0)chs.push(vp.cls.chan[i]);if(!chs.length)return null;
-  setRay(c);const o=tmpVo.copy(raycaster.ray.origin),q=tmpVq.copy(o).add(raycaster.ray.direction);mesh.worldToLocal(o);mesh.worldToLocal(q);q.sub(o);
+  const o=tmpVo.copy(raycaster.ray.origin),q=tmpVq.copy(o).add(raycaster.ray.direction);mesh.worldToLocal(o);mesh.worldToLocal(q);q.sub(o);
   const u=material.uniforms,hi=marchClassificationHitInfo(o,q,vp.halfExt,vp.dims,vp.cls,chs,u.cutPlanes.value,u.planeCount.value,u.planeCut.value);
   if(!hi)return null;
   // build 423: what was hit — the segment (channel → segment) and the result at that voxel (list position, 0 = none)
@@ -1140,6 +1144,26 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // panel on the page after the session
  const bench={active:false,phases:[],i:-1,at:0,measureAt:0,frames:0,results:[],saved:null,noSection:false,tempPlane:null,plane:null,planeBase:null,t0:0};
  const shownLabel=modes=>SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active&&segmentState[k]?.enabled&&(modes[k]|0)!==2).map(k=>tr(k)).join('+')||'-';
+ // build 424: analysis cost bench — four phases at the current size, resolution and view (0.8 s settle + 2 s count each):
+ // as is / no result colours / no laser march and labels / neither; with labels on, both hands' rays are replaced by a
+ // ray from the head to the volume centre so a label is drawn and placed every frame as when pointing at the volume
+ const anBench={active:false,i:-1,at:0,measureAt:0,frames:0,results:[],phases:[{noRegion:false,noLabels:false},{noRegion:true,noLabels:false},{noRegion:false,noLabels:true},{noRegion:true,noLabels:true}]};
+ const startAnBench=()=>{if(anBench.active||bench.active||!mesh)return;anBench.results=[];anBench.i=-1;anBench.active=true;anBenchNext()};
+ const anBenchNext=()=>{anBench.i++;if(anBench.i>=anBench.phases.length){anBenchFinish();return}Object.assign(diagAn,anBench.phases[anBench.i]);anBench.at=performance.now();anBench.measureAt=0;anBench.frames=0;ui.benchLine=L.benchRun+(anBench.i+1)+' / '+anBench.phases.length;menu.refresh()};
+ const anBenchTick=()=>{
+  if(!anBench.active)return;const now=performance.now();
+  if(!diagAn.noLabels){readHead();holder.getWorldPosition(tmpLb);raycaster.ray.origin.copy(head);raycaster.ray.direction.subVectors(tmpLb,head).normalize();
+   for(const c of controllers){const hit=volumeHitRay();if(hit){c.userData.hoverLabel||=makeLabel();const lb=c.userData.hoverLabel;drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}}}
+  if(!anBench.measureAt){if(now-anBench.at>=800){anBench.measureAt=now;anBench.frames=0}return}
+  anBench.frames++;if(now-anBench.measureAt>=2000){anBench.results.push(anBench.frames*1000/(now-anBench.measureAt));anBenchNext()}
+ };
+ const anBenchFinish=()=>{
+  anBench.active=false;diagAn.noRegion=false;diagAn.noLabels=false;const f=i=>anBench.results[i]!=null?Math.round(anBench.results[i]):'-';
+  const line=(ja?'解析の重さ: そのまま ':'analysis cost: as is ')+f(0)+(ja?' / 結果の色なし ':' / no result colours ')+f(1)+(ja?' / 札・レーザー判定なし ':' / no labels or laser march ')+f(2)+(ja?' / 両方なし ':' / neither ')+f(3)+' fps · '+(ja?'結果 ':'results ')+regionList.length+(material?.defines?.VRL_REGIONS!==undefined?' (VRL_REGIONS)':'')+' · '+(ja?'札 ':'pins ')+pins.size+' · '+(holder.scale.x*3.3*100).toFixed(1)+' cm · '+(VRES[settings.vres]?Math.round(VRES[settings.vres]*100)+'%':L.auto);
+  const headLine=(ja?'VR 解析ベンチ build ':'VR analysis bench build ')+APP_BUILD+' · '+targetRate()+' Hz';
+  lastBench={head:headLine,lines:[line],when:Date.now()};try{localStorage.setItem('vrl-vr-bench',JSON.stringify(lastBench))}catch{}
+  console.log('[VR analysis bench]',headLine,line);ui.benchLine=line;menu.refresh();
+ };
  const startBench=()=>{
   if(bench.active||!mesh)return;
   fixAll(); // build 396: the bench moves the plane in the volume's space
@@ -1261,7 +1285,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0+270,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
    if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
    // build 385: in-VR benchmark (the owner should not have to read numbers off the headset one by one)
-   btn(X,y0+460,460,L.bench,bench.active,()=>startBench(),{size:28});if(ui.benchLine)label(X,y0+560,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+600,L.benchHelp,{size:22,color:'#9fb3c3'});
+   btn(X,y0+460,460,L.bench,bench.active,()=>startBench(),{size:28});btn(X+480,y0+460,440,L.anBench,anBench.active,()=>startAnBench(),{size:28});if(ui.benchLine)label(X,y0+560,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+600,L.benchHelp,{size:22,color:'#9fb3c3'});
   }else if(ui.tab===5){
    // build 409 (owner: show the analysis results in VR / AR): read only — colour, segment, volume; 10 per page
    label(X,y0+10,L.anT,{bold:true,size:30});
@@ -1401,7 +1425,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }
   menu.setHover(hover);panel.setHover(panelHover);
   // build 423: faint label of what each laser points at (not when that result is already pinned); pinned labels follow the volume
-  {const on=labelMode();if(on||pins.size)readHead();
+  {const on=labelMode()&&!diagAn.noLabels;if(on||pins.size)readHead();anBenchTick();
    for(const c of controllers){const hit=on?c.userData.volHit:null;if(hit&&!(hit.id&&pins.has(hit.id))){c.userData.hoverLabel||=makeLabel();const lb=c.userData.hoverLabel;drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}else hideLabel(c.userData.hoverLabel)}
    for(const lb of pins.values())placeLabel(lb)}
   // thumbstick scroll (build 364): the selected plane along its own normal, same world speed fixed in the scaled holder or held
@@ -1464,6 +1488,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
   }
   const f=auto?autoF:(VRES[settings.vres]??1);
+  // build 424: the same variants without VRL_REGIONS (sharing the uniforms), built on first use by the analysis bench
+  let plain=null;
+  const plainSets=()=>{if(!plain){const base=material.clone();base.uniforms=material.uniforms;base.defines={};const vars=materialVariants(base);plain={vars,ray:{full:rayMaterialOf(vars.full),combined:rayMaterialOf(vars.combined),noEvents:rayMaterialOf(vars.noEvents)}}}return plain};
   const variantKey=()=>{const u=material.uniforms;if(!(u.distInCls.value>0&&u.useCls.value>0)||(settings.diag|0))return 'full';return u.planeCount.value===0?'noEvents':'combined'};
   if(mesh){
    if(f<1){
@@ -1477,7 +1504,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw0,th0,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
     else if(lowTarget.width<tw0||lowTarget.height<th0)lowTarget.setSize(Math.max(lowTarget.width,tw0),Math.max(lowTarget.height,th0));
     const tw=lowTarget.width,th=lowTarget.height;
-    scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);rayMesh.material=rayVariants[variantKey()];
+    scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);rayMesh.material=(diagAn.noRegion?plainSets().ray:rayVariants)[variantKey()];
     renderer.xr.enabled=false;renderer.setRenderTarget(lowTarget);
     renderer.setClearColor(0x000000,0);lowTarget.scissorTest=false;renderer.clear(true,false,false);
     timed('vol',()=>{for(const sub of xrCam.cameras){
@@ -1489,7 +1516,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(ar?0x000000:BG,ar?0:1);
     compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(f/tw,f/th);
     mesh.material=compMaterial;
-   }else{mesh.material=variants[variantKey()];const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
+   }else{mesh.material=(diagAn.noRegion?plainSets().vars:variants)[variantKey()];const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
    if(firstDrawMs<0)firstDrawMs=performance.now()-sessionAt;
   }
   menu.flush();
