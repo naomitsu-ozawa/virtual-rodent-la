@@ -3918,6 +3918,12 @@ branching except VR (share what can be shared); do not break what works on
 Mac/iPad; no wasted features (e.g. nothing can be edited inside VR); when a
 solution is not in sight, stop and prepare a handoff. Bump the build with
 npm run bump-build for every pushed change and log it here.
+Synchronised, no contradictions (owner, after build 415; research use):
+every view (2D, WebGPU 3D, VR / AR) shows one per-voxel truth — the final
+runs (2D settings + 3D edits; 3D edits are part of it) and the analysis
+results as subsets of them. Never colour or show a voxel the data does not
+contain (the 411–412 lesson); a view that cannot match exactly (resampled
+grid, interpolated surface) is the owner's decision, measured first.
 Source of truth (owner, after build 415): the segmentation adjusted in 2D
 (segment settings: CT range, air exclusion, opening, … and the 2D views)
 is the master; 3D (WebGPU volume, VR / AR) is for checking it. 3D must
