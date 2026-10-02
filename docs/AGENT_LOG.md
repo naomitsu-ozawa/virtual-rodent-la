@@ -4172,6 +4172,25 @@ soft-tissue border (measurements of the old filter: entry above).
   Sigmoid look different now.
 Checks: lint, unit tests (new sigmoid test), boot-check, sigmoid-check.
 
+After 431 — owner: 431 turns 2D white on their device (not reproduced on the
+CPU path here) and is not what was meant; the actual goal is the skin /
+subcutaneous fat border (soft-tissue range takes fat, fat range takes skin;
+a human sees the line). A point-wise curve cannot move a threshold border,
+so 431 is to be reverted. Plan proposed: seeded growing between a confident
+fat range and a confident soft range (ambiguous band assigned at the
+strongest edge) + filter defaults for fat / soft separation.
+Measured (practice data, axial planes at 30/45/60/75 % of z, body pixels
+within 1.0 mm of the outside, values −300…300 HU; band = −80…20 HU,
+fat < −100, soft > 100), CPU path:
+- none: band 12.0 %, fat 14.1 %, soft 52.0 %.
+- bilateral intensity 0.02 (≈ 90 HU of the 4463 HU range), strength 0.8,
+  2 passes: band 9.6 %, fat 12.8, soft 52.2 (best); 0.02 / 0.45 / 1 pass:
+  11.1 %. The current default (intensity 0.08, 0.45, 1 pass): 12.2 %;
+  0.08 / 0.8 / 2: 14.5 %, soft 42.6 (smooths across the border).
+- NLM 0.45 r1: 12.2 %; stronger is worse (1.0 r2: 14.9 %).
+- anisotropic 0.45 × 4: 13.0 %; 0.8 × 8: 16.7 % (soft 35.7).
+- TV 0.05 / 0.12 × 8: 11.8 %. Gaussian 0.4 × 2: 12.4 %.
+
 ## Handoff (after build 431)
 
 State: build 431 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone) (VR/AR: WebGL2
