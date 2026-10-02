@@ -4264,9 +4264,31 @@ fat layers is soft.
   volume still from the fat range, divider voxels in the fat range given to
   the adjacent compartment. Waiting for the owner.
 
+Owner: no 1-voxel membranes — the layers are several voxels thick; check
+the data. Measured on the practice data (raw, axial):
+- Layers (rows from the body edge inward, z 281–409): skin complex 13–20
+  vox, subcutaneous fat 4 / 12 / 26 vox (p10 / median / p90), abdominal wall
+  4 / 16 / 24 vox (0.148 mm voxels). Mean profile at the left flank, z 332:
+  skin +150…170 (3–4) → thin layer +17…+75 (1–2) → panniculus +105…168 (3–4)
+  → subcutaneous fat −60…−126 (10–15) → wall +110…+170.
+- Interiors (σ 2 smoothed class cores): fat −116 ± 46 HU, soft +158 ± 44;
+  5.8 % of the fat-core voxels lie above −50 (the fat preset's upper bound).
+  The difficulty is voxel noise, not partial volume.
+- Trade-off (4 slices z 0.6–0.75; fat ROI = smoothed < −40 and ≥ 3 px from
+  smoothed > 40; outer ROI = skin complex within 10 px of air): fat missed /
+  outer taken as fat by the fat upper bound T. None: T −50 22.9 / 1.7,
+  T 0 9.0 / 4.9. Bilateral (432 default): T −30 10.2 / 1.4, T −20 9.4 / 1.8.
+  NLM / anisotropic defaults similar to bilateral (T −20: 8.5 / 2.2,
+  8.3 / 2.1); Gaussian close; TV no help. (~7 % of the fat ROI is never fat:
+  septa, vessels — the ROI is not pure.)
+- Crops (z 332, left flank): bilateral + fat −250…−30 fills the
+  subcutaneous fat band and leaves skin, panniculus and wall out.
+Recommendation to the owner: no new segmentation feature; denoise
+(bilateral default) and raise the fat upper bound to about −30 HU.
+
 ## Handoff (after build 433)
 
-State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open: seeded growing fat / soft — gate not passed on the phantom, waiting for the owner's example; owner check that 2D is no longer white. (VR/AR: WebGL2
+State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open: owner to try bilateral + fat upper bound ≈ −30 HU (seed growing not needed by the data); owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
