@@ -442,8 +442,14 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
     if(capIndex>=0){
      var capColor=mix(u.segments[u32(capIndex)*2u+1u].rgb,vec3<f32>(1.0),0.22);
      // build 410 (owner): analysis result colours on the section cap too (one lookup per pixel, only for a segment with results)
+     // build 411: the segment edge comes from interpolated HU, the result from whole voxels, so a cap point on the edge can
+     // fall in the voxel just outside the result (a thin uncoloured line along every result boundary): when the point
+     // itself has no result, the six neighbouring voxels are tried
      if(analysisOverlay[0]!=0u&&(analysisOverlay[analysisOverlay[0]]&(1u<<u32(capIndex)))!=0u){
-      let ov=analysisOverlayAt(ctc);
+      var ov=analysisOverlayAt(ctc);
+      if(ov==0u){let vx=1.0/max(u.textureDims.xyz,vec3<f32>(1.0));
+       for(var k:u32=0u;k<6u;k=k+1u){var off=vec3<f32>(0.0);let sgn=select(-1.0,1.0,(k&1u)==0u);if(k<2u){off.x=vx.x*sgn;}else if(k<4u){off.y=vx.y*sgn;}else{off.z=vx.z*sgn;}
+        ov=analysisOverlayAt(ctc+off);if(ov!=0u){break;}}}
       if(ov!=0u){capColor=mix(vec3<f32>(f32((ov>>16u)&255u),f32((ov>>8u)&255u),f32(ov&255u))/255.0,vec3<f32>(1.0),0.22);}
      }
      if(u.sectionCap.z>0.5){
