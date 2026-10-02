@@ -3894,14 +3894,38 @@ Owner: changing CT values breaks many things ("it used to work").
 Checks: lint, unit tests, boot-check, edit-consistency-check (both),
 analysis-project-check, vr-gpu-prepare-check.
 
-## Handoff (after build 415)
+## Build 416 — WebGPU section cap = the 2D slice, voxel for voxel
 
-State: build 415 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: everything must be synchronised, no contradictions (research use);
+the cut face's colouring did not match the 3D shape at the periphery.
+- volume-shader-check IDCAP=1: a pass per file returns, for every pixel
+  whose ray reaches the cap, the voxel at the cap point, the segment the
+  cap shows and whether it takes the result colour; compared with the
+  phantom's voxel truth (that voxel's HU in the range, the edit applied,
+  inside the region).
+- Before (415): axial cap at slice 64, region radius 21 in the bone
+  sphere (22): 691 of 60385 cap pixels wrong (99 shown where the voxel is
+  not in the segment, 288 missing, the rest the wrong segment); slice 80
+  with the exclusion box: 1252 of 64629 wrong (1017 shown, 195 missing).
+- Cause: capSegmentIndex used interpolated HU and, where that found
+  nothing, took a segment from up to 2 voxels along the normal; the ray
+  march's interpolated exclusion test also applied.
+- Fix: the cap classifies the voxel at the cap point by its own stored
+  value (huVoxel) and that voxel's edit / processing mask entry
+  (editAllows); no neighbours, no interpolation. The result colour already
+  used that voxel (413).
+- After: 0 wrong at slice 64, at slice 80 with EDIT=1 and with EDIT=2
+  (specks excluded); without a section 0 differing channels.
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check IDCAP.
+
+## Handoff (after build 416)
+
+State: build 416 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
