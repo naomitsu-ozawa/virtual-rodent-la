@@ -2,7 +2,8 @@
 
 Status: discussion / feasibility study  
 Date: 2026-10-03  
-Target repo: `naomitsu-ozawa/virtual-rodent-la`
+Target repo: `naomitsu-ozawa/virtual-rodent-la`  
+Fact-check / follow-up notes (2026-10-02, Japanese): `docs/REMOTE_XR_FACTCHECK.md`
 
 ## 1. Goal
 
