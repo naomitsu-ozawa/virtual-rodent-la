@@ -3843,14 +3843,40 @@ inward and along the ray), VR surface hits sample 0.75 voxel inside
 (build 409).
 Checks: lint, unit tests (WGSL), boot-check, volume-shader-check.
 
-## Handoff (after build 413)
+## Build 414 — 2D drew deleted voxels after volume-view edits and air-exclusion changes
 
-State: build 413 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (Mac): while editing, 2D and 3D stopped agreeing; it happened with
+the "exclude next to air" operation.
+- tools/edit-consistency-check.mjs (npm run edit-consistency-check):
+  practice data, fat segment with air exclusion 0.3 mm, an exclusion
+  edit (box) applied as the volume-view edits do, then the air exclusion
+  changed to 0.6 mm; compares the runs 2D draws (activeMprSegments) with
+  the 3D edit mask (gpuVolumeEditDescriptors). Before the fix: after the
+  edit 749553 voxels only in 2D (deleted voxels still drawn), after the
+  air change 636528. After: 0 / 0 / 0.
+- Cause: the volume-view edits reset finalRuns and push the 3D mask, but
+  nothing rebuilt finalRuns, so 2D fell back to the base runs (or the
+  plain threshold) without the edits; a segment setting change (air
+  exclusion) also left finalRuns empty after the new base runs.
+- Fix: syncGpuVolumeEdits fires 'vrl-gpu-edits-synced'; app.js rebuilds
+  the final runs of edited segments that have none and repaints 2D (one
+  pass per burst). prepareSourceSegmentPostprocess rebuilds the final
+  runs from the new base runs when the segment has edits.
+Second report (cut-face colour shape vs 3D at the periphery): asked for a
+screenshot. Known difference: WebGPU surface hits take the result colour
+from regionOverlayNear (any result voxel up to 1.5 voxels inward / along
+the ray, build 375, for speed), while the cap now uses the exact voxel.
+Checks: lint, unit tests, boot-check, edit-consistency-check,
+analysis-project-check.
+
+## Handoff (after build 414)
+
+State: build 414 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414: 2D / 3D edit consistency). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
