@@ -3950,7 +3950,8 @@ IDCAP.
   the final runs + 3D sync), then repaints 2D.
 - After: base current, 2D runs = 3D mask = final runs computed for the new
   filter (0 voxels apart), results 1 → 0. Both SURFACE=0.3 and SURFACE=0
-  pass.
+  pass (the plain-segment run first failed on a check bug — the 3D side of
+  a plain segment is base − exclusion, not a keep mask; fixed in the tool).
 Checks: lint, unit tests, boot-check, edit-consistency-check (both).
 
 ## Handoff (after build 418)

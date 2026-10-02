@@ -68,8 +68,10 @@ const r=await pg.evaluate(async(SURF)=>{
  const truth=await sr.ensureSegmentBaseRuns('fat',vol,null,true).then(b=>{let r=b;if(es.keepRuns)r=rl.intersectRunArrays(r,es.keepRuns,d);if(es.excludeRuns)r=rl.subtractRunArrays(r,es.excludeRuns,d);return r});
  await settle();
  const two=sg.activeMprSegments().find(x=>x.key==='fat'),runs2d=two?.processedRuns||(sg.segmentEditActive('fat')&&two?.edit.finalRuns)||null,desc=gv.gpuVolumeEditDescriptors(vol).fat;
+ // 3D: a keep mask, or (plain segment) the threshold = base runs minus the exclusion
+ const runs3dOf=desc=>desc?.mode==='keep'?desc.runs:es.baseRuns?(desc?.mode==='exclude'?rl.subtractRunArrays(es.baseRuns,desc.runs,d):es.baseRuns):null;
  const diff=(a,b)=>a&&b?rl.analysisRunsVoxelCount(rl.subtractRunArrays(a,b,d))+rl.analysisRunsVoxelCount(rl.subtractRunArrays(b,a,d)):null;
- out.push({label:'filter added (gaussian)',staleBaseBeforeRecompute:!!staleBase,mismatch2dTruth:diff(runs2d,truth),mismatch3dTruth:desc?.mode==='keep'?diff(desc.runs,truth):'no keep mask',regionsBefore,regionsAfter:st.analysisRegions.length,only2d:diff(runs2d,truth)??-1,only3d:desc?.mode==='keep'?diff(desc.runs,truth):-1});
+ out.push({label:'filter added (gaussian)',staleBaseBeforeRecompute:!!staleBase,mismatch2dTruth:diff(runs2d,truth),mismatch3dTruth:diff(runs3dOf(desc),truth),regionsBefore,regionsAfter:st.analysisRegions.length,only2d:diff(runs2d,truth)??-1,only3d:diff(runs3dOf(desc),truth)??-1});
  return out;
 },+(process.env.SURFACE??0.3));
 for(const x of r)console.log(JSON.stringify(x));
