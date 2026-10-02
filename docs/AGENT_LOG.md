@@ -4049,6 +4049,10 @@ runs (2D settings + 3D edits; 3D edits are part of it) and the analysis
 results as subsets of them. Never colour or show a voxel the data does not
 contain (the 411–412 lesson); a view that cannot match exactly (resampled
 grid, interpolated surface) is the owner's decision, measured first.
+VR / AR (owner, after build 422): a visual check; comfort over exact voxel
+agreement. 256³ stays the default (512³ selectable in the 画質 tab); the
+owner found the current VR colouring fine, so the VR approximations (hit
+colour 0.75 voxel inside, interpolated cap / slice tint) stay as they are.
 Source of truth (owner, after build 415): the segmentation adjusted in 2D
 (segment settings: CT range, air exclusion, opening, … and the 2D views)
 is the master; 3D (WebGPU volume, VR / AR) is for checking it. 3D must
