@@ -57,9 +57,22 @@ const r=await pg.evaluate(async(SURF)=>{
  const modalSeen=[];const watch=setInterval(()=>{const s=window.__vrlBusyModal?.();if(s?.visible)modalSeen.push(s.label)},100);
  await slide(mn,-200);await slide(mx,-80);clearInterval(watch);
  out.push({...cmp('CT range changed to −200..−80'),segMin:sg.segmentState.fat.min,segMax:sg.segmentState.fat.max,modal:[...new Set(modalSeen)],stuck:window.__vrlBusyModal?.().active});
+ // filter added (Spatial Filter 3D) with the edit and the processing in place: what 2D draws and what 3D gets must
+ // equal the final runs freshly computed for the new filter, and analysis results made before must not survive
+ const [ops]=await Promise.all([im('analysis-ops.js')]);
+ const boxR=new Array(d).fill(null);for(let z=330;z<=340;z++){const a=[];for(let y=200;y<=210;y++)a.push(y,200,220);boxR[z]=new Uint32Array(a)}
+ await ops.addAnalysisRegion(vol,{key:'fat',segmentKeys:['fat'],runsBySlice:boxR,voxels:2541,mm3:1});const regionsBefore=st.analysisRegions.length;
+ const fs=document.getElementById('filter-add-select'),fb=document.getElementById('filter-add-button');fs.value='gaussian';fs.dispatchEvent(new Event('change'));fb.click();
+ await wait(3000);await settle();await wait(3000);await settle();
+ const staleBase=es.baseRuns&&es.baseSignature!==sr.segmentBaseSignature('fat',vol);
+ const truth=await sr.ensureSegmentBaseRuns('fat',vol,null,true).then(b=>{let r=b;if(es.keepRuns)r=rl.intersectRunArrays(r,es.keepRuns,d);if(es.excludeRuns)r=rl.subtractRunArrays(r,es.excludeRuns,d);return r});
+ await settle();
+ const two=sg.activeMprSegments().find(x=>x.key==='fat'),runs2d=two?.processedRuns||(sg.segmentEditActive('fat')&&two?.edit.finalRuns)||null,desc=gv.gpuVolumeEditDescriptors(vol).fat;
+ const diff=(a,b)=>a&&b?rl.analysisRunsVoxelCount(rl.subtractRunArrays(a,b,d))+rl.analysisRunsVoxelCount(rl.subtractRunArrays(b,a,d)):null;
+ out.push({label:'filter added (gaussian)',staleBaseBeforeRecompute:!!staleBase,mismatch2dTruth:diff(runs2d,truth),mismatch3dTruth:desc?.mode==='keep'?diff(desc.runs,truth):'no keep mask',regionsBefore,regionsAfter:st.analysisRegions.length,only2d:diff(runs2d,truth)??-1,only3d:desc?.mode==='keep'?diff(desc.runs,truth):-1});
  return out;
 },+(process.env.SURFACE??0.3));
 for(const x of r)console.log(JSON.stringify(x));
-const bad=r.some(x=>x.stuck||(x.only2d==null?!x.plain:(x.only2d!==0||x.only3d!==0)));
+const bad=r.some(x=>x.stuck||x.staleBaseBeforeRecompute||(x.regionsAfter>0)||(x.only2d==null?!x.plain:(x.only2d!==0||x.only3d!==0)));
 await b.close();srv.close();
 if(errors.length||bad){console.error('edit consistency check FAILED');process.exit(1)}console.log('edit consistency check OK');
