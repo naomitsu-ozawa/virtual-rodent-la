@@ -4123,14 +4123,216 @@ laser.
   still facing the head, framed in the hand colour.
 Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
 
-## Handoff (after build 429)
+## Build 430 — 2D colour strength in the settings
 
-State: build 429 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: the 2D overlay strength (65 %) settable. Also asked how other tools
+choose 6 / 26 connectivity (researched, answered; no change) and what the
+1.4 % interpolated-surface hits are (explained; no change).
+- Settings > 描画 > 2Dの色の濃さ: 30 / 50 / 65 (標準) / 80 / 100 % (app
+  setting mpr2dAlpha, per device). segments.js mprSegmentAlpha(seg) =
+  min(max(0.75, k), opacity × k), used by both 2D painters (simple and
+  per-voxel path); at 65 % it is the pre-430 min(0.75, opacity × 0.65)
+  exactly. A change repaints the 2D views ('vrl-settings').
+- tools/mpr-alpha-check.mjs (npm run mpr-alpha-check): practice data, fat
+  segment; formula equal for the opacity steps, 30 % / 100 % change 54283
+  pixels, back to 65 % restores the image (0 pixels apart).
+- Connectivity survey (sources read in code): 6 — ITK default, scipy,
+  MorphoLibJ default, 3D Slicer Islands (hard-coded); 26 — scikit-image,
+  Fiji 3D Objects Counter, BoneJ (26 foreground / 6 background), Avizo
+  labeling per the BoneJ paper; Dragonfly offers both; CTAn unverified.
+Checks: lint, unit tests, boot-check, mpr-alpha-check, result-2d-check.
+
+Owner decision (after 430): the interpolated-surface hits without a
+segment voxel (~1.4 %) stay uncoloured — the analysis numbers must be right,
+the 3D look is a visual check only.
+Sigmoid (owner: "not the expected behaviour"), measured on the practice data
+(data −1361…3102 HU, centre default 198 = window centre, strength 0.5): the
+mapping is over the whole data range and the centre is not a fixed point —
+198 → 290 / 700 / 838 HU at strength 0 / 0.5 / 1; strength 0 is not the
+identity (0 → 72, 40 → 116); soft tissue 40 → 398 HU at 0.5, so the segment
+CT ranges no longer mean HU. Same formula in CPU, worker and WGSL. Fixed in 431.
+
+## Build 431 — Sigmoid redone: contrast around a centre in HU
+
+Owner: Sigmoid is there to adjust contrast, e.g. to sharpen the blurred fat /
+soft-tissue border (measurements of the old filter: entry above).
+- New mapping (CPU cpuSigmoid, source worker, WGSL; one formula): within
+  centre ± width/2, y = c + hw·tanh(g·t)/tanh(g), t = (x − c)/hw,
+  g = 6·strength; outside the window and at the centre the HU stay; the
+  curve meets the identity at both ends; strength 0 = no change; monotonic.
+- New control 幅（HU） 20–1000, default 200 (project param width; projects
+  without it keep the slider's value). Strength and centre as before.
+- tools/sigmoid-check.mjs (npm run sigmoid-check), practice data, axial mid
+  plane, centre −31 (slider step), width 200, strength 0.5: filtered = formula
+  of the unfiltered values (max error 7e-6), 0 values outside the window
+  changed; voxels in −80…20 HU 13346 → 4502, fat (−130…−80) 7832 → 10017,
+  soft tissue (20…70) 9435 → 13502. The WebGPU kernel (same formula) is
+  covered by the WGSL unit test only (no WebGPU headless).
+- Image change on purpose (owner's request); projects saved with the old
+  Sigmoid look different now.
+Checks: lint, unit tests (new sigmoid test), boot-check, sigmoid-check.
+
+After 431 — owner: 431 turns 2D white on their device (not reproduced on the
+CPU path here) and is not what was meant; the actual goal is the skin /
+subcutaneous fat border (soft-tissue range takes fat, fat range takes skin;
+a human sees the line). A point-wise curve cannot move a threshold border,
+so 431 is to be reverted. Plan proposed: seeded growing between a confident
+fat range and a confident soft range (ambiguous band assigned at the
+strongest edge) + filter defaults for fat / soft separation.
+Measured (practice data, axial planes at 30/45/60/75 % of z, body pixels
+within 1.0 mm of the outside, values −300…300 HU; band = −80…20 HU,
+fat < −100, soft > 100), CPU path:
+- none: band 12.0 %, fat 14.1 %, soft 52.0 %.
+- bilateral intensity 0.02 (≈ 90 HU of the 4463 HU range), strength 0.8,
+  2 passes: band 9.6 %, fat 12.8, soft 52.2 (best); 0.02 / 0.45 / 1 pass:
+  11.1 %. The current default (intensity 0.08, 0.45, 1 pass): 12.2 %;
+  0.08 / 0.8 / 2: 14.5 %, soft 42.6 (smooths across the border).
+- NLM 0.45 r1: 12.2 %; stronger is worse (1.0 r2: 14.9 %).
+- anisotropic 0.45 × 4: 13.0 %; 0.8 × 8: 16.7 % (soft 35.7).
+- TV 0.05 / 0.12 × 8: 11.8 %. Gaussian 0.4 × 2: 12.4 %.
+
+## Build 432 — 431 reverted; bilateral defaults for fat / soft separation
+
+Owner: 431 turned the 2D views white on their device and is not what was
+meant (the goal is the skin / subcutaneous fat border; measurements above).
+- 431 reverted (git revert): Sigmoid is the pre-431 filter again. The white
+  2D root cause was NOT found — it did not reproduce on the CPU worker path
+  here (screenshot of the practice data with Sigmoid: normal), so it was on
+  the owner's GPU path; the revert removes the code that caused it. Owner to
+  confirm on their device.
+- Bilateral defaults (owner: defaults for fat / soft separation): strength
+  0.45 → 0.80, intensity sigma 0.08 → 0.02, passes 1 → 2 (spatial 1.2
+  unchanged). Measured above: subcutaneous band 12.0 → 9.6 % (default before:
+  12.2 %), fat-confident 14.1 → 12.8 % (smoothing cannot restore thin
+  layers). The other filters' defaults stay (stronger settings made the
+  border worse, TV changed nothing). Saved projects keep their own values.
+- Next (owner: 進めて): seeded growing between a confident fat range and a
+  confident soft range.
+Checks: lint, unit tests, boot-check.
+
+## Build 433 — processed segments ignored the filters (pre-existing, found while planning the seed growing)
+
+- Measured (practice data, fat −250…−50): base voxels plain 5418876 →
+  Gaussian 5682902, but with Opening 1: 4086436 without and WITH the
+  Gaussian. Cause: sourceRunsForSegment (and the surface-view builder) took
+  a segment that needs a global mask (Opening, Closing, hole fill, min
+  component, thin-region removal) from the in-memory MPR copy (v.mprData),
+  which holds the unfiltered CT, whatever the filters. 2D painted those runs
+  too, so 2D / 3D agreed with each other but not with the filters — against
+  the build 418 rule (segments are defined on the filtered data).
+- Fix: segments.js sourceMemoryUsable(v) = mprData and no active filter;
+  sourceMprMemoryView returns null otherwise; sourceRunsForSegment then
+  takes the filtered source path; the surface view builds such a segment
+  from its final runs. After: Opening 1 + Gaussian 4718414.
+- tools/processed-filter-check.mjs (npm run processed-filter-check).
+Checks: lint, unit tests, boot-check, processed-filter-check,
+edit-consistency-check, result-2d-check, analysis-project-check FILTER=1.
+
+Seed growing, gate result (after 433, not shipped; kernel kept out of the
+repo): phantom = layers along x (air | skin 1–4 vox | fat 2–10 vox | muscle,
++120 / −110 / +140 HU), Gaussian blur σ 0.8–1.3 vox, noise 0–40 HU, five
+layouts in one volume; errors = body voxels not given their true class.
+- The best single threshold (searched, −100…100) already gets everything
+  but the air / skin rim column at noise 0 (σ 1: 192 errors = the rim).
+- Growing between confident fat and soft ranges (sum |ΔHU| path cost,
+  radius 4): no better (σ 1, noise 25: 236–277 vs 237). Local midpoint
+  threshold: no better either.
+- With air as a third competitor (fat-range voxels touching air become
+  band): better at σ 0.8 (noise 15: 163 → 40–90) and σ 1 (noise 25: 237 →
+  179), not at σ 1.3. Depends strongly on the confident ranges.
+- Practice data (z 0.3–0.75, fat −250…−50, axial): 8.3 % of the fat-range
+  voxels touch a value below −250 directly (4-neighbour), 2.1 % at 2 steps;
+  crops of the body outline show the fat range as a one-voxel shell along
+  the whole skin surface (air + skin partial volume), little real
+  subcutaneous fat at those places. Reported to the owner with the crops;
+  asked for a view of their data where it goes wrong before building more.
+
+Owner (after the rim report): the air rim already has its own filter; the
+targets are visceral fat vs the peritoneum, and the subcutaneous fat between
+skin and peritoneum. Phantom: fat | membrane 1–2 vox (+100 HU) | fat, blur σ
+0.8–1.3, noise 0–25, 512 lines; sep = lines where some voxel between the two
+fat layers is soft.
+- A 1-voxel membrane blurs to a peak of −5 / −26 / −46 HU (σ 0.8 / 1 / 1.3),
+  i.e. inside the fat range; 2 voxels: +43 / +25 / +2.
+- Single threshold: T −60 keeps sep 92–100 % but takes 2.4–7 % of the fat as
+  soft; T −20 keeps the fat (≤ 1 %) but sep falls to 27–82 % (1 voxel,
+  noise). A ridge (local-maximum) test is worse than the threshold (more
+  fat taken for the same sep).
+- Conclusion offered to the owner: one threshold has to serve two goals —
+  "how much fat" (volume) and "which compartment" (the membrane as divider).
+  Proposal: a sensitive divider threshold used only for connectivity, fat
+  volume still from the fat range, divider voxels in the fat range given to
+  the adjacent compartment. Waiting for the owner.
+
+Owner: no 1-voxel membranes — the layers are several voxels thick; check
+the data. Measured on the practice data (raw, axial):
+- Layers (rows from the body edge inward, z 281–409): skin complex 13–20
+  vox, subcutaneous fat 4 / 12 / 26 vox (p10 / median / p90), abdominal wall
+  4 / 16 / 24 vox (0.148 mm voxels). Mean profile at the left flank, z 332:
+  skin +150…170 (3–4) → thin layer +17…+75 (1–2) → panniculus +105…168 (3–4)
+  → subcutaneous fat −60…−126 (10–15) → wall +110…+170.
+- Interiors (σ 2 smoothed class cores): fat −116 ± 46 HU, soft +158 ± 44;
+  5.8 % of the fat-core voxels lie above −50 (the fat preset's upper bound).
+  The difficulty is voxel noise, not partial volume.
+- Trade-off (4 slices z 0.6–0.75; fat ROI = smoothed < −40 and ≥ 3 px from
+  smoothed > 40; outer ROI = skin complex within 10 px of air): fat missed /
+  outer taken as fat by the fat upper bound T. None: T −50 22.9 / 1.7,
+  T 0 9.0 / 4.9. Bilateral (432 default): T −30 10.2 / 1.4, T −20 9.4 / 1.8.
+  NLM / anisotropic defaults similar to bilateral (T −20: 8.5 / 2.2,
+  8.3 / 2.1); Gaussian close; TV no help. (~7 % of the fat ROI is never fat:
+  septa, vessels — the ROI is not pure.)
+- Crops (z 332, left flank): bilateral + fat −250…−30 fills the
+  subcutaneous fat band and leaves skin, panniculus and wall out.
+Recommendation to the owner: no new segmentation feature; denoise
+(bilateral default) and raise the fat upper bound to about −30 HU.
+
+Owner: the volume shifts with filters and other factors, right? Measured
+(practice data, 8 axial planes z 32…480 step 64, voxels in −250…T, no air-
+rim exclusion, so the rim is in every number):
+- none: T −60 78641, −50 86766, −40 94864, −30 102358, −20 109320
+  (≈ +8.5…9.4 % per 10 HU).
+- bilateral (432 default): 78040 / 86045 / 93243 / 99870 / 106107
+  (−0.8 % at −50, −2.4 % at −30 vs none).
+- anisotropic: +0.6 % at −50, −0.9 % at −30; Gaussian: +2.4 % / +0.9 %.
+- The threshold dominates; the filter moves the volume by 1–2.5 % at a fixed
+  threshold. none −50 → bilateral −30 = +15 % (the −50 result misses the
+  speckled fat, 22.9 % of the fat ROI above).
+
+Owner (end of week, back Monday): the overview image (raw z 409, window
+−300…300) looks right; remove the grain and it is perfect (vessels visible,
+good separation). Measured (planes z 332 + 409, CPU worker = same formula as
+the WGSL kernel; ROIs from the raw smoothed: fat / soft cores, fat–soft
+border band, small bright spots in fat = vessels; edge = mean gradient of the
+σ≈1-smoothed image on the border band vs raw, vessel = contrast vs fat mean
+vs raw):
+  config               fat SD  soft SD  CNR   edge  vessel
+  raw                   54.9    49.1    4.91  100 %  100 %
+  bilateral (432)       39.1    30.3    7.22   82 %   95 %
+  bil spatial 1.6       38.1    28.3    7.48   77 %   94 %
+  bil 2.0 × 3 passes    37.8    26.3    7.59   69 %   90 %
+  bil int 0.03 × 3      35.5    26.0    7.89   63 %   86 %
+  NLM 0.7 r2            31.9    28.4    8.41   76 %   86 %
+  NLM 1.0 r2            30.8    28.4    8.61   76 %   82 %
+  aniso 0.45 × 8        32.1    28.7    8.35   76 %   83 %
+  aniso 0.8 × 6         30.9    28.5    8.59   76 %   77 %
+  bilateral + NLM       28.7    26.0    9.02   60 %   78 %
+(the fat-core SD keeps ~30 HU of real texture: septa, vessels.) Visual
+(z 409 crops): bilateral keeps edges and vessels with a fine grain left;
+NLM 1.0 r2 / anisotropic smoother, a little softer; bilateral + NLM blurs.
+The bilateral intensity sigma is relative to the data range (0.02 × 4463 HU
+≈ 89 HU here): on data with another range the same slider acts differently.
+Monday checklist for the owner (device): 2D no longer white (432); bilateral
+default vs NLM 1.0 r2 on their data, window about −300…300; fat upper bound
+about −30 HU; volumes depend mostly on the threshold (≈ 9 % per 10 HU).
+
+## Handoff (after build 433)
+
+State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use; 423: VR result labels; 424: analysis cost bench; 425: small pointing label; 426: label size setting; 427: pointing label at the hand, 小 default; 428: results kept when a project with filters is loaded (owner: OK); 429: pointing label at the laser root). Open: Quest check of 429. Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). earlier: main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use; 423: VR result labels; 424: analysis cost bench; 425: small pointing label; 426: label size setting; 427: pointing label at the hand, 小 default; 428: results kept when a project with filters is loaded (owner: OK); 429: pointing label at the laser root). Open: Quest check of 429. Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
