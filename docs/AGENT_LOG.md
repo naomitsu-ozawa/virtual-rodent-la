@@ -4123,9 +4123,28 @@ laser.
   still facing the head, framed in the hand colour.
 Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
 
-## Handoff (after build 429)
+## Build 430 — 2D colour strength in the settings
 
-State: build 429 on main (PR #85 merged 2026-10-02, builds 403–429); work branch claude/dicom-viewer-handoff-eaqyyu re-cut from main, next PR is new (VR/AR: WebGL2
+Owner: the 2D overlay strength (65 %) settable. Also asked how other tools
+choose 6 / 26 connectivity (researched, answered; no change) and what the
+1.4 % interpolated-surface hits are (explained; no change).
+- Settings > 描画 > 2Dの色の濃さ: 30 / 50 / 65 (標準) / 80 / 100 % (app
+  setting mpr2dAlpha, per device). segments.js mprSegmentAlpha(seg) =
+  min(max(0.75, k), opacity × k), used by both 2D painters (simple and
+  per-voxel path); at 65 % it is the pre-430 min(0.75, opacity × 0.65)
+  exactly. A change repaints the 2D views ('vrl-settings').
+- tools/mpr-alpha-check.mjs (npm run mpr-alpha-check): practice data, fat
+  segment; formula equal for the opacity steps, 30 % / 100 % change 54283
+  pixels, back to 65 % restores the image (0 pixels apart).
+- Connectivity survey (sources read in code): 6 — ITK default, scipy,
+  MorphoLibJ default, 3D Slicer Islands (hard-coded); 26 — scikit-image,
+  Fiji 3D Objects Counter, BoneJ (26 foreground / 6 background), Avizo
+  labeling per the BoneJ paper; Dragonfly offers both; CTAn unverified.
+Checks: lint, unit tests, boot-check, mpr-alpha-check, result-2d-check.
+
+## Handoff (after build 430)
+
+State: build 430 on claude/dicom-viewer-handoff-eaqyyu (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting, needs a new PR) (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

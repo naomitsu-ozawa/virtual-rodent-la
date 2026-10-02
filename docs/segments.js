@@ -1,9 +1,10 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261002-build429';
-import { hexRgb } from './utils.js?v=20261002-build429';
-import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261002-build429';
-import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261002-build429';
+import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261002-build430';
+import { hexRgb } from './utils.js?v=20261002-build430';
+import { settings } from './app-settings.js?v=20261002-build430';
+import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261002-build430';
+import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261002-build430';
 export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
 export const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
 // build 407 (owner): every segment starts at 100 % opacity (translucent segments are heavy to render)
@@ -33,12 +34,15 @@ export function sourceMprMemoryView(v){
  if(!v._mprMemoryView||v._mprMemoryView.data!==v.mprData)v._mprMemoryView={data:v.mprData,columns:v.columns,rows:v.rows,slices:v.slices,spacing:v.spacing,min:v.min,max:v.max};
  return v._mprMemoryView;
 }
+// build 430 (owner: the 2D colour strength settable): colour weight over the CT grey = segment opacity × the setting
+// (default 65 %, the value before 430: identical then); the 75 % cap of before stays unless the setting itself is higher
+export function mprSegmentAlpha(seg){const s=+settings.get('mpr2dAlpha');const k=Number.isFinite(s)&&s>0?Math.min(1,s):0.65;return Math.min(Math.max(.75,k),seg.opacity*k)}
 export function activeMprSegments(){
  const out=[],baseView=volume?.sourceBacked?sourceMprMemoryView(volume):volume;
  for(const key of ['lung','fat','soft','bone']){
   const seg=segmentState[key];if(!seg.active||!seg.enabled)continue;
   const edit=segmentEditState[key],processedMask=baseView&&segmentNeedsGlobalMask(seg)?getProcessedSegmentMask(baseView,seg):null,processedRuns=volume?.sourceBacked&&segmentNeedsGlobalMask(seg)?(edit.finalRuns||edit.baseRuns):null;
-  out.push({key,seg,edit,processedMask,processedRuns,rgb:hexRgb(seg.color),alpha:Math.min(.75,seg.opacity*.65)});
+  out.push({key,seg,edit,processedMask,processedRuns,rgb:hexRgb(seg.color),alpha:mprSegmentAlpha(seg)});
  }
  return out;
 }

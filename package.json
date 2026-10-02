@@ -21,7 +21,8 @@
     "edit-consistency-check": "node tools/edit-consistency-check.mjs",
     "analysis-fringe-check": "node tools/analysis-fringe-check.mjs",
     "result-2d-check": "node tools/result-2d-check.mjs",
-    "plane-sync-check": "node tools/plane-sync-check.mjs"
+    "plane-sync-check": "node tools/plane-sync-check.mjs",
+    "mpr-alpha-check": "node tools/mpr-alpha-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
