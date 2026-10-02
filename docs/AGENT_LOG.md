@@ -3954,14 +3954,33 @@ IDCAP.
   a plain segment is base − exclusion, not a keep mask; fixed in the tool).
 Checks: lint, unit tests, boot-check, edit-consistency-check (both).
 
-## Handoff (after build 418)
+## Build 419 — analysis result colours in the 2D views, voxel for voxel
 
-State: build 418 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: the colouring should show on the 2D side too.
+- Before: 2D drew the results as a faint overlay (18 %, 40 % focused) on
+  top of the segment colour, and only in the analysis mode.
+- mpr-render.js: a voxel of a visible result is painted in the result's
+  colour instead of its segment's, at the segment's opacity, in every mode
+  (as in 3D); exact membership from the result's runs (plane masks on
+  full-resolution planes, else run lookup); both the source-backed and the
+  in-memory plane painters. The analysis mode keeps the 2 px outline of
+  the focused result; the faint fill is gone (it would double the colour).
+- tools/result-2d-check.mjs (npm run result-2d-check): practice data, fat
+  segment, its largest component as the result; the pixels that change
+  when the result is added equal its voxels on the plane exactly — axial
+  15157 / 15157, coronal 17874 / 17874, sagittal 9281 / 9281, 0 extra,
+  0 missing.
+Checks: lint, unit tests, boot-check, result-2d-check,
+analysis-project-check.
+
+## Handoff (after build 419)
+
+State: build 419 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
