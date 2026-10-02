@@ -1,10 +1,11 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261002-build432';
-import { hexRgb } from './utils.js?v=20261002-build432';
-import { settings } from './app-settings.js?v=20261002-build432';
-import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261002-build432';
-import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261002-build432';
+import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261002-build433';
+import { hexRgb } from './utils.js?v=20261002-build433';
+import { settings } from './app-settings.js?v=20261002-build433';
+import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261002-build433';
+import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261002-build433';
+import { sourceFilterStages } from './source-filters.js?v=20261002-build433';
 export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
 export const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
 // build 407 (owner): every segment starts at 100 % opacity (translucent segments are heavy to render)
@@ -29,8 +30,11 @@ export function getProcessedSegmentMask(v,seg){
  if(seg.minComponent>0)mask=removeSmallMaskComponents(mask,w,h,d,seg.minComponent);
  seg._maskCache=mask;seg._maskCacheKey=key;return mask;
 }
+// build 433: the in-memory MPR copy holds the unfiltered CT; segments are defined on the filtered data (build 418),
+// so it may stand in for the source only while no filter is active (before, Opening & co. ignored the filters)
+export function sourceMemoryUsable(v){return !!v?.mprData&&!sourceFilterStages().length}
 export function sourceMprMemoryView(v){
- if(!v?.mprData)return null;
+ if(!sourceMemoryUsable(v))return null;
  if(!v._mprMemoryView||v._mprMemoryView.data!==v.mprData)v._mprMemoryView={data:v.mprData,columns:v.columns,rows:v.rows,slices:v.slices,spacing:v.spacing,min:v.min,max:v.max};
  return v._mprMemoryView;
 }

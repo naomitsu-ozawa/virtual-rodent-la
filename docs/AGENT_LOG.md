@@ -4210,9 +4210,27 @@ meant (the goal is the skin / subcutaneous fat border; measurements above).
   confident soft range.
 Checks: lint, unit tests, boot-check.
 
-## Handoff (after build 432)
+## Build 433 — processed segments ignored the filters (pre-existing, found while planning the seed growing)
 
-State: build 432 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults). Open: seeded growing fat / soft (in progress); owner check that 2D is no longer white. (VR/AR: WebGL2
+- Measured (practice data, fat −250…−50): base voxels plain 5418876 →
+  Gaussian 5682902, but with Opening 1: 4086436 without and WITH the
+  Gaussian. Cause: sourceRunsForSegment (and the surface-view builder) took
+  a segment that needs a global mask (Opening, Closing, hole fill, min
+  component, thin-region removal) from the in-memory MPR copy (v.mprData),
+  which holds the unfiltered CT, whatever the filters. 2D painted those runs
+  too, so 2D / 3D agreed with each other but not with the filters — against
+  the build 418 rule (segments are defined on the filtered data).
+- Fix: segments.js sourceMemoryUsable(v) = mprData and no active filter;
+  sourceMprMemoryView returns null otherwise; sourceRunsForSegment then
+  takes the filtered source path; the surface view builds such a segment
+  from its final runs. After: Opening 1 + Gaussian 4718414.
+- tools/processed-filter-check.mjs (npm run processed-filter-check).
+Checks: lint, unit tests, boot-check, processed-filter-check,
+edit-consistency-check, result-2d-check, analysis-project-check FILTER=1.
+
+## Handoff (after build 433)
+
+State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open: seeded growing fat / soft (in progress); owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
