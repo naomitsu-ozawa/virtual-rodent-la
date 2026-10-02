@@ -3918,14 +3918,34 @@ the cut face's colouring did not match the 3D shape at the periphery.
   (specks excluded); without a section 0 differing channels.
 Checks: lint, unit tests (WGSL), boot-check, volume-shader-check IDCAP.
 
-## Handoff (after build 416)
+## Build 417 — WebGPU surface hits: the result colour of the voxel that forms the surface
 
-State: build 416 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+- volume-shader-check IDHIT=1: for every bone surface hit (the segment
+  with the result) the voxel the surface is attributed to (insideVoxelTc),
+  the segment and whether it is coloured, against the voxel truth.
+- Before (416, regionOverlayNear from build 375 with the index texture):
+  region radius 21 inside the bone sphere (22): 58 coloured hits, 43 of
+  them on a voxel outside the result; radius 22: 4 of 7232.
+- Fix: the colour comes from analysisOverlayAt of insideVoxelTc's voxel
+  (the first candidate voxel that is in the segment, now with its own edit
+  / processing mask entry) in both the index-texture and the row path.
+- After: 0 coloured hits outside the result (15 / 7228 coloured); without
+  results 0 differing channels; with results 12 channels differ; SwiftShader
+  pass 3005 → 3089 ms (noise level).
+- Inherent, reported to the owner: 273 of 19394 bone hits lie where no
+  candidate voxel is a bone voxel (the interpolated iso-surface runs
+  outside the voxel set); they stay uncoloured.
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check IDHIT /
+IDCAP.
+
+## Handoff (after build 417)
+
+State: build 417 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to

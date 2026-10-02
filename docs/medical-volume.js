@@ -328,7 +328,8 @@ fn insideVoxelTc(tc0:vec3<f32>,dir:vec3<f32>,inward:vec3<f32>,seg:u32)->vec3<f32
  let a=u.segments[seg*2u];
  let di=objToTc(inward);let dr=objToTc(dir);
  var cand=array<vec3<f32>,6>(tc0,tc0+di*0.5,tc0+di*1.0,tc0+dr*0.5,tc0+dr*1.0,tc0+di*1.5);
- for(var k:u32=0u;k<6u;k=k+1u){let v=huVoxel(cand[k]);if(v>=a.x&&v<=a.y){return cand[k];}}
+ // build 417: the candidate must be a member of the segment, its own edit / processing mask entry included
+ for(var k:u32=0u;k<6u;k=k+1u){let v=huVoxel(cand[k]);if(v>=a.x&&v<=a.y&&editAllows(seg,cand[k])){return cand[k];}}
  return tc0;
 }
 fn segmentIndexAt(tc0:vec3<f32>)->i32{return segmentIndexFor(huAt(tc0),tc0);}
@@ -508,13 +509,15 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      let inward=select(-n,n,hvPrev<-1e8||hvPrev<a.x);
      // build 375: regions only on the segments that have one (mask word at the colour table start); with the index texture the lookup needs no inside-voxel search
      let anyRegion=analysisOverlay[0]!=0u&&(analysisOverlay[analysisOverlay[0]]&(1u<<u32(idx)))!=0u;
-     let regionByTexture=anyRegion&&u.section.w>0.5;
-     var tcv=tc;if(previewRows[0]!=0u||(anyRegion&&!regionByTexture)){tcv=insideVoxelTc(tc,dir,inward,u32(idx));}
+     // build 417 (owner: no colour on a voxel the result does not contain): the result colour of a surface hit is the
+     // result of the one voxel that forms the surface there (insideVoxelTc: the first candidate voxel in the segment) in
+     // both the index-texture and the row path; regionOverlayNear (build 375) took any result voxel among the candidates
+     var tcv=tc;if(previewRows[0]!=0u||anyRegion){tcv=insideVoxelTc(tc,dir,inward,u32(idx));}
      let isCutPreview=previewContains(u32(idx),tcv);
      var col=u.segments[u32(idx)*2u+1u].rgb;
      var alpha=clamp(a.z,0.03,1.0);
      var lit=col*diffuse+vec3<f32>(spec);
-     var overlay=0u;if(anyRegion&&!isCutPreview){if(regionByTexture){overlay=regionOverlayNear(tc,dir,inward);}else{overlay=analysisOverlayAt(tcv);}}
+     var overlay=0u;if(anyRegion&&!isCutPreview){overlay=analysisOverlayAt(tcv);}
      if(overlay!=0u){
       col=vec3<f32>(f32((overlay>>16u)&255u),f32((overlay>>8u)&255u),f32(overlay&255u))/255.0;
       let focused=(overlay&0x1000000u)!=0u;
