@@ -4228,9 +4228,28 @@ Checks: lint, unit tests, boot-check.
 Checks: lint, unit tests, boot-check, processed-filter-check,
 edit-consistency-check, result-2d-check, analysis-project-check FILTER=1.
 
+Seed growing, gate result (after 433, not shipped; kernel kept out of the
+repo): phantom = layers along x (air | skin 1–4 vox | fat 2–10 vox | muscle,
++120 / −110 / +140 HU), Gaussian blur σ 0.8–1.3 vox, noise 0–40 HU, five
+layouts in one volume; errors = body voxels not given their true class.
+- The best single threshold (searched, −100…100) already gets everything
+  but the air / skin rim column at noise 0 (σ 1: 192 errors = the rim).
+- Growing between confident fat and soft ranges (sum |ΔHU| path cost,
+  radius 4): no better (σ 1, noise 25: 236–277 vs 237). Local midpoint
+  threshold: no better either.
+- With air as a third competitor (fat-range voxels touching air become
+  band): better at σ 0.8 (noise 15: 163 → 40–90) and σ 1 (noise 25: 237 →
+  179), not at σ 1.3. Depends strongly on the confident ranges.
+- Practice data (z 0.3–0.75, fat −250…−50, axial): 8.3 % of the fat-range
+  voxels touch a value below −250 directly (4-neighbour), 2.1 % at 2 steps;
+  crops of the body outline show the fat range as a one-voxel shell along
+  the whole skin surface (air + skin partial volume), little real
+  subcutaneous fat at those places. Reported to the owner with the crops;
+  asked for a view of their data where it goes wrong before building more.
+
 ## Handoff (after build 433)
 
-State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open: seeded growing fat / soft (in progress); owner check that 2D is no longer white. (VR/AR: WebGL2
+State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open: seeded growing fat / soft — gate not passed on the phantom, waiting for the owner's example; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
