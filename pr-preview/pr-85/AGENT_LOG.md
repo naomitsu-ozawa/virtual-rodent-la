@@ -3804,6 +3804,29 @@ REGIONR=22 486 channels differ (cap rim), REGIONR=21 501; without a
 section 0. Not reproducible on the owner's data here.
 Checks: lint, unit tests (WGSL), boot-check, volume-shader-check.
 
+## Practice-data check after build 412 (tool only, no app change)
+
+Owner: why not check on the practice data — filters may matter. Right:
+the phantom could not show it. The app's WebGPU view does not start in
+the headless Chromium here (three.js WebGPU: texture view 'swizzle'
+error), so tools/analysis-fringe-check.mjs uses the app's CPU path on
+docs/demo/sample1: fat segment (−250..−50), final runs, their largest
+connected component (= the analysis region), then segment voxels outside
+it by contact with it.
+- No filter: 5418876 fat voxels, 57413 components, largest 3788129;
+  outside it, face contact 0 (6-connectivity, as expected), edge / corner
+  contact only 18450.
+- Spatial Filter 3D (gaussian): 5682902 voxels, 13593 components, largest
+  5313034; face 0, edge / corner only 8256.
+Reading: the analysis labels components with 6-connectivity (face
+neighbours). Voxels touching the region only along an edge or a corner
+are separate components, so they stay in the segment colour — the thin
+lines along the result boundary, with and without the filter. The 411 /
+412 neighbour search on the cap hides part of them (display only).
+Owner decision needed: 26-connectivity for the analysis (those voxels
+join the region; volumes change, e.g. +18450 voxels here, and depots
+touching at a corner merge) or keep 6 and show the boundary as is.
+
 ## Handoff (after build 412)
 
 State: build 412 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
