@@ -29,6 +29,11 @@ const state=()=>pg.evaluate(async()=>{const v=new URL(document.querySelector('sc
  return{section:st.sectionViewOpen?st.sectionViewPlane:null,reverse:st.sectionViewReverse,overlay:['axial','coronal','sagittal'].filter(k=>mo.mpr3DVisibility[k]),tab,main,view}});
 const steps=[['section analysis: coronal','[data-section-view="coronal"]','coronal'],['workspace tab: sagittal','[data-ipad-mpr="sagittal"]','sagittal'],['3D plane button: axial (off → on)',null,'axial'],['main view: coronal','[data-view-main="coronal"]','coronal']];
 const out=[];let bad=false;
+// build 422: with the section closed, choose sagittal in the 2D tab, then open the section analysis: it must open on sagittal
+await pg.evaluate(()=>document.querySelector('[data-ipad-mpr="sagittal"]')?.click());await pg.waitForTimeout(500);
+await pg.evaluate(()=>document.getElementById('section-view-toggle')?.click());await pg.waitForTimeout(800);
+{const s=await state();const ok=s.section==='sagittal'&&s.reverse===true&&s.tab==='sagittal';if(!ok)bad=true;out.push({label:'open section analysis after choosing sagittal',expect:'sagittal',...s,ok})}
+await pg.evaluate(()=>document.getElementById('section-view-toggle')?.click());await pg.waitForTimeout(500);
 for(const [label,sel,p] of steps){
  if(sel)await pg.evaluate(s=>document.querySelector(s)?.click(),sel);
  else await pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,mo=await import('./mpr3d-overlay.js'+v);if(mo.mpr3DVisibility.axial)document.querySelector('[data-3d-overlay="axial"]').click();document.querySelector('[data-3d-overlay="axial"]').click()});
