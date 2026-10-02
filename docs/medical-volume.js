@@ -447,8 +447,16 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
      // itself has no result, the six neighbouring voxels are tried
      if(analysisOverlay[0]!=0u&&(analysisOverlay[analysisOverlay[0]]&(1u<<u32(capIndex)))!=0u){
       var ov=analysisOverlayAt(ctc);
+      // build 412: capSegmentIndex finds the segment up to 2 voxels along the section normal, so the result is searched
+      // there too (±1, ±2 along the normal, as capSegmentIndex), then in the 8 in-plane neighbours (diagonals included)
       if(ov==0u){let vx=1.0/max(u.textureDims.xyz,vec3<f32>(1.0));
-       for(var k:u32=0u;k<6u;k=k+1u){var off=vec3<f32>(0.0);let sgn=select(-1.0,1.0,(k&1u)==0u);if(k<2u){off.x=vx.x*sgn;}else if(k<4u){off.y=vx.y*sgn;}else{off.z=vx.z*sgn;}
+       var nrm=vec3<f32>(0.0,0.0,vx.z);var ua=vec3<f32>(vx.x,0.0,0.0);var va=vec3<f32>(0.0,vx.y,0.0);
+       if(u.section.x>1.5&&u.section.x<2.5){nrm=vec3<f32>(0.0,vx.y,0.0);va=vec3<f32>(0.0,0.0,vx.z);}
+       if(u.section.x>=2.5){nrm=vec3<f32>(vx.x,0.0,0.0);ua=vec3<f32>(0.0,0.0,vx.z);}
+       for(var k:i32=0;k<12;k=k+1){
+        var off=vec3<f32>(0.0);
+        if(k<4){off=nrm*(f32(k/2+1)*select(-1.0,1.0,(k&1)==0));}
+        else{let j=k-4;let a=f32(select(select(-1,0,j==1||j==6),1,j==2||j==4||j==7));let b=f32(select(select(-1,0,j==3||j==4),1,j>=5));off=ua*a+va*b;}
         ov=analysisOverlayAt(ctc+off);if(ov!=0u){break;}}}
       if(ov!=0u){capColor=mix(vec3<f32>(f32((ov>>16u)&255u),f32((ov>>8u)&255u),f32(ov&255u))/255.0,vec3<f32>(1.0),0.22);}
      }
