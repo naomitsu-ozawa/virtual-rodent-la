@@ -3973,14 +3973,32 @@ Owner: the colouring should show on the 2D side too.
 Checks: lint, unit tests, boot-check, result-2d-check,
 analysis-project-check.
 
-## Handoff (after build 419)
+## Build 420 — one selected plane shared by the section analysis, 3D plane buttons, main view and 2D tabs
 
-State: build 419 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: when choosing a section direction (section analysis etc.) every
+place has to be set separately; choose once, everything follows.
+- app.js selectPlane(p, source): an open section switches to p, the 3D
+  view shows p's plane and hides the other two (the XYZ axes untouched),
+  a 2D main view switches to p, the workspace 2D tab selects p
+  ('vrl-plane-selected'; workspace-ui sends 'vrl-plane-chosen').
+  Sources: section analysis buttons, a 3D plane button turned on, a 2D
+  plane brought to the main view (button or drag), the workspace 2D tab.
+  Re-entrancy guard; start-up and view-mode changes do not broadcast. VR
+  keeps its own planes.
+- tools/plane-sync-check.mjs (npm run plane-sync-check): practice data;
+  section analysis → coronal, workspace tab → sagittal, 3D button → axial,
+  main view → coronal: after each, section, 3D plane, tab (and the main
+  view when it is a 2D plane) all show the chosen plane.
+Checks: lint, unit tests, boot-check, plane-sync-check, result-2d-check.
+
+## Handoff (after build 420)
+
+State: build 420 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420: shared plane selection). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
