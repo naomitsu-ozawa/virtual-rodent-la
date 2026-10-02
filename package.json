@@ -22,7 +22,8 @@
     "analysis-fringe-check": "node tools/analysis-fringe-check.mjs",
     "result-2d-check": "node tools/result-2d-check.mjs",
     "plane-sync-check": "node tools/plane-sync-check.mjs",
-    "mpr-alpha-check": "node tools/mpr-alpha-check.mjs"
+    "mpr-alpha-check": "node tools/mpr-alpha-check.mjs",
+    "sigmoid-check": "node tools/sigmoid-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

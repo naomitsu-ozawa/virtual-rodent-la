@@ -59,6 +59,20 @@ describe('cpu-filters', () => {
     }
   });
 
+  // build 431: contrast around the centre, HU kept outside centre ± width/2
+  it('sigmoid keeps the centre and the values outside the window, strength 0 changes nothing', async () => {
+    const v = vol(41, 1, 1, i => -200 + i * 10); // −200 … 200 HU
+    const r = await K.cpuSigmoid(v, { strength: 0.5, center: -30, width: 200 });
+    const at = hu => r.data[(hu + 200) / 10];
+    expect(at(-30)).toBeCloseTo(-30, 4);
+    for (const hu of [-200, -130, 70, 200]) expect(at(hu)).toBe(hu);
+    expect(at(-60)).toBeLessThan(-60); // below the centre: pushed down (towards fat)
+    expect(at(0)).toBeGreaterThan(0); // above: pushed up (towards soft tissue)
+    for (let i = 1; i < r.data.length; i++) expect(r.data[i]).toBeGreaterThanOrEqual(r.data[i - 1]);
+    const z = await K.cpuSigmoid(v, { strength: 0, center: -30, width: 200 });
+    for (let i = 0; i < z.data.length; i++) expect(z.data[i]).toBe(v.data[i]);
+  });
+
   it('reports progress and returns loop statistics', async () => {
     const onProgress = vi.fn();
     await K.cpuGaussian3D(vol(4, 4, 4, 1), { strength: 0.5, passes: 1 }, onProgress);
