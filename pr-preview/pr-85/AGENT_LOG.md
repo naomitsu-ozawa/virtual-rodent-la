@@ -4019,14 +4019,38 @@ already be selected (it opened with no plane).
   unchanged.
 Checks: lint, unit tests, boot-check, plane-sync-check.
 
-## Handoff (after build 422)
+## Build 423 — VR / AR: result labels at the laser point (faint while pointing, pinned with the trigger)
 
-State: build 422 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: while the 解析 tab is open, or when no section is shown, the trigger
+should show the analysis result of the region the laser points at, as an
+annotation in 3D. Decisions: (1) one label per result, the trigger pins /
+unpins it; (2) a faint label while just pointing; (3) no result → the
+segment name with 解析結果なし.
+- vr-pick.js marchClassificationHitInfo: the volume march also returns the
+  hit voxel and the matching channel (unit test added).
+- buildRegionIndex also stores the result's list position per voxel
+  (ids, up to 255 results) on the same grid as the classification.
+- vr-view.js: label mode = (menu open on the 解析 tab) or no section shown.
+  Faint label (55 %) per hand for the current volume hit: colour disc,
+  number as in the 解析 tab, segment, mm³; or the segment name and
+  解析結果なし. Trigger on a result (no frame targeted) pins / unpins its
+  label at that point; pinned labels follow the volume (anchored in the
+  volume's object space, re-placed each frame), face the viewer, with a
+  thin line to the point; no depth test so they stay readable. Section
+  trigger handling is unchanged when a section is shown.
+- analysis-project-check: the region ids match the region's voxels (100 on
+  the 256 grid). The XR frame loop has no headless run: Quest check needed.
+Checks: lint, unit tests (6 vr-pick), boot-check, vr-gpu-prepare-check,
+analysis-project-check.
+
+## Handoff (after build 423)
+
+State: build 423 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use; 423: VR result labels). Open: Quest check of 423. Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
