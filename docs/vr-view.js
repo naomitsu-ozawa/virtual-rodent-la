@@ -8,16 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build428';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build428';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build428';
-import { sceneState, analysisRegions } from './state.js?v=20261002-build428';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build428';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build428';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build428';
-import { tr } from './i18n.js?v=20261002-build428';
-import { APP_BUILD } from './version.js?v=20261002-build428';
-import { wc, ww } from './ui-shell.js?v=20261002-build428';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build429';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build429';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build429';
+import { sceneState, analysisRegions } from './state.js?v=20261002-build429';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build429';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build429';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build429';
+import { tr } from './i18n.js?v=20261002-build429';
+import { APP_BUILD } from './version.js?v=20261002-build429';
+import { wc, ww } from './ui-shell.js?v=20261002-build429';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1044,8 +1044,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // build 427 (owner: 小 is right; the pointing label at the hand): default 小; the pointing label is a chip above its own
  // controller (never over the volume, always at reading distance), framed in that hand's laser colour, same size setting
  const LABEL_SIZES=[0.5,0.7,1],labelScale=()=>LABEL_SIZES[settings.labelSize]??LABEL_SIZES[0];
- // above the controller, clear of the menu badge (y 0.05, 3 cm high) and, on the left hand, of the section panel (x < −0.015)
- const HAND_CHIP={left:[0.03,0.095,0.02],right:[0,0.095,0.02]};
+ // build 429 (owner: above the hand it keeps covering the volume): at the root of the laser instead — just in front of the
+ // ray origin and under the ray (target-ray space: −z along the ray), below the menu badge (y 0.05) and the section panel
+ const HAND_CHIP={left:[0,-0.03,-0.03],right:[0,-0.03,-0.03]};
  const hoverLabelOf=c=>c.userData.hoverLabel||=Object.assign(makeLabel(),{hand:c});
  const labelMode=()=>(ui.open&&ui.tab===5)||!section.on;
  const makeLabel=()=>{
