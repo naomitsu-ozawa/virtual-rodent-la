@@ -3918,6 +3918,12 @@ branching except VR (share what can be shared); do not break what works on
 Mac/iPad; no wasted features (e.g. nothing can be edited inside VR); when a
 solution is not in sight, stop and prepare a handoff. Bump the build with
 npm run bump-build for every pushed change and log it here.
+Source of truth (owner, after build 415): the segmentation adjusted in 2D
+(segment settings: CT range, air exclusion, opening, … and the 2D views)
+is the master; 3D (WebGPU volume, VR / AR) is for checking it. 3D must
+always follow what 2D holds, never the other way round; a 2D / 3D
+difference is a 3D bug unless 2D itself is stale. Measure with
+npm run edit-consistency-check.
 Progress (owner, build 405): every long operation shows its progress only
 through docs/progress-modal.js — setBusySlot(name, on, {label, cancel,
 counted}) / reportBusyProgress / setBusyLabel, or the adapters
