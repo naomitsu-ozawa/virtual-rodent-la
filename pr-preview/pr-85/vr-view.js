@@ -8,16 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build424';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build424';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build424';
-import { sceneState, analysisRegions } from './state.js?v=20261002-build424';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build424';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build424';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build424';
-import { tr } from './i18n.js?v=20261002-build424';
-import { APP_BUILD } from './version.js?v=20261002-build424';
-import { wc, ww } from './ui-shell.js?v=20261002-build424';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build425';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build425';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build425';
+import { sceneState, analysisRegions } from './state.js?v=20261002-build425';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build425';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build425';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build425';
+import { tr } from './i18n.js?v=20261002-build425';
+import { APP_BUILD } from './version.js?v=20261002-build425';
+import { wc, ww } from './ui-shell.js?v=20261002-build425';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1054,13 +1054,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(r){const hex='#'+r.color.toString(16).padStart(6,'0');ctx.fillStyle=hex;ctx.beginPath();ctx.arc(62,77,34,0,Math.PI*2);ctx.fill();
    ctx.fillStyle='#eef5f8';ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(hit.id+'. '+r.segmentKeys.map(k=>tr(k)).join('+'),118,50);ctx.font='40px system-ui,sans-serif';ctx.fillText(r.mm3.toFixed(2)+' mm³',118,108)}
   else{ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(seg,34,50);ctx.font='38px system-ui,sans-serif';ctx.fillStyle='#9fb3c3';ctx.fillText(ja?'解析結果なし':'no analysis result',34,108)}
-  lb.tex.needsUpdate=true;lb.m.material.opacity=faint?0.55:1;lb.line.material.opacity=faint?0.4:0.9;
+  // build 425 (owner: the faint label in the way): the pointing label is half size, 40 %, without the line, just above the dot
+  lb.tex.needsUpdate=true;lb.m.material.opacity=faint?0.4:1;lb.line.material.opacity=0.9;lb.faint=faint;lb.m.scale.setScalar(faint?0.5:1);
  };
  const placeLabel=lb=>{
   lb.world.copy(lb.anchor);mesh.localToWorld(lb.world);
-  tmpLb.subVectors(head,lb.world).normalize();lb.m.position.copy(lb.world).addScaledVector(tmpLb,0.012);lb.m.position.y+=0.045;lb.m.lookAt(head);
+  tmpLb.subVectors(head,lb.world).normalize();lb.m.position.copy(lb.world).addScaledVector(tmpLb,0.012);lb.m.position.y+=lb.faint?0.016:0.045;lb.m.lookAt(head);
   const a=lb.line.geometry.attributes.position;a.setXYZ(0,lb.world.x,lb.world.y,lb.world.z);a.setXYZ(1,lb.m.position.x,lb.m.position.y-LABEL_H/2,lb.m.position.z);a.needsUpdate=true;
-  lb.m.visible=lb.line.visible=true;
+  lb.m.visible=true;lb.line.visible=!lb.faint;
  };
  const hideLabel=lb=>{if(lb){lb.m.visible=lb.line.visible=false}};
  const togglePin=(c,hit)=>{
