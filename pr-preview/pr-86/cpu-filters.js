@@ -4,8 +4,8 @@
 // this module has no UI dependencies and is unit-tested
 // (tests/unit/cpu-filters.test.js). The loops are the former app.js
 // apply* bodies, unchanged apart from reading params instead of sliders.
-import { frameYield } from './utils.js?v=20261002-build430';
-import { boxBlur3D } from './mask-ops.js?v=20261002-build430';
+import { frameYield } from './utils.js?v=20261002-build431';
+import { boxBlur3D } from './mask-ops.js?v=20261002-build431';
 export async function cpuGaussian3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d,src=v.data;
  const strength=params.strength;
@@ -201,15 +201,15 @@ export async function cpuUnsharpMask3D(v,params,onProgress=()=>{}){
  return{data:out};
 }
 export async function cpuSigmoid(v,params,onProgress=()=>{}){
+ // build 431 (owner: sharpen e.g. the fat / soft tissue border): within centre ± width/2 the values are pushed away from
+ // the centre (c + hw·tanh(g·t)/tanh(g), t = (x − c)/hw, g = 6·strength); the centre and every value outside the window
+ // keep their HU, strength 0 changes nothing, the curve meets the identity at both window ends. Before 431 the S-curve
+ // spanned the whole data range and moved the centre (198 → 700 HU at 0.5), so the segment CT ranges lost their meaning.
  const src=v.data,out=new Float32Array(src.length);
- const min=v.min,max=v.max,range=Math.max(1,max-min);
- const strength=params.strength,gain=2+strength*10;
- const centerValue=Math.max(min,Math.min(max,params.center)),center=(centerValue-min)/range;
- const lo=1/(1+Math.exp(gain*center)),hi=1/(1+Math.exp(-gain*(1-center))),norm=Math.max(1e-6,hi-lo);
+ const centerValue=+params.center,hw=Math.max(1,(+params.width||200)/2),g=Math.max(0,+params.strength||0)*6,k=g>1e-4?1/Math.tanh(g):0;
  for(let i=0;i<src.length;i++){
-  const x=Math.max(0,Math.min(1,(src[i]-min)/range));
-  const y=(1/(1+Math.exp(-gain*(x-center)))-lo)/norm;
-  out[i]=min+Math.max(0,Math.min(1,y))*range;
+  const x=src[i],t=(x-centerValue)/hw;
+  out[i]=k&&t>-1&&t<1?centerValue+hw*Math.tanh(g*t)*k:x;
   if((i&0x3ffff)===0){onProgress(i+1,src.length);await frameYield()}
  }
  return{data:out,centerValue};

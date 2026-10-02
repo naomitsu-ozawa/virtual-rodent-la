@@ -4150,12 +4150,31 @@ Sigmoid (owner: "not the expected behaviour"), measured on the practice data
 mapping is over the whole data range and the centre is not a fixed point —
 198 → 290 / 700 / 838 HU at strength 0 / 0.5 / 1; strength 0 is not the
 identity (0 → 72, 40 → 116); soft tissue 40 → 398 HU at 0.5, so the segment
-CT ranges no longer mean HU. Same formula in CPU, worker and WGSL. Fix
-proposed to the owner, waiting for what they expected.
+CT ranges no longer mean HU. Same formula in CPU, worker and WGSL. Fixed in 431.
 
-## Handoff (after build 430)
+## Build 431 — Sigmoid redone: contrast around a centre in HU
 
-State: build 430 on claude/dicom-viewer-handoff-eaqyyu (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting, needs a new PR) (VR/AR: WebGL2
+Owner: Sigmoid is there to adjust contrast, e.g. to sharpen the blurred fat /
+soft-tissue border (measurements of the old filter: entry above).
+- New mapping (CPU cpuSigmoid, source worker, WGSL; one formula): within
+  centre ± width/2, y = c + hw·tanh(g·t)/tanh(g), t = (x − c)/hw,
+  g = 6·strength; outside the window and at the centre the HU stay; the
+  curve meets the identity at both ends; strength 0 = no change; monotonic.
+- New control 幅（HU） 20–1000, default 200 (project param width; projects
+  without it keep the slider's value). Strength and centre as before.
+- tools/sigmoid-check.mjs (npm run sigmoid-check), practice data, axial mid
+  plane, centre −31 (slider step), width 200, strength 0.5: filtered = formula
+  of the unfiltered values (max error 7e-6), 0 values outside the window
+  changed; voxels in −80…20 HU 13346 → 4502, fat (−130…−80) 7832 → 10017,
+  soft tissue (20…70) 9435 → 13502. The WebGPU kernel (same formula) is
+  covered by the WGSL unit test only (no WebGPU headless).
+- Image change on purpose (owner's request); projects saved with the old
+  Sigmoid look different now.
+Checks: lint, unit tests (new sigmoid test), boot-check, sigmoid-check.
+
+## Handoff (after build 431)
+
+State: build 431 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone) (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
