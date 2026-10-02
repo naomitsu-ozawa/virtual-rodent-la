@@ -77,7 +77,7 @@ VRL の GPU 上のボリュームは `rg8unorm`（1ボクセル2バイト、`doc
 | D1 | WebGPU 仕様の既定の上限: `maxTextureDimension3D` 2048、`maxTextureArrayLayers` 256、`maxSampledTexturesPerShaderStage` 16、`maxStorageBufferBindingSize` 128 MiB、`maxBufferSize` 256 MiB | **A** | gpuweb/gpuweb の `spec/index.bs` 原文。実際の機器はこれより大きい値を出すことがある（→ D3） |
 | D2 | VRL は 1 枚の 3D テクスチャにボリュームを入れ、一辺が `maxTextureDimension3D` を超えると全体を同じ倍率で縮小する | **A** | `docs/medical-volume.js:733`（`volumeTexturePlan`）、`:864–865` |
 | D3 | Mac（Metal）や Windows（D3D12）の実際の `maxTextureDimension3D` | **C** | 機器ごとに `adapter.limits` で実測する |
-| D4 | VR モード（WebGL2）の `MAX_3D_TEXTURE_SIZE` | **C** | WebGL2 仕様の最低保証は 256。実際の値は機器ごとに実測する |
+| D4 | VR モード（WebGL2）の `MAX_3D_TEXTURE_SIZE` | **C** | 実際の値は機器ごとに実測する（仕様上の最低保証値は記憶では 256 だが、未確認） |
 | D5 | Quest 3 / 3S の本体メモリは 8 GB | **B** | Qualcomm の機器一覧、Tom's Hardware など複数 |
 
 **結論**: 1024² × 2,000 枚以上をそのままの解像度で描くには、**z 方向を複数のテクスチャ（ブロック）に分けて持つ作業が必要**。
@@ -153,6 +153,24 @@ B は、A が使えない場合（Mac で完結させたい場合など）に進
 - Windows PC と Mac の両方で、`adapter.limits.maxTextureDimension3D`、`maxBufferSize`、
   WebGL2 の `MAX_3D_TEXTURE_SIZE` を記録する（D3・D4）。
 - 1024² × 2,000 枚程度のデータ（実データか合成データ）が読み込めるか、メモリはどれだけか、3D 表示は何 fps かを見る。
+
+### 確認 3（B: Mac 自作経路を続ける場合のみ）: Quest Browser の対応状況を調べるページ
+
+`/xr/` の確認ページと同じ要領で、次を Quest 上で報告するページを作る（オーナーの了承後）。
+
+- `VideoDecoder.isConfigSupported`: H.264 / HEVC / AV1 が、左右並べの候補解像度とフレームレートで使えるか（R11）
+- `VideoFrame` を WebGL の `texImage2D` でテクスチャに貼れるか
+- `XRMediaBinding` が使えるか（R12）
+- WebXR が返す各目の視野と投影行列（4 章 1 の判断材料）
+
+### オーナーが数分で確度を上げられる項目
+
+この調査環境からは開けなかったページ。ブラウザで開いて内容を確認すれば、B を A に上げられる。
+
+- W2（Chrome が求める OpenXR の拡張機能）: https://chromium.googlesource.com/chromium/src/+/HEAD/device/vr/README.md
+- W6（Link の PC 要件）: https://www.meta.com/help/quest/140991407990979/
+- R12（Quest Browser の WebXR Layers）: https://developers.meta.com/horizon/documentation/web/webxr-layers/
+- R10・R11（Quest Browser の動画対応、WebCodecs の記載の有無）: https://developers.meta.com/horizon/documentation/web/browser-video/
 
 ### オーナーに決めてもらうこと
 
