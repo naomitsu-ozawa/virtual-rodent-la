@@ -332,19 +332,16 @@ fn insideVoxelTc(tc0:vec3<f32>,dir:vec3<f32>,inward:vec3<f32>,seg:u32)->vec3<f32
  return tc0;
 }
 fn segmentIndexAt(tc0:vec3<f32>)->i32{return segmentIndexFor(huAt(tc0),tc0);}
+// build 416 (owner: views must agree voxel for voxel; the cut face's periphery did not match): the section cap is a
+// cross-section, so it shows exactly what the 2D slice shows — the segment of the voxel at the cap point by that
+// voxel's own stored value (and the edit / processing masks), no interpolation and no segment borrowed from the
+// neighbouring slices (it searched up to 2 voxels along the normal)
 fn capSegmentIndex(tc0:vec3<f32>)->i32{
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
- var idx=segmentIndexAt(tc);if(idx>=0){return idx;}
- let dims=max(u.dimsSlope.xyz,vec3<f32>(1.0));
- var axis=vec3<f32>(0.0,0.0,1.0);
- if(u.section.x>1.5&&u.section.x<2.5){axis=vec3<f32>(0.0,1.0,0.0);}
- if(u.section.x>=2.5){axis=vec3<f32>(1.0,0.0,0.0);}
- let voxelStep=axis/dims;
- for(var r:i32=1;r<=2;r=r+1){
-  let d=voxelStep*f32(r);
-  idx=segmentIndexAt(clamp(tc+d,vec3<f32>(0.0),vec3<f32>(0.999999)));if(idx>=0){return idx;}
-  idx=segmentIndexAt(clamp(tc-d,vec3<f32>(0.0),vec3<f32>(0.999999)));if(idx>=0){return idx;}
- }
+ let v=huVoxel(tc);
+ // the voxel's own edit / processing mask entry (editAllows looks up that voxel; the interpolated exclusion test of
+ // the ray march, excludeMaskedInside, is not used here)
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){return i32(s);}}
  return -1;
 }
 fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}

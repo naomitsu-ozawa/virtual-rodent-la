@@ -16,6 +16,11 @@ const counting=code=>('var<private> nFetch:u32=0u;var<private> nBrick:u32=0u;var
  .replace('fn editAllows(seg:u32,tc0:vec3<f32>)->bool{','fn editAllows(seg:u32,tc0:vec3<f32>)->bool{nEdit=nEdit+1u;')
  .replace(/return vec4<f32>\(acc\.rgb\+bg\*\(1\.0-acc\.a\),1\.0\);\n}`?$/,'return vec4<f32>(f32(nFetch),f32(nBrick),f32(nEdit),1.0);\n}');
 const shaders={A:shaderOf(fileA),B:fileB?shaderOf(fileB):null};
+// IDCAP=1 (build 416): a third pass per file returns, for every pixel whose ray reaches the section cap, the voxel at
+// the cap point (linear index + 1), the segment the cap shows (capSegmentIndex) and whether it takes a result colour;
+// the page compares them with the phantom's voxel truth (that voxel's HU in the segment range, inside the region)
+const CAPLINE='let cp=u.camOrigin.xyz+dir*capT;let ctc=texCoord(cp);let capIndex=capSegmentIndex(ctc);';
+const idCap=code=>{if(!code.includes(CAPLINE))throw new Error('IDCAP: cap line not found');return code.replace(CAPLINE,CAPLINE+'{let td=vec3<u32>(u.textureDims.xyz);let pv=min(vec3<u32>(clamp(ctc,vec3<f32>(0.0),vec3<f32>(0.999999))*u.textureDims.xyz),td-vec3<u32>(1u));var rg=0u;if(analysisOverlay[0]!=0u&&capIndex>=0){rg=analysisOverlayAt(ctc);}return vec4<f32>(f32((pv.z*td.y+pv.y)*td.x+pv.x)+1.0,f32(capIndex),select(0.0,1.0,rg!=0u),1.0);}')};
 const srv=http.createServer((q,r)=>{r.writeHead(200,{'content-type':'text/html'});r.end('<!doctype html><html><body></body></html>')}).listen(8778);
 const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--use-webgpu-adapter=swiftshader']});
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,400))});
@@ -107,12 +112,20 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
   times.sort((a,b)=>a-b);return{label,ms:times[0],px};
  };
  const out={A:await run(shaders.A,'A'),Ac:await run(shaders.Ac,'Ac','rgba32float')};if(shaders.B){out.B=await run(shaders.B,'B');out.Bc=await run(shaders.Bc,'Bc','rgba32float')}
+ // IDCAP: compare the cap's segment / result with the voxel truth
+ const truthSeg=(x,y,z)=>{const v=hu(x,y,z),boneOut=(edit===1&&z>=64&&y>=44&&y<=84&&x>=44&&x<=84)||(edit===2&&specks.has((z*N+y)*N+x));return v>=300&&v<=3000&&!boneOut?0:v>=-200&&v<=299?1:-1};
+ for(const k of ['Aid','Bid']){if(!shaders[k])continue;const r=await run(shaders[k],k,'rgba32float');if(r.errs){out[k]=r;continue}const px=r.px;let cap=0,segBad=0,segExtra=0,segMissing=0,regBad=0,regExtra=0,regMissing=0;
+  for(let i=0;i<px.length;i+=4){if(px[i]<0.5)continue;cap++;const id=Math.round(px[i])-1,x=id%N,y=((id/N)|0)%N,z=(id/(N*N))|0,ts=truthSeg(x,y,z),ss=Math.round(px[i+1]);
+   if(ss!==ts){segBad++;if(ts<0)segExtra++;else if(ss<0)segMissing++}
+   if(analysis&&ss===0){const tr=Math.hypot(x-64,y-64,z-64)<regionR,sr=px[i+2]>0.5;if(tr!==sr){regBad++;if(sr)regExtra++;else regMissing++}}}
+  out[k]={cap,segBad,segExtra,segMissing,regBad,regExtra,regMissing}}
  for(const k of ['Ac','Bc']){const r=out[k];if(!r||r.errs)continue;let f=0,br=0,e=0;for(let i=0;i<r.px.length;i+=4){f+=r.px[i];br+=r.px[i+1];e+=r.px[i+2]}r.sums={fetch:f,brick:br,edit:e};r.px=null}
  return{W,H,out};
-},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null},refine,overlap,mpr,analysis,section:!!process.env.SECTION,sectionZ:+(process.env.SECTION_Z??0.3),sectionSign:+(process.env.SECTION_SIGN??-1),regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22),edit:+(process.env.EDIT??0),specksOn:+(process.env.SPECKS??0)});
+},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null,Aid:process.env.IDCAP?idCap(shaders.A):null,Bid:process.env.IDCAP&&shaders.B?idCap(shaders.B):null},refine,overlap,mpr,analysis,section:!!process.env.SECTION,sectionZ:+(process.env.SECTION_Z??0.3),sectionSign:+(process.env.SECTION_SIGN??-1),regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22),edit:+(process.env.EDIT??0),specksOn:+(process.env.SPECKS??0)});
 await b.close();srv.close();
 const {W,H,out}=result;
 for(const k of Object.keys(out)){const r=out[k];if(r.errs){console.log(k,'COMPILE ERRORS',r.errs);process.exit(1)}
+ if(k.endsWith('id')){console.log(k+' (cap vs voxel truth): cap pixels '+r.cap+' · segment wrong '+r.segBad+' (shown where the voxel is not in it '+r.segExtra+', missing '+r.segMissing+') · result wrong '+r.regBad+' (coloured but not in the result '+r.regExtra+', missing '+r.regMissing+')');continue}
  if(r.sums)console.log(k+': per pixel — HU fetches '+(r.sums.fetch/(W*H)).toFixed(1)+', brick reads '+(r.sums.brick/(W*H)).toFixed(1)+', edit lookups '+(r.sums.edit/(W*H)).toFixed(1)+' (totals '+r.sums.fetch+' / '+r.sums.brick+' / '+r.sums.edit+')');
  else console.log(k+': SwiftShader pass '+r.ms.toFixed(0)+' ms (min of 6; CPU proxy, relative only)')}
 // PNG writer (no deps): zlib via node
