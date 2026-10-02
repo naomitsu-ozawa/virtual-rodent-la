@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume } from './state.js?v=20261002-build414';
-import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261002-build414';
-import { tr } from './i18n.js?v=20261002-build414';
-import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261002-build414';
-import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261002-build414';
-import { request3DRender } from './scene3d.js?v=20261002-build414';
-import { dispose } from './surface-mesh.js?v=20261002-build414';
+import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume } from './state.js?v=20261002-build415';
+import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261002-build415';
+import { tr } from './i18n.js?v=20261002-build415';
+import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261002-build415';
+import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261002-build415';
+import { request3DRender } from './scene3d.js?v=20261002-build415';
+import { dispose } from './surface-mesh.js?v=20261002-build415';
 export function analysisRegionRepresentativeVoxel(region){
  if(!region?.runsBySlice)return null;
  const nonEmpty=[];for(let z=0;z<region.runsBySlice.length;z++)if(region.runsBySlice[z]?.length)nonEmpty.push(z);

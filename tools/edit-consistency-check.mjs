@@ -39,7 +39,8 @@ const r=await pg.evaluate(async(SURF)=>{
   const two=sg.activeMprSegments().find(x=>x.key==='fat'),runs2d=two?.processedRuns||(sg.segmentEditActive('fat')&&two?.edit.finalRuns)||null;
   const desc=gv.gpuVolumeEditDescriptors(vol).fat;let runs3d=null;
   if(desc?.mode==='keep')runs3d=desc.runs;else if(es.baseRuns)runs3d=desc?.mode==='exclude'?rl.subtractRunArrays(es.baseRuns,desc.runs,d):es.baseRuns;
-  if(!runs2d||!runs3d)return{label,runs2d:!!runs2d,runs3d:!!runs3d,surfaceMm:sg.segmentState.fat.surfaceMm};
+  // no processing and no edits: both views threshold the same HU range, nothing to compare
+  if(!runs2d||!runs3d)return{label,runs2d:!!runs2d,runs3d:!!runs3d,surfaceMm:sg.segmentState.fat.surfaceMm,plain:!sg.segmentEditActive('fat')&&!sg.segmentNeedsGlobalMask(sg.segmentState.fat)};
   const a=rl.analysisRunsVoxelCount(rl.subtractRunArrays(runs2d,runs3d,d)),b=rl.analysisRunsVoxelCount(rl.subtractRunArrays(runs3d,runs2d,d));
   return{label,surfaceMm:sg.segmentState.fat.surfaceMm,only2d:a,only3d:b,voxels3d:rl.analysisRunsVoxelCount(runs3d)};
  };
@@ -50,9 +51,15 @@ const r=await pg.evaluate(async(SURF)=>{
  es.excludeRuns=rl.unionRunArrays(es.excludeRuns,box,d);es.finalRuns=null;es.revision++;gv.syncGpuVolumeEdits(st.sourceVolume||st.volume);await settle();
  out.push(cmp('after exclusion edit'));
  await setSurf(SURF*2);out.push(cmp('air exclusion changed to '+SURF*2+' mm (edit kept)'));
+ // CT range change of the segment (owner: changing CT values breaks things): min −250 → −200, max −50 → −80, as the sliders do
+ const mn=document.querySelector('[data-seg-min="fat"]'),mx=document.querySelector('[data-seg-max="fat"]');
+ const slide=async(el,val)=>{el.value=String(val);el.dispatchEvent(new Event('input'));await wait(50);el.dispatchEvent(new Event('change'));await settle()};
+ const modalSeen=[];const watch=setInterval(()=>{const s=window.__vrlBusyModal?.();if(s?.visible)modalSeen.push(s.label)},100);
+ await slide(mn,-200);await slide(mx,-80);clearInterval(watch);
+ out.push({...cmp('CT range changed to −200..−80'),segMin:sg.segmentState.fat.min,segMax:sg.segmentState.fat.max,modal:[...new Set(modalSeen)],stuck:window.__vrlBusyModal?.().active});
  return out;
 },+(process.env.SURFACE??0.3));
 for(const x of r)console.log(JSON.stringify(x));
-const bad=r.some(x=>x.only2d!==0||x.only3d!==0);
+const bad=r.some(x=>x.stuck||(x.only2d==null?!x.plain:(x.only2d!==0||x.only3d!==0)));
 await b.close();srv.close();
 if(errors.length||bad){console.error('edit consistency check FAILED');process.exit(1)}console.log('edit consistency check OK');
