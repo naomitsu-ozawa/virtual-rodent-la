@@ -8,16 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build426';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build426';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build426';
-import { sceneState, analysisRegions } from './state.js?v=20261002-build426';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build426';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build426';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build426';
-import { tr } from './i18n.js?v=20261002-build426';
-import { APP_BUILD } from './version.js?v=20261002-build426';
-import { wc, ww } from './ui-shell.js?v=20261002-build426';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build427';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build427';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build427';
+import { sceneState, analysisRegions } from './state.js?v=20261002-build427';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build427';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build427';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build427';
+import { tr } from './i18n.js?v=20261002-build427';
+import { APP_BUILD } from './version.js?v=20261002-build427';
+import { wc, ww } from './ui-shell.js?v=20261002-build427';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -537,7 +537,7 @@ async function buildVolumeData(maxDim,onProgress){
 const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is; secHold 0 grip
 // picks the section up near the frame, 1 trigger fixes / picks it up
-const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1,labelSize:1};
+const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,secHold:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1,labelSize:0};
 // an older key is migrated once, with the slice opacity reset to the new default
 function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);return{...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})}}catch{return{...DEFAULTS}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
@@ -1040,8 +1040,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // 解析結果なし); the trigger pins / unpins the label of a result at that point. Labels stay at their point in the volume
  // (re-placed every frame), face the viewer, and are linked to the point by a thin line.
  const LABEL_W=0.12,LABEL_H=0.036,pins=new Map(),tmpLb=new THREE.Vector3();
- // build 426 (owner: smaller labels, size in the settings): 小 / 中 / 大 = 50 / 70 / 100 % of the 12 cm label (大 = up to 425); the pointing label is half of it
- const LABEL_SIZES=[0.5,0.7,1],labelScale=lb=>(LABEL_SIZES[settings.labelSize]??LABEL_SIZES[1])*(lb.faint?0.5:1);
+ // build 426 (owner: smaller labels, size in the settings): 小 / 中 / 大 = 50 / 70 / 100 % of the 12 cm label (大 = up to 425)
+ // build 427 (owner: 小 is right; the pointing label at the hand): default 小; the pointing label is a chip above its own
+ // controller (never over the volume, always at reading distance), framed in that hand's laser colour, same size setting
+ const LABEL_SIZES=[0.5,0.7,1],labelScale=()=>LABEL_SIZES[settings.labelSize]??LABEL_SIZES[0];
+ // above the controller, clear of the menu badge (y 0.05, 3 cm high) and, on the left hand, of the section panel (x < −0.015)
+ const HAND_CHIP={left:[0.03,0.095,0.02],right:[0,0.095,0.02]};
+ const hoverLabelOf=c=>c.userData.hoverLabel||=Object.assign(makeLabel(),{hand:c});
  const labelMode=()=>(ui.open&&ui.tab===5)||!section.on;
  const makeLabel=()=>{
   const canvas=document.createElement('canvas');canvas.width=512;canvas.height=154;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
@@ -1050,20 +1055,22 @@ export async function startVrView({language='ja',mode='vr'}={}){
   scene.add(m);scene.add(line);return{m,line,ctx:canvas.getContext('2d'),tex,key:null,anchor:new THREE.Vector3(),world:new THREE.Vector3()};
  };
  const drawLabel=(lb,hit,faint)=>{
-  const r=hit.id?regionList[hit.id-1]:null,seg=tr(hit.key)||hit.key,key=(r?hit.id:'n'+hit.key)+(faint?'f':'p');if(lb.key===key)return;lb.key=key;
-  const ctx=lb.ctx;ctx.clearRect(0,0,512,154);ctx.fillStyle='rgba(17,23,27,0.92)';ctx.beginPath();ctx.roundRect(2,2,508,150,26);ctx.fill();
+  const r=hit.id?regionList[hit.id-1]:null,seg=tr(hit.key)||hit.key,hc=lb.hand?handColor(lb.hand):0,key=(r?hit.id:'n'+hit.key)+(faint?'f':'p')+hc;if(lb.key===key)return;lb.key=key;
+  const ctx=lb.ctx;ctx.clearRect(0,0,512,154);ctx.fillStyle='rgba(17,23,27,0.92)';ctx.beginPath();ctx.roundRect(4,4,504,146,26);ctx.fill();
+  if(lb.hand){ctx.strokeStyle='#'+hc.toString(16).padStart(6,'0');ctx.lineWidth=6;ctx.stroke()}
   ctx.textBaseline='middle';ctx.fillStyle='#eef5f8';
   if(r){const hex='#'+r.color.toString(16).padStart(6,'0');ctx.fillStyle=hex;ctx.beginPath();ctx.arc(62,77,34,0,Math.PI*2);ctx.fill();
    ctx.fillStyle='#eef5f8';ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(hit.id+'. '+r.segmentKeys.map(k=>tr(k)).join('+'),118,50);ctx.font='40px system-ui,sans-serif';ctx.fillText(r.mm3.toFixed(2)+' mm³',118,108)}
   else{ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(seg,34,50);ctx.font='38px system-ui,sans-serif';ctx.fillStyle='#9fb3c3';ctx.fillText(ja?'解析結果なし':'no analysis result',34,108)}
-  // build 425 (owner: the faint label in the way): the pointing label is half size, 40 %, without the line, just above the dot
-  lb.tex.needsUpdate=true;lb.m.material.opacity=faint?0.4:1;lb.line.material.opacity=0.9;lb.faint=faint;
+  lb.tex.needsUpdate=true;lb.m.material.opacity=faint?0.85:1;lb.line.material.opacity=0.9;lb.faint=faint;
  };
  const placeLabel=lb=>{
-  lb.world.copy(lb.anchor);mesh.localToWorld(lb.world);const k=labelScale(lb);lb.m.scale.setScalar(k);
-  tmpLb.subVectors(head,lb.world).normalize();lb.m.position.copy(lb.world).addScaledVector(tmpLb,0.012);lb.m.position.y+=k*(lb.faint?0.032:0.045);lb.m.lookAt(head);
+  const k=labelScale();lb.m.scale.setScalar(k);
+  if(lb.hand){const o=HAND_CHIP[lb.hand.userData.source?.handedness]||HAND_CHIP.right;lb.m.position.set(o[0],o[1],o[2]);lb.hand.updateWorldMatrix(true,false);lb.hand.localToWorld(lb.m.position);lb.m.lookAt(head);lb.m.visible=true;lb.line.visible=false;return}
+  lb.world.copy(lb.anchor);mesh.localToWorld(lb.world);
+  tmpLb.subVectors(head,lb.world).normalize();lb.m.position.copy(lb.world).addScaledVector(tmpLb,0.012);lb.m.position.y+=k*0.045;lb.m.lookAt(head);
   const a=lb.line.geometry.attributes.position;a.setXYZ(0,lb.world.x,lb.world.y,lb.world.z);a.setXYZ(1,lb.m.position.x,lb.m.position.y-k*LABEL_H/2,lb.m.position.z);a.needsUpdate=true;
-  lb.m.visible=true;lb.line.visible=!lb.faint;
+  lb.m.visible=true;lb.line.visible=true;
  };
  const hideLabel=lb=>{if(lb){lb.m.visible=lb.line.visible=false}};
  const togglePin=(c,hit)=>{
@@ -1156,7 +1163,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const anBenchTick=()=>{
   if(!anBench.active)return;const now=performance.now();
   if(!diagAn.noLabels){readHead();holder.getWorldPosition(tmpLb);raycaster.ray.origin.copy(head);raycaster.ray.direction.subVectors(tmpLb,head).normalize();
-   for(const c of controllers){const hit=volumeHitRay();if(hit){c.userData.hoverLabel||=makeLabel();const lb=c.userData.hoverLabel;drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}}}
+   for(const c of controllers){const hit=volumeHitRay();if(hit){const lb=hoverLabelOf(c);drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}}}
   if(!anBench.measureAt){if(now-anBench.at>=800){anBench.measureAt=now;anBench.frames=0}return}
   anBench.frames++;if(now-anBench.measureAt>=2000){anBench.results.push(anBench.frames*1000/(now-anBench.measureAt));anBenchNext()}
  };
@@ -1430,7 +1437,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   menu.setHover(hover);panel.setHover(panelHover);
   // build 423: faint label of what each laser points at (not when that result is already pinned); pinned labels follow the volume
   {const on=labelMode()&&!diagAn.noLabels;if(on||pins.size)readHead();anBenchTick();
-   for(const c of controllers){const hit=on?c.userData.volHit:null;if(hit&&!(hit.id&&pins.has(hit.id))){c.userData.hoverLabel||=makeLabel();const lb=c.userData.hoverLabel;drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}else hideLabel(c.userData.hoverLabel)}
+   for(const c of controllers){const hit=on?c.userData.volHit:null;if(hit&&!(hit.id&&pins.has(hit.id))){const lb=hoverLabelOf(c);drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}else hideLabel(c.userData.hoverLabel)}
    for(const lb of pins.values())placeLabel(lb)}
   // thumbstick scroll (build 364): the selected plane along its own normal, same world speed fixed in the scaled holder or held
   const sp=section.selected;
