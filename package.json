@@ -17,7 +17,9 @@
     "boot-check": "node tools/boot-check.mjs",
     "vr-gpu-prepare-check": "node tools/vr-gpu-prepare-check.mjs",
     "progress-modal-check": "node tools/progress-modal-check.mjs",
-    "analysis-project-check": "node tools/analysis-project-check.mjs"
+    "analysis-project-check": "node tools/analysis-project-check.mjs",
+    "edit-consistency-check": "node tools/edit-consistency-check.mjs",
+    "analysis-fringe-check": "node tools/analysis-fringe-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
