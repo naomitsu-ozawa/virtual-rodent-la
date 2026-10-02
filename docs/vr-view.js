@@ -8,16 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build422';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build422';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build422';
-import { sceneState, analysisRegions } from './state.js?v=20261002-build422';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build422';
-import { marchClassificationHit } from './vr-pick.js?v=20261002-build422';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build422';
-import { tr } from './i18n.js?v=20261002-build422';
-import { APP_BUILD } from './version.js?v=20261002-build422';
-import { wc, ww } from './ui-shell.js?v=20261002-build422';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build423';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build423';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build423';
+import { sceneState, analysisRegions } from './state.js?v=20261002-build423';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build423';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build423';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build423';
+import { tr } from './i18n.js?v=20261002-build423';
+import { APP_BUILD } from './version.js?v=20261002-build423';
+import { wc, ww } from './ui-shell.js?v=20261002-build423';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -686,14 +686,16 @@ export function vrDataKey(){
 const shownRegions=()=>analysisRegions.filter(r=>r.visible!==false&&r.runsBySlice&&r.voxels>0);
 function buildRegionIndex(dims){
  const v=gpuVolumeTarget(),regions=shownRegions();if(!v||!regions.length)return{data:null,colors:[],list:[]};
- const [w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],colors=[],data=new Uint8Array(w*h*d),list=[];
+ // build 423: ids = list position + 1 per voxel (the label of the result the laser points at), up to 255 results
+ const [w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],colors=[],data=new Uint8Array(w*h*d),ids=new Uint8Array(w*h*d),list=[];
  for(const r of regions){
   const c=Number(r.color)>>>0;let k=colors.indexOf(c);if(k<0){if(colors.length>=14)continue;colors.push(c);k=colors.length-1}
   const runs=gpuRunsForTexture(r.runsBySlice,sourceDims,dims,{dilate:0});
-  for(let z=0;z<d;z++){const rec=runs?.[z];if(!rec?.length)continue;for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;data.fill(k+1,o+rec[i+1],o+rec[i+2]+1)}}
+  if(list.length>=255)break;const id=list.length+1;
+  for(let z=0;z<d;z++){const rec=runs?.[z];if(!rec?.length)continue;for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;data.fill(k+1,o+rec[i+1],o+rec[i+2]+1);ids.fill(id,o+rec[i+1],o+rec[i+2]+1)}}
   list.push({color:c,mm3:r.mm3,segmentKeys:[...(r.segmentKeys||[])]});
  }
- return{data:colors.length?data:null,colors,list};
+ return{data:colors.length?data:null,ids:colors.length?ids:null,colors,list};
 }
 // classification bytes for a grid of at most 256 (see segmentIndexAt)
 function buildClsData(t,calibration,edit){
@@ -1023,8 +1025,44 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const vp=volPick;if(!vp||!mesh?.parent||!material)return null;
   const mask=shownMask(),chs=[];for(let i=0;i<4;i++)if(mask>>i&1&&vp.cls.chan[i]>=0)chs.push(vp.cls.chan[i]);if(!chs.length)return null;
   setRay(c);const o=tmpVo.copy(raycaster.ray.origin),q=tmpVq.copy(o).add(raycaster.ray.direction);mesh.worldToLocal(o);mesh.worldToLocal(q);q.sub(o);
-  const u=material.uniforms,t=marchClassificationHit(o,q,vp.halfExt,vp.dims,vp.cls,chs,u.cutPlanes.value,u.planeCount.value,u.planeCut.value);
-  return t>=0?{distance:t}:null;
+  const u=material.uniforms,hi=marchClassificationHitInfo(o,q,vp.halfExt,vp.dims,vp.cls,chs,u.cutPlanes.value,u.planeCount.value,u.planeCut.value);
+  if(!hi)return null;
+  // build 423: what was hit — the segment (channel → segment) and the result at that voxel (list position, 0 = none)
+  const si=vp.cls.chan.indexOf(hi.ch),[w,h]=vp.dims,id=vp.ids?vp.ids[hi.x+w*(hi.y+h*hi.z)]:0;
+  return{distance:hi.t,key:SEGMENT_PRESET_ORDER[si]||'',id,local:new THREE.Vector3(o.x+q.x*hi.t,o.y+q.y*hi.t,o.z+q.z*hi.t)};
+ };
+ // result labels (build 423, owner): while the 解析 tab is open or no section is shown, the laser on the volume shows a
+ // faint label of what it points at (result: colour, number as in the 解析 tab, segment, mm³; else the segment name and
+ // 解析結果なし); the trigger pins / unpins the label of a result at that point. Labels stay at their point in the volume
+ // (re-placed every frame), face the viewer, and are linked to the point by a thin line.
+ const LABEL_W=0.12,LABEL_H=0.036,pins=new Map(),tmpLb=new THREE.Vector3();
+ const labelMode=()=>(ui.open&&ui.tab===5)||!section.on;
+ const makeLabel=()=>{
+  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=154;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(LABEL_W,LABEL_H),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,depthTest:false}));m.renderOrder=5;m.visible=false;
+  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,depthTest:false}));line.frustumCulled=false;line.renderOrder=5;line.visible=false;
+  scene.add(m);scene.add(line);return{m,line,ctx:canvas.getContext('2d'),tex,key:null,anchor:new THREE.Vector3(),world:new THREE.Vector3()};
+ };
+ const drawLabel=(lb,hit,faint)=>{
+  const r=hit.id?regionList[hit.id-1]:null,seg=tr(hit.key)||hit.key,key=(r?hit.id:'n'+hit.key)+(faint?'f':'p');if(lb.key===key)return;lb.key=key;
+  const ctx=lb.ctx;ctx.clearRect(0,0,512,154);ctx.fillStyle='rgba(17,23,27,0.92)';ctx.beginPath();ctx.roundRect(2,2,508,150,26);ctx.fill();
+  ctx.textBaseline='middle';ctx.fillStyle='#eef5f8';
+  if(r){const hex='#'+r.color.toString(16).padStart(6,'0');ctx.fillStyle=hex;ctx.beginPath();ctx.arc(62,77,34,0,Math.PI*2);ctx.fill();
+   ctx.fillStyle='#eef5f8';ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(hit.id+'. '+r.segmentKeys.map(k=>tr(k)).join('+'),118,50);ctx.font='40px system-ui,sans-serif';ctx.fillText(r.mm3.toFixed(2)+' mm³',118,108)}
+  else{ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(seg,34,50);ctx.font='38px system-ui,sans-serif';ctx.fillStyle='#9fb3c3';ctx.fillText(ja?'解析結果なし':'no analysis result',34,108)}
+  lb.tex.needsUpdate=true;lb.m.material.opacity=faint?0.55:1;lb.line.material.opacity=faint?0.4:0.9;
+ };
+ const placeLabel=lb=>{
+  lb.world.copy(lb.anchor);mesh.localToWorld(lb.world);
+  tmpLb.subVectors(head,lb.world).normalize();lb.m.position.copy(lb.world).addScaledVector(tmpLb,0.012);lb.m.position.y+=0.045;lb.m.lookAt(head);
+  const a=lb.line.geometry.attributes.position;a.setXYZ(0,lb.world.x,lb.world.y,lb.world.z);a.setXYZ(1,lb.m.position.x,lb.m.position.y-LABEL_H/2,lb.m.position.z);a.needsUpdate=true;
+  lb.m.visible=lb.line.visible=true;
+ };
+ const hideLabel=lb=>{if(lb){lb.m.visible=lb.line.visible=false}};
+ const togglePin=(c,hit)=>{
+  if(!hit?.id)return false;const old=pins.get(hit.id);
+  if(old){pins.delete(hit.id);old.m.removeFromParent();old.line.removeFromParent();old.tex.dispose();old.m.material.dispose();old.m.geometry.dispose();old.line.geometry.dispose();old.line.material.dispose();pulse(c,0.2);return true}
+  const lb=makeLabel();lb.anchor.copy(hit.local);drawLabel(lb,hit,false);pins.set(hit.id,lb);pulse(c);return true;
  };
  // new plane: through the volume centre (first) or in front of the hand
  // (added ones), facing the viewer, fixed in the volume
@@ -1087,7 +1125,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
    if(bd.badge){setMenuOpen(true);pulse(c);return}
    const ph=bd.panel;if(ph){const i=panel.hit(ph.uv);if(i>=0){panel.press(i);pulse(c);return}}
-   if(settings.secHold===1&&!c.userData.heldPlane){const pl=c.userData.target;if(pl)takePlane(pl,c)}
+   if(settings.secHold===1&&!c.userData.heldPlane&&section.on){const pl=c.userData.target;if(pl){takePlane(pl,c);return}}
+   // build 423: a result label is pinned / unpinned where the laser meets the volume
+   if(labelMode()&&!c.userData.target&&c.userData.volHit&&togglePin(c,c.userData.volHit))return;
   });
   c.addEventListener('selectend',()=>{if(dragging?.c===c){dragging=null;saveSettings(settings)}if(c.userData.heldPlane&&settings.secHold===1)fixPlane(c)});
  }
@@ -1337,7 +1377,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   panel.mesh.visible=section.on&&planes.length>0;
   for(const c of controllers){
    // ray priority: the nearest board (menu, menu tag, section panel, help; build 404), then a section frame, then the volume
-   const bd=boardHits(c),h=bd.menu,bh=bd.badge,ph=bd.panel,hh=bd.help,rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;
+   const bd=boardHits(c),h=bd.menu,bh=bd.badge,ph=bd.panel,hh=bd.help,rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray;c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;c.userData.volHit=vh;
    // build 397: the one frame this hand's button would take, the same rule the press uses;
    // build 399: the frame the laser points at wins, the nearest frame (guide line) only when the ray hits none
    const np=h||bh||ph||hh||rp||c.userData.heldPlane?null:nearestPlane(c);c.userData.target=h||bh||ph||hh||c.userData.heldPlane?null:c.userData.rayPlane||np;
@@ -1360,6 +1400,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
    c.userData.bDown=b;
   }
   menu.setHover(hover);panel.setHover(panelHover);
+  // build 423: faint label of what each laser points at (not when that result is already pinned); pinned labels follow the volume
+  {const on=labelMode();if(on||pins.size)readHead();
+   for(const c of controllers){const hit=on?c.userData.volHit:null;if(hit&&!(hit.id&&pins.has(hit.id))){c.userData.hoverLabel||=makeLabel();const lb=c.userData.hoverLabel;drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}else hideLabel(c.userData.hoverLabel)}
+   for(const lb of pins.values())placeLabel(lb)}
   // thumbstick scroll (build 364): the selected plane along its own normal, same world speed fixed in the scaled holder or held
   const sp=section.selected;
   if(section.on&&sp&&scroll&&dt){const ps=sp.obj.parent?sp.obj.parent.getWorldScale(tmpS).x||1:1;sp.obj.translateX(-scroll*SCROLL_SPEED*dt/ps)}
@@ -1485,7 +1529,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(gpu&&gpu.key!==P.key){disposeGpuPrepared();}
   // classification texture from the prepared bytes (only on the ≤256 grid)
   // build 402: classification bytes for the laser's volume hit (the ≤256 grid they were built on)
-  volPick=P.cls?{cls:P.cls,dims:(P.half||vd).dims,halfExt:vd.halfExt}:null;regionList=P.region?.list||[];
+  volPick=P.cls?{cls:P.cls,dims:(P.half||vd).dims,halfExt:vd.halfExt,ids:P.region?.ids&&P.region.dims.join()===(P.half||vd).dims.join()?P.region.ids:null}:null;regionList=P.region?.list||[];
   const clsTexture=t=>{
    const c=P.cls;if(!c||(P.half||vd).dims.join()!==t.dims.join())return null;
    const x=new THREE.Data3DTexture(c.data,...t.dims);x.format=c.C===1?THREE.RedFormat:c.C===2?THREE.RGFormat:THREE.RGBAFormat;x.userData.chan=c.chan;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { marchClassificationHit } from '../../docs/vr-pick.js';
+import { marchClassificationHit, marchClassificationHitInfo } from '../../docs/vr-pick.js';
 
 // build 402: 8³ grid in a ±1 box, one channel; index mapping as the VR shader's texCoord (y index runs down)
 const N=8,he=[1,1,1],dims=[N,N,N];
@@ -40,5 +40,13 @@ describe('marchClassificationHit', () => {
  it('t is in the caller units when the direction is scaled', () => {
   const cls=grid((x,y)=>y<=1);
   expect(marchClassificationHit(v(0,3,0),v(0,-2,0),he,dims,cls,[0])).toBeCloseTo(1,6);
+ });
+ it('the info variant returns the hit voxel and the matching channel', () => {
+  const data=new Uint8Array(N*N*N*2);data[(3+N*(1+N*4))*2+1]=200; // voxel x 3, y 1, z 4, channel 1
+  const cls={data,C:2,chan:[0,1,-1,-1]};
+  // ray along +x through the centre of that voxel: y index 1 → p.y = 1 - 1.5/8*2 = 0.625; z index 4 → p.z = 0.125
+  const h=marchClassificationHitInfo(v(-3,0.625,0.125),v(1,0,0),he,dims,cls,[0,1]);
+  expect(h&&[h.x,h.y,h.z,h.ch]).toEqual([3,1,4,1]);
+  expect(marchClassificationHitInfo(v(-3,0.625,0.125),v(1,0,0),he,dims,cls,[0])).toBe(null);
  });
 });
