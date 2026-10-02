@@ -4286,6 +4286,18 @@ the data. Measured on the practice data (raw, axial):
 Recommendation to the owner: no new segmentation feature; denoise
 (bilateral default) and raise the fat upper bound to about −30 HU.
 
+Owner: the volume shifts with filters and other factors, right? Measured
+(practice data, 8 axial planes z 32…480 step 64, voxels in −250…T, no air-
+rim exclusion, so the rim is in every number):
+- none: T −60 78641, −50 86766, −40 94864, −30 102358, −20 109320
+  (≈ +8.5…9.4 % per 10 HU).
+- bilateral (432 default): 78040 / 86045 / 93243 / 99870 / 106107
+  (−0.8 % at −50, −2.4 % at −30 vs none).
+- anisotropic: +0.6 % at −50, −0.9 % at −30; Gaussian: +2.4 % / +0.9 %.
+- The threshold dominates; the filter moves the volume by 1–2.5 % at a fixed
+  threshold. none −50 → bilateral −30 = +15 % (the −50 result misses the
+  speckled fat, 22.9 % of the fat ROI above).
+
 ## Handoff (after build 433)
 
 State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open: owner to try bilateral + fat upper bound ≈ −30 HU (seed growing not needed by the data); owner check that 2D is no longer white. (VR/AR: WebGL2
