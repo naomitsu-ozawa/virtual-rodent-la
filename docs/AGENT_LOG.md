@@ -3827,14 +3827,30 @@ Owner decision needed: 26-connectivity for the analysis (those voxels
 join the region; volumes change, e.g. +18450 voxels here, and depots
 touching at a corner merge) or keep 6 and show the boundary as is.
 
-## Handoff (after build 412)
+## Build 413 — section cap back to the exact voxel lookup (411–412 neighbour search removed)
 
-State: build 412 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (Mac, build 412): voxels that are not annotated get the result
+colour — not acceptable for research use. The neighbour search of 411 /
+412 is removed; the cap takes the result of exactly the voxel at the cap
+point (build 410's code; WGSL identical to 410 apart from comments).
+Harness vs 410 with SECTION=1, ANALYSIS=1: 0 differing channels. The thin
+lines along the boundary are voxels that touch the result only at an edge
+or corner (separate components under 6-connectivity, see the practice-data
+check above); they correctly keep the segment colour.
+Still approximate (pre-existing, reported to the owner): WebGPU surface
+hits use regionOverlayNear (build 375, tries points up to 1.5 voxels
+inward and along the ray), VR surface hits sample 0.75 voxel inside
+(build 409).
+Checks: lint, unit tests (WGSL), boot-check, volume-shader-check.
+
+## Handoff (after build 413)
+
+State: build 413 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410–412: results on the WebGPU section cap). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
