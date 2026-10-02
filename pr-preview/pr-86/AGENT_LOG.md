@@ -4247,6 +4247,23 @@ layouts in one volume; errors = body voxels not given their true class.
   subcutaneous fat at those places. Reported to the owner with the crops;
   asked for a view of their data where it goes wrong before building more.
 
+Owner (after the rim report): the air rim already has its own filter; the
+targets are visceral fat vs the peritoneum, and the subcutaneous fat between
+skin and peritoneum. Phantom: fat | membrane 1–2 vox (+100 HU) | fat, blur σ
+0.8–1.3, noise 0–25, 512 lines; sep = lines where some voxel between the two
+fat layers is soft.
+- A 1-voxel membrane blurs to a peak of −5 / −26 / −46 HU (σ 0.8 / 1 / 1.3),
+  i.e. inside the fat range; 2 voxels: +43 / +25 / +2.
+- Single threshold: T −60 keeps sep 92–100 % but takes 2.4–7 % of the fat as
+  soft; T −20 keeps the fat (≤ 1 %) but sep falls to 27–82 % (1 voxel,
+  noise). A ridge (local-maximum) test is worse than the threshold (more
+  fat taken for the same sep).
+- Conclusion offered to the owner: one threshold has to serve two goals —
+  "how much fat" (volume) and "which compartment" (the membrane as divider).
+  Proposal: a sensitive divider threshold used only for connectivity, fat
+  volume still from the fat range, divider voxels in the fat range given to
+  the adjacent compartment. Waiting for the owner.
+
 ## Handoff (after build 433)
 
 State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open: seeded growing fat / soft — gate not passed on the phantom, waiting for the owner's example; owner check that 2D is no longer white. (VR/AR: WebGL2
