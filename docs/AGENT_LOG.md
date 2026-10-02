@@ -4298,9 +4298,36 @@ rim exclusion, so the rim is in every number):
   threshold. none −50 → bilateral −30 = +15 % (the −50 result misses the
   speckled fat, 22.9 % of the fat ROI above).
 
+Owner (end of week, back Monday): the overview image (raw z 409, window
+−300…300) looks right; remove the grain and it is perfect (vessels visible,
+good separation). Measured (planes z 332 + 409, CPU worker = same formula as
+the WGSL kernel; ROIs from the raw smoothed: fat / soft cores, fat–soft
+border band, small bright spots in fat = vessels; edge = mean gradient of the
+σ≈1-smoothed image on the border band vs raw, vessel = contrast vs fat mean
+vs raw):
+  config               fat SD  soft SD  CNR   edge  vessel
+  raw                   54.9    49.1    4.91  100 %  100 %
+  bilateral (432)       39.1    30.3    7.22   82 %   95 %
+  bil spatial 1.6       38.1    28.3    7.48   77 %   94 %
+  bil 2.0 × 3 passes    37.8    26.3    7.59   69 %   90 %
+  bil int 0.03 × 3      35.5    26.0    7.89   63 %   86 %
+  NLM 0.7 r2            31.9    28.4    8.41   76 %   86 %
+  NLM 1.0 r2            30.8    28.4    8.61   76 %   82 %
+  aniso 0.45 × 8        32.1    28.7    8.35   76 %   83 %
+  aniso 0.8 × 6         30.9    28.5    8.59   76 %   77 %
+  bilateral + NLM       28.7    26.0    9.02   60 %   78 %
+(the fat-core SD keeps ~30 HU of real texture: septa, vessels.) Visual
+(z 409 crops): bilateral keeps edges and vessels with a fine grain left;
+NLM 1.0 r2 / anisotropic smoother, a little softer; bilateral + NLM blurs.
+The bilateral intensity sigma is relative to the data range (0.02 × 4463 HU
+≈ 89 HU here): on data with another range the same slider acts differently.
+Monday checklist for the owner (device): 2D no longer white (432); bilateral
+default vs NLM 1.0 r2 on their data, window about −300…300; fat upper bound
+about −30 HU; volumes depend mostly on the threshold (≈ 9 % per 10 HU).
+
 ## Handoff (after build 433)
 
-State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open: owner to try bilateral + fat upper bound ≈ −30 HU (seed growing not needed by the data); owner check that 2D is no longer white. (VR/AR: WebGL2
+State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
