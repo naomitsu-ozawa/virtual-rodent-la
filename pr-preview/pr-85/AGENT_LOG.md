@@ -4093,14 +4093,34 @@ of showing the pointing label at the hand instead of at the pointer.
   labels stay at their point in the volume with the line.
 Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
 
-## Handoff (after build 427)
+## Build 428 — analysis results lost after loading a project with filters
 
-State: build 427 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: results saved in the project did not come back; while loading, the
+colours appeared and then vanished.
+- Cause (measured, practice data): applyProject replays the project's
+  filters; the filter rebuild that this starts ends after the results are
+  restored and dispatches 'vrl-filters-changed', whose build 418 handler
+  cleared every result. analysis-project-check passed because its project
+  had no filter.
+- Fix: state.analysisFilterSignature = filter signature of the data the
+  results belong to (set by restoreAnalysisRegions after the replay, and at
+  every 'vrl-filters-changed'); the handler clears only when the signature
+  differs. A real filter change still clears (research rule unchanged).
+- analysis-project-check FILTER=1: Gaussian filter + bone opening 1, results
+  = boxes ∩ the final runs, save → clear → apply, wait for the load's work →
+  both results back (201 / 15 voxels); then a Gaussian strength change → 0
+  results. Without the fix the same run loses the visible result (FAILED).
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+analysis-project-check (plain and FILTER=1), edit-consistency-check.
+
+## Handoff (after build 428)
+
+State: build 428 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use; 423: VR result labels; 424: analysis cost bench; 425: small pointing label; 426: label size setting; 427: pointing label at the hand, 小 default). Open: Quest check of 427. Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use; 423: VR result labels; 424: analysis cost bench; 425: small pointing label; 426: label size setting; 427: pointing label at the hand, 小 default; 428: results kept when a project with filters is loaded). Open: Quest check of 427; owner check of 428 with their own project. Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
