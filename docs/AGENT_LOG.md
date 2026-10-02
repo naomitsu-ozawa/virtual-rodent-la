@@ -4142,6 +4142,17 @@ choose 6 / 26 connectivity (researched, answered; no change) and what the
   labeling per the BoneJ paper; Dragonfly offers both; CTAn unverified.
 Checks: lint, unit tests, boot-check, mpr-alpha-check, result-2d-check.
 
+Owner decision (after 430): the interpolated-surface hits without a
+segment voxel (~1.4 %) stay uncoloured — the analysis numbers must be right,
+the 3D look is a visual check only.
+Sigmoid (owner: "not the expected behaviour"), measured on the practice data
+(data −1361…3102 HU, centre default 198 = window centre, strength 0.5): the
+mapping is over the whole data range and the centre is not a fixed point —
+198 → 290 / 700 / 838 HU at strength 0 / 0.5 / 1; strength 0 is not the
+identity (0 → 72, 40 → 116); soft tissue 40 → 398 HU at 0.5, so the segment
+CT ranges no longer mean HU. Same formula in CPU, worker and WGSL. Fix
+proposed to the owner, waiting for what they expected.
+
 ## Handoff (after build 430)
 
 State: build 430 on claude/dicom-viewer-handoff-eaqyyu (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting, needs a new PR) (VR/AR: WebGL2
