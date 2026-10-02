@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20261001-build402';
-import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20261001-build402';
-import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261001-build402';
-import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20261001-build402';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261001-build402';
-import { request3DRender } from './scene3d.js?v=20261001-build402';
-import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20261001-build402';
-import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20261001-build402';
-import { tr } from './i18n.js?v=20261001-build402';
-import { fmt, isTabletRuntime, isIPhoneRuntime } from './utils.js?v=20261001-build402';
-import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20261001-build402';
-import { datasetFingerprint } from './project-file.js?v=20261001-build402';
-import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20261001-build402';
+import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20261002-build429';
+import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20261002-build429';
+import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261002-build429';
+import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20261002-build429';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261002-build429';
+import { request3DRender } from './scene3d.js?v=20261002-build429';
+import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20261002-build429';
+import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20261002-build429';
+import { tr } from './i18n.js?v=20261002-build429';
+import { fmt, isTabletRuntime, isIPhoneRuntime } from './utils.js?v=20261002-build429';
+import { openVolumeCache, cacheKey, textureCacheHandle, pruneOtherFilterSettings } from './gpu-volume-cache.js?v=20261002-build429';
+import { datasetFingerprint } from './project-file.js?v=20261002-build429';
+import { getFilteredSourceAxialBlock, currentFilterSignature, volumeBlockDepth, volumeBlockBudget } from './source-filters.js?v=20261002-build429';
 export const gpuVolumeApplied={seriesId:null,signature:''};
 export function gpuVolumeDataSignature(){
  const id=(sourceVolume||volume)?.series?.id??null,applied=gpuVolumeApplied.seriesId===id?gpuVolumeApplied.signature:'';
@@ -151,6 +151,9 @@ function noteSegment3D(key,text,error){
  el.textContent=el.textContent.replace(/ · (3D反映済み|shown in 3D|3D反映エラー: .*|3D error: .*)$/,'')+' · '+text;if(error)el.classList.add('is-error');
 }
 export function syncGpuVolumeEdits(v=sourceVolume||volume){
+ // build 414: the 2D views draw the edited segment from finalRuns, which the volume-view edits reset and nothing
+ // rebuilt (2D kept showing deleted voxels): app.js rebuilds them and repaints 2D on this event
+ if(v&&typeof document!=='undefined')document.dispatchEvent(new CustomEvent('vrl-gpu-edits-synced'));
  const mv=sceneState?.medicalVolume;if(!mv||!v)return;
  const descs=gpuVolumeEditDescriptors(v),processed=Object.keys(descs).filter(key=>segmentNeedsGlobalMask(segmentState[key]||{}));
  try{mv.setEditRuns(descs,SEGMENT_PRESET_ORDER,v);request3DRender();for(const key of processed)noteSegment3D(key,currentLanguage==='ja'?'3D反映済み':'shown in 3D',false)}

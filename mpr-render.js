@@ -1,19 +1,29 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { wc, ww, planes, footer, state, wcVal, wwVal } from './ui-shell.js?v=20261001-build402';
-import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261001-build402';
-import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane, residentGpuUploadSeriesId, sourceMprWarmupToken } from './state.js?v=20261001-build402';
-import { analysisRunsContain, runsPlaneMask } from './run-length.js?v=20261001-build402';
-import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast, ensureMpr3DPreviewCache } from './mpr3d-overlay.js?v=20261001-build402';
-import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20261001-build402';
-import { request3DRender } from './scene3d.js?v=20261001-build402';
-import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet, currentFilterSignature } from './source-filters.js?v=20261001-build402';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20261001-build402';
-import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20261001-build402';
-import { hexRgb, formatCtValue, frameYield } from './utils.js?v=20261001-build402';
+import { wc, ww, planes, footer, state, wcVal, wwVal } from './ui-shell.js?v=20261002-build429';
+import { activeMprSegments, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261002-build429';
+import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane, residentGpuUploadSeriesId, sourceMprWarmupToken } from './state.js?v=20261002-build429';
+import { analysisRunsContain, runsPlaneMask } from './run-length.js?v=20261002-build429';
+import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast, ensureMpr3DPreviewCache } from './mpr3d-overlay.js?v=20261002-build429';
+import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20261002-build429';
+import { request3DRender } from './scene3d.js?v=20261002-build429';
+import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet, currentFilterSignature } from './source-filters.js?v=20261002-build429';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20261002-build429';
+import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20261002-build429';
+import { hexRgb, formatCtValue, frameYield } from './utils.js?v=20261002-build429';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { latestOnlyRunner } from './latest-runner.js?v=20261001-build402';
+import { latestOnlyRunner } from './latest-runner.js?v=20261002-build429';
 export function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
+// build 419 (owner: the result colours in 2D too, as in 3D): a voxel of a visible analysis result is painted in the
+// result's colour instead of its segment's, at the segment's opacity, voxel for voxel (the result's own runs; plane
+// masks on full-resolution planes). Shown in every mode, as in 3D; the analysis mode only adds the focus outline.
+function resultPlaneLayers(p,idx,full){
+ const out=[];if(!volume)return out;
+ for(const r of analysisRegions){if(r.visible===false||!r.runsBySlice)continue;const c=Number(r.color??0x00d8ff);
+  out.push({runs:r.runsBySlice,keys:r.segmentKeys||[],rgb:[(c>>16)&255,(c>>8)&255,c&255],mask:full?runsPlaneMask(r.runsBySlice,p,idx,volume.columns,volume.rows,volume.slices):null})}
+ return out;
+}
+function resultRgbAt(layers,key,i,ix,iy,iz){let c=null;for(const L of layers){if(!L.keys.includes(key))continue;if(L.mask?L.mask[i]===1:analysisRunsContain(L.runs,ix,iy,iz))c=L.rgb}return c}
 export function drawAnalysisOverlay(p,idx,ctx){
  if(!volumeAnalysisMode||!analysisRegions.length||!ctx)return;
  const d=volume?.slices||0;
@@ -21,14 +31,14 @@ export function drawAnalysisOverlay(p,idx,ctx){
  for(const region of analysisRegions){
   if(!region.visible)continue;
   const css=analysisColorCss(region.color),focused=region.id===analysisFocusedRegionId;
-  ctx.fillStyle=css+(focused?'66':'2e');ctx.strokeStyle=css;ctx.lineWidth=focused?2:1;
+  if(!focused)continue;ctx.fillStyle='rgba(0,0,0,0)';ctx.strokeStyle=css;ctx.lineWidth=2;
   if(p==='axial'){
    const rec=region.runsBySlice?.[idx];if(!rec)continue;
-   for(let i=0;i<rec.length;i+=3){const y=rec[i],x0=rec[i+1],x1=rec[i+2];ctx.fillRect(x0,y,x1-x0+1,1);if(focused)ctx.strokeRect(x0-.5,y-.5,x1-x0+1,1)}
+   for(let i=0;i<rec.length;i+=3){const y=rec[i],x0=rec[i+1],x1=rec[i+2];ctx.strokeRect(x0-.5,y-.5,x1-x0+1,1)}
   }else if(p==='coronal'){
-   for(let z=0;z<d;z++){const rec=region.runsBySlice?.[z];if(!rec)continue;const py=d-1-z;for(let i=0;i<rec.length;i+=3)if(rec[i]===idx){ctx.fillRect(rec[i+1],py,rec[i+2]-rec[i+1]+1,1);if(focused)ctx.strokeRect(rec[i+1]-.5,py-.5,rec[i+2]-rec[i+1]+1,1)}}
+   for(let z=0;z<d;z++){const rec=region.runsBySlice?.[z];if(!rec)continue;const py=d-1-z;for(let i=0;i<rec.length;i+=3)if(rec[i]===idx){ctx.strokeRect(rec[i+1]-.5,py-.5,rec[i+2]-rec[i+1]+1,1)}}
   }else{
-   for(let z=0;z<d;z++){const rec=region.runsBySlice?.[z];if(!rec)continue;const py=d-1-z;for(let i=0;i<rec.length;i+=3)if(idx>=rec[i+1]&&idx<=rec[i+2]){const y=rec[i];ctx.fillRect(y,py,1,1);if(focused)ctx.strokeRect(y-.5,py-.5,1,1)}}
+   for(let z=0;z<d;z++){const rec=region.runsBySlice?.[z];if(!rec)continue;const py=d-1-z;for(let i=0;i<rec.length;i+=3)if(idx>=rec[i+1]&&idx<=rec[i+2]){const y=rec[i];ctx.strokeRect(y-.5,py-.5,1,1)}}
   }
  }
  ctx.restore();
@@ -200,13 +210,14 @@ export async function renderPlane(p,revision,idx){
  const c=planes[p];c.label.textContent=idx+1;
  const dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
  const img=reusableMprImage(p,ctx,dims),values=volume.mprData?cachedSourceMprPlane(volume,p,idx):null,low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);let q=0;
+ const layers=resultPlaneLayers(p,idx,true);
  const segOrder=['lung','fat','soft','bone'],segMasks={};for(const key of segOrder){const seg=segmentState[key];if(seg.active&&seg.enabled&&segmentNeedsGlobalMask(seg))segMasks[key]=getProcessedSegmentMask(volume,seg)}
  for(let y=0;y<dims[1];y++)for(let x=0;x<dims[0];x++){
   let v;if(values)v=values[y*dims[0]+x];else if(p==='axial')v=volume.data[idx*volume.rows*volume.columns+y*volume.columns+x];else if(p==='coronal'){const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+idx*volume.columns+x]}else{const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+x*volume.columns+idx]}
   const g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
   const voxelIndex=p==='axial'?idx*volume.rows*volume.columns+y*volume.columns+x:p==='coronal'?(volume.slices-1-y)*volume.rows*volume.columns+idx*volume.columns+x:(volume.slices-1-y)*volume.rows*volume.columns+x*volume.columns+idx;
   const ix=p==='sagittal'?idx:x,iy=p==='coronal'?idx:(p==='sagittal'?x:y),iz=p==='axial'?idx:volume.slices-1-y;
-  for(const key of segOrder){const seg=segmentState[key],mask=segMasks[key],edit=segmentEditState[key];if(!seg.active||!seg.enabled)continue;const inside=segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(mask?mask[voxelIndex]===1:(v>=seg.min&&v<=seg.max));if(!inside)continue;const rgb=hexRgb(seg.color),a=Math.min(.75,seg.opacity*.65);rr=Math.round(rr*(1-a)+rgb[0]*a);gg=Math.round(gg*(1-a)+rgb[1]*a);bb=Math.round(bb*(1-a)+rgb[2]*a)}
+  for(const key of segOrder){const seg=segmentState[key],mask=segMasks[key],edit=segmentEditState[key];if(!seg.active||!seg.enabled)continue;const inside=segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(mask?mask[voxelIndex]===1:(v>=seg.min&&v<=seg.max));if(!inside)continue;const rgb=(layers.length&&resultRgbAt(layers,key,q>>2,ix,iy,iz))||hexRgb(seg.color),a=Math.min(.75,seg.opacity*.65);rr=Math.round(rr*(1-a)+rgb[0]*a);gg=Math.round(gg*(1-a)+rgb[1]*a);bb=Math.round(bb*(1-a)+rgb[2]*a)}
   img.data[q++]=rr;img.data[q++]=gg;img.data[q++]=bb;img.data[q++]=255
  }
  ctx.putImageData(img,0,0);drawAnalysisOverlay(p,idx,ctx);refreshMpr3DPlaneTexture(p)
@@ -222,7 +233,7 @@ export function reusableMprImage(p,ctx,dims){
 export function paintSourcePlane(c,dims,values,p='axial',idx=0){
  const started=performance.now();updateMprCanvasPhysicalAspect(p);
  const ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
- const img=reusableMprImage(p,ctx,dims),pixels=new Uint32Array(img.data.buffer),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments(),simple=activeSegs.every(item=>!item.processedMask&&!item.processedRuns&&!(segmentEditActive(item.key)&&item.edit.finalRuns));
+ const img=reusableMprImage(p,ctx,dims),pixels=new Uint32Array(img.data.buffer),low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1),activeSegs=activeMprSegments(),simple=!analysisRegions.some(r=>r.visible!==false&&r.runsBySlice)&&activeSegs.every(item=>!item.processedMask&&!item.processedRuns&&!(segmentEditActive(item.key)&&item.edit.finalRuns));
  if(simple){
   const segs=activeSegs.map(item=>({min:item.seg.min,max:item.seg.max,a:item.alpha,ia:1-item.alpha,r:item.rgb[0],g:item.rgb[1],b:item.rgb[2]})),n=values.length;
   for(let i=0;i<n;i++){
@@ -234,11 +245,12 @@ export function paintSourcePlane(c,dims,values,p='axial',idx=0){
   // per-plane masks of the run sets (full-resolution planes only)
   const full=p==='axial'?dims[0]===volume.columns&&dims[1]===volume.rows:p==='coronal'?dims[0]===volume.columns&&dims[1]===volume.slices:dims[0]===volume.rows&&dims[1]===volume.slices;
   for(const item of activeSegs){const runs=item.processedRuns||(segmentEditActive(item.key)&&item.edit.finalRuns)||null;item.planeMask=full&&runs?runsPlaneMask(runs,p,idx,volume.columns,volume.rows,volume.slices):null}
+  const layers=resultPlaneLayers(p,idx,full);
   let i=0;
   for(let py=0;py<dims[1];py++)for(let px=0;px<dims[0];px++,i++){
    const v=values[i],g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;
    const ix=p==='sagittal'?idx:px,iy=p==='coronal'?idx:(p==='sagittal'?px:py),iz=p==='axial'?idx:(volume.slices-1-py);
-   for(const item of activeSegs){const {key,seg,edit,processedMask,processedRuns,rgb,alpha,planeMask}=item,inside=planeMask?planeMask[i]===1:processedRuns?analysisRunsContain(processedRuns,ix,iy,iz):(segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(processedMask?processedMask[iz*volume.rows*volume.columns+iy*volume.columns+ix]===1:(v>=seg.min&&v<=seg.max)));if(!inside)continue;rr=Math.round(rr*(1-alpha)+rgb[0]*alpha);gg=Math.round(gg*(1-alpha)+rgb[1]*alpha);bb=Math.round(bb*(1-alpha)+rgb[2]*alpha)}
+   for(const item of activeSegs){const {key,seg,edit,processedMask,processedRuns,rgb,alpha,planeMask}=item,inside=planeMask?planeMask[i]===1:processedRuns?analysisRunsContain(processedRuns,ix,iy,iz):(segmentEditActive(key)&&edit.finalRuns?analysisRunsContain(edit.finalRuns,ix,iy,iz):(processedMask?processedMask[iz*volume.rows*volume.columns+iy*volume.columns+ix]===1:(v>=seg.min&&v<=seg.max)));if(!inside)continue;const cr=(layers.length&&resultRgbAt(layers,key,i,ix,iy,iz))||rgb;rr=Math.round(rr*(1-alpha)+cr[0]*alpha);gg=Math.round(gg*(1-alpha)+cr[1]*alpha);bb=Math.round(bb*(1-alpha)+cr[2]*alpha)}
    pixels[i]=(255<<24)|(bb<<16)|(gg<<8)|rr;
   }
  }

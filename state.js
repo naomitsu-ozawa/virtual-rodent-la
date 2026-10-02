@@ -27,7 +27,8 @@ export let sectionViewOpen=false;
 export function setSectionViewOpen(v){return sectionViewOpen=v}
 export let sectionViewPlane=null;
 export function setSectionViewPlane(v){return sectionViewPlane=v}
-export let sectionViewReverse=false;
+// build 421 (owner): the section analysis cuts the reversed side by default
+export let sectionViewReverse=true;
 export function setSectionViewReverse(v){return sectionViewReverse=v}
 export let sectionAutoPlane=null;
 export function setSectionAutoPlane(v){return sectionAutoPlane=v}
@@ -45,6 +46,10 @@ export let mpr3DVolumeOpacity=.24;
 export function setMpr3DVolumeOpacity(v){return mpr3DVolumeOpacity=v}
 export let analysisRegions=[];
 export function setAnalysisRegions(v){return analysisRegions=v}
+// build 428: the filter signature of the data the results were made on (null: none known); a 'vrl-filters-changed' with
+// the same signature (the rebuild a project load starts) keeps them, a different one clears them
+export let analysisFilterSignature=null;
+export function setAnalysisFilterSignature(v){return analysisFilterSignature=v}
 export let nextAnalysisRegionId=1;
 export function setNextAnalysisRegionId(v){return nextAnalysisRegionId=v}
 export function incNextAnalysisRegionId(prefix){return prefix?++nextAnalysisRegionId:nextAnalysisRegionId++}
@@ -100,7 +105,7 @@ export let cutControlPreviewRaf=0;
 export function setCutControlPreviewRaf(v){return cutControlPreviewRaf=v}
 export let smoothingRefreshTimer=null;
 export function setSmoothingRefreshTimer(v){return smoothingRefreshTimer=v}
-import { settings } from './app-settings.js?v=20261001-build402';
+import { settings } from './app-settings.js?v=20261002-build429';
 // 3D volume in-plane size, remembered in the settings (build 280); full size
 // (0) is desktop-only, so an iPad falls back to 512
 export let ipadGpuTargetSide=(()=>{const v=+settings.get('gpuSide');const touch=typeof navigator!=='undefined'&&/Android|OculusBrowser|Quest/i.test(navigator.userAgent||''),ipad=typeof navigator!=='undefined'&&(/iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||'')));return v===768?768:v===0&&!ipad&&!touch?0:512})(); // build 368/371: full size stays desktop-only; iPad, Android tablets and the Quest browser fall back to 512
