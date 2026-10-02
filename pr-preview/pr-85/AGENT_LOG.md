@@ -3869,14 +3869,39 @@ the ray, build 375, for speed), while the cap now uses the exact voxel.
 Checks: lint, unit tests, boot-check, edit-consistency-check,
 analysis-project-check.
 
-## Handoff (after build 414)
+## Build 415 — CT range change handled like the other segment settings
 
-State: build 414 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner: changing CT values breaks many things ("it used to work").
+- edit-consistency-check now also moves the fat segment's CT range
+  (−250..−50 → −200..−80, input + change as the sliders) after the edit
+  and the air exclusion. Before the fix (414, and the same on main =
+  build 402, run from a worktree of origin/main): after the CT change
+  neither the processed runs nor the final runs existed — 3D fell back to
+  the plain threshold (air exclusion lost) and 2D to the threshold without
+  the edits. main also showed the 414 edit mismatch (749553 / 636528
+  voxels), so both are older than this session's changes.
+- Cause: min / max onchange only repainted (renderAll); the input handler
+  had already dropped the base / final runs, and nothing recomputed them,
+  pushed them to 3D or cleared the analysis results (which no longer match
+  the segment).
+- Fix: min / max onchange → invalidateSegment(true) (results cleared,
+  post-processing recomputed and pushed to 3D, 2D repainted);
+  invalidateSegment(true) also rebuilds the final runs of an edited plain
+  segment.
+- Check: SURFACE=0.3 (processed) and SURFACE=0 (plain): 0 mismatched
+  voxels after the edit, the air change and the CT change; the modal
+  showed 編集領域を準備中 on release; no job left running.
+Checks: lint, unit tests, boot-check, edit-consistency-check (both),
+analysis-project-check, vr-gpu-prepare-check.
+
+## Handoff (after build 415)
+
+State: build 415 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414: 2D / 3D edit consistency). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
