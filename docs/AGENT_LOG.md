@@ -4191,9 +4191,28 @@ fat < −100, soft > 100), CPU path:
 - anisotropic 0.45 × 4: 13.0 %; 0.8 × 8: 16.7 % (soft 35.7).
 - TV 0.05 / 0.12 × 8: 11.8 %. Gaussian 0.4 × 2: 12.4 %.
 
-## Handoff (after build 431)
+## Build 432 — 431 reverted; bilateral defaults for fat / soft separation
 
-State: build 431 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone) (VR/AR: WebGL2
+Owner: 431 turned the 2D views white on their device and is not what was
+meant (the goal is the skin / subcutaneous fat border; measurements above).
+- 431 reverted (git revert): Sigmoid is the pre-431 filter again. The white
+  2D root cause was NOT found — it did not reproduce on the CPU worker path
+  here (screenshot of the practice data with Sigmoid: normal), so it was on
+  the owner's GPU path; the revert removes the code that caused it. Owner to
+  confirm on their device.
+- Bilateral defaults (owner: defaults for fat / soft separation): strength
+  0.45 → 0.80, intensity sigma 0.08 → 0.02, passes 1 → 2 (spatial 1.2
+  unchanged). Measured above: subcutaneous band 12.0 → 9.6 % (default before:
+  12.2 %), fat-confident 14.1 → 12.8 % (smoothing cannot restore thin
+  layers). The other filters' defaults stay (stronger settings made the
+  border worse, TV changed nothing). Saved projects keep their own values.
+- Next (owner: 進めて): seeded growing between a confident fat range and a
+  confident soft range.
+Checks: lint, unit tests, boot-check.
+
+## Handoff (after build 432)
+
+State: build 432 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults). Open: seeded growing fat / soft (in progress); owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
