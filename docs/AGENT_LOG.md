@@ -4058,14 +4058,25 @@ whether VRL_REGIONS is compiled, pins, size, resolution.
 Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
 analysis-project-check.
 
-## Handoff (after build 424)
+## Build 425 — VR: the pointing label made small and unobtrusive
 
-State: build 424 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
+Owner (Quest): with the 3D-edit region selection the results could be
+viewed in VR / AR at a practical speed (the heavy case did not come back;
+the 424 bench stays available). The faint label while nothing is selected
+is in the way: smaller, unobtrusive, or gone.
+- The pointing (hover) label is half size (6 × 1.8 cm), 40 % opacity, no
+  connecting line, 1.6 cm above the dot (was full size, 55 %, line, 4.5 cm
+  above). Pinned labels unchanged.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check.
+
+## Handoff (after build 425)
+
+State: build 425 on claude/dicom-viewer-handoff-eaqyyu (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
 copied from the WebGPU texture, practice data cached, スライス tab with
-opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use; 423: VR result labels; 424: analysis cost bench). Open: owner runs 解析の重さ on the Quest (VR mode with results). Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
+opacity / colouring / VR-local CT window, slice opacity default 70 %). main = build 402 (PR #84 merged 2026-10-01: two planes at once, two-colour lasers, laser hits the volume); builds 403–407 in PR #85 (405–406: the central progress modal; 407: opacity 100 %, VR slice threshold; 408: analysis results kept / saved; 409: results in VR / AR; 410: results on the WebGPU section cap, 411–412 reverted in 413; 414–415: 2D / 3D edit consistency, CT range change; 416: cap = 2D slice voxel-exact; 417: surface colour from the surface voxel; 418: filter change recomputes; 419: result colours in 2D; 420–421: shared plane selection incl. the 3D view; section reversed by default; 422: section opens on the plane in use; 423: VR result labels; 424: analysis cost bench; 425: small pointing label). Open: Quest check of 425. Open: owner check; Quest fps with results shown (VR bench). Open: owner check of 403–406 on Quest / Mac / iPad; a real 3D rebuild with 中断 in the modal (WebGPU, not testable headless).
 
 How the owner checks a build: open a PR from the work branch; the pages
 workflow deploys docs/ to
