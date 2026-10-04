@@ -2,7 +2,8 @@
 // sceneState.setAxisView, then object-local directions are taken into camera space. 2D drawing (mpr-render.js): axial
 // x = column, y = row (row 0 at the top); coronal x = column, y = d−1−slice; sagittal x = row, y = d−1−slice. So on screen:
 // axial: +column right, +row down; coronal: +column right, +slice up; sagittal: +row right, +slice up. Object-local axes
-// (mesh-geometry.js makeSource3DCoordinates): +x = column, +y = −row, +z = slice.
+// (mesh-geometry.js makeSource3DCoordinates): +x = column, +y = −row, +z = slice. Also: the default (reversed) section cut
+// keeps the half behind the plane, so the cut face is what the camera sees.
 //   PW_CHROMIUM=/opt/pw-browsers/chromium node tools/plane-orientation-check.mjs
 import { chromium } from '@playwright/test';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
@@ -29,7 +30,7 @@ const idle=async()=>{const t0=Date.now();while(Date.now()-t0<240000){const s=awa
 await idle();
 const r=await pg.evaluate(async()=>{
  const v=new URL(document.querySelector('script[src*="app.js"]').src).search,im=f=>import('./'+f+v);
- const st=await im('state.js');const ss=st.sceneState;
+ const [st,sv]=await Promise.all([im('state.js'),im('section-view.js')]);const ss=st.sceneState;
  // setAxisView only turns sceneState.obj: a bare Object3D stands in for the volume (no 3D build needed headless)
  if(!ss.obj){const O3=Object.getPrototypeOf(ss.scene.constructor.prototype).constructor,o=new O3();ss.scene.add(o);ss.obj=o}
  if(!ss.obj)return{error:'no 3D object'};
@@ -38,10 +39,12 @@ const r=await pg.evaluate(async()=>{
  const out={};
  for(const [p,axis,right,up] of [['axial','z',[1,0,0],[0,1,0]],['coronal','y',[1,0,0],[0,0,1]],['sagittal','x',[0,-1,0],[0,0,1]]]){
   ss.setAxisView(axis);ss.obj.updateMatrixWorld(true);cam.updateMatrixWorld(true);
-  out[p]={right:dir(...right),up:dir(...up)}}
+  // the default (reversed) cut keeps the half on the normal's side: it must lie behind the plane (camera-space z < 0)
+  st.setSectionViewReverse(true);const n=sv.sectionLocalNormal(p),a=new V(0,0,0),bb=n.clone();ss.obj.localToWorld(a);ss.obj.localToWorld(bb);a.applyMatrix4(cam.matrixWorldInverse);bb.applyMatrix4(cam.matrixWorldInverse);
+  out[p]={right:dir(...right),up:dir(...up),keptZ:Math.round((bb.z-a.z)/bb.sub(a).length()*100)/100}}
  return out;
 });
 console.log(JSON.stringify(r));
-const ok=!r.error&&Object.values(r).every(o=>o.right[0]>0.99&&Math.abs(o.right[1])<0.01&&o.up[1]>0.99&&Math.abs(o.up[0])<0.01);
+const ok=!r.error&&Object.values(r).every(o=>o.right[0]>0.99&&Math.abs(o.right[1])<0.01&&o.up[1]>0.99&&Math.abs(o.up[0])<0.01&&o.keptZ<-0.99);
 await b.close();srv.close();
 if(errors.length||!ok){console.error('plane orientation check FAILED');process.exit(1)}console.log('plane orientation check OK');

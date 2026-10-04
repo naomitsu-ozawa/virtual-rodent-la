@@ -4364,9 +4364,28 @@ point-wise curve cannot change any threshold result, so the S-curve belongs
 in the 2D display mapping (data untouched); asked what "per segment" means
 (display only inside a segment, or segment ranges). Waiting.
 
-## Handoff (after build 434)
+## Build 435 — default section cut keeps the half behind the plane in the new plane views
 
-State: build 434 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+- With 434 the camera faces coronal / sagittal from the other side than
+  before; the default (reversed) cut kept local −y / −x — after 434 that
+  half sits between the camera and the plane, hiding the cut face.
+- Fix: section-view.js sectionLocalNormal base normals coronal (0, −1, 0),
+  sagittal (−1, 0, 0) (axial unchanged); the WebGPU volume shader's side
+  sign (medical-volume.js uniform 19) flipped the same way for modes 2 / 3
+  (shader rule: kept = sign·(axis − coord) ≥ 0, = three.js keeping the
+  plane's positive side for the mesh path).
+- So with the default 反転 the 3D shows the cut face upright as in 2D for
+  every plane; for coronal and sagittal the kept half is the other half
+  than before 434 (a physical cut face upright as in 2D can only be seen
+  from one side). 反転 off keeps the camera-side half (outer surface seen).
+- plane-orientation-check also asserts the default kept half is behind the
+  plane (camera-space z of the kept normal −1 for all three).
+Checks: lint, unit tests, boot-check, plane-sync-check,
+plane-orientation-check, volume-shader-check SECTION=1 (axial, unchanged).
+
+## Handoff (after build 435)
+
+State: build 435 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
