@@ -4340,9 +4340,33 @@ B fat/soft midpoint +20 ± 150, C fat −100 ± 80 and soft +150 ± 80; waiting
 for the owner's choice. Also reported: a 2D orientation inconsistency
 (their example image did not arrive).
 
-## Handoff (after build 433)
+## Build 434 — 3D plane views drawn as the 2D views (coronal was upside down, sagittal turned)
 
-State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Owner (screenshot, section analysis, coronal 309): the 3D section and the 2D
+coronal view are upside down against each other.
+- Cause (code): 2D coronal / sagittal draw slice d−1−z on row y (higher
+  slices at the top); app.js setAxisView turned the object +90° about X for
+  coronal (higher slices down) and −90° about Y for sagittal (slices across,
+  rows up — 90° off the 2D sagittal).
+- Fix: setAxisView builds each orientation from the 2D drawing: coronal =
+  column right, slice up; sagittal = row right, slice up; axial unchanged.
+  The X / Y / Z view buttons (same function) now read "Sagittal / Coronal /
+  Axial 正面（2D と同じ向き）".
+- tools/plane-orientation-check.mjs (npm run plane-orientation-check):
+  object-local directions in camera space after setAxisView. Before:
+  coronal up (0, −1), sagittal right (0, −1) / up (−1, 0) → FAILED; after:
+  all (1, 0) right / (0, 1) up.
+Checks: lint, unit tests, boot-check, plane-sync-check,
+plane-orientation-check.
+Sigmoid (owner): B is close; centre and S strength by sliders; asked to weigh
+"edit the 2D image" vs "per-segment application range". Answered: a
+point-wise curve cannot change any threshold result, so the S-curve belongs
+in the 2D display mapping (data untouched); asked what "per segment" means
+(display only inside a segment, or segment ranges). Waiting.
+
+## Handoff (after build 434)
+
+State: build 434 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
