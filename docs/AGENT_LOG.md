@@ -4325,6 +4325,21 @@ Monday checklist for the owner (device): 2D no longer white (432); bilateral
 default vs NLM 1.0 r2 on their data, window about −300…300; fat upper bound
 about −30 HU; volumes depend mostly on the threshold (≈ 9 % per 10 HU).
 
+Owner (Monday-prep answers): fat with the bilateral is good; fat −30 good.
+Sigmoid (the pre-431 filter, back in 432) still turns 2D white and is not
+what is wanted. Cause found, not a GPU bug: the current Sigmoid maps the
+whole data range (−1361…3102 here) through an S-curve whose normalisation
+moves every value up — at the default (centre 198, strength 0.5): −110 → 119,
+−60 → 211, 0 → 323, 40 → 398, 150 → 608 HU — so in a −300…300 window the
+body is white (reproduced offline on the practice data, z 409). The owner's
+purpose: after denoising, raise the contrast per region, an S-curve around a
+region's representative value (e.g. fat) that widens the HU differences.
+Mock-ups sent (bilateral z 409, window −300…300, local S-curve
+c + hw·tanh(g·t)/tanh(g), HU kept outside c ± hw): A fat −100 ± 100,
+B fat/soft midpoint +20 ± 150, C fat −100 ± 80 and soft +150 ± 80; waiting
+for the owner's choice. Also reported: a 2D orientation inconsistency
+(their example image did not arrive).
+
 ## Handoff (after build 433)
 
 State: build 433 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
