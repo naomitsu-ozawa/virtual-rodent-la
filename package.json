@@ -23,7 +23,8 @@
     "result-2d-check": "node tools/result-2d-check.mjs",
     "plane-sync-check": "node tools/plane-sync-check.mjs",
     "mpr-alpha-check": "node tools/mpr-alpha-check.mjs",
-    "processed-filter-check": "node tools/processed-filter-check.mjs"
+    "processed-filter-check": "node tools/processed-filter-check.mjs",
+    "plane-orientation-check": "node tools/plane-orientation-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
