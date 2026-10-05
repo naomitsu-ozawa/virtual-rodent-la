@@ -38,6 +38,26 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-05 — claude/viewer-color-themes (colour themes, build 449)
+
+**Agent:** Claude
+**Task:** Owner's request: three light and three dark colour themes for the viewer; today's look stays as the standard dark one.
+
+### What changed
+- Every colour of `style.css` (about 120 literals) is now a token: `rgb(var(--ui-s1))`, `rgb(var(--ui-s1) / .88)`. The tokens are RGB triplets in the new `themes.css` (surfaces s0-s4, text t1-t5, borders b1-b3, blue / green / amber / red states, link). `:root` = dark standard; the other five themes override them on `<html data-theme="...">`. Similar literals were merged into one token (a few levels apart), and the muted text greys were lightened a little in all themes so that every text colour reaches 4.5:1 (the old `#64747c` etc. did not).
+- The IMAGE AREA is fixed: `.viewport-card` / `.view-card` re-declare the standard dark tokens, so everything inside a view card (canvases, the overlays, toolbars and sliders on the image) is identical in the six themes; the backdrop of the card grid (`.viewer-grid`, `--ui-img-surround`) stays dark in the light themes. The canvases (`.mpr-canvas` `#020304`), segment colours (data in segments.js), the window / level and the 3D / VR code do not know about themes (a unit test greps for it).
+- `theme.js` (ids, names, choice, OS following), `theme-ui.js` (select in the top bar + cards in settings > Appearance), an inline script in `index.html` sets `data-theme` before the CSS loads (no flash). Choice saved in localStorage `vrl-theme` (try / catch); first visit follows `prefers-color-scheme` and keeps following it until the user picks a theme.
+- VR (`vr-view.js`, `xr/`) builds its own inline-styled panels and does not use the tokens; only `color-scheme` on `<html>` changes with the theme.
+
+### Why
+- A tokenised palette is the only way to give six themes without six copies of the CSS; fixing the tokens inside the view cards is what keeps the image and everything drawn on it unchanged (a bright surround changes how grey levels are perceived).
+
+### Follow-up / open questions
+- The standard dark theme is not pixel-identical to build 448: near-equal greys were merged and muted text is a little lighter (AA).
+- Contrast is tested for the pairs found in `style.css` plus the text levels on the surfaces; colours set from JS (inline styles in `analysis-results.js` use the tokens now; `scene-view.js` overlays sit on the image and stay as they are) are not covered by pairs.
+
+---
+
 ## 2026-10-05 — claude/filters-hu-units (the other five filters in HU, build 447)
 
 **Agent:** Claude
