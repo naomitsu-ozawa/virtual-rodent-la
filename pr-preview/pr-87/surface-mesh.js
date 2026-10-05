@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces } from './mesh-geometry.js?v=20261005-build439';
+import { indexedGeometryFromTrianglePositions, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces } from './mesh-geometry.js?v=20261005-build440';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { list, surfaceSmoothStrength } from './ui-shell.js?v=20261005-build439';
-import { segmentState, segmentEditState } from './segments.js?v=20261005-build439';
-import { surfaceSmoothingActive } from './settings.js?v=20261005-build439';
-import { maskFromAnalysisRuns } from './run-length.js?v=20261005-build439';
-import { frameYield } from './utils.js?v=20261005-build439';
-import { smoothMaskScalarField } from './mask-ops.js?v=20261005-build439';
+import { list, surfaceSmoothStrength } from './ui-shell.js?v=20261005-build440';
+import { segmentState, segmentEditState } from './segments.js?v=20261005-build440';
+import { surfaceSmoothingActive } from './settings.js?v=20261005-build440';
+import { maskFromAnalysisRuns } from './run-length.js?v=20261005-build440';
+import { frameYield } from './utils.js?v=20261005-build440';
+import { smoothMaskScalarField } from './mask-ops.js?v=20261005-build440';
 // ignoreCut: runs that are not the segment itself (an analysis region), so the
 // segment's raw cut faces do not apply
 export async function buildEditableRunsGroup(v,runs,key,shouldContinue=null,forceRaw=false,ignoreCut=false){

@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261005-build439';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build439';
+import { installGpuLedger } from './mem-ledger.js?v=20261005-build440';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build440';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build439';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build439';
-import { runsSliceToMask } from './run-length.js?v=20261005-build439';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build439';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build439';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build440';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build440';
+import { runsSliceToMask } from './run-length.js?v=20261005-build440';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build440';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build440';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -20,8 +20,15 @@ export function gpuComputeWorkgroupSize(device=gpuFilterRuntime.device){
  const a=Number(device?.limits?.maxComputeInvocationsPerWorkgroup)||128,b=Number(device?.limits?.maxComputeWorkgroupSizeX)||a;
  const cap=Math.max(1,Math.min(256,a,b));return cap>=256?256:cap>=128?128:cap>=64?64:Math.max(1,cap);
 }
+// build 440 (owner, Linux / Chrome 154, NVIDIA RTX 4070 Ti, X11): chrome://gpu lists one WebGPU adapter, "OpenGLES backend
+// … (Compatibility Mode)"; the core-only requests got none, so filters, segmentation and the 3D view ran on the CPU /
+// WebGL. A compatibility adapter is now the fallback; such a device starts at the compatibility defaults (e.g. fewer
+// storage buffers per stage), so it asks for every limit the adapter offers. ?gpucompat (or localStorage
+// vrl.gpucompat = 1) forces a compatibility device on any machine, for checks.
+export const gpuForceCompat=(()=>{try{return /[?&]gpucompat\b/.test(globalThis.location?.search||'')||globalThis.localStorage?.getItem('vrl.gpucompat')==='1'}catch{return false}})();
 export function gpuDeviceRequestDescriptor(adapter){
- const requiredFeatures=[];if(adapter?.features?.has?.('core-features-and-limits'))requiredFeatures.push('core-features-and-limits');
+ const requiredFeatures=[];if(!gpuForceCompat&&adapter?.features?.has?.('core-features-and-limits'))requiredFeatures.push('core-features-and-limits');
+ if(!requiredFeatures.includes('core-features-and-limits')){const all={};for(const k in adapter?.limits||{}){const v=adapter.limits[k];if(typeof v==='number'&&Number.isFinite(v))all[k]=v}return{requiredFeatures,requiredLimits:all}}
  const requiredLimits={};
  if((adapter?.limits?.maxComputeInvocationsPerWorkgroup||0)>=256)requiredLimits.maxComputeInvocationsPerWorkgroup=256;
  if((adapter?.limits?.maxComputeWorkgroupSizeX||0)>=256)requiredLimits.maxComputeWorkgroupSizeX=256;
@@ -31,13 +38,18 @@ export function gpuDeviceRequestDescriptor(adapter){
 }
 export async function requestVrlGpuAdapter(){
  let adapter=null;
- try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'core'})}catch{}
- if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'})}catch{}
- if(!adapter)try{adapter=await navigator.gpu.requestAdapter()}catch{}
+ if(!gpuForceCompat){
+  try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'core'})}catch{}
+  if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'})}catch{}
+  if(!adapter)try{adapter=await navigator.gpu.requestAdapter()}catch{}
+ }
+ // build 440: a compatibility adapter (Linux OpenGL ES backend) rather than none
+ if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'compatibility'})}catch{}
+ if(!adapter)try{adapter=await navigator.gpu.requestAdapter({featureLevel:'compatibility'})}catch{}
  return adapter;
 }
 export async function requestVrlGpuDevice(){
- const adapter=await requestVrlGpuAdapter();if(!adapter)throw new Error('WebGPU core adapter unavailable');
+ const adapter=await requestVrlGpuAdapter();if(!adapter)throw new Error('WebGPU adapter unavailable (core and compatibility)');
  const device=await adapter.requestDevice(gpuDeviceRequestDescriptor(adapter));
  return{adapter,device};
 }
