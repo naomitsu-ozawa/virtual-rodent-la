@@ -4383,9 +4383,37 @@ in the 2D display mapping (data untouched); asked what "per segment" means
 Checks: lint, unit tests, boot-check, plane-sync-check,
 plane-orientation-check, volume-shader-check SECTION=1 (axial, unchanged).
 
-## Handoff (after build 435)
+## Build 436 — Sigmoid: an S-curve that turns the border slopes into steps
 
-State: build 435 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Owner (drawing): HU along x / y / z — soft tissue, a gentle slope down into
+fat, a strand peak inside the fat, fat, a slope up to soft tissue; wanted:
+the slopes steep (steps). Mock-up B (centre between fat and soft, S-curve)
+was close; centre and S strength by sliders. Purpose: after denoising, the
+human sees and edits the regions; the volume is the human-checked region.
+- The 431 formula back (one formula in cpuSigmoid, the source worker and the
+  WGSL kernel): within centre ± width/2, y = c + hw·tanh(g·t)/tanh(g),
+  t = (x − c)/hw, g = 6·strength; centre and values outside kept; strength 0
+  = no change; monotonic. WGSL writes tanh as 1 − 2/(exp(2a)+1).
+- Defaults: centre 0 HU (between fat and soft tissue; was the window centre),
+  width 300 HU (new slider 幅（HU）20–1000), strength 0.5.
+- The 2D white of the pre-436 filter (whole-range curve, −110 → +119 HU) is
+  gone: sigmoid-check asserts with the defaults no value moves more than
+  width/2 (measured 66 HU) and the share of body pixels above 300 HU is
+  unchanged (2.11 % → 2.11 %). The 431 white on the owner's device was not
+  reproduced here; the WebGPU kernel is covered only by the unit/WGSL tests.
+- App output (CPU worker, bilateral → Sigmoid, z 409, window −300…300)
+  matches mock-up B; at strength 0.8 the borders are steps.
+- tools/sigmoid-check.mjs (npm run sigmoid-check) and the unit test back.
+- Saved projects with the pre-436 Sigmoid: same parameters, new curve
+  (width from the slider); they look different (owner's request).
+Checks: lint, unit tests, boot-check, sigmoid-check.
+Open, proposed and accepted for later ("それも検討したい"): exclusive
+(non-overlapping) segments; strands in fat as their own segment ("keep only
+thin parts").
+
+## Handoff (after build 436)
+
+State: build 436 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

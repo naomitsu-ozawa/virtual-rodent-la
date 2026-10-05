@@ -1,9 +1,9 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { processingOverlay, processingOverlayLabel, resetFilterBtn, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, smoothingType, gaussianStrength, spatialPasses, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, folderBtn, demoBtn, prog, bar, progLabel } from './ui-shell.js?v=20261004-build435';
-import { sourceVolume } from './state.js?v=20261004-build435';
-import { filterState } from './source-filters.js?v=20261004-build435';
-import { setBusySlot } from './progress-modal.js?v=20261004-build435';
+import { processingOverlay, processingOverlayLabel, resetFilterBtn, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, smoothingType, gaussianStrength, spatialPasses, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, folderBtn, demoBtn, prog, bar, progLabel } from './ui-shell.js?v=20261005-build436';
+import { sourceVolume } from './state.js?v=20261005-build436';
+import { filterState } from './source-filters.js?v=20261005-build436';
+import { setBusySlot } from './progress-modal.js?v=20261005-build436';
 export function setProcessingBusy(busyState,label='Processing',lockControls=true){
  // build 405: shown in the central progress modal (calls are paired: counted slot)
  setBusySlot('processing',busyState,{label,counted:true});
@@ -25,7 +25,7 @@ export function setProcessingBusy(busyState,label='Processing',lockControls=true
   anisotropicStrength.disabled=busyState||!sourceVolume||!filterState.anisotropic;
   anisotropicIterations.disabled=busyState||!sourceVolume||!filterState.anisotropic;
   sigmoidStrength.disabled=busyState||!sourceVolume||!filterState.sigmoid;
-  sigmoidCenter.disabled=busyState||!sourceVolume||!filterState.sigmoid;
+  sigmoidCenter.disabled=sigmoidWidth.disabled=busyState||!sourceVolume||!filterState.sigmoid;
   bilateralStrength.disabled=bilateralSpatial.disabled=bilateralIntensity.disabled=bilateralPasses.disabled=busyState||!sourceVolume||!filterState.bilateral;
   tvWeight.disabled=tvIterations.disabled=busyState||!sourceVolume||!filterState.tv;
   unsharpRadius.disabled=unsharpAmount.disabled=unsharpThreshold.disabled=busyState||!sourceVolume||!filterState.unsharp;
