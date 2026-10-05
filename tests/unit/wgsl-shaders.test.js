@@ -29,7 +29,7 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
 
   // build 447: the strength parameters are absolute HU values at fixed indexes (params[0..]); the volume range
   // (min / max) is no longer passed, so no shader may compute a range from the params
-  it.each(['sigmoid', 'spikeHole', 'anisotropic', 'tv', 'unsharp', 'unsharpCombine', 'bilateral', 'nlm'])('%s does not use a volume range', kind => {
+  it.each(['sigmoid', 'spikeHole', 'anisotropic', 'tv', 'unsharpCombine', 'bilateral', 'nlm'])('%s does not use a volume range', kind => {
     const src = gpuFilterShader(kind, 64);
     expect(src).not.toMatch(/params\[1\]\s*-\s*params\[0\]/);
     expect(src).not.toMatch(/let range=/);
@@ -40,7 +40,6 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
     expect(gpuFilterShader('anisotropic', 64)).toMatch(/let k=params\[1\];/);
     expect(gpuFilterShader('tv', 64)).toMatch(/let eps=params\[1\];/);
     expect(gpuFilterShader('spikeHole', 64)).toMatch(/let threshold=params\[1\];/);
-    expect(gpuFilterShader('unsharp', 64)).toMatch(/let threshold=params\[1\];/);
     expect(gpuFilterShader('unsharpCombine', 64)).toMatch(/let threshold=params\[1\];/);
   });
 
@@ -67,11 +66,6 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
       // the kernel reads no params[] index beyond the values that are written
       const used = [...src.matchAll(/params\[(\d+)\]/g)].map(m => +m[1]);
       expect(Math.max(...used)).toBeLessThan(LAYOUT[kind].args.length);
-    });
-    it('unsharp (cube kernel) reads the same layout as unsharpCombine', () => {
-      const src = gpuFilterShader('unsharp', 64);
-      expect(src).toMatch(/params\[0\]\*detail/);
-      expect(src).toMatch(/let threshold=params\[1\]/);
     });
   });
 
@@ -100,28 +94,19 @@ describe('render shaders (docs/medical-volume.js)', () => {
     });
 });
 
-// Regression: pipelines use layout:'auto', which drops bindings the shader body never
-// references. dispatch() in gpu-compute.js always binds 0..3, so a shader that declares
-// but does not use one of them fails createBindGroup validation and writes nothing
-// (boxMean never read params, so Unsharp came out all zeros on the GPU).
-describe('dispatch() shaders reference every binding it passes', () => {
-  const compute = readFileSync(new URL('../../docs/gpu-compute.js', import.meta.url), 'utf8');
-  const kinds = new Set();
-  for (const m of compute.matchAll(/dispatch\(([^;]*?),\s*\[/g)) {
-    for (const k of m[1].matchAll(/'(\w+)'/g)) kinds.add(k[1]);
-  }
-  it('finds the dispatch() kinds', () => {
-    for (const k of ['boxMean', 'unsharpCombine', 'gaussianK', 'airDistX']) expect(kinds.has(k)).toBe(true);
-  });
-  it.each([...kinds])('%s uses bindings 0-3 in its body', kind => {
-    const src = normalizeVrlWgsl(gpuFilterShader(kind, 64));
-    const decl = [...src.matchAll(/@binding\((\d+)\)\s+var<[^>]*>\s+(\w+)\s*:/g)];
-    const names = new Map(decl.map(m => [Number(m[1]), m[2]]));
-    const mainAt = src.indexOf('@compute');
-    const body = src.slice(mainAt);
-    for (const b of [0, 1, 2, 3]) {
-      expect(names.has(b), `binding ${b} declared`).toBe(true);
-      expect(new RegExp('\\b' + names.get(b) + '\\b').test(body), `binding ${b} (${names.get(b)}) used in main`).toBe(true);
-    }
+// Regression: pipelines use layout:'auto', which drops every binding that the entry point does not
+// (transitively) use. dispatch() in gpu-compute.js binds 0..3 whatever the shader declares, so a declared
+// but unused binding fails createBindGroup validation and nothing is written (boxMean never read params,
+// so Unsharp came out all zeros on the GPU). wgsl_reflect resolves what main() really uses, so every
+// declared binding must show up in its resources.
+describe('every declared binding is used by main() (layout:auto keeps only those)', () => {
+  const declaredBindings = r => r.getBindGroups().flatMap(g => g.filter(Boolean)).map(v => v.group + ':' + v.binding + ' ' + v.name);
+  const usedBindings = r => r.entry.compute.find(e => e.name === 'main').resources.map(v => v.group + ':' + v.binding + ' ' + v.name);
+  it.each(FILTER_KINDS)('%s', kind => {
+    const r = new WgslReflect(normalizeVrlWgsl(gpuFilterShader(kind, 64)));
+    const used = new Set(usedBindings(r)), declared = declaredBindings(r);
+    expect(declared.length, 'declared bindings').toBeGreaterThan(0);
+    const missing = declared.filter(b => !used.has(b));
+    expect(missing).toEqual([]);
   });
 });
