@@ -865,3 +865,17 @@ footer #footer:empty{display:block}
 .job-button.is-hidden,.job-help.is-hidden,.job-detail.is-hidden{display:none}
 .job-help{color:#8fa0a8;font-size:12px}
 @media (prefers-reduced-motion:reduce){.job-spinner{animation-duration:1.6s}.job-track.is-indeterminate .job-bar{animation:none;width:100%;opacity:.45}}
+
+/* build 438: the range in use when the card priority trims a segment's range */
+.segment-effective{margin:-2px 0 6px;font-size:11px;line-height:1.35;color:var(--muted,#9fb3c3)}
+.segment-effective.is-hidden{display:none}
+.segment-exclusive-row select{width:100%}
+
+/* build 439: drag the segment cards (⋮⋮) to set their priority */
+.segment-drag-handle{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;padding:2px 6px;margin-right:4px;color:var(--muted,#9fb3c3);font-size:14px;line-height:1}
+.segment-drag-handle:active{cursor:grabbing}
+.segment-card.is-dragging{opacity:.75;outline:2px solid var(--accent,#3d8bfd);outline-offset:2px}
+/* build 442: the value next to a slider can be typed in (range-entry.js) */
+label:has(input[type=range]) output{cursor:text;border-bottom:1px dotted rgba(216,230,236,.35)}
+label:has(input[type=range]) output:hover{border-bottom-color:rgba(0,229,255,.8)}
+.range-entry-field{width:7.5em;max-width:100%;justify-self:end;font:inherit;font-variant-numeric:tabular-nums;color:#f1fbff;background:#0b1114;border:1px solid #00b8d4;border-radius:5px;padding:2px 5px;text-align:right}

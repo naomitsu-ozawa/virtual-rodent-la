@@ -1,17 +1,48 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20261005-build437';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261005-build437';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261005-build437';
-import { dispose } from './surface-mesh.js?v=20261005-build437';
-import { request3DRender } from './scene3d.js?v=20261005-build437';
-import { renderAnalysisResults } from './analysis-results.js?v=20261005-build437';
-import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261005-build437';
-import { niceCtStep, formatCtValue } from './utils.js?v=20261005-build437';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261005-build437';
-import { renderAll } from './mpr-render.js?v=20261005-build437';
+import { mark3DStale } from './three-state.js?v=20261005-build444';
+import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261005-build444';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261005-build444';
+import { dispose } from './surface-mesh.js?v=20261005-build444';
+import { request3DRender } from './scene3d.js?v=20261005-build444';
+import { renderAnalysisResults } from './analysis-results.js?v=20261005-build444';
+import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges } from './segments.js?v=20261005-build444';
+import { tr } from './i18n.js?v=20261005-build444';
+import { niceCtStep, formatCtValue } from './utils.js?v=20261005-build444';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261005-build444';
+import { renderAll } from './mpr-render.js?v=20261005-build444';
+// build 439 (owner: change the card order by dragging): a pointer drag on a card's ⋮⋮ handle (mouse and touch alike)
+// moves the card live; on release the new card order becomes the priority (segment-exclusive.js) and every segment
+// whose range in use changed is recomputed
+export function installSegmentReorder(onCommit){
+ let drag=null;
+ const cards=()=>[...segmentControls.querySelectorAll('[data-segment]')];
+ for(const handle of segmentControls.querySelectorAll('[data-seg-drag]')){
+  handle.addEventListener('pointerdown',e=>{
+   const card=handle.closest('[data-segment]');if(!card)return;
+   drag={card,handle,id:e.pointerId,before:cards().map(c=>c.dataset.segment).join()};handle.setPointerCapture?.(e.pointerId);card.classList.add('is-dragging');e.preventDefault();
+  });
+  // moving the card in the DOM drops the handle's pointer capture: move / up are followed on the window
+  window.addEventListener('pointermove',e=>{
+   if(!drag||e.pointerId!==drag.id||drag.handle!==handle)return;
+   const over=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-segment]');
+   if(!over||over===drag.card||over.classList.contains('is-hidden')||over.parentElement!==drag.card.parentElement)return;
+   const r=over.getBoundingClientRect(),after=e.clientY>r.top+r.height/2;
+   over.parentElement.insertBefore(drag.card,after?over.nextSibling:over);
+  });
+  const end=e=>{
+   if(!drag||e.pointerId!==drag.id)return;const d=drag;drag=null;d.card.classList.remove('is-dragging');
+   const order=cards().map(c=>c.dataset.segment);if(order.join()===d.before)return;
+   segmentExclusive.order=order.filter(k=>SEGMENT_PRESET_ORDER.includes(k));onCommit?.();
+  };
+  window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);
+ }
+}
 export function renderSegmentPresets(){
  const active=new Set(SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active));
+ // build 438: the cards stand in the priority order (top = first), see segment-exclusive.js
+ for(const key of segmentExclusive.order){const card=segmentControls.querySelector('[data-segment="'+key+'"]');if(card)card.parentElement.append(card)}
+ const modeSel=document.getElementById('segment-exclusive-mode');if(modeSel)modeSel.value=segmentExclusive.mode;
  for(const key of SEGMENT_PRESET_ORDER){
   const card=segmentControls.querySelector('[data-segment="'+key+'"]');
   if(card)card.classList.toggle('is-hidden',!active.has(key));
@@ -31,19 +62,32 @@ export function addSegmentPreset(key){
  opening.disabled=false;closing.disabled=false;minComponent.disabled=false;holeFill.disabled=false;
  for(const [attr] of THIN_SLIDERS){const el=$('[data-seg-'+attr+'="'+key+'"]');if(el)el.disabled=false}
  if(exportBtn)exportBtn.disabled=true;if(removeBtn)removeBtn.disabled=false;
- renderSegmentPresets();renderAll();scheduleSegment3D();
+ // build 438: a new card takes part in the priority: the segments below it may lose part of their range
+ renderSegmentPresets();commitExclusiveRanges();renderAll();scheduleSegment3D();
 }
 export function removeSegmentPreset(key){
  if(!SEGMENT_PRESET_ORDER.includes(key)||!segmentState[key].active)return;
  const seg=segmentState[key];seg.active=false;seg.enabled=false;clearSegmentEditCache(key,true);if(threeRenderMode==='volume')syncGpuVolumeEdits(sourceVolume||volume);
  const enabled=$('[data-seg-enabled="'+key+'"]'),removeBtn=$('[data-seg-remove="'+key+'"]');
  if(enabled)enabled.checked=false;if(removeBtn)removeBtn.disabled=true;
- renderSegmentPresets();clearAnalysisHighlight();renderAll();scheduleSegment3D();
+ renderSegmentPresets();commitExclusiveRanges();clearAnalysisHighlight();renderAll();scheduleSegment3D();
+}
+export function ctSliderUnit(p){
+ return Number.isInteger(p.fullMin)&&Number.isInteger(p.fullMax)?1:niceCtStep(p.fullSpan)/10;
+}
+// build 442: a typed CT value may widen its slider up to the data's full range (range-entry.js)
+export function ctSliderFullBounds(el){
+ const p=ctRangeProfile;if(!p||!el)return null;
+ if(el===ww)return[Math.max(niceCtStep(p.fullSpan),1e-6),p.fullWidthMax];
+ if(el===wc||el===sigmoidCenter||el.matches?.('[data-seg-min],[data-seg-max]'))return[p.fullMin,p.fullMax];
+ return null;
 }
 export function setCtSliderRange(el,min,max,step){
  if(!el)return;
- const value=+el.value,lo=Math.min(min,value),hi=Math.max(max,value);
- el.min=String(lo);el.max=String(Math.max(lo+step,hi));el.step=String(step);
+ // build 442: the ends on the step grid (multiples of the step), so the slider stops on whole values whatever the
+ // window (an auto window can start at a fraction); before, the grid started at the window's own minimum
+ const value=+el.value,lo=Math.floor(Math.min(min,value)/step)*step,hi=Math.ceil(Math.max(max,value)/step)*step;
+ el.min=String(+lo.toFixed(8));el.max=String(+Math.max(lo+step,hi).toFixed(8));el.step=String(step);
  el.value=String(value);
 }
 export function autoAround(value,halfSpan,fullMin,fullMax){
@@ -57,10 +101,12 @@ export function applyCtRangeMode(mode=ctRangeMode){
  setCtRangeMode(mode==='full'?'full':'auto');
  ctRangeAuto.classList.toggle('is-active',ctRangeMode==='auto');
  ctRangeFull.classList.toggle('is-active',ctRangeMode==='full');
- const p=ctRangeProfile,fullStep=niceCtStep(p.fullSpan),autoStep=niceCtStep(Math.max(p.width*2,p.fullSpan/20));
+ // build 442 (owner: wheel and typing by the smallest unit): the CT sliders step by the data's unit — 1 on integer
+ // data (HU), a tenth of the old step otherwise; the old steps (span / 700, e.g. 10 HU) stay the WW minimum
+ const p=ctRangeProfile,unit=ctSliderUnit(p),fullStep=unit,autoStep=unit,wwFloor=niceCtStep(p.fullSpan),wwAutoFloor=niceCtStep(Math.max(p.width*2,p.fullSpan/20));
  if(ctRangeMode==='full'){
   setCtSliderRange(wc,p.fullMin,p.fullMax,fullStep);
-  setCtSliderRange(ww,Math.max(fullStep,1e-6),p.fullWidthMax,fullStep);
+  setCtSliderRange(ww,Math.max(wwFloor,1e-6),p.fullWidthMax,fullStep);
   setCtSliderRange(sigmoidCenter,p.fullMin,p.fullMax,fullStep);
   for(const key of SEGMENT_PRESET_ORDER){
    setCtSliderRange($('[data-seg-min="'+key+'"]'),p.fullMin,p.fullMax,fullStep);
@@ -69,8 +115,8 @@ export function applyCtRangeMode(mode=ctRangeMode){
  }else{
   const half=Math.max(p.width,p.fullSpan/200);
   let r=autoAround(+wc.value,half,p.fullMin,p.fullMax);setCtSliderRange(wc,r[0],r[1],autoStep);
-  const currentWidth=Math.max(+ww.value,autoStep),wwLo=Math.max(autoStep,currentWidth-p.width),wwHi=Math.min(p.fullWidthMax,Math.max(currentWidth+p.width,currentWidth*1.5));
-  setCtSliderRange(ww,wwLo,Math.max(wwLo+autoStep,wwHi),autoStep);
+  const currentWidth=Math.max(+ww.value,wwAutoFloor),wwLo=Math.max(wwAutoFloor,currentWidth-p.width),wwHi=Math.min(p.fullWidthMax,Math.max(currentWidth+p.width,currentWidth*1.5));
+  setCtSliderRange(ww,wwLo,Math.max(wwLo+wwAutoFloor,wwHi),autoStep);
   r=autoAround(+sigmoidCenter.value,half,p.fullMin,p.fullMax);setCtSliderRange(sigmoidCenter,r[0],r[1],autoStep);
   for(const key of SEGMENT_PRESET_ORDER){
    const minEl=$('[data-seg-min="'+key+'"]'),maxEl=$('[data-seg-max="'+key+'"]');
@@ -84,8 +130,13 @@ export function applyCtRangeMode(mode=ctRangeMode){
 }
 export function updateSegmentOutputs(key){
  const minEl=$('[data-seg-min="'+key+'"]'),maxEl=$('[data-seg-max="'+key+'"]');
- $('[data-seg-min-out="'+key+'"]').value=formatCtValue(segmentState[key].min,+minEl?.step||1);
- $('[data-seg-max-out="'+key+'"]').value=formatCtValue(segmentState[key].max,+maxEl?.step||1);
+ const s=segmentState[key],st=+minEl?.step||1;
+ $('[data-seg-min-out="'+key+'"]').value=formatCtValue(s.userMin??s.min,st);
+ $('[data-seg-max-out="'+key+'"]').value=formatCtValue(s.userMax??s.max,+maxEl?.step||1);
+ // build 438: the range in use when the card priority trims the user range
+ const note=$('[data-seg-effective="'+key+'"]');
+ if(note){const e=s.exclusive,trimmed=s.active&&e&&(e.empty||e.min!==(s.userMin??s.min)||e.max!==(s.userMax??s.max));note.classList.toggle('is-hidden',!trimmed);
+  if(trimmed){const f=v=>formatCtValue(v,st);note.textContent=e.empty?tr('segEffectiveEmpty'):tr('segEffective')+' '+f(e.min)+' 〜 '+f(e.max)+(e.dropped?.length?' · '+tr('segEffectiveDropped')+' '+e.dropped.map(([a,b])=>f(a)+'〜'+f(b)).join(', '):'')}}
  $('[data-seg-opacity-out="'+key+'"]').value=segmentState[key].opacity.toFixed(2);
  for(const [attr,field] of THIN_SLIDERS){const out=$('[data-seg-'+attr+'-out="'+key+'"]');if(out)out.value=formatMmVoxels(segmentState[key][field])}
 }

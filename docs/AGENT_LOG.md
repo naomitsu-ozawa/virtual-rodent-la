@@ -4408,8 +4408,7 @@ human sees and edits the regions; the volume is the human-checked region.
   (width from the slider); they look different (owner's request).
 Checks: lint, unit tests, boot-check, sigmoid-check.
 Open, proposed and accepted for later ("それも検討したい"): exclusive
-(non-overlapping) segments; strands in fat as their own segment ("keep only
-thin parts").
+(non-overlapping) segments (design open, see below); strands in fat dropped.
 
 ## Build 437 — VR: a result colour only on its own segment's surfaces; checks skip the bundled practice project
 
@@ -4439,9 +4438,213 @@ Checks: lint, unit tests, boot-check, vr-gpu-prepare-check, vr-volume-check
 (plain and FILTER=1), edit-consistency, result-2d, plane-sync, mpr-alpha,
 processed-filter, plane-orientation, sigmoid — all OK.
 
-## Handoff (after build 437)
+Exclusive (non-overlapping) segments — design open (owner: wants it, still
+thinking). Practice project overlap: fat −250…81 and soft −93…248 share
+−93…81 HU (double-counted today). Options shown: A one shared boundary per
+neighbour pair (linked sliders, no gaps), B priority order (higher segment
+takes the overlap; show the effective range on the lower one; reorder with
+↑↓; proposed default bone → fat → soft → lung), C split at the overlap's
+middle. Owner finds B more intuitive, wants to refine before building.
+Either way: closing / hole fill can add voxels across a neighbour, so the
+final runs need a subtraction of higher-priority segments as well.
 
-State: build 437 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Strands in fat as their own segment — tried offline on the practice data
+(bilateral planes z 332 / 409, fat < 0 HU, soft pixels with fat on both sides
+along a direction within 2–3 px): the hits are mostly fat-border jaggies,
+small blobs and gut-gas rims; no clear strands at these slices (likely
+thinner than a 0.148 mm voxel). Owner: not realistic — dropped for now.
+
+## Build 438 — non-overlapping segments by card priority; project ranges load exactly
+
+Owner: no overlap, decided by priority = the order of the segment cards
+(top first); the shared-boundary variant (A) selectable in a setting later;
+as intuitive and convenient as possible.
+- docs/segment-exclusive.js (pure, tests/unit/segment-exclusive.test.js):
+  effectiveRanges(user ranges, card order, mode). 'priority': a segment's
+  range = its user range minus the ranges held by the ACTIVE segments above
+  it (a card hidden by its checkbox still counts, so hiding never moves
+  voxels); a cut at b starts at the next float32 above b (filtered values
+  never fall into a gap); a range strictly inside a lower one leaves two
+  pieces — the piece with the user range's middle is kept, the other
+  reported on the card; a fully covered range is empty. 'off' = as before.
+- segments.js: seg.userMin / userMax (sliders) and seg.min / max (in use, read
+  by every view, the runs, analysis, export unchanged); segmentExclusive
+  {order, mode}; applyExclusiveRanges / commitExclusiveRanges (invalidates
+  every segment whose range in use changed, via app.js segmentInvalidators).
+- UI: segmentation panel 「重なり」: 重複なし（上のカードが優先） / 重複を許す
+  （従来）; cards stand in priority order (default bone → fat → soft → lung);
+  each card shows 「使う範囲 a 〜 b」 when trimmed (and the dropped piece).
+  Reordering the cards (↑↓) and the shared-boundary mode: next build.
+- Project: segmentOptions {exclusive, order}; segment min / max are the user
+  ranges. Projects saved before 438 load with 'off' (results unchanged; the
+  practice project too); new data starts with 'priority'.
+- Found and fixed on the way (on main as well): applyProject set the
+  segment ranges through the sliders, which snap to a step grid that moves
+  with the slider range — each save → load moved a range by one step
+  (measured: fat −249…82 → −245…86 → −241…90). The saved values are now
+  stored exactly (the slider only shows them).
+- tools/exclusive-segments-check.mjs (npm run exclusive-segments-check),
+  bare practice data, fat −250…81 / soft −93…248 (slider-snapped −249…82 /
+  −97…244): 'off' 10,819,055 voxels in both fat and soft; 'priority' 0,
+  fat + soft = union (36,537,973); fat card hidden: soft unchanged; soft
+  −300…300: in use 82…296, dropped −295…−249 shown on the card; project
+  round trip exact.
+- Known limit (measured, not fixed in 438): Closing and hole fill add
+  voxels after the ranges are split; fat with Closing 1 next to soft:
+  1,419,597 voxels in both final runs. The owner's practice project uses
+  neither (fat: air exclusion only, which removes voxels). A fix has to
+  subtract the higher cards' final runs in every path (2D, runs, WebGPU
+  processing masks, VR) — separate build if wanted.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+exclusive-segments-check, progress-modal, analysis-project (plain and
+FILTER=1), edit-consistency, result-2d, plane-sync, mpr-alpha,
+processed-filter, plane-orientation, sigmoid.
+
+## Build 439 — drag the segment cards to set the priority
+
+Owner: change the card order by dragging.
+- Each segment card has a ⋮⋮ handle (segment-ui.js installSegmentReorder):
+  pointer events (mouse and touch alike), the card moves live under the
+  pointer; on release the card order becomes segmentExclusive.order and
+  every segment whose range in use changed is recomputed (commit). Move /
+  up are followed on the window: moving the card in the DOM drops the
+  handle's pointer capture (first version lost the release — kept on the
+  wip/segment-card-drag branch meanwhile, now merged here).
+- exclusive-segments-check: a real mouse drag of soft's handle above fat →
+  cards bone, soft, fat; soft keeps −93…248, fat in use −249…−93 (card note).
+Checks: lint, unit tests, boot-check, exclusive-segments-check,
+progress-modal, edit-consistency, plane-sync.
+
+## Build 440 — GPU threshold at the range ends; WebGPU compatibility adapters (Linux)
+
+- Found with a GPU in the headless checks (Chromium --enable-unsafe-webgpu
+  --use-webgpu-adapter=swiftshader gives a WebGPU adapter here): the GPU
+  raw-DICOM threshold counted 5,386,541 fat voxels (−250…−50) where the CPU
+  and the decoded volume count 5,418,876; 386 slices differed, every
+  differing voxel had exactly −50 HU. Cause: the WGSL decoded the 16-bit
+  value from rg8 as channel × 255.0, not exactly an integer, so −50 became
+  about −49.9998 and failed ≤ −50. Fix: round() in every exact (textureLoad)
+  decode of medical-volume.js (6 places: analysis RLE, cap / surface voxel
+  lookups); the interpolated sampling path is unchanged. After: 5,418,876
+  on the GPU, 0 slices apart.
+- Owner (Linux, Chrome 154, NVIDIA RTX 4070 Ti, Chrome started with
+  --ozone-platform=x11, Vulkan disabled): chrome://gpu shows only "OpenGLES
+  backend … (Compatibility Mode)"; the app asked for core adapters only, so
+  compute ran on the CPU and the 3D view on WebGL. gpu-compute.js now falls
+  back to featureLevel 'compatibility' and, on such a device, requests every
+  limit the adapter offers. ?gpucompat (or localStorage vrl.gpucompat = 1)
+  forces a compatibility device for checks. Measured with it (SwiftShader):
+  compute and render devices COMPAT; fat counts plain / Opening 1 /
+  Gaussian / Gaussian + Opening 5,418,876 / 4,086,436 / 5,682,902 /
+  4,718,414 — equal to the CPU path. (three.js on this headless Chromium
+  logs 'createView … swizzle' page errors in core and compat mode alike.)
+  Likely reason the owner's NVIDIA was used before: Chrome's NVIDIA WebGPU
+  needs Wayland (Chrome 147+); the browser is now started with X11.
+- Open: the owner's report (pr-87, Mac): fat colour speckles inside the
+  analysis-result colours, 3D and 2D. Under measurement (practice project:
+  are the result voxels inside today's fat runs, CPU and GPU).
+Checks: lint, unit tests (WGSL 63), boot-check, the GPU / compat
+comparisons above.
+
+## Build 441 — take results out of the selection (click toggle, lasso unselect, unselect all)
+
+Owner: after a project load, redo the 3D-edit selection — take regions out
+of the selection again. Option A of the proposal (no image change):
+- 領域選択: a click on a result already there toggles its tick
+  (analysis-ops.js toggleAnalysisRegionSelection); unticking also drops the
+  focus, else 選択領域を削除 would still fall back to it (editTargetRegions).
+  Before, a click only focused it (and did not tick an unticked one).
+- 囲んで外す (tool 'unlasso', same loop as 囲んで選択): the pieces of the
+  ticked results that lie completely inside the loop leave the selection. A
+  result all inside is unticked; one partly inside is split into the pieces
+  inside (new unticked result, same colour) and the rest (ticked): no voxel
+  leaves the results, the colours stay.
+- 選択を外す buttons (edit toolbar and results panel): untick all, no focus.
+- The status line says how many are selected (the 3D view shows no tick).
+- The tick is saved in the project (analysis region meta 'selected');
+  projects saved before 441 load with every result unticked, as before.
+- tools/region-deselect-check.mjs (synthetic boxes on the practice data):
+  toggle off / on, lasso split 216 + 216 / 216 with colours kept and 648
+  voxels before and after, lasso whole result unticked, ticks after save →
+  load [true, false, false], unselect all → 0 edit targets.
+- Result-colour speckles (owner, 438 report), measured on the practice
+  project (SwiftShader WebGPU): builds 438 and 440 load identical results —
+  fat 7,344,376 (−250…81, surface 0.74 mm); of the two saved results 1,411 +
+  21,449 voxels are no longer fat and 102,324 + 230,365 fat voxels touch a
+  result without being in it (a fresh analysis gives 0 for both). So 440 is
+  not the cause. At build 436 the same project loads surface 0.592 mm (the
+  pre-438 slider snap), fat 7,128,598, and no results at all (not looked
+  into). Saved results are fixed voxel sets (restoreAnalysisRegions); they
+  do not follow a changed segment. Redoing the analysis fixes it (owner saw
+  that). Open: re-derive saved results against the loaded segment on load,
+  owner decision.
+Checks: lint, unit tests, boot-check, region-deselect-check,
+analysis-project-check, edit-consistency-check; button rows checked at 1400
+and 820 px wide.
+
+## Build 442 — slider wheel by one step, typed values, CT sliders by 1 HU
+
+Owner: the wheel should move a slider by its smallest unit; values should
+be typable.
+- Wheel (app.js, range-entry.js rangeWheelSteps): one notch (line / page
+  event, or ≥ 50 px) = one step, Shift = ten; trackpad pixels add up, one
+  step per 42 px. Before: about span / 110 per notch (two ticks of
+  span / 220), e.g. 40 HU on a CT range slider, 4 slices, 2 on opening 0–3.
+- Typing (range-entry.js installRangeEntry, every slider whose label holds
+  an <output>): click / tap the value → number field; Enter or leaving it
+  sets the slider (input + change, as a drag), Escape cancels. CT values
+  outside the slider's window widen it up to the data's range
+  (ctSliderFullBounds), beyond that they are clamped. "n / N" values are
+  typed 1-based; data-range-entry-invert marks the 3D slice sliders (they
+  run opposite to the slice they show). Values marked by a dotted underline
+  (style.css, label:has(range) output).
+- CT sliders (WC, WW, segment CT range, Sigmoid centre) step by the data's
+  unit: 1 on integer data, else a tenth of the old step (old: span / 700
+  rounded, 10 HU here; it stays the WW minimum). Slider ends sit on the
+  step grid (setCtSliderRange), so the slider stops on whole values.
+- Measured (practice data, fresh / bundled project), 441 → 442: fresh WC /
+  WW 198 / 2640 → 197 / 2639 (= the DICOM window); slider values of the
+  ranges −249…−49 → −250…−50 (the ranges in use were already exact since
+  438). Bundled project: WC 149 → 139 and Sigmoid centre 2 → −8 — 441 and
+  earlier loaded the saved −8 / 139 snapped to the 10 HU grid, so the
+  Sigmoid ran with another centre than the one saved. The saved results
+  still do not match the loaded fat at 442 (fat 7,072,477; outside
+  9,558 + 57,815, enclosed 0, touching-not-in 55,333 + 96,559; at 440:
+  7,344,376, 1,411 + 21,449, 20, 102,324 + 230,365): the snap is one
+  difference, not the whole one. Redoing the analysis stays the fix.
+- tools/slider-entry-check.mjs; tests/unit/range-entry.test.js.
+Checks: lint, unit tests, boot-check, slider-entry, exclusive-segments,
+sigmoid, region-deselect, analysis-project.
+
+## Build 443 — practice data: bundled project removed
+
+Owner: remove the practice project for now; they will make a new one (the
+saved analysis results did not match the loaded segments, see 441 / 442).
+docs/demo/sample1/project.vrlab deleted; 練習用データ opens bare (a missing
+project is silent, app.js loadSampleProject). The tools' SAMPLE_PROJECT=1
+has nothing to load until a new file is added.
+Checks: lint, unit tests, boot-check.
+
+## Build 444 — practice data: the owner's new project
+
+docs/demo/sample1/project.vrlab = the owner's project saved at build 443
+(2026-10-05 05:45 UTC): bilateral (0.8 / 1.2 / 0.02 / 2) → Sigmoid (centre
+0, width 300, strength 0.5); bone 350…61535, soft −50…350, fat −250…−50
+(surface 0.74 mm), lung off; non-overlapping, order bone, fat, soft, lung;
+no 3D edits; two fat results, both ticked.
+Measured on load (SwiftShader WebGPU, build 443 code): fat 6,086,178; the
+saved results (1,433,503 / 4,407,999 voxels) have 5,277 / 33,662 voxels
+outside the loaded fat and 67,744 / 121,987 fat voxels touching them
+without being in them (0 / 0 for results made in the same session); enclosed
+0. So even a project saved by the current build does not reload the
+segmentation its results were made from (on another machine: owner Mac GPU
+vs SwiftShader here). Cause not known yet — next: measure on the owner's
+device (diagnostic), CPU vs GPU filtered values at the range ends.
+Checks: lint, unit tests, boot-check (also SAMPLE_PROJECT=1).
+
+## Handoff (after build 444)
+
+State: build 444 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; 441: unselect results — click toggle, lasso unselect, unselect all, ticks saved; 442: wheel one step a notch, typed slider values, CT sliders by 1 HU (fixes the Sigmoid centre / WC snap on project load); 443: practice project removed; 444: the owner's new practice project; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
