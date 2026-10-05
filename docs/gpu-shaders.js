@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX } from './filter-units.js?v=20261005-build455';
+import { ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX } from './filter-units.js?v=20261005-build456';
 export const AIRDIST_X_MAX_N=64;
 export function gpuFilterShader(kind,workgroupSize){
  const header=`
@@ -200,7 +200,8 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  // means, so x and y passes ('boxMean') then a z pass fused with the sharpening
  // ('unsharpCombine', original CT at binding 4) give the same result as the cube
  // loop below with 3(2r+1) reads per voxel instead of (2r+1)³.
- // boxMean: meta[4]=axis, meta[5]=radius.
+ // boxMean: meta[4]=axis, meta[5]=taps K on each side, params[1]=A (half-width of the box in voxels along the axis,
+// (R+0.5)*hmin/h_a); voxel k weighs clamp(A-|k|+0.5,0,1) (all 1 when isotropic = the plain box). params[0] is unused.
  if(kind==='boxMean')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
@@ -209,19 +210,20 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  for(var k=-r;k<=r;k++){
   var q=c;if(axis==0u){q.x=c.x+k;}else if(axis==1u){q.y=c.y+k;}else{q.z=c.z+k;}
   if(q.x<0||q.y<0||q.z<0||q.x>=dims.x||q.y>=dims.y||q.z>=dims.z){continue;}
-  sum+=src[idx(u32(q.x),u32(q.y),u32(q.z))];count+=1.0;
+  let wk=clamp(params[1]-f32(abs(k))+0.5,0.0,1.0);
+  sum+=wk*src[idx(u32(q.x),u32(q.y),u32(q.z))];count+=wk;
  }
- dst[i]=sum/max(count,1.0);
+ dst[i]=sum/max(count,0.000001);
 }`;
- // unsharpCombine: src = x/y box mean, binding 4 = original; meta[5]=radius;
- // params = amount, thresholdHU (as 'unsharp'; build 447: no volume range).
+ // unsharpCombine: src = x/y box mean, binding 4 = original; meta[5]=taps K; params = amount, thresholdHU
+ // (as 'unsharp'; build 447: no volume range), A of the z axis (see boxMean).
  if(kind==='unsharpCombine')return header+`
 @group(0) @binding(4) var<storage, read> orig: array<f32>;
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let d=i32(meta[2]);let r=i32(meta[5]);var sum=0.0;var count=0.0;
- for(var k=-r;k<=r;k++){let zz=i32(c.z)+k;if(zz<0||zz>=d){continue;}sum+=src[idx(c.x,c.y,u32(zz))];count+=1.0;}
- let blur=sum/max(count,1.0);let v=orig[i];let detail=v-blur;let threshold=params[1];
+ for(var k=-r;k<=r;k++){let zz=i32(c.z)+k;if(zz<0||zz>=d){continue;}let wk=clamp(params[2]-f32(abs(k))+0.5,0.0,1.0);sum+=wk*src[idx(c.x,c.y,u32(zz))];count+=wk;}
+ let blur=sum/max(count,0.000001);let v=orig[i];let detail=v-blur;let threshold=params[1];
  dst[i]=select(v,v+params[0]*detail,abs(detail)>=threshold);
 }`;
  if(kind==='unsharp')return header+`
@@ -242,16 +244,16 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
  let strength=params[0];let spatialSigma=params[1];let intensitySigma=max(0.000001,params[2]);
- let radius=i32(meta[4]);let sp2=2.0*spatialSigma*spatialSigma;let int2=2.0*intensitySigma*intensitySigma;
+ let rx=i32(meta[4]);let ry=i32(meta[5]);let rz=i32(meta[6]);let ix=params[3];let iy=params[4];let iz=params[5];let sp2=2.0*spatialSigma*spatialSigma;let int2=2.0*intensitySigma*intensitySigma;
  var sum=0.0;var wsum=0.0;
- for(var dz:i32=-radius;dz<=radius;dz=dz+1){
+ for(var dz:i32=-rz;dz<=rz;dz=dz+1){
   let zz=i32(c.z)+dz;if(zz<0){continue;}if(zz>=i32(meta[2])){continue;}
-  for(var dy:i32=-radius;dy<=radius;dy=dy+1){
+  for(var dy:i32=-ry;dy<=ry;dy=dy+1){
    let yy=i32(c.y)+dy;if(yy<0){continue;}if(yy>=i32(meta[1])){continue;}
-   for(var dx:i32=-radius;dx<=radius;dx=dx+1){
+   for(var dx:i32=-rx;dx<=rx;dx=dx+1){
     let xx=i32(c.x)+dx;if(xx<0){continue;}if(xx>=i32(meta[0])){continue;}
     let j=idx(u32(xx),u32(yy),u32(zz));let dv=src[j]-center;
-    let sw=exp(-f32(dx*dx+dy*dy+dz*dz)/sp2);let iw=exp(-(dv*dv)/int2);let ww=sw*iw;
+    let sw=exp(-(f32(dx*dx)*ix+f32(dy*dy)*iy+f32(dz*dz)*iz)/sp2);let iw=exp(-(dv*dv)/int2);let ww=sw*iw;
     sum+=src[j]*ww;wsum+=ww;
    }
   }
@@ -262,24 +264,32 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
- let sr=i32(meta[4]);let pr=i32(meta[5]);let hp=params[0];let h2=max(hp*hp,0.000001);
+ let srx=i32(meta[4]);let sry=i32(meta[5]);let srz=i32(meta[6]);let prx=i32(params[1]);let pry=i32(params[2]);let prz=i32(params[3]);let prm=max(prx,max(pry,prz));let hp=params[0];let h2=max(hp*hp,0.000001);
  var weighted=center;var weightSum=1.0;
- for(var dz:i32=-sr;dz<=sr;dz=dz+1){
+ for(var dz:i32=-srz;dz<=srz;dz=dz+1){
   let nz=i32(c.z)+dz;if(nz<0){continue;}if(nz>=i32(meta[2])){continue;}
-  for(var dy:i32=-sr;dy<=sr;dy=dy+1){
+  for(var dy:i32=-sry;dy<=sry;dy=dy+1){
    let ny=i32(c.y)+dy;if(ny<0){continue;}if(ny>=i32(meta[1])){continue;}
-   for(var dx:i32=-sr;dx<=sr;dx=dx+1){
+   for(var dx:i32=-srx;dx<=srx;dx=dx+1){
     let nx=i32(c.x)+dx;if(nx<0){continue;}if(nx>=i32(meta[0])){continue;}if(dx==0){if(dy==0){if(dz==0){continue;}}}
     var dist2=0.0;var samples=1.0;
     var dv=src[cidx(i32(c.x),i32(c.y),i32(c.z))]-src[cidx(nx,ny,nz)];dist2+=dv*dv;
-    for(var r:i32=1;r<=pr;r=r+1){
-     dv=src[cidx(i32(c.x)+r,i32(c.y),i32(c.z))]-src[cidx(nx+r,ny,nz)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x)-r,i32(c.y),i32(c.z))]-src[cidx(nx-r,ny,nz)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x),i32(c.y)+r,i32(c.z))]-src[cidx(nx,ny+r,nz)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x),i32(c.y)-r,i32(c.z))]-src[cidx(nx,ny-r,nz)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x),i32(c.y),i32(c.z)+r)]-src[cidx(nx,ny,nz+r)];dist2+=dv*dv;
-     dv=src[cidx(i32(c.x),i32(c.y),i32(c.z)-r)]-src[cidx(nx,ny,nz-r)];dist2+=dv*dv;
-     samples+=6.0;
+    for(var r:i32=1;r<=prm;r=r+1){
+     if(r<=prx){
+      dv=src[cidx(i32(c.x)+r,i32(c.y),i32(c.z))]-src[cidx(nx+r,ny,nz)];dist2+=dv*dv;
+      dv=src[cidx(i32(c.x)-r,i32(c.y),i32(c.z))]-src[cidx(nx-r,ny,nz)];dist2+=dv*dv;
+      samples+=2.0;
+     }
+     if(r<=pry){
+      dv=src[cidx(i32(c.x),i32(c.y)+r,i32(c.z))]-src[cidx(nx,ny+r,nz)];dist2+=dv*dv;
+      dv=src[cidx(i32(c.x),i32(c.y)-r,i32(c.z))]-src[cidx(nx,ny-r,nz)];dist2+=dv*dv;
+      samples+=2.0;
+     }
+     if(r<=prz){
+      dv=src[cidx(i32(c.x),i32(c.y),i32(c.z)+r)]-src[cidx(nx,ny,nz+r)];dist2+=dv*dv;
+      dv=src[cidx(i32(c.x),i32(c.y),i32(c.z)-r)]-src[cidx(nx,ny,nz-r)];dist2+=dv*dv;
+      samples+=2.0;
+     }
     }
     dist2/=samples;let weight=exp(-dist2/h2);let j=idx(u32(nx),u32(ny),u32(nz));weighted+=weight*src[j];weightSum+=weight;
    }

@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261005-build455';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build455';
+import { installGpuLedger } from './mem-ledger.js?v=20261005-build456';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build456';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build455';
-import { spacingParams } from './filter-units.js?v=20261005-build455';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build455';
-import { runsSliceToMask } from './run-length.js?v=20261005-build455';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build455';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build455';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build456';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261005-build456';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build456';
+import { runsSliceToMask } from './run-length.js?v=20261005-build456';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build456';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build456';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -292,8 +292,9 @@ export async function runGpuSourceFilters(data,w,h,d,stages,target,segments=null
     for(let round=0;round<Math.max(1,Math.round(p.passes));round++)await dispatch('median',[],[p.strength]);
    }else{
     // fused: one (2n+1)-tap pass per axis instead of n 3-tap passes
-    const kernel=gaussianPassKernel(p.strength,p.passes),kr=(kernel.length-1)/2;
-    for(let axis=0;axis<3;axis++)await dispatch('gaussianK',[axis,kr],kernel);
+    // per-axis strength s_a = s*(hmin/h_a)^2 (spacing weights w_a; equal to s when isotropic)
+    const sw=spacingParams(p);
+    for(let axis=0;axis<3;axis++){const kernel=gaussianPassKernel(p.strength*sw[axis],p.passes),kr=(kernel.length-1)/2;await dispatch('gaussianK',[axis,kr],kernel)}
    }
   }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[p.strength,p.center,p.width||300]);
   else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[p.strength,p.thresholdHU]);
@@ -301,18 +302,24 @@ export async function runGpuSourceFilters(data,w,h,d,stages,target,segments=null
   else if(stage.key==='tv'){const [wx,wy,wz]=spacingParams(p);for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[p.weight,p.epsHU,wx,wy,wz])}
   else if(stage.key==='unsharp'){
    // separable: x and y box means, then z mean fused with the sharpening (see gpu-shaders.js)
-   const r=Math.max(1,Math.round(p.radius)),orig=current,xw=acquireGpuWorkBuffer(device,bytes),extra=xw.buffer;
-   await dispatch('boxMean',[0,r],[]);                     // orig -> next (now current)
-   const xMean=current;current=xMean;next=extra;await dispatch('boxMean',[1,r],[]); // xMean -> extra (now current)
+   // box half-width per axis (R+0.5)*hmin/h_a voxels with fractional weights at its edge (A, K per axis; plain box when isotropic)
+   const [ux,uy,uz]=unsharpAxes(p.radius,spacingRatios(p)),orig=current,xw=acquireGpuWorkBuffer(device,bytes),extra=xw.buffer;
+   await dispatch('boxMean',[0,ux.K],[0,ux.A]);            // orig -> next (now current)
+   const xMean=current;current=xMean;next=extra;await dispatch('boxMean',[1,uy.K],[0,uy.A]); // xMean -> extra (now current)
    const xyMean=current;next=xMean;                         // write into the x-mean buffer
-   await dispatch('unsharpCombine',[0,r],[p.amount,p.thresholdHU],[{binding:4,resource:{buffer:orig}}]);
+   await dispatch('unsharpCombine',[0,uz.K],[p.amount,p.thresholdHU,uz.A],[{binding:4,resource:{buffer:orig}}]);
    // now current = result (old xMean buffer); keep orig as the spare, drop the extra buffer
    next=orig;const spare=xyMean;small.push({destroy:()=>releaseGpuWorkBuffer(spare,xw.size)});
   }
   else if(stage.key==='bilateral'){
-   const radius=Math.max(1,Math.min(3,Math.ceil(p.spatialSigma*1.5)));
-   for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[p.strength,p.spatialSigma,p.sigmaHU]);
-  }else if(stage.key==='nlm')await dispatch('nlm',[Math.max(1,Math.round(p.searchRadius)),Math.max(0,Math.round(p.patchRadius))],[p.hHU]);
+   // radius per axis clamp(ceil(1.5*sigma*hmin/h_a),0,3); spatial weight in mm via 1/w_a = (h_a/hmin)^2 (params[3..5])
+   const [bx,by,bz]=bilateralRadii(p.spatialSigma,spacingRatios(p)),[wx,wy,wz]=spacingParams(p),ix=1/wx,iy=1/wy,iz=1/wz;
+   for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[bx,by,bz],[p.strength,p.spatialSigma,p.sigmaHU,ix,iy,iz]);
+  }else if(stage.key==='nlm'){
+   // search radius per axis in meta[4..6], patch radius per axis in params[1..3]: round(r*hmin/h_a)
+   const {sr:[srx,sry,srz],pr:[prx,pry,prz]}=nlmRadii(p.searchRadius,p.patchRadius,spacingRatios(p));
+   await dispatch('nlm',[srx,sry,srz],[p.hHU,prx,pry,prz]);
+  }
   else return null;
   // ?debug: GPU time of each filter stage (build 284, per-filter speed work)
   if(GPU_TIMING_DEBUG()&&/[?&]stagetimes/.test(location.search)){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('f:'+(stage.key==='gaussian'&&p.mode==='median'?'median':stage.key),performance.now()-t);encoder=device.createCommandEncoder({label:'VRL filter stage'})}

@@ -52,9 +52,9 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
       spikeHole: { args: ['p.strength', 'p.thresholdHU'], reads: [/let strength=params\[0\]/, /let threshold=params\[1\]/] },
       anisotropic: { args: ['p.strength', 'p.kappaHU', 'wx', 'wy', 'wz'], reads: [/let strength=params\[0\]/, /let k=params\[1\]/, /let wx=params\[2\]/, /let wy=params\[3\]/, /let wz=params\[4\]/] },
       tv: { args: ['p.weight', 'p.epsHU', 'wx', 'wy', 'wz'], reads: [/let weight=params\[0\]/, /let eps=params\[1\]/, /let wx=params\[2\]/, /let wy=params\[3\]/, /let wz=params\[4\]/] },
-      unsharpCombine: { args: ['p.amount', 'p.thresholdHU'], reads: [/params\[0\]\*detail/, /let threshold=params\[1\]/] },
-      bilateral: { args: ['p.strength', 'p.spatialSigma', 'p.sigmaHU'], reads: [/let strength=params\[0\]/, /let spatialSigma=params\[1\]/, /intensitySigma=max\(0\.000001,params\[2\]\)/] },
-      nlm: { args: ['p.hHU'], reads: [/let hp=params\[0\]/] },
+      unsharpCombine: { args: ['p.amount', 'p.thresholdHU', 'uz.A'], reads: [/params\[0\]\*detail/, /let threshold=params\[1\]/, /clamp\(params\[2\]-f32\(abs\(k\)\)\+0\.5/] },
+      bilateral: { args: ['p.strength', 'p.spatialSigma', 'p.sigmaHU', 'ix', 'iy', 'iz'], reads: [/let strength=params\[0\]/, /let spatialSigma=params\[1\]/, /intensitySigma=max\(0\.000001,params\[2\]\)/, /let ix=params\[3\];let iy=params\[4\];let iz=params\[5\]/, /let rx=i32\(meta\[4\]\);let ry=i32\(meta\[5\]\);let rz=i32\(meta\[6\]\)/] },
+      nlm: { args: ['p.hHU', 'prx', 'pry', 'prz'], reads: [/let hp=params\[0\]/, /let prx=i32\(params\[1\]\);let pry=i32\(params\[2\]\);let prz=i32\(params\[3\]\)/, /let srx=i32\(meta\[4\]\);let sry=i32\(meta\[5\]\);let srz=i32\(meta\[6\]\)/] },
     };
     const gc = readFileSync('docs/gpu-compute.js', 'utf8');
     const dispatched = kind => [...gc.matchAll(new RegExp("dispatch\\('" + kind + "',\\[[^\\]]*\\],\\[([^\\]]*)\\]", 'g'))].map(m => m[1].split(',').map(x => x.trim()));
