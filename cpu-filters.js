@@ -4,8 +4,9 @@
 // this module has no UI dependencies and is unit-tested
 // (tests/unit/cpu-filters.test.js). The loops are the former app.js
 // apply* bodies, unchanged apart from reading params instead of sliders.
-import { frameYield } from './utils.js?v=20261005-build452';
-import { boxBlur3D } from './mask-ops.js?v=20261005-build452';
+import { frameYield } from './utils.js?v=20261005-build453';
+import { boxBlur3D } from './mask-ops.js?v=20261005-build453';
+import { anisotropicLambda } from './filter-units.js?v=20261005-build453';
 export async function cpuGaussian3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d,src=v.data;
  const strength=params.strength;
@@ -124,7 +125,7 @@ export async function cpuAnisotropicDiffusion(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d;
  let a=new Float32Array(v.data),b=new Float32Array(n);
  const strength=params.strength;
- const kappa=+params.kappaHU,kappa2=kappa*kappa,lambda=.06+.14*strength,iterations=Math.max(1,Math.round(params.iterations));
+ const kappa=+params.kappaHU,kappa2=kappa*kappa,lambda=anisotropicLambda(strength),iterations=Math.max(1,Math.round(params.iterations));
  for(let iter=0;iter<iterations;iter++){
   b.set(a);
   for(let z=1;z<d-1;z++){
