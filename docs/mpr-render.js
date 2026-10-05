@@ -342,6 +342,7 @@ export function renderSectionPlaneLive(p){
  if(!volume||!planes[p])return;
  cancelSourceMprWarmup();clearTimeout(planeRenderTimers[p]);planeRenderTimers[p]=null;
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
+ setCrosshairSlice(p,idx,'section-'+p); // the section-view slider / 3D drag set the slice directly, so link the crosshair here too (no-op while hidden)
  if(p==='coronal'||p==='sagittal')pushCachedMpr3DPlane(p,idx);
  if(paintFastOrthogonalPreview(p,idx))return;
  void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('Live section render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});

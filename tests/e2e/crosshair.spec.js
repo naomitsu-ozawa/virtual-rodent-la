@@ -178,3 +178,22 @@ test('another series clears the crosshair', async ({ page }) => {
   const q = await getCrosshair(page);
   expect(q.i).toBeLessThan(8); expect(q.j).toBeLessThan(8); expect(q.k).toBeLessThan(6);
 });
+
+test('moving the section analysis position moves the matching crosshair coordinate and the readout follows', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openSeries(page, dicomFolder());
+  await showPlane(page, 'axial');
+  await setSlider(page, 'axial', 4);
+  await page.locator('[data-crosshair-toggle="axial"]').click();
+  const p = await pixelOf(page, 'axial', 3, 5);
+  await page.mouse.click(p.x, p.y);
+  expect(await getCrosshair(page)).toEqual({ i: 3, j: 5, k: 4 });
+  await expect(readout(page)).toContainText('-424 HU', { timeout: 15_000 });
+  // section analysis on the Axial plane (the controls may sit in a collapsed drawer: drive them through the DOM)
+  await page.locator('#section-view-toggle').evaluate(el => el.click());
+  await page.locator('#section-position').evaluate(el => { el.value = '9'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await expect.poll(() => sliderValue(page, 'axial')).toBe(9);
+  expect(await getCrosshair(page)).toEqual({ i: 3, j: 5, k: 9 }); // only the section plane's axis moves
+  await expect(readout(page)).toContainText('i 3 · j 5 · k 9');
+  await expect(readout(page)).toContainText(`${huA(3, 5, 9)} HU`, { timeout: 15_000 }); // (5*16+3+9)%7*200-1024 = -224
+});
