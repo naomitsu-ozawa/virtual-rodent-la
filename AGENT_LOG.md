@@ -38,6 +38,32 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-05 — claude/filters-hu-units (the other five filters in HU, build 447)
+
+**Agent:** Claude
+**Task:** Same fix as PR #90 (bilateral) for Spike/Hole, NLM, Anisotropic Diffusion, TV and Unsharp Mask (owner approved).
+
+### What changed
+- These filters took `(v.max − v.min) × ratio` too, so the result depended on the load path (metadata range / rewritten data range / decoded data range). Now each has an absolute HU parameter, used by the CPU kernels, the worker kernels and the WGSL kernels:
+  Spike/Hole `thresholdHU` (default 100, slider 20–1000 step 5), NLM `hHU` (replaces the strength; 40, 5–300 step 1), Anisotropic `kappaHU` (new; 60, 5–300 step 1; the strength stays and still sets lambda), TV `epsHU` (1, no slider: hidden input, saved with the project), Unsharp `thresholdHU` (60, 0–500 step 5).
+- `filter-units.js` (was `bilateral-sigma.js`, kept as a re-export): one table per filter (parameter name, old name, default, slider range, legacy formula, algorithm version), `resolveFilterParams`, `filterLegacyRange`, and `sourceFilterSignature` with a per-filter `algo` version (so ratio-era cache entries are never reused).
+- The volume range is gone from the worker messages and from `runGpuSourceFilters(data,w,h,d,stages,...)`; the WGSL `params[]` now start with the filter's own parameters (sigmoid and bilateral shifted too). Nothing computes a range any more.
+- Old projects: HU value = old parameter × the range the old code used (metadata range for sourceBacked series, decoded data range for small series; Spike/Unsharp ratio × range, NLM range × (0.018 + 0.11 × strength), Anisotropic range × (0.025 + 0.09 × strength), TV 1e-4 × range). Not written back until the next save. A non-finite range falls back to the default. The footer lists every compatibility value used.
+- Slider widening for out-of-range old values is generic (`setFilterUnitControl` / `restoreFilterUnitRange` in filter-pipeline.js), with the same note for all.
+
+- Build 448 (review fix): an Unsharp threshold of 0 HU (slider min 0; "sharpen every detail") became 1310.7 HU after save / load because `0` was taken as "missing" (`> 0` tests in `resolveFilterParams` and `setFilterUnitControl`, `ratioOf`, and `restoreFilterUnitRange` falling back to the default for 0). One predicate `isValidUnitValue(def, v)` (finite, > 0; >= 0 where the slider min is 0) is now used by both; a saved ratio of 0 is a value. Tests: 0 HU round trip, old ratio 0, every parameter's min / max / default round trip.
+- Build 448: `wgsl-shaders.test.js` compares what `runGpuSourceFilters` writes into `params[]` (parsed from the dispatch calls) with what each kernel reads, for sigmoid, Spike/Hole, Anisotropic, TV, Unsharp, Bilateral and NLM; checked to fail for a moved sigmoid, an extra bilateral value and swapped unsharpCombine arguments.
+
+### Why
+- Same reason as #90: an absolute unit is the only thing that does not depend on which path set v.min / v.max.
+
+### Follow-up / open questions
+- Anisotropic Diffusion is unstable for lambda > 1/6 (strength above about 0.76); not touched here.
+- In the SwiftShader harness the GPU unsharp output differs from the CPU one (also on the main branch before this change; the other filters agree to < 1e-3); unconfirmed on a real device.
+- The defaults (NLM 40, Anisotropic κ 60 HU) need a visual check on the screen.
+
+---
+
 ## 2026-10-05 — claude/bilateral-hu-sigma (bilateral intensity sigma in HU, builds 445-446)
 
 **Agent:** Claude

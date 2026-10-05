@@ -1,20 +1,20 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, sourceMemoryUsable, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261005-build446';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20261005-build446';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20261005-build446';
-import { gpuOpenRuns, gpuCounts, gpuStepTimes, gpuRunInfo, addGpuStepTime, ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported, beginGpuBufferRetention, endGpuBufferRetention } from './gpu-compute.js?v=20261005-build446';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20261005-build446';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20261005-build446';
-import { valuesToSegmentBits } from './mask-ops.js?v=20261005-build446';
-import { state } from './ui-shell.js?v=20261005-build446';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, sourceMemoryUsable, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261005-build448';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20261005-build448';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20261005-build448';
+import { gpuOpenRuns, gpuCounts, gpuStepTimes, gpuRunInfo, addGpuStepTime, ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported, beginGpuBufferRetention, endGpuBufferRetention } from './gpu-compute.js?v=20261005-build448';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20261005-build448';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20261005-build448';
+import { valuesToSegmentBits } from './mask-ops.js?v=20261005-build448';
+import { state } from './ui-shell.js?v=20261005-build448';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, thinSuppressSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20261005-build446';
-import { frameYield } from './utils.js?v=20261005-build446';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20261005-build446';
-import { setProcessingBusy } from './busy.js?v=20261005-build446';
-import { reportBusyProgress } from './progress-modal.js?v=20261005-build446';
-import { segmentRunsCacheKey, segmentRunsCacheInfo, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20261005-build446';
+import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, thinSuppressSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20261005-build448';
+import { frameYield } from './utils.js?v=20261005-build448';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20261005-build448';
+import { setProcessingBusy } from './busy.js?v=20261005-build448';
+import { reportBusyProgress } from './progress-modal.js?v=20261005-build448';
+import { segmentRunsCacheKey, segmentRunsCacheInfo, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20261005-build448';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -22,14 +22,14 @@ export async function processSourceRegionMasks(series,target,stages,key,revision
  const localTarget={x:target.x-x0,y:target.y-y0,z:target.z-z0,width:target.width,height:target.height,depth:target.depth};
  if(gpuStagesSupported(stages)){
   try{
-   const bits=await runGpuSourceFilters(data,box.width,box.height,box.depth,sourceVolume.min,sourceVolume.max,stages,localTarget,segments);
+   const bits=await runGpuSourceFilters(data,box.width,box.height,box.depth,stages,localTarget,segments);
    if(bits instanceof Uint32Array){if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');return bits}
   }catch(e){
    gpuFilterRuntime.lastError='mask: '+String(e?.message||e);if(!gpuFilterRuntime.warned){console.warn('WebGPU mask execution failed; using exact CPU mask path.',e);gpuFilterRuntime.warned=true}
   }
  }
  setGpuComputeBackend(gpuFilterRuntime.lastError?'CPU WORKER · GPU FAIL':'CPU WORKER',gpuFilterRuntime.lastError);
- const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,min:sourceVolume.min,max:sourceVolume.max,stages,target:localTarget};
+ const message={type:'process',id:++sourceFilterRuntime.nextId,buffer:data.buffer,w:box.width,h:box.height,d:box.depth,stages,target:localTarget};
  const values=await runSourceFilterWorker(message,key);
  if(revision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  return valuesToSegmentBits(values,segments);
@@ -98,7 +98,7 @@ export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRe
  if(analysisRevision!==sourceFilterRuntime.revision)throw new Error('__SUPERSEDED__');
  const target={x:0,y:0,z:zStart-z0,width:series.columns,height:series.rows,depth:coreDepth};
  try{
-  const result=await gpuValidationScope(device,'decoded CT analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,v.min,v.max,stages,target,[{key,seg},...extraSegs.map((s,i)=>({key:key+':extra'+i,seg:s}))],{analysisRuns:true,airLayers}));
+  const result=await gpuValidationScope(device,'decoded CT analysis RLE',()=>runGpuSourceFilters(data,box.width,box.height,box.depth,stages,target,[{key,seg},...extraSegs.map((s,i)=>({key:key+':extra'+i,seg:s}))],{analysisRuns:true,airLayers}));
   if(!result?.analysisRuns)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
   setGpuComputeBackend(stages.length?'WEBGPU ANALYSIS FILTER+RLE':'WEBGPU ANALYSIS DECODED-RLE',rawError?.message||null);
   if(airLayers&&!result.itemsList)throw new Error('__GPU_ANALYSIS_UNAVAILABLE__');
