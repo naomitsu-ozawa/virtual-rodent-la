@@ -4625,9 +4625,26 @@ project is silent, app.js loadSampleProject). The tools' SAMPLE_PROJECT=1
 has nothing to load until a new file is added.
 Checks: lint, unit tests, boot-check.
 
-## Handoff (after build 443)
+## Build 444 — practice data: the owner's new project
 
-State: build 443 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; 441: unselect results — click toggle, lasso unselect, unselect all, ticks saved; 442: wheel one step a notch, typed slider values, CT sliders by 1 HU (fixes the Sigmoid centre / WC snap on project load); 443: practice project removed, owner makes a new one; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+docs/demo/sample1/project.vrlab = the owner's project saved at build 443
+(2026-10-05 05:45 UTC): bilateral (0.8 / 1.2 / 0.02 / 2) → Sigmoid (centre
+0, width 300, strength 0.5); bone 350…61535, soft −50…350, fat −250…−50
+(surface 0.74 mm), lung off; non-overlapping, order bone, fat, soft, lung;
+no 3D edits; two fat results, both ticked.
+Measured on load (SwiftShader WebGPU, build 443 code): fat 6,086,178; the
+saved results (1,433,503 / 4,407,999 voxels) have 5,277 / 33,662 voxels
+outside the loaded fat and 67,744 / 121,987 fat voxels touching them
+without being in them (0 / 0 for results made in the same session); enclosed
+0. So even a project saved by the current build does not reload the
+segmentation its results were made from (on another machine: owner Mac GPU
+vs SwiftShader here). Cause not known yet — next: measure on the owner's
+device (diagnostic), CPU vs GPU filtered values at the range ends.
+Checks: lint, unit tests, boot-check (also SAMPLE_PROJECT=1).
+
+## Handoff (after build 444)
+
+State: build 444 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; 441: unselect results — click toggle, lasso unselect, unselect all, ticks saved; 442: wheel one step a notch, typed slider values, CT sliders by 1 HU (fixes the Sigmoid centre / WC snap on project load); 443: practice project removed; 444: the owner's new practice project; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
