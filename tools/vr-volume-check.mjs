@@ -9,6 +9,8 @@ import http from 'node:http'; import fs from 'node:fs'; import path from 'node:p
 const fileA=process.argv[2]||'docs/vr-view.js',fileB=process.argv[3]||null,outDir=process.argv[4]||'.';
 const grab=(src,name)=>{const m=src.match(new RegExp('const '+name+'=`([\\s\\S]*?)`;'));if(!m)throw new Error('shader '+name+' not found');return m[1]};
 // REGION=1 (build 409): a synthetic analysis result — colour index 1 on the half x < N/2 of the volume (cyan), with VRL_REGIONS
+// REGION=fat (build 437): the result only on the fat voxels of that half (a fat result, regionSeg = fat); REGZERO=1: no
+// result voxels (same shader); SEGS=nofat: fat hidden. Fat hidden, REGION=fat vs REGZERO=1 must render the same image.
 const DEFS=[...(process.env.DEFINES||'').split(',').filter(Boolean),...(process.env.REGION?['VRL_REGIONS']:[])].map(d=>'#define '+d+'\n').join('');
 const load=f=>{const s=fs.readFileSync(f,'utf8');return{vs:grab(s,'vertexShader'),fs:DEFS+grab(s,'fragmentShader')}};
 const counting=code=>code
@@ -26,7 +28,7 @@ const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--u
 const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,300))});pg.on('pageerror',e=>console.log('PAGEERROR',String(e).slice(0,300)));
 await pg.route(/^https:\/\//,rt=>{const u=rt.request().url();if(u.includes('three.module.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.module.js','utf8')});if(u.includes('three.core.js'))return rt.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync(nm+'/three/build/three.core.js','utf8')});return rt.abort()});
 await pg.goto('http://localhost:8779/');
-const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,fat,edit,useVol,volN,seg,segOp,distCls,cached,modes,section,bgSet,air})=>{
+const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly,boneFat,noFat,regFat,regZero,fat,edit,useVol,volN,seg,segOp,distCls,cached,modes,section,bgSet,air})=>{
  const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js');
  const W=useVol?256:384,H=W,renderer=new THREE.WebGLRenderer({antialias:false});renderer.setPixelRatio(1);renderer.setSize(W,H,false);
  // phantom as in tools/volume-shader-check.mjs: u16 = HU + 1024, slope 1, intercept -1024
@@ -58,7 +60,7 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  if(!cached)for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const v=hu(x,y,z),o=((z*N+y)*N+x)*C;for(let s=0;s<3;s++){const [a,c]=SEG[s],d=Math.min(v-a,c-v);cls[o+s]=(s===0&&excluded(x,y,z))?0:Math.max(0,Math.min(255,Math.round(127.5+d/2048*255)))}}
  const clsTex=new THREE.Data3DTexture(cls,N,N,N);clsTex.format=THREE.RGBAFormat;clsTex.type=THREE.UnsignedByteType;clsTex.minFilter=clsTex.magFilter=THREE.LinearFilter;clsTex.unpackAlignment=1;clsTex.needsUpdate=true;
  // HU path edit mask (editAllows): channel 0 = 255 where bone is allowed
- const regData=new Uint8Array(N*N*N);for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N/2;x++)regData[(z*N+y)*N+x]=1;
+ const regData=new Uint8Array(N*N*N);if(!regZero)for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N/2;x++){if(regFat){const v=hu(x,y,z);if(v<seg.fat[0]||v>seg.fat[1])continue}regData[(z*N+y)*N+x]=1}
  const regionTex=new THREE.Data3DTexture(regData,N,N,N);regionTex.format=THREE.RedFormat;regionTex.type=THREE.UnsignedByteType;regionTex.minFilter=regionTex.magFilter=THREE.NearestFilter;regionTex.unpackAlignment=1;regionTex.needsUpdate=true;
  const editData=new Uint8Array(N*N*N*4);for(let z=0;z<N;z++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){const o=((z*N+y)*N+x)*4;editData[o]=excluded(x,y,z)?0:255;editData[o+1]=255;editData[o+2]=255;editData[o+3]=255}
  const editTex=new THREE.Data3DTexture(editData,N,N,N);editTex.format=THREE.RGBAFormat;editTex.type=THREE.UnsignedByteType;editTex.minFilter=editTex.magFilter=THREE.LinearFilter;editTex.unpackAlignment=1;editTex.needsUpdate=true;
@@ -71,11 +73,11 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  const half=1.65,scale=3.3/N,step=scale*0.85;
  const uniforms=()=>({vol:{value:vol},bricks:{value:bricks},halfExt:{value:new THREE.Vector3(half,half,half)},texDims:{value:new THREE.Vector3(N,N,N)},brickDims:{value:new THREE.Vector3(bx,bx,bx)},
   stepSize:{value:step},diag:{value:0},calib:{value:new THREE.Vector3(1,INTERCEPT,0)},segA:{value:[new THREE.Vector4(seg.bone[0],seg.bone[1],segOp.bone,1),new THREE.Vector4(seg.soft[0],seg.soft[1],segOp.soft,1),new THREE.Vector4(seg.fat[0],seg.fat[1],segOp.fat,(fat||useVol)?1:0),new THREE.Vector4()]},segC:{value:[new THREE.Vector4(0.91,0.86,0.72,0),new THREE.Vector4(0.85,0.55,0.42,0),new THREE.Vector4(0.95,0.85,0.35,0),new THREE.Vector4()]},
-  cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(40,400)},sliceAir:{value:air},sliceVol:{value:vol},useCls:{value:0},clsTex:{value:clsTex},clsChan:{value:new THREE.Vector4(0,1,2,-1)},editMask:{value:edit?1:0},editTex:{value:edit?editTex:dummy},regionTex:{value:regionTex},regionC:{value:Array.from({length:14},(_,i)=>new THREE.Vector3(...(i?[1,1,1]:[0,0.85,1])))},distInCls:{value:distCls},refine:{value:refine},distTex:{value:distTex},useDist:{value:0},voxelMin:{value:2*half/N}});
+  cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(40,400)},sliceAir:{value:air},sliceVol:{value:vol},useCls:{value:0},clsTex:{value:clsTex},clsChan:{value:new THREE.Vector4(0,1,2,-1)},editMask:{value:edit?1:0},editTex:{value:edit?editTex:dummy},regionTex:{value:regionTex},regionC:{value:Array.from({length:14},(_,i)=>new THREE.Vector3(...(i?[1,1,1]:[0,0.85,1])))},regionSeg:{value:Array.from({length:14},()=>regFat?4:15)},distInCls:{value:distCls},refine:{value:refine},distTex:{value:distTex},useDist:{value:0},voxelMin:{value:2*half/N}});
  const scene=new THREE.Scene();const cam=new THREE.PerspectiveCamera(45,1,0.01,50);if(useVol)cam.position.set(2.6,1.4,3.6);else cam.position.set(3.2,2.1,4.0);cam.lookAt(0,0,0);cam.updateMatrixWorld();
  const rtColor=new THREE.WebGLRenderTarget(W,H,{depthBuffer:false}),rtCount=new THREE.WebGLRenderTarget(W,H,{depthBuffer:false,type:THREE.FloatType});
  const run=(sh,mode,count)=>{
-  const u=uniforms();u.useCls.value=mode;u.useDist.value=mode&&useDist?1:0;if(boneOnly){u.segA.value[1].w=0;u.segA.value[2].w=0}if(boneFat)u.segA.value[1].w=0;
+  const u=uniforms();u.useCls.value=mode;u.useDist.value=mode&&useDist?1:0;if(boneOnly){u.segA.value[1].w=0;u.segA.value[2].w=0}if(boneFat)u.segA.value[1].w=0;if(noFat)u.segA.value[2].w=0;
   // SECTION=1: one section plane through the centre (normal (0.6,0.3,0.74), the half towards the camera removed), cut face and CT slice at 70 % with tint
   if(section){const n=new THREE.Vector3(0.6,0.3,0.74).normalize();u.cutPlanes.value[0].set(n.x,n.y,n.z,0.05);u.planeCount.value=1;u.planeCut.value=1;u.capOn.value=1;u.sliceOpacity.value=0.7;u.sliceTint.value=0.5}
   const mat=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:sh.vs,fragmentShader:count?sh.fsc:sh.fs,side:THREE.BackSide,uniforms:u,transparent:false,blending:THREE.NoBlending,depthWrite:false});
@@ -90,7 +92,7 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  const shA={vs:A.vs,fs:A.fs,fsc:countA},shB=B?{vs:B.vs,fs:B.fs,fsc:countB}:null,out={};
  for(const mode of [0,1]){if(!modes.includes(mode?'cls':'hu'))continue;out['A'+mode]=run(shA,mode,false);out['A'+mode+'c']=run(shA,mode,true);if(shB){out['B'+mode]=run(shB,mode,false);out['B'+mode+'c']=run(shB,mode,true)}}
  return{W,H,out,distMs};
-},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0),useVol:!!VOL,volN,distCls:+(process.env.DISTCLS??0),cached:!!(clsBytes&&distBytes),modes,section:+(process.env.SECTION??0),bgSet:!!process.env.BG,air:+(process.env.AIR??-500),seg:{bone:(process.env.BONE||'300,3000').split(',').map(Number),soft:(process.env.SOFT||'-200,299').split(',').map(Number),fat:(process.env.FATR||'-250,-50').split(',').map(Number)},segOp:{bone:+(process.env.BONEOP??1),soft:+(process.env.SOFTOP??0.35),fat:+(process.env.FATOP??1)}});
+},{A,B,countA:counting(A.fs),countB:B?counting(B.fs):null,refine:+(process.env.REFINE??1),useDist:+(process.env.DIST??1),boneOnly:process.env.SEGS==='bone',boneFat:process.env.SEGS==='bonefat',noFat:process.env.SEGS==='nofat',regFat:process.env.REGION==='fat',regZero:!!process.env.REGZERO,fat:+(process.env.FAT??0),edit:+(process.env.EDIT??0),useVol:!!VOL,volN,distCls:+(process.env.DISTCLS??0),cached:!!(clsBytes&&distBytes),modes,section:+(process.env.SECTION??0),bgSet:!!process.env.BG,air:+(process.env.AIR??-500),seg:{bone:(process.env.BONE||'300,3000').split(',').map(Number),soft:(process.env.SOFT||'-200,299').split(',').map(Number),fat:(process.env.FATR||'-250,-50').split(',').map(Number)},segOp:{bone:+(process.env.BONEOP??1),soft:+(process.env.SOFTOP??0.35),fat:+(process.env.FATOP??1)}});
 await b.close();srv.close();
 const {W,H,out,distMs}=result;console.log('distance field build (128³, 2 channels): '+distMs.toFixed(0)+' ms');
 import zlib from 'node:zlib';

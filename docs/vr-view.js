@@ -8,16 +8,16 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261002-build429';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261002-build429';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261002-build429';
-import { sceneState, analysisRegions } from './state.js?v=20261002-build429';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261002-build429';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261002-build429';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261002-build429';
-import { tr } from './i18n.js?v=20261002-build429';
-import { APP_BUILD } from './version.js?v=20261002-build429';
-import { wc, ww } from './ui-shell.js?v=20261002-build429';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261005-build437';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261005-build437';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261005-build437';
+import { sceneState, analysisRegions } from './state.js?v=20261005-build437';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261005-build437';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261005-build437';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261005-build437';
+import { tr } from './i18n.js?v=20261005-build437';
+import { APP_BUILD } from './version.js?v=20261005-build437';
+import { wc, ww } from './ui-shell.js?v=20261005-build437';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -99,12 +99,16 @@ vec3 texCoord(vec3 p){return vec3(p.x/(2.0*halfExt.x)+0.5,0.5-p.y/(2.0*halfExt.y
 #ifdef VRL_REGIONS
 uniform sampler3D regionTex;
 uniform vec3 regionC[14];
-vec3 regionColor(vec3 p,vec3 base){
+// build 437 (owner: fat hidden, the soft-tissue border still coloured): a colour applies only to a surface of a segment
+// its results belong to (bit s of regionSeg[colour] for segment s); the colour is read 0.75 voxel inside the hit on the
+// 256³ grid, so next to a fat result a soft-tissue surface used to take the fat result's colour
+uniform int regionSeg[14];
+vec3 regionColor(vec3 p,vec3 base,int s){
  int i=int(texture(regionTex,clamp(texCoord(p),vec3(0.0),vec3(0.999999))).r*255.0+0.5);
- return i>0&&i<=14?regionC[i-1]:base;
+ return i>0&&i<=14&&((regionSeg[i-1]>>s)&1)==1?regionC[i-1]:base;
 }
 #else
-vec3 regionColor(vec3 p,vec3 base){return base;}
+vec3 regionColor(vec3 p,vec3 base,int s){return base;}
 #endif
 float huAt(vec3 tc0){
  vec3 tc=clamp(tc0,vec3(0.0),vec3(0.999999));
@@ -196,7 +200,7 @@ vec4 sliceColor(vec3 p){
  float hu=sliceHU(p),a=smoothstep(sliceAir,sliceAir+10.0,hu);
  if(a<=0.0)return vec4(0.0);
  float g=clamp((hu-(sliceWindow.x-0.5*sliceWindow.y))/max(sliceWindow.y,1e-3),0.0,1.0);
- if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return vec4(mix(vec3(g),regionColor(p,segC[si].rgb),sliceTint),a);}
+ if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return vec4(mix(vec3(g),regionColor(p,segC[si].rgb,si),sliceTint),a);}
  return vec4(vec3(g),a);
 }
 vec3 gradientAt(vec3 tc){
@@ -284,7 +288,7 @@ void main(){
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
-     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb,idx)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -307,7 +311,7 @@ void main(){
     if(ci>=0){
      vec3 n=cutPlanes[capPlane].xyz;vec3 viewDir=-dir;vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
-     vec3 lit=mix(regionColor(cp,segC[ci].rgb),vec3(1.0),0.22)*diffuse;
+     vec3 lit=mix(regionColor(cp,segC[ci].rgb,ci),vec3(1.0),0.22)*diffuse;
      float contribution=(1.0-acc.a)*clamp(segA[ci].z,0.03,1.0);acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
      lastIndex=ci;previousT=t;t+=step;continue;
     }
@@ -338,7 +342,7 @@ void main(){
      vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
-     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb,idx)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -364,7 +368,7 @@ void main(){
    float diffuse=0.28+0.72*abs(dot(n,lightDir));
    float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
    float alpha=clamp(segA[idx].z,0.03,1.0);
-   vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
+   vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb,idx)*diffuse+vec3(spec);
    float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
   }
 #ifndef VRL_NO_GENERAL
@@ -383,7 +387,7 @@ void main(){
    if(ci>=0){
     vec3 n=cutPlanes[capPlane].xyz;vec3 viewDir=-dir;vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
     float diffuse=0.28+0.72*abs(dot(n,lightDir));
-    vec3 lit=mix(regionColor(cp,segC[ci].rgb),vec3(1.0),0.22)*diffuse;
+    vec3 lit=mix(regionColor(cp,segC[ci].rgb,ci),vec3(1.0),0.22)*diffuse;
     float contribution=(1.0-acc.a)*clamp(segA[ci].z,0.03,1.0);acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     lastIndex=ci;previousT=t;t+=step;continue;
    }
@@ -433,7 +437,7 @@ void main(){
      float diffuse=0.28+0.72*abs(dot(n,lightDir));
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
      float alpha=clamp(segA[idx].z,0.03,1.0);
-     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb)*diffuse+vec3(spec);
+     vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb,idx)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
     }
     lastIndex=idx;
@@ -685,17 +689,18 @@ export function vrDataKey(){
 // the same gpuRunsForTexture as the edit mask; the list (colour, segments, mm³) is shown read-only in the menu
 const shownRegions=()=>analysisRegions.filter(r=>r.visible!==false&&r.runsBySlice&&r.voxels>0);
 function buildRegionIndex(dims){
- const v=gpuVolumeTarget(),regions=shownRegions();if(!v||!regions.length)return{data:null,colors:[],list:[]};
+ const v=gpuVolumeTarget(),regions=shownRegions();if(!v||!regions.length)return{data:null,colors:[],segs:[],list:[]};
  // build 423: ids = list position + 1 per voxel (the label of the result the laser points at), up to 255 results
- const [w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],colors=[],data=new Uint8Array(w*h*d),ids=new Uint8Array(w*h*d),list=[];
+ const [w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],colors=[],segs=[],data=new Uint8Array(w*h*d),ids=new Uint8Array(w*h*d),list=[];
  for(const r of regions){
-  const c=Number(r.color)>>>0;let k=colors.indexOf(c);if(k<0){if(colors.length>=14)continue;colors.push(c);k=colors.length-1}
+  const c=Number(r.color)>>>0;let k=colors.indexOf(c);if(k<0){if(colors.length>=14)continue;colors.push(c);segs.push(0);k=colors.length-1}
+  for(const key of r.segmentKeys||[]){const s=SEGMENT_PRESET_ORDER.indexOf(key);if(s>=0)segs[k]|=1<<s}
   const runs=gpuRunsForTexture(r.runsBySlice,sourceDims,dims,{dilate:0});
   if(list.length>=255)break;const id=list.length+1;
   for(let z=0;z<d;z++){const rec=runs?.[z];if(!rec?.length)continue;for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;data.fill(k+1,o+rec[i+1],o+rec[i+2]+1);ids.fill(id,o+rec[i+1],o+rec[i+2]+1)}}
   list.push({color:c,mm3:r.mm3,segmentKeys:[...(r.segmentKeys||[])]});
  }
- return{data:colors.length?data:null,ids:colors.length?ids:null,colors,list};
+ return{data:colors.length?data:null,ids:colors.length?ids:null,colors,segs,list};
 }
 // classification bytes for a grid of at most 256 (see segmentIndexAt)
 function buildClsData(t,calibration,edit){
@@ -735,7 +740,7 @@ const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=ba
 const rayMaterialOf=m=>{const r=m.clone();r.uniforms=m.uniforms;r.defines={...m.defines};r.blending=THREE.NoBlending;r.transparent=false;return r};
 const volumeUniforms=(vd,full,settings)=>({vol:{value:full.v},bricks:{value:full.b},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
  stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
- cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
+ cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionSeg:{value:new Array(14).fill(0)},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
 // ---- GPU preparation before the session (build 393, after the Codex branch's idea) ----
 // The renderer (an XR-compatible context), the textures of the grid in use, the
 // combined classification + field texture for the shown segments, the edit mask
@@ -1622,13 +1627,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // diagnostic setting (0 smooth, 1 nearest, 2 off)
   const dummyEdit=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummyEdit.format=THREE.RGBAFormat;dummyEdit.needsUpdate=true;
   const editTex=(gpu&&gpu.key===P.key&&gpu.edit)||makeEditTexture(P),editActive=P.edit.active;
-  const regionTex=(gpu&&gpu.key===P.key&&gpu.region)||makeRegionTexture(P),regionColors=P.region?.colors||[];
+  const regionTex=(gpu&&gpu.key===P.key&&gpu.region)||makeRegionTexture(P),regionColors=P.region?.colors||[],regionSegs=P.region?.segs||[];
   refreshEdits=()=>{
    if(!material)return;const mode=settings.editDiag|0;
    if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
    material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editTex.value=editTex||dummyEdit;
    // build 409: analysis result colours
-   material.uniforms.regionTex.value=regionTex||dummyEdit;regionColors.forEach((c,i)=>{color.setHex(c);material.uniforms.regionC.value[i].set(color.r,color.g,color.b)});
+   material.uniforms.regionTex.value=regionTex||dummyEdit;regionColors.forEach((c,i)=>{color.setHex(c);material.uniforms.regionC.value[i].set(color.r,color.g,color.b);material.uniforms.regionSeg.value[i]=regionSegs[i]|0});
   };
   disposeEdits=()=>{editTex?.dispose();regionTex?.dispose();dummyEdit.dispose()};
   disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();half?.dist?.dispose();half?.combo?.dispose();full.cls?.dispose();full.dist?.dispose();full.combo?.dispose()};
