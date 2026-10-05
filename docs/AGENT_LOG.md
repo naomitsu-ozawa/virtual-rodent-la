@@ -4794,3 +4794,5 @@ F. iPad (builds 372–377): region colouring speckle fixed, drag lookups by
 Order: device checks of builds 361–368 first; then whatever the owner
 reports (tablet comfort on the Quest browser, fps). Headless tools used so far: see the build
 entries above (shader tests via tools/boot-check.mjs with page.evaluate).
+
+- Build 453: Anisotropic diffusion step size is now lambda = 0.06 + (1/6 - 0.06) * strength (clamped to 1/6), so strength 1.0 is exactly the stability limit of the 6-neighbour explicit scheme (it used to reach 0.2 and oscillated from strength 0.8). Shared constants in filter-units.js (ANISO_LAMBDA_MIN / MAX); the stringified worker repeats them, the WGSL kernel interpolates them; tests/unit/aniso-lambda.test.js pins all three. anisotropic.algo 2 -> 3, so cached results and segment runs of the old lambda are recomputed. Every strength gives a different result than before. Voxel spacing (z weighting) is intentionally not handled here.
