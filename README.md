@@ -102,11 +102,12 @@ DICOMとボリューム
 - `cpu-filters.js` — CPUのフィルター計算（WebGPUが使えないとき）
 - `source-filters.js` — 元DICOMに対するフィルター処理（ワーカー、領域の読み出し、フィルター済みスライスのキャッシュ）
 - `filter-pipeline.js` — フィルターの画面と、フィルターのかけ直し
+- `bilateral-sigma.js` — Bilateral 3Dの強度SigmaをHUの絶対値で扱う処理（既定値、古いプロジェクトの互換値、フィルター署名）
 
 セグメンテーションと解析
 - `segments.js`, `segment-ui.js` — セグメントの状態と操作欄
 - `segment-runs.js`, `run-length.js`, `mask-ops.js` — セグメント領域の計算（ラン長表現、集合演算、連結成分、モルフォロジー）
-- `run-pack.js`, `run-cache.js` — 体積解析用データの端末内キャッシュ
+- `run-pack.js`, `run-cache.js`, `segment-cache-key.js` — 体積解析用データの端末内キャッシュ（`segment-cache-key.js` はそのキー）
 - `analysis-ops.js`, `analysis-results.js`, `edit-tools.js`, `lasso.js` — 体積解析、編集操作、結果一覧、囲み選択
 
 2D断面（MPR）

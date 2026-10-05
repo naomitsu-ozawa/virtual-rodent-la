@@ -17,7 +17,7 @@ const P = {
   cpuSpikeHole: { strength: 0.7, thresholdRatio: 0.05 },
   cpuNlm3D: { strength: 0.5, searchRadius: 1, patchRadius: 1 },
   cpuAnisotropicDiffusion: { strength: 0.5, iterations: 2 },
-  cpuBilateral3D: { strength: 0.6, spatialSigma: 1.2, intensitySigma: 0.1, passes: 1 },
+  cpuBilateral3D: { strength: 0.6, spatialSigma: 1.2, sigmaHU: 50, passes: 1 },
   cpuTvDenoising3D: { weight: 0.2, iterations: 2 },
   cpuUnsharpMask3D: { radius: 1, amount: 0.8, threshold: 0.01 },
 };
