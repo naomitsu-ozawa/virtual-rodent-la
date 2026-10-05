@@ -22,12 +22,21 @@ export const isValidUnitValue = (def, v) => Number.isFinite(v) && (def?.min === 
 //  label      short name for messages
 //  def/min/max/step   new-project default and slider range (min / max / step null = no slider)
 //  legacy(saved, span)  HU value of a project that only has the old parameters; span = max(1, range.max - range.min)
+// Anisotropic diffusion step size: strength 0..1 maps linearly onto [ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX]. The 6-neighbour
+// explicit scheme is stable for lambda <= 1/6 (conductance <= 1), but at exactly 1/6 the finest checkerboard component has
+// eigenvalue 1 - 12*lambda*g = -1 and is not damped. 1/7 keeps it at about -0.71, so fine noise shrinks at strength 1.
+// Strengths outside 0..1 (and non-numbers) are clamped to that range.
+// The worker in source-filters.js is serialised and cannot import this; it repeats the two values (a test pins them).
+export const ANISO_LAMBDA_MIN = 0.06;
+export const ANISO_LAMBDA_MAX = 1 / 7;
+export const anisotropicLambda = strength => { const s = Number.isFinite(+strength) ? Math.min(1, Math.max(0, +strength)) : 0; return Math.min(ANISO_LAMBDA_MIN + (ANISO_LAMBDA_MAX - ANISO_LAMBDA_MIN) * s, ANISO_LAMBDA_MAX); };
+
 export const FILTER_UNITS = {
   spikeHole: { algo: 2, params: {
     thresholdHU: { label: 'Spike/Hole threshold', def: 100, min: 20, max: 1000, step: 5, legacy: (s, span) => ratioOf(s, 'threshold', 0.075) * span } } },
   nlm: { algo: 2, params: {
     hHU: { label: 'NLM h', def: 40, min: 5, max: 300, step: 1, legacy: (s, span) => span * (0.018 + 0.11 * num(s?.strength, 0.45)) } } },
-  anisotropic: { algo: 2, params: {
+  anisotropic: { algo: 3, params: {
     kappaHU: { label: 'Anisotropic kappa', def: 60, min: 5, max: 300, step: 1, legacy: (s, span) => span * (0.025 + 0.09 * num(s?.strength, 0.45)) } } },
   tv: { algo: 2, params: {
     epsHU: { label: 'TV eps', def: 1, min: null, max: null, step: null, legacy: (s, span) => 1e-4 * span } } },
