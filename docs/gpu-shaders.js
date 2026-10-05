@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX } from './filter-units.js?v=20261005-build454';
+import { ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX } from './filter-units.js?v=20261005-build455';
 export const AIRDIST_X_MAX_N=64;
 export function gpuFilterShader(kind,workgroupSize){
  const header=`
@@ -204,7 +204,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  if(kind==='boxMean')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
- let i=gid.x;if(i>=meta[3]){return;}let c=vec3<i32>(coord(i));let axis=meta[4];let r=i32(meta[5]);
+ let i=gid.x;if(i>=meta[3]){return;}let keepParams=params[0];let c=vec3<i32>(coord(i));let axis=meta[4];let r=i32(meta[5]);
  let dims=vec3<i32>(i32(meta[0]),i32(meta[1]),i32(meta[2]));var sum=0.0;var count=0.0;
  for(var k=-r;k<=r;k++){
   var q=c;if(axis==0u){q.x=c.x+k;}else if(axis==1u){q.y=c.y+k;}else{q.z=c.z+k;}
