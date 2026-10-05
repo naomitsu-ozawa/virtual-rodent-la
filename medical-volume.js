@@ -114,7 +114,7 @@ fn huAt(tc0:vec3<f32>)->f32{
   q=textureSampleLevel(volumeTex,volumeSampler,tc,0.0).rg*255.0;
  }else{
   let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
-  q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
+  q=round(textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0);
  }
  let raw=q.x+q.y*256.0-u.calibration.y;
  return raw*u.dimsSlope.w+u.calibration.x;
@@ -318,7 +318,7 @@ fn huVoxel(tc0:vec3<f32>)->f32{
  let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
- let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
+ let q=round(textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0);
  return (q.x+q.y*256.0-u.calibration.y)*u.dimsSlope.w+u.calibration.x;
 }
 fn objToTc(d:vec3<f32>)->vec3<f32>{return vec3<f32>(d.x/(2.0*u.halfStep.x),-d.y/(2.0*u.halfStep.y),d.z/(2.0*u.halfStep.z))/max(u.textureDims.xyz,vec3<f32>(1.0));}
@@ -577,7 +577,7 @@ export function brickShader(){
 @group(0) @binding(2) var<storage,read> params:array<f32>;
 @group(0) @binding(3) var<storage,read_write> outMinMax:array<vec2<f32>>;
 fn huAt(x:u32,y:u32,z:u32)->f32{
- let q=textureLoad(volumeTex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg*255.0;
+ let q=round(textureLoad(volumeTex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg*255.0);
  return (q.x+q.y*256.0-params[2])*params[0]+params[1];
 }
 @compute @workgroup_size(64)
@@ -614,7 +614,7 @@ fn huAt(tc0:vec3<f32>)->f32{
  let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let p=min(vec3<u32>(tc*vec3<f32>(dims)),dims-vec3<u32>(1u));
- let q=textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0;
+ let q=round(textureLoad(volumeTex,vec3<i32>(p),0).rg*255.0);
  return (q.x+q.y*256.0-u.calibration.y)*u.dimsSlope.w+u.calibration.x;
 }
 fn maskVoxelAt(tc0:vec3<f32>)->vec3<u32>{
@@ -705,7 +705,7 @@ fn huAt(x:u32,y:u32,z:u32)->f32{
  // nearest texel (identity when the texture has the source dimensions).
  let td=textureDimensions(volumeTex,0);
  let tx=min(td.x-1u,(x*td.x)/p.dims.x);let ty=min(td.y-1u,(y*td.y)/p.dims.y);let tz=min(td.z-1u,(z*td.z)/p.dims.z);
- let q=textureLoad(volumeTex,vec3<i32>(i32(tx),i32(ty),i32(tz)),0).rg*255.0;
+ let q=round(textureLoad(volumeTex,vec3<i32>(i32(tx),i32(ty),i32(tz)),0).rg*255.0);
  let raw=q.x+q.y*256.0-p.calibration.z;
  return raw*p.calibration.x+p.calibration.y;
 }
@@ -1444,7 +1444,7 @@ struct Counter{value:atomic<u32>};
 @group(0) @binding(3) var<storage,read_write> records:array<u32>;
 @group(0) @binding(4) var<storage,read_write> counter:Counter;
 fn valueAt(x:u32,y:u32,z:u32)->f32{
- let q=textureLoad(volumeTex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg*255.0;
+ let q=round(textureLoad(volumeTex,vec3<i32>(i32(x),i32(y),i32(z)),0).rg*255.0);
  let raw=q.x+q.y*256.0-params[4];return raw*params[2]+params[3];
 }
 fn inside(x:u32,y:u32,z:u32)->bool{let v=valueAt(x,y,z);return v>=params[0]&&v<=params[1];}

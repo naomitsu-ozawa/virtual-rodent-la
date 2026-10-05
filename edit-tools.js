@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20261005-build437';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20261005-build437';
-import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20261005-build437';
-import { tr } from './i18n.js?v=20261005-build437';
-import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20261005-build437';
-import { request3DRender } from './scene3d.js?v=20261005-build437';
+import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20261005-build444';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20261005-build444';
+import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisLassoDeselectButton, analysisDeselectAll, analysisEditDeselectAll, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20261005-build444';
+import { tr } from './i18n.js?v=20261005-build444';
+import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20261005-build444';
+import { request3DRender } from './scene3d.js?v=20261005-build444';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261005-build437';
-import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20261005-build437';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261005-build444';
+import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20261005-build444';
 export function analysisRegionById(id){return analysisRegions.find(r=>r.id===id)||null}
 export function configureCutControlRanges(v=current3DVolume||volume){
  if(!v||!analysisCutWidth)return;
@@ -324,16 +324,18 @@ export function updateThreeEditUi(message=null){
  configureCutControlRanges();refreshCutControlReadouts();
  const enabledKeys=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k].active&&segmentState[k].enabled);
  const surfaceUsable=!!sceneState?.obj&&enabledKeys.length>0&&(threeRenderMode==='surface'||(threeRenderMode==='volume'&&!!sceneState?.medicalVolume?.active));
- const modeLabel=analysisEditTool==='lasso'?tr('lassoSelectRegion'):analysisEditTool==='region'?tr('selectEditRegion'):analysisEditTool==='pen'?tr('cutRegion'):analysisEditTool==='line'?tr('lineCutRegion'):tr('editNavigate');
+ const modeLabel=analysisEditTool==='lasso'?tr('lassoSelectRegion'):analysisEditTool==='unlasso'?tr('lassoDeselectRegion'):analysisEditTool==='region'?tr('selectEditRegion'):analysisEditTool==='pen'?tr('cutRegion'):analysisEditTool==='line'?tr('lineCutRegion'):tr('editNavigate');
  const targetLabel=analysisEditTargetMode==='auto'?tr('editAuto'):(tr(analysisEditTargetMode)||analysisEditTargetMode);
  analysisNavigateButton?.classList.toggle('is-active',analysisEditTool==='select');
  analysisSelectRegionButton?.classList.toggle('is-active',analysisEditTool==='region');
  analysisLassoButton?.classList.toggle('is-active',analysisEditTool==='lasso');
+ analysisLassoDeselectButton?.classList.toggle('is-active',analysisEditTool==='unlasso');
  analysisCutButton?.classList.toggle('is-active',analysisEditTool==='pen');
  analysisLineCutButton?.classList.toggle('is-active',analysisEditTool==='line');
  if(analysisNavigateButton)analysisNavigateButton.disabled=!sceneState?.obj||analysisCutApplying||!!analysisPendingCut;
  if(analysisSelectRegionButton)analysisSelectRegionButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
  if(analysisLassoButton)analysisLassoButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
+ if(analysisLassoDeselectButton)analysisLassoDeselectButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
  if(analysisCutButton)analysisCutButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
  if(analysisLineCutButton)analysisLineCutButton.disabled=!surfaceUsable||analysisCutApplying||!!analysisPendingCut;
  if(analysisEditTargetSelect){
@@ -356,6 +358,7 @@ export function updateThreeEditUi(message=null){
   else if(analysisPendingCut)threeEditHelp.textContent=tr('cutPendingHint');
   else if(analysisEditTool==='region')threeEditHelp.textContent=tr('editRegionHint');
   else if(analysisEditTool==='lasso')threeEditHelp.textContent=tr('editLassoHint');
+  else if(analysisEditTool==='unlasso')threeEditHelp.textContent=tr('editLassoDeselectHint');
   else if(analysisEditTool==='pen')threeEditHelp.textContent=tr('editPenHint');
   else if(analysisEditTool==='line')threeEditHelp.textContent=tr('editLineHint');
   else if(surfaceUsable)threeEditHelp.textContent=currentLanguage==='ja'?'ペン切断または直線切断を選択してください。対象「自動」は最初に触れた組織を編集します。':'Choose Pen cut or Line cut. Auto targets the first tissue you touch.';
@@ -383,16 +386,19 @@ export function updateAnalysisEditorControls(){
  const region=analysisRegionById(analysisFocusedRegionId),single=region?.segmentKeys?.length===1,regionKey=single?region.segmentKeys[0]:null;
  const surfaceUsable=!!sceneState?.obj&&SEGMENT_PRESET_ORDER.some(k=>segmentState[k].active&&segmentState[k].enabled)&&(threeRenderMode==='surface'||(threeRenderMode==='volume'&&!!sceneState?.medicalVolume?.active));
  const historyKey=analysisEditTargetKey||regionKey||SEGMENT_PRESET_ORDER.find(k=>segmentEditState[k].undo.length||segmentEditState[k].redo.length||segmentEditActive(k)),historyState=historyKey?segmentEditState[historyKey]:null;
- if(!surfaceUsable&&(analysisEditTool==='region'||analysisEditTool==='lasso'||analysisEditTool==='pen'||analysisEditTool==='line'))setAnalysisEditTool('select');
+ if(!surfaceUsable&&(analysisEditTool==='region'||analysisEditTool==='lasso'||analysisEditTool==='unlasso'||analysisEditTool==='pen'||analysisEditTool==='line'))setAnalysisEditTool('select');
  if(analysisNavigateButton)analysisNavigateButton.disabled=!sceneState?.obj;
  if(analysisSelectRegionButton)analysisSelectRegionButton.disabled=!surfaceUsable;
  if(analysisLassoButton)analysisLassoButton.disabled=!surfaceUsable;
+ if(analysisLassoDeselectButton)analysisLassoDeselectButton.disabled=!surfaceUsable;
  if(analysisCutButton)analysisCutButton.disabled=!surfaceUsable;
  if(analysisLineCutButton)analysisLineCutButton.disabled=!surfaceUsable;
  const hasEditTargets=editTargetRegions().length>0;
  if(analysisEditRemoveSelected)analysisEditRemoveSelected.disabled=!hasEditTargets;
  if(analysisRemoveSelected)analysisRemoveSelected.disabled=!hasEditTargets;
  if(analysisKeepSelected)analysisKeepSelected.disabled=!hasEditTargets;
+ const anyTicked=analysisRegions.some(r=>r.selected);
+ for(const b of [analysisDeselectAll,analysisEditDeselectAll])if(b)b.disabled=!anyTicked&&!analysisRegionById(analysisFocusedRegionId);
  if(analysisUndo)analysisUndo.disabled=!historyState?.undo?.length;
  if(analysisRedo)analysisRedo.disabled=!historyState?.redo?.length;
  if(analysisResetEdit)analysisResetEdit.disabled=!historyKey||!segmentEditActive(historyKey);
