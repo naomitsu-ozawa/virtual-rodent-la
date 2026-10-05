@@ -1,4 +1,4 @@
-import { clampVoxel, sameVoxel, withSliceIndex } from './crosshair.js?v=20261005-build458';
+import { clampVoxel, sameVoxel, withSliceIndex } from './crosshair.js?v=20261005-build459';
 // Shared mutable application state, moved out of app.js by
 // tools/state-codemod.mjs. Read these bindings directly (imports are live);
 // write them only through the setters (imported bindings are read-only).
@@ -16,7 +16,7 @@ export function setSceneState(v){return sceneState=v}
 export let activeId=null;
 export function setActiveId(v){return activeId=v}
 export let activeSeries=null;
-export function setActiveSeries(v){return activeSeries=v}
+export function setActiveSeries(v){const changed=v!==activeSeries;activeSeries=v;if(changed)try{if(typeof document!=='undefined'&&typeof CustomEvent!=='undefined')document.dispatchEvent(new CustomEvent('vrl-serieschange'))}catch{}return activeSeries}
 export let volumeAnalysisMode=false;
 export function setVolumeAnalysisMode(v){return volumeAnalysisMode=v}
 export let volumeAnalysisBusy=false;
@@ -106,7 +106,7 @@ export let cutControlPreviewRaf=0;
 export function setCutControlPreviewRaf(v){return cutControlPreviewRaf=v}
 export let smoothingRefreshTimer=null;
 export function setSmoothingRefreshTimer(v){return smoothingRefreshTimer=v}
-import { settings } from './app-settings.js?v=20261005-build458';
+import { settings } from './app-settings.js?v=20261005-build459';
 // 3D volume in-plane size, remembered in the settings (build 280); full size
 // (0) is desktop-only, so an iPad falls back to 512
 export let ipadGpuTargetSide=(()=>{const v=+settings.get('gpuSide');const touch=typeof navigator!=='undefined'&&/Android|OculusBrowser|Quest/i.test(navigator.userAgent||''),ipad=typeof navigator!=='undefined'&&(/iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||'')));return v===768?768:v===0&&!ipad&&!touch?0:512})(); // build 368/371: full size stays desktop-only; iPad, Android tablets and the Quest browser fall back to 512

@@ -910,3 +910,15 @@ html.vrl-ipad-ui .theme-quick select{min-height:40px;padding:7px 8px;font-size:1
 .crosshair-readout b{color:#fff;font-weight:800}
 html.vrl-ipad-ui .crosshair-toggle{min-height:38px;padding:6px 11px;font-size:12px}
 html.vrl-ipad-ui .crosshair-readout{font-size:12px}
+/* Position comments (Issue #88 stage 2): theme tokens only, touch-sized buttons */
+.comment-panel{margin-top:10px;border:1px solid rgb(var(--ui-b2));border-radius:8px;padding:6px 8px;background:rgb(var(--ui-s1) / 0.5)}
+.comment-panel>summary{cursor:pointer;font-size:12px;font-weight:700;color:rgb(var(--ui-t1));min-height:28px;display:flex;align-items:center}
+.comment-hint,.comment-note,.comment-meta,.comment-empty{margin:4px 0;font-size:11px;color:rgb(var(--ui-t2))}
+.comment-input{width:100%;box-sizing:border-box;margin:4px 0;font:inherit;font-size:13px;padding:6px;border:1px solid rgb(var(--ui-b2));border-radius:6px;background:rgb(var(--ui-s1));color:rgb(var(--ui-t1));resize:vertical}
+.comment-list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+.comment-item{border:1px solid rgb(var(--ui-b2));border-radius:7px;padding:6px 8px}
+.comment-text{margin:0;font-size:13px;color:rgb(var(--ui-t1));white-space:pre-wrap;overflow-wrap:anywhere}
+.comment-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.comment-panel .tool-chip{min-height:34px;touch-action:manipulation}
+.comment-panel .tool-chip:disabled{opacity:.45}
+html.vrl-ipad-ui .comment-panel .tool-chip{min-height:40px}
