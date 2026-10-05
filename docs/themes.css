@@ -50,7 +50,7 @@
   --ui-red-tx2:255 241 241;
   --ui-red-bd:105 64 64;
   --ui-red-bd2:169 90 90;
-  --ui-canvas-bg-3d:9 12 13;
+  --ui-canvas-bg-3d:28 36 42;
   --ui-canvas-bg-2d:2 3 4;
   --ui-link:159 209 230;
   --ui-green-bg0:18 32 26;
@@ -95,7 +95,7 @@ html[data-theme="light-standard"]{
   --ui-red-tx2:255 255 255;
   --ui-red-bd:226 154 154;
   --ui-red-bd2:179 38 30;
-  --ui-canvas-bg-3d:11 14 16;
+  --ui-canvas-bg-3d:34 42 50;
   --ui-canvas-bg-2d:207 213 218;
   --ui-link:11 95 130;
   --ui-green-bg0:238 248 241;
@@ -140,7 +140,7 @@ html[data-theme="light-paper"]{
   --ui-red-tx2:255 255 255;
   --ui-red-bd:226 154 154;
   --ui-red-bd2:179 38 30;
-  --ui-canvas-bg-3d:22 18 14;
+  --ui-canvas-bg-3d:48 40 32;
   --ui-canvas-bg-2d:216 207 187;
   --ui-link:29 90 115;
   --ui-green-bg0:238 248 241;
@@ -185,7 +185,7 @@ html[data-theme="light-gray"]{
   --ui-red-tx2:255 255 255;
   --ui-red-bd:226 154 154;
   --ui-red-bd2:179 38 30;
-  --ui-canvas-bg-3d:15 15 15;
+  --ui-canvas-bg-3d:44 44 44;
   --ui-canvas-bg-2d:186 186 186;
   --ui-link:34 34 34;
   --ui-green-bg0:238 248 241;
@@ -230,7 +230,7 @@ html[data-theme="dark-reading"]{
   --ui-red-tx2:255 241 241;
   --ui-red-bd:105 64 64;
   --ui-red-bd2:169 90 90;
-  --ui-canvas-bg-3d:3 3 4;
+  --ui-canvas-bg-3d:6 6 7;
   --ui-canvas-bg-2d:0 0 0;
   --ui-link:159 209 230;
   --ui-green-bg0:18 32 26;
@@ -275,7 +275,7 @@ html[data-theme="dark-gray"]{
   --ui-red-tx2:255 241 241;
   --ui-red-bd:105 64 64;
   --ui-red-bd2:169 90 90;
-  --ui-canvas-bg-3d:14 14 14;
+  --ui-canvas-bg-3d:34 34 34;
   --ui-canvas-bg-2d:12 12 12;
   --ui-link:208 208 208;
   --ui-green-bg0:18 32 26;

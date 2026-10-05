@@ -58,7 +58,7 @@ const seen=new Set();
 for(const id of IDS){const g=res[id].gpu;if(!g.css||!g.unit)fail(id+': no 3D background variable');else{
  if(g.unit.some((x,i)=>Math.abs(x-g.css[i]/255)>1e-6))fail(id+': the renderer input differs from the CSS variable');
  if(g.card!=='rgb('+g.css.join(', ')+')')fail(id+': the 3D card backdrop differs from the variable');
- if(Math.max(...g.css)>30)fail(id+': the 3D background should be dark');seen.add(g.css.join())}
+ if(Math.max(...g.css)>70)fail(id+': the 3D background should be dark');seen.add(g.css.join())}
  console.log(id.padEnd(15),'3D background (GPU volume / WebGL / card):',JSON.stringify(g.css))}
 if(seen.size<5)fail('the 3D backgrounds should differ between themes (tinted like the theme)');
 console.log('note: the GPU volume view itself (WebGPU, alphaMode opaque) cannot render in this headless environment; the check covers the value the renderer reads and the shader / clear code is covered by tests/unit/themes.test.js');

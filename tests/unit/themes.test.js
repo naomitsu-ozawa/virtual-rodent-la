@@ -182,7 +182,7 @@ describe('the image does not change with the theme; the backgrounds around it fo
     const card3d = tokensOf(block('.view-card-3d'));
     for (const k of Object.keys(standard).filter(x => !x.startsWith('canvas-bg'))) expect(card3d[k], k).toBe(standard[k]);
     for (const k of ['canvas-bg-3d', 'canvas-bg-2d']) expect(card3d, k).not.toHaveProperty(k.replace('canvas-bg-', 'canvas-bg-'));
-    expect(standard['canvas-bg-3d']).toBe('9 12 13'); expect(standard['canvas-bg-2d']).toBe('2 3 4'); // standard dark = the colours before themes (9,12,13 = 0.035,0.045,0.05)
+    expect(standard['canvas-bg-3d']).toBe('28 36 42'); expect(standard['canvas-bg-2d']).toBe('2 3 4'); // the standard dark theme keeps today's 2D background
     expect(styleCss).toMatch(/\.view-card-3d\{background:rgb\(var\(--ui-canvas-bg-3d\)\)\}/);
     expect(styleCss).toMatch(/\.viewport-card\{[^}]*background:rgb\(var\(--ui-canvas-bg-2d\)\)/);
     expect(styleCss).toMatch(/\.mpr-canvas\{[^}]*background:rgb\(var\(--ui-canvas-bg-2d\)\)/);
@@ -193,7 +193,9 @@ describe('the image does not change with the theme; the backgrounds around it fo
       const tk = themeTokens(t.id);
       for (const k of ['canvas-bg-3d', 'canvas-bg-2d']) expect(tk[k], t.id + ' ' + k).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/);
       const l3 = lum(rgbOf(tk['canvas-bg-3d'])), l2 = lum(rgbOf(tk['canvas-bg-2d']));
-      expect(l3, t.id + ' 3D').toBeLessThan(0.02); // about the brightness of the background before themes
+      // dark enough for the volume and the white-ish UI to read (build 452: bright enough to see the tint, relative luminance 0.005-0.05)
+      if (t.id !== 'dark-reading') expect(l3, t.id + ' 3D').toBeGreaterThan(0.01);
+      expect(l3, t.id + ' 3D').toBeLessThan(0.05);
       if (t.mode === 'light') expect(l2, t.id + ' 2D').toBeGreaterThan(0.3); else expect(l2, t.id + ' 2D').toBeLessThan(0.02);
     }
     const own = id => tokensOf(block('html[data-theme="' + id + '"]'));
@@ -204,7 +206,9 @@ describe('the image does not change with the theme; the backgrounds around it fo
     expect(c('light-gray')[0]).toBe(c('light-gray')[2]); expect(c('dark-gray')[0]).toBe(c('dark-gray')[2]); // neutral gray
     expect(c('light-paper')[0]).toBeGreaterThan(c('light-paper')[2]); // warm brown-gray
     expect(c('dark-standard')[2]).toBeGreaterThan(c('dark-standard')[0]); expect(c('light-standard')[2]).toBeGreaterThan(c('light-standard')[0]); // bluish
-    expect(Math.max(...c('dark-reading'))).toBeLessThanOrEqual(4); // almost black
+    expect(Math.max(...c('dark-reading'))).toBeLessThanOrEqual(12); // almost black
+    expect(Math.max(...c('light-paper')) - Math.min(...c('light-paper'))).toBeGreaterThanOrEqual(12); // the tint can be seen
+    expect(c('light-gray')[0]).toBeGreaterThanOrEqual(38); expect(c('dark-gray')[0]).toBeGreaterThanOrEqual(30);
   });
   it('text and overlays on the canvas backgrounds stay readable (4.5:1): standard dark UI on the 3D view, the theme UI on the 2D one', () => {
     for (const id of THEME_IDS) {
