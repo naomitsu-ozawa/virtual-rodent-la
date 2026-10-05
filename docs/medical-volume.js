@@ -1,5 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
+import { canvasBackground3dUnit } from './canvas-theme.js?v=20261005-build451';
 
 const UNCOMPRESSED_TS=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
@@ -69,7 +70,8 @@ struct Uniforms{
  mprWindow:vec4<f32>,
  section:vec4<f32>,
  sectionCap:vec4<f32>,
- textureDims:vec4<f32>
+ textureDims:vec4<f32>,
+ background:vec4<f32>
 };
 @group(0) @binding(0) var<uniform> u:Uniforms;
 @group(0) @binding(1) var volumeTex:texture_3d<f32>;
@@ -384,7 +386,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
  let ndc=vec2<f32>(frag.x/max(u.viewport.x,1.0)*2.0-1.0,1.0-frag.y/max(u.viewport.y,1.0)*2.0);
  let dir=normalize(u.camForward.xyz+u.camRightTan.xyz*(ndc.x*u.camRightTan.w*u.camUpAspect.w)+u.camUpAspect.xyz*(ndc.y*u.camRightTan.w));
  let bounds=hitBox(u.camOrigin.xyz,dir,u.halfStep.xyz);
- if(bounds.x>bounds.y){return vec4<f32>(0.035,0.045,0.05,1.0);}
+ if(bounds.x>bounds.y){return vec4<f32>(u.background.rgb,1.0);}
  var t=max(bounds.x,0.0);var endT=bounds.y;let step=max(u.halfStep.w,0.00001);var capT=1e30;
  if(u.section.x>0.5){
   var originAxis=u.camOrigin.z;var dirAxis=dir.z;
@@ -392,12 +394,12 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
   if(u.section.x>=2.5){originAxis=u.camOrigin.x;dirAxis=dir.x;}
   let side=u.section.z*(originAxis-u.section.y);let slope=u.section.z*dirAxis;
   if(abs(slope)<1e-8){
-   if(side<0.0){return vec4<f32>(0.035,0.045,0.05,1.0);}
+   if(side<0.0){return vec4<f32>(u.background.rgb,1.0);}
   }else{
    let cross=-side/slope;
    if(cross>=max(bounds.x,0.0)-1e-7&&cross<=bounds.y+1e-7){capT=cross;}
    if(slope>0.0){t=max(t,cross);}else{endT=min(endT,cross);}
-   if(t>endT){return vec4<f32>(0.035,0.045,0.05,1.0);}
+   if(t>endT){return vec4<f32>(u.background.rgb,1.0);}
   }
  }
  var axialT=1e30;var coronalT=1e30;var sagittalT=1e30;
@@ -565,7 +567,7 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
   // after a uniform-brick jump the last point inside the brick is the previous (inside) sample of the next surface search
   previousT=select(t,max(t,nextT-step*0.1),uniformJump);t=nextT;
  }
- let bg=vec3<f32>(0.035,0.045,0.05);
+ let bg=u.background.rgb; // build 451: the theme's dark 3D background (--ui-canvas-bg-3d)
  return vec4<f32>(acc.rgb+bg*(1.0-acc.a),1.0);
 }`;
 }
@@ -840,7 +842,7 @@ export class MedicalVolumeRenderer{
   this.host.style.position='relative';this.host.appendChild(this.canvas);
   this.context=this.canvas.getContext('webgpu');this.format=navigator.gpu.getPreferredCanvasFormat();
   this.context.configure({device:this.device,format:this.format,alphaMode:'opaque'});
-  this.uniformBuffer=this.device.createBuffer({size:352,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+  this.uniformBuffer=this.device.createBuffer({size:368,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
   this.sampler=this.device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge',addressModeW:'clamp-to-edge'});
   const module=this.device.createShaderModule({label:'VRL medical volume raycast',code:safeWgsl(volumeShader())});
   this.pipeline=this.device.createRenderPipeline({label:'VRL medical volume raycast',layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'}});
@@ -852,7 +854,7 @@ export class MedicalVolumeRenderer{
   this.appliedCutRowsBuffer=null;this.appliedCutIntervalsBuffer=null;this.appliedCutSignature='';this.clearAppliedCutRuns();
   this.analysisOverlayBuffer=null;this.analysisOverlaySignature='';this.clearAnalysisRuns();
   this.texture=null;this.bindGroup=null;this.seriesId=null;this.bricksReady=false;this.previewVolume=null;this.previewPlaneBuffers={coronal:null,sagittal:null};this.active=false;this.interactive=false;this.interactionTier=0;this.halfExtents=[1,1,1];this.step=0.002;this.calibration={slope:1,intercept:0,signedBias:0};this.volume=null;this.textureDims=[1,1,1];this.reducedVolume=false;this.textureBytes=0;this.planSignature='';
-  this.frameData=new Float32Array(88);this.tmpInv=new THREE.Matrix4();this.tmpOrigin=new THREE.Vector3();this.tmpQuat=new THREE.Quaternion();this.tmpRight=new THREE.Vector3();this.tmpUp=new THREE.Vector3();this.tmpForward=new THREE.Vector3();
+  this.frameData=new Float32Array(92);this.tmpInv=new THREE.Matrix4();this.tmpOrigin=new THREE.Vector3();this.tmpQuat=new THREE.Quaternion();this.tmpRight=new THREE.Vector3();this.tmpUp=new THREE.Vector3();this.tmpForward=new THREE.Vector3();
  }
  support(v,{maxTextureBytes=0,targetInPlane=0}={}){
   const s=v?.series;if(!v?.sourceBacked||!s)return{ok:false,reason:'GPU volume currently targets source-backed DICOM'};
@@ -1389,9 +1391,10 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
   // volume used nearest voxels and showed staircases (owner, build 282). rg8 lo/hi
   // bytes interpolate linearly, so lo+hi*256 is the interpolated u16 value.
   put(21,this.textureDims[0],this.textureDims[1],this.textureDims[2],globalThis.__vrlSettings?.interpLevel?.()??1);
+  const bg=canvasBackground3dUnit();put(22,bg[0],bg[1],bg[2],1); // the 3D background follows the theme; no re-upload of the volume
   this.device.queue.writeBuffer(this.uniformBuffer,0,data);
   const low=(this.renderW&&(this.renderW!==this.canvas.width||this.renderH!==this.canvas.height))?this.lowTarget(this.renderW,this.renderH):null;
-  const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),canvasView=this.context.getCurrentTexture().createView(),view=low?low.view:canvasView,pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:.035,g:.045,b:.05,a:1},loadOp:'clear',storeOp:'store'}]});
+  const encoder=this.device.createCommandEncoder({label:'VRL volume frame'}),canvasView=this.context.getCurrentTexture().createView(),view=low?low.view:canvasView,pass=encoder.beginRenderPass({colorAttachments:[{view,clearValue:{r:canvasBackground3dUnit()[0],g:canvasBackground3dUnit()[1],b:canvasBackground3dUnit()[2],a:1},loadOp:'clear',storeOp:'store'}]});
   pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.bindGroup);pass.draw(3);pass.end();
   if(low){const bp=encoder.beginRenderPass({colorAttachments:[{view:canvasView,loadOp:'clear',clearValue:{r:0,g:0,b:0,a:1},storeOp:'store'}]});bp.setPipeline(this.blitPipeline);bp.setBindGroup(0,low.group);bp.draw(3);bp.end()}
   // diagnostics (build 279: 640x343 took longer than 1516x813, so the time is

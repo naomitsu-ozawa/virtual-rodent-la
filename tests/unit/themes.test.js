@@ -175,58 +175,110 @@ describe('contrast (WCAG AA, 4.5:1) in all six themes', () => {
   });
 });
 
-describe('the image does not change with the theme; the backgrounds around it follow it (build 450)', () => {
-  it('both groups follow the theme: the UI of the view cards uses the ordinary tokens, the canvas backgrounds have their own', () => {
-    // no card re-declares the standard dark tokens any more
-    expect(themesCss).not.toMatch(/\.viewport-card|\.view-card/);
-    expect(themesCss).not.toMatch(/img-bg|img-surround/);
-    expect(standard['canvas-bg-3d']).toBe('15 18 20'); expect(standard['canvas-bg-2d']).toBe('2 3 4'); // the standard dark theme keeps today's backgrounds
-    expect(styleCss).toMatch(/\.viewport-card\{[^}]*background:rgb\(var\(--ui-canvas-bg-3d\)\)/);
+describe('the image does not change with the theme; the backgrounds around it follow it (builds 450-451)', () => {
+  it('the 2D canvas background follows the theme; the 3D one is a dark, theme-tinted colour; the 3D card keeps dark UI tokens', () => {
+    expect(themesCss).not.toMatch(/\.viewport-card|(?<!-)\.view-card(?!-3d)/); // no general card re-declaration
+    expect(themesCss.match(/\.view-card-3d\{/g).length).toBe(1);
+    const card3d = tokensOf(block('.view-card-3d'));
+    for (const k of Object.keys(standard).filter(x => !x.startsWith('canvas-bg'))) expect(card3d[k], k).toBe(standard[k]);
+    for (const k of ['canvas-bg-3d', 'canvas-bg-2d']) expect(card3d, k).not.toHaveProperty(k.replace('canvas-bg-', 'canvas-bg-'));
+    expect(standard['canvas-bg-3d']).toBe('9 12 13'); expect(standard['canvas-bg-2d']).toBe('2 3 4'); // standard dark = the colours before themes (9,12,13 = 0.035,0.045,0.05)
+    expect(styleCss).toMatch(/\.view-card-3d\{background:rgb\(var\(--ui-canvas-bg-3d\)\)\}/);
+    expect(styleCss).toMatch(/\.viewport-card\{[^}]*background:rgb\(var\(--ui-canvas-bg-2d\)\)/);
     expect(styleCss).toMatch(/\.mpr-canvas\{[^}]*background:rgb\(var\(--ui-canvas-bg-2d\)\)/);
     expect(styleCss).not.toMatch(/\.viewer-grid\{background/);
   });
-  it('every theme sets its own canvas backgrounds; light themes have light ones, dark themes dark ones', () => {
+  it('every theme sets both backgrounds: 3D dark in all six, 2D light in the light themes and dark in the dark ones', () => {
     for (const t of THEMES) {
       const tk = themeTokens(t.id);
-      for (const k of ['canvas-bg-3d', 'canvas-bg-2d']) {
-        expect(tk[k], t.id + ' ' + k).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/);
-        const l = lum(rgbOf(tk[k])); if (t.mode === 'light') expect(l, t.id + ' ' + k).toBeGreaterThan(0.3); else expect(l, t.id + ' ' + k).toBeLessThan(0.02);
-      }
+      for (const k of ['canvas-bg-3d', 'canvas-bg-2d']) expect(tk[k], t.id + ' ' + k).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/);
+      const l3 = lum(rgbOf(tk['canvas-bg-3d'])), l2 = lum(rgbOf(tk['canvas-bg-2d']));
+      expect(l3, t.id + ' 3D').toBeLessThan(0.02); // about the brightness of the background before themes
+      if (t.mode === 'light') expect(l2, t.id + ' 2D').toBeGreaterThan(0.3); else expect(l2, t.id + ' 2D').toBeLessThan(0.02);
     }
     const own = id => tokensOf(block('html[data-theme="' + id + '"]'));
     for (const id of THEME_IDS.filter(x => x !== 'dark-standard')) expect(own(id)['canvas-bg-3d'], id).toBeTruthy();
   });
-  it('text and overlays drawn on the canvas backgrounds stay readable in every theme (4.5:1)', () => {
-    for (const id of THEME_IDS) { const tk = themeTokens(id); for (const t of ['t1', 't2', 't3']) for (const c of ['canvas-bg-3d', 'canvas-bg-2d']) expect(contrast(tk[t], tk[c]), id + ' ' + t + ' on ' + c).toBeGreaterThanOrEqual(4.5); }
+  it('the 3D backgrounds are tinted like their theme', () => {
+    const c = id => rgbOf(themeTokens(id)['canvas-bg-3d']);
+    expect(c('light-gray')[0]).toBe(c('light-gray')[2]); expect(c('dark-gray')[0]).toBe(c('dark-gray')[2]); // neutral gray
+    expect(c('light-paper')[0]).toBeGreaterThan(c('light-paper')[2]); // warm brown-gray
+    expect(c('dark-standard')[2]).toBeGreaterThan(c('dark-standard')[0]); expect(c('light-standard')[2]).toBeGreaterThan(c('light-standard')[0]); // bluish
+    expect(Math.max(...c('dark-reading'))).toBeLessThanOrEqual(4); // almost black
   });
-  it('canvas-theme.js reads only the background variable; scene-view.js is the only drawing code that uses it', () => {
+  it('text and overlays on the canvas backgrounds stay readable (4.5:1): standard dark UI on the 3D view, the theme UI on the 2D one', () => {
+    for (const id of THEME_IDS) {
+      const tk = themeTokens(id);
+      for (const t of ['t1', 't2', 't3']) {
+        expect(contrast(standard[t], tk['canvas-bg-3d']), id + ' ' + t + ' on 3D').toBeGreaterThanOrEqual(4.5);
+        expect(contrast(tk[t], tk['canvas-bg-2d']), id + ' ' + t + ' on 2D').toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+  it('MedicalVolumeRenderer takes its background from the theme variable: clear colour and the colour of a ray that hits nothing', () => {
+    const mv = read('docs/medical-volume.js');
+    expect(mv).toContain("from './canvas-theme.js");
+    // the shader: a background uniform, no fixed colour any more
+    expect(mv).toMatch(/textureDims:vec4<f32>,\n background:vec4<f32>\n\};\n@group\(0\) @binding\(0\) var<uniform> u:Uniforms;/);
+    expect(mv).not.toMatch(/0\.035\s*,\s*0\.045\s*,\s*0\.05/);
+    expect(mv.match(/return vec4<f32>\(u\.background\.rgb,1\.0\);/g).length).toBe(3);
+    expect(mv).toContain('let bg=u.background.rgb;');
+    // the uniform buffer holds the 23rd vec4 (368 bytes) and is filled every frame; the canvas stays opaque
+    expect(mv).toContain('size:368,usage:GPUBufferUsage.UNIFORM');
+    expect(mv).toContain('this.frameData=new Float32Array(92);');
+    expect(mv).toMatch(/const bg=canvasBackground3dUnit\(\);put\(22,bg\[0\],bg\[1\],bg\[2\],1\);/);
+    expect(mv).toContain("alphaMode:'opaque'");
+    expect(mv).toMatch(/clearValue:\{r:canvasBackground3dUnit\(\)\[0\],g:canvasBackground3dUnit\(\)\[1\],b:canvasBackground3dUnit\(\)\[2\],a:1\}/);
+    expect(mv).toMatch(/clearValue:\{r:0,g:0,b:0,a:1\}/); // the blit of a low-resolution frame is fully covered, as before
+    // only the background reaches the renderer from the theme code; nothing about the image
+    expect(mv).not.toMatch(/data-theme|themeMode|theme-ui|from '\.\/theme\.js|--ui-(?!canvas-bg-3d)|getComputedStyle/);
+  });
+  it('canvas-theme.js: reads the CSS variable, falls back to the colour before themes, and follows a theme change', () => {
+    const saved = { d: globalThis.document, g: globalThis.getComputedStyle };
+    return import('../../docs/canvas-theme.js').then(m => {
+      try {
+        expect(m.DEFAULT_CANVAS_BG_3D).toEqual([0.035, 0.045, 0.05]);
+        globalThis.document = undefined; globalThis.getComputedStyle = undefined;
+        expect(m.canvasBackground3d()).toBeNull();
+        let value = '9 12 13', handlers = [];
+        globalThis.document = { documentElement: {}, addEventListener: (t, f) => { if (t === 'vrl-themechange') handlers.push(f); } };
+        globalThis.getComputedStyle = () => ({ getPropertyValue: () => ' ' + value + ' ' });
+        expect(m.canvasBackground3d()).toEqual([9, 12, 13]);
+        expect(m.canvasBackground3dUnit()).toEqual([9 / 255, 12 / 255, 13 / 255]);
+        value = '22 18 14'; expect(m.canvasBackground3dUnit()).toEqual([9 / 255, 12 / 255, 13 / 255]); // cached until the theme changes
+        handlers.forEach(f => f()); expect(m.canvasBackground3dUnit()).toEqual([22 / 255, 18 / 255, 14 / 255]);
+        value = 'garbage'; handlers.forEach(f => f()); expect(m.canvasBackground3dUnit()).toEqual(m.DEFAULT_CANVAS_BG_3D);
+      } finally { globalThis.document = saved.d; globalThis.getComputedStyle = saved.g; }
+    });
+  });
+  it('theme.js tells the canvas code about a theme change, and scene-view.js draws the 3D view again', () => {
+    expect(read('docs/theme.js')).toContain("new CustomEvent('vrl-themechange'");
+    expect(read('docs/scene-view.js')).toMatch(/onCanvasThemeChange\(\(\)=>\{applyThemeBackground\(\);request3DRender\(\)\}\)/);
+  });
+  it('canvas-theme.js reads only the background variable', () => {
     const ct = read('docs/canvas-theme.js').replace(/\/\/[^\n]*/g, '');
     expect(ct).toMatch(/--ui-canvas-bg-3d/); expect(ct).not.toMatch(/--ui-(?!canvas-bg)/);
     expect(ct).not.toMatch(/getContext|canvas\.width|ImageData|windowCenter|segment/);
-    expect(read('docs/scene-view.js')).toContain("from './canvas-theme.js");
-    // the clear colour is the only thing set from it
     expect(read('docs/scene-view.js')).toMatch(/applyThemeBackground=\(\)=>\{if\(backend==='WEBGL'\)\{const c=canvasBackground3d\(\);if\(c\)renderer\.setClearColor\(/);
   });
-  it('the code that makes the image (grey levels, window / level, segments, volume rendering) knows nothing about themes', () => {
-    for (const f of ['mpr-render', 'medical-volume', 'mpr3d-overlay', 'mpr-orthogonal', 'segments', 'segment-runs', 'scene3d', 'surface-build', 'surface-mesh', 'gpu-shaders', 'gpu-compute', 'volume-io', 'vr-view', 'section-view', 'cpu-filters', 'source-filters', 'filter-units']) {
+  it('the code that makes the image (grey levels, window / level, segments, volume transfer function) knows nothing about themes', () => {
+    for (const f of ['mpr-render', 'mpr3d-overlay', 'mpr-orthogonal', 'segments', 'segment-runs', 'scene3d', 'surface-build', 'surface-mesh', 'gpu-shaders', 'gpu-compute', 'volume-io', 'vr-view', 'section-view', 'cpu-filters', 'source-filters', 'filter-units']) {
       const t = read('docs/' + f + '.js');
       expect(t, f).not.toMatch(/data-theme|themeMode|theme\.js|theme-ui|canvas-theme|--ui-|getComputedStyle/);
     }
-    // scene-view.js: only the canvas-theme import and the clear colour
+    // the only drawing code that imports canvas-theme.js: scene-view.js (clear colour) and medical-volume.js (background uniform)
+    const users = ['scene-view', 'medical-volume'].filter(f => read('docs/' + f + '.js').includes('canvas-theme.js'));
+    expect(users).toEqual(['scene-view', 'medical-volume']);
     const sv = read('docs/scene-view.js'); expect(sv.match(/--ui-/g)).toBeNull(); expect(sv).not.toMatch(/data-theme|themeMode|theme-ui|from '\.\/theme\.js/);
     // the theme code touches only <html> attributes, the theme-color meta and one event
     const th = (read('docs/theme.js') + read('docs/theme-ui.js')).replace(/\/\/[^\n]*/g, ''); // code, not comments
     expect(th).not.toMatch(/canvas|getContext|WebGL|gpu|segment|window.?level|windowCenter/i);
   });
-  it('the volume shader and the window / level LUT take no colour from the page', () => {
-    const mv = read('docs/medical-volume.js') + read('docs/mpr-render.js');
-    expect(mv).not.toMatch(/getComputedStyle|var\(--ui/);
-  });
   it('segment preset colours are data, not theme colours', () => {
     const seg = read('docs/segments.js');
     for (const c of ['#f3f0e8', '#d97f7f', '#e7c85d', '#6fb8d6']) expect(seg).toContain(c);
   });
-  it('annotations drawn over the 3D view have a dark outline, so they read on a light background', () => {
+  it('annotations drawn over the 3D view have a dark outline, so they read on any background', () => {
     const sv = read('docs/scene-view.js');
     expect(sv).toContain("ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=6;ctx.stroke();ctx.strokeStyle='#00e5ff'"); // cut / lasso stroke
     expect(sv).toMatch(/pivotIndicator\.style,\{[^}]*boxShadow:'0 0 0 1px rgba\(0,0,0/);
