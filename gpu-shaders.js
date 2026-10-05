@@ -240,7 +240,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
- let strength=params[2];let spatialSigma=params[3];let intensitySigma=max(0.000001,params[4]*max(1.0,params[1]-params[0]));
+ let strength=params[2];let spatialSigma=params[3];let intensitySigma=max(0.000001,params[4]);
  let radius=i32(meta[4]);let sp2=2.0*spatialSigma*spatialSigma;let int2=2.0*intensitySigma*intensitySigma;
  var sum=0.0;var wsum=0.0;
  for(var dz:i32=-radius;dz<=radius;dz=dz+1){

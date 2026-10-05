@@ -38,6 +38,29 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-05 — claude/bilateral-hu-sigma (bilateral intensity sigma in HU, builds 445-446)
+
+**Agent:** Claude
+**Task:** The same project gave different fat segments on different devices; fix the cause (owner's decision: C + B, default 50 HU).
+
+### What changed
+- Bilateral 3D intensity sigma was `0.02 × (v.max − v.min)`. v.min / v.max is the DICOM metadata range (−4000…61535 for the practice data, sigma ≈ 1311 HU) for large (sourceBacked) series on devices where the resident GPU volume was prepared; for large series on devices where it was not, `prepareSourceMprCache` (volume-io.js:58) rewrites it to the data range (−1361…3102, ≈ 89 HU); small series (sourceBacked=false) get the data range from `decode()` on every device and nothing rewrites it. So there are three paths, not two. Now the sigma is an absolute `sigmaHU` (CPU, worker and WGSL kernel); v.min / v.max are not used by the bilateral filter.
+- UI: slider 10–300 HU, step 1, default 50 HU, label "強度Sigma（HU）".
+- Project file: `filters.order[].params.sigmaHU` (number) is saved and used as is on load. Old projects (no sigmaHU) get ratio × the range the old code used: `sourceRangeFromMetadata(series.slices)` for sourceBacked series (practice data: 0.02 × 65535 = 1310.7 HU), the decoded data range (`sourceVolume.min/max`) for small series (`bilateralLegacyRange`). A non-finite range falls back to 50 HU. The footer says when a compatibility value was used. The file is not rewritten, the next save writes sigmaHU. A value outside the slider grid is shown by widening the slider (step "any") with a small note, until the first pointer-down / input (the precision drag restores the range before it remembers min / max).
+- `sourceFilterSignature` adds `algo: 2` to bilateral stages (so old caches are not reused); sigmaHU is in the stage params, hence in the signature and in `segmentRunsCacheKey` (moved to `segment-cache-key.js` so it can be unit-tested; run-cache.js re-exports it). Pure helpers are in `bilateral-sigma.js`.
+- Tests: `tests/unit/bilateral-sigma.test.js` (range independence, signature / cache key, legacy 1310.7 HU, save → load round trip).
+
+### Why
+- The intensity sigma has to be the same on every device; an absolute HU value is the only thing that does not depend on which load path set v.min / v.max. The old projects keep the value they most likely had, so saved results are reproduced.
+- The device-dependent case (large series without a resident GPU volume) cannot be reproduced from a file; the metadata range is used for it.
+- Only the bilateral filter's sigma was fixed; the other range-relative filters (Spike/Hole threshold, NLM, Anisotropic, TV, Unsharp) still use v.max − v.min and can differ between devices in the same way.
+
+### Follow-up / open questions
+- The new default (50 HU) changes new segments' results versus the old effective values; needs a visual check on the device.
+- Consider the same HU-absolute treatment for the other range-relative filters.
+
+---
+
 ## 2026-09-27 — claude/dicom-viewer-handoff-eaqyyu (thin-part removal on the GPU, build 268)
 
 **Agent:** Claude

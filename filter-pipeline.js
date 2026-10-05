@@ -1,17 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20261005-build444';
-import { currentLanguage, volume, filterRebuildTimer, sourceVolume, setFilterRebuildTimer, incFilterRebuildRevision, setVolume, filterRebuildRevision, filterOrder, setDeferAutomatic3D, setMemoryGpuPreviewActive, incSourceRenderRevision } from './state.js?v=20261005-build444';
-import { clearMemoryFilterPreviewCache, applyCpuFilter } from './rebuild-3d.js?v=20261005-build444';
-import { scheduleSourceMprWarmup, renderPlane, renderAll } from './mpr-render.js?v=20261005-build444';
-import { setProcessingBusy } from './busy.js?v=20261005-build444';
-import { planes, footer, gaussianStrength, spatialPasses, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, resetFilterBtn, mainViewSlot, filterControlList, filterAddButton, filterAddSelect } from './ui-shell.js?v=20261005-build444';
-import { planeRenderRevision, sourceFilterStages, filterState, sourceFilterRuntime } from './source-filters.js?v=20261005-build444';
-import { gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20261005-build444';
-import { tr } from './i18n.js?v=20261005-build444';
-import { refreshGpuVolumeData } from './gpu-volume-data.js?v=20261005-build444';
-import { render3D } from './surface-build.js?v=20261005-build444';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261005-build444';
+import { mark3DStale } from './three-state.js?v=20261005-build446';
+import { currentLanguage, volume, filterRebuildTimer, sourceVolume, setFilterRebuildTimer, incFilterRebuildRevision, setVolume, filterRebuildRevision, filterOrder, setDeferAutomatic3D, setMemoryGpuPreviewActive, incSourceRenderRevision } from './state.js?v=20261005-build446';
+import { clearMemoryFilterPreviewCache, applyCpuFilter } from './rebuild-3d.js?v=20261005-build446';
+import { scheduleSourceMprWarmup, renderPlane, renderAll } from './mpr-render.js?v=20261005-build446';
+import { setProcessingBusy } from './busy.js?v=20261005-build446';
+import { planes, footer, gaussianStrength, spatialPasses, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, bilateralIntensityValue, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, resetFilterBtn, mainViewSlot, filterControlList, filterAddButton, filterAddSelect } from './ui-shell.js?v=20261005-build446';
+import { planeRenderRevision, sourceFilterStages, filterState, sourceFilterRuntime } from './source-filters.js?v=20261005-build446';
+import { gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20261005-build446';
+import { tr } from './i18n.js?v=20261005-build446';
+import { BILATERAL_SIGMA_HU_MIN, BILATERAL_SIGMA_HU_MAX, BILATERAL_SIGMA_HU_DEFAULT } from './bilateral-sigma.js?v=20261005-build446';
+import { refreshGpuVolumeData } from './gpu-volume-data.js?v=20261005-build446';
+import { render3D } from './surface-build.js?v=20261005-build446';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261005-build446';
 export const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid','bilateral','tv','unsharp'];
 export const liveFilterState={timer:null,base:null,key:null};
 export function beginLiveFilter(key){
@@ -196,3 +197,25 @@ export function hasGlobalSegmentProcessing(){
 }
 export function currentMainViewKey(){return mainViewSlot?.querySelector('.view-card')?.dataset.viewKey||'3d'}
 export const applyVolumeAfterFilterRebuild={value:false};
+
+// build 445: the bilateral intensity sigma slider is in HU (10-300, step 1). A saved value outside that grid
+// (e.g. 1310.7 HU converted from an old project's ratio) is shown as it is: the slider is widened and its step
+// released, so the value is neither clamped nor snapped; the first user input puts the standard range back.
+export function setBilateralSigmaControl(sigmaHU){
+ const el=bilateralIntensity,v=+sigmaHU;if(!el||!Number.isFinite(v)||v<=0)return;
+ const std=Number.isInteger(v)&&v>=BILATERAL_SIGMA_HU_MIN&&v<=BILATERAL_SIGMA_HU_MAX;
+ if(std)restoreBilateralSigmaRange();else{el.min=String(Math.min(BILATERAL_SIGMA_HU_MIN,v));el.max=String(Math.max(BILATERAL_SIGMA_HU_MAX,v));el.step='any';el.dataset.widened='1'}
+ el.value=String(v);bilateralIntensityValue.value=formatBilateralSigma(v);showBilateralLegacyNote(!std);
+ el.dataset.loading='1';try{el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))}finally{delete el.dataset.loading}
+}
+export function showBilateralLegacyNote(show){
+ const n=document.getElementById('bilateral-legacy-note');if(!n)return;
+ n.textContent=show?(currentLanguage==='ja'?'古いプロジェクトの値です。動かすと '+BILATERAL_SIGMA_HU_MIN+'〜'+BILATERAL_SIGMA_HU_MAX+' HU に戻ります':'Value from an old project. Moving the slider returns it to '+BILATERAL_SIGMA_HU_MIN+'-'+BILATERAL_SIGMA_HU_MAX+' HU'):'';
+ n.classList.toggle('is-hidden',!show);
+}
+export function restoreBilateralSigmaRange(){
+ const el=bilateralIntensity;if(!el||!el.dataset.widened)return;showBilateralLegacyNote(false);
+ delete el.dataset.widened;el.min=String(BILATERAL_SIGMA_HU_MIN);el.max=String(BILATERAL_SIGMA_HU_MAX);el.step='1';
+ el.value=String(Math.max(BILATERAL_SIGMA_HU_MIN,Math.min(BILATERAL_SIGMA_HU_MAX,Math.round(+el.value)||BILATERAL_SIGMA_HU_DEFAULT)));
+}
+export function formatBilateralSigma(v){return String(Math.round(+v*10)/10)}
