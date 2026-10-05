@@ -30,7 +30,7 @@ export const isValidUnitValue = (def, v) => Number.isFinite(v) && (def?.min === 
 export const ANISO_LAMBDA_MIN = 0.06;
 export const ANISO_LAMBDA_MAX = 1 / 7;
 
-// Per-axis weights from the voxel spacing (shared by every spacing-aware filter: Anisotropic and TV so far).
+// Per-axis weights from the voxel spacing (shared by every spacing-aware filter: Anisotropic, TV, Gaussian, Bilateral, NLM and Unsharp).
 // w_a = (hmin / h_a)^2 with hmin = min(hx, hy, hz), so every weight is in (0, 1]: a finer axis keeps weight 1, a coarser
 // one is weighted down (a physical gradient is diff / h_a, the flux term scales with 1 / h_a^2). Weights <= 1 keep the
 // explicit scheme stable with the same lambda <= 1/7 (the sum of the six weights never exceeds 6).
@@ -38,7 +38,7 @@ export const ANISO_LAMBDA_MAX = 1 / 7;
 // unusable (not three finite numbers > 0): callers then add nothing to the stage params, so the filter signature and the
 // result are exactly those of a build without spacing weights.
 export const SPACING_ISO_TOL = 1e-3;
-export const SPACING_AWARE_KEYS = new Set(['anisotropic', 'tv']);
+export const SPACING_AWARE_KEYS = new Set(['anisotropic', 'tv', 'gaussian', 'bilateral', 'nlm', 'unsharp']);
 export function spacingWeights(spacing) {
   if (!spacing || typeof spacing.length !== 'number' || spacing.length < 3) return null;
   const h = [+spacing[0], +spacing[1], +spacing[2]];
@@ -52,8 +52,28 @@ export const spacingParams = p => [p?.sp?.[0] ?? 1, p?.sp?.[1] ?? 1, p?.sp?.[2] 
 // Adds `sp` to a stage (only for spacing-aware filters and only for non-isotropic data); otherwise returns it unchanged.
 export function withSpacingWeights(stage, spacing) {
   if (!SPACING_AWARE_KEYS.has(stage.key)) return stage;
+  if (stage.key === 'gaussian' && stage.params?.mode === 'median') return stage; // Median is not spacing-aware (yet): its stage and cache key stay as they were
   const sp = spacingWeights(spacing);
   return sp ? { ...stage, params: { ...stage.params, sp } } : stage;
+}
+// Ratios hmin / h_a = sqrt(w_a) per axis (1 for the finest axis and for a stage without sp). Radii and sigmas given in voxels
+// of the finest axis are scaled by these to cover the same distance in mm along every axis.
+export const spacingRatios = p => spacingParams(p).map(Math.sqrt);
+// Bilateral: half-width in voxels per axis, clamp(ceil(1.5 * sigma * ratio_a), 0, 3). The finest axis (ratio 1) keeps the
+// lower bound 1 of the isotropic filter, so isotropic data gets exactly [r, r, r] as before.
+export const bilateralRadii = (spatialSigma, ratios) => ratios.map(r => Math.min(3, Math.max(r >= 1 ? 1 : 0, Math.ceil(spatialSigma * 1.5 * r))));
+// NLM: search / patch radius per axis = round(base * ratio_a) (a coarse axis may drop to 0 = no search / patch along it).
+export function nlmRadii(searchRadius, patchRadius, ratios) {
+  const sr = Math.max(1, Math.round(searchRadius)), pr = Math.max(0, Math.round(patchRadius));
+  return { sr: ratios.map(r => Math.round(sr * r)), pr: ratios.map(r => Math.round(pr * r)) };
+}
+// Unsharp: box of half-width (R + 0.5) * ratio_a voxels along axis a (R = the radius in voxels of the finest axis; the
+// isotropic box has half-width R + 0.5, i.e. R whole voxels). Voxel k gets the fraction of it inside the box,
+// clamp(A - |k| + 0.5, 0, 1): all 1 for the finest axis. K = taps on each side of the centre.
+export const unsharpWeight = (A, k) => Math.min(1, Math.max(0, A - Math.abs(k) + 0.5));
+export function unsharpAxes(radius, ratios) {
+  const R = Math.max(1, Math.round(radius));
+  return ratios.map(r => { const A = (R + 0.5) * r; return { A, K: Math.min(R, Math.max(0, Math.ceil(A - 0.5 - 1e-9))) }; });
 }
 export const anisotropicLambda = strength => { const s = Number.isFinite(+strength) ? Math.min(1, Math.max(0, +strength)) : 0; return Math.min(ANISO_LAMBDA_MIN + (ANISO_LAMBDA_MAX - ANISO_LAMBDA_MIN) * s, ANISO_LAMBDA_MAX); };
 

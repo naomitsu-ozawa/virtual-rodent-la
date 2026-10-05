@@ -4,17 +4,19 @@
 // this module has no UI dependencies and is unit-tested
 // (tests/unit/cpu-filters.test.js). The loops are the former app.js
 // apply* bodies, unchanged apart from reading params instead of sliders.
-import { frameYield } from './utils.js?v=20261005-build455';
-import { boxBlur3D } from './mask-ops.js?v=20261005-build455';
-import { anisotropicLambda, spacingWeights } from './filter-units.js?v=20261005-build455';
+import { frameYield } from './utils.js?v=20261005-build456';
+import { boxBlur3D } from './mask-ops.js?v=20261005-build456';
+import { anisotropicLambda, spacingWeights, spacingRatios, bilateralRadii, nlmRadii } from './filter-units.js?v=20261005-build456';
 export async function cpuGaussian3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d,src=v.data;
  const strength=params.strength;
+ // per-axis strength s_a = s * (hmin/h_a)^2 (params.sp, else from the volume spacing; null = isotropic = s on every axis), so one pass has the same variance in mm along every axis
+ const sp=params.sp||spacingWeights(v.spacing)||[1,1,1],axisStrength=[strength*sp[0],strength*sp[1],strength*sp[2]];
  let a=new Float32Array(src),b=new Float32Array(n);
  const axes=[[1,0,0],[0,1,0],[0,0,1]];
  const rounds=Math.max(1,Math.round(params.passes));
  for(let round=0;round<rounds;round++)for(let pass=0;pass<axes.length;pass++){
-  const [dx,dy,dz]=axes[pass];
+  const [dx,dy,dz]=axes[pass],sa=axisStrength[pass];
   for(let z=0;z<d;z++){
    for(let y=0;y<h;y++){
     const row=z*h*w+y*w;
@@ -25,7 +27,7 @@ export async function cpuGaussian3D(v,params,onProgress=()=>{}){
      const z0=Math.max(0,z-dz),z1=Math.min(d-1,z+dz);
      const i0=z0*h*w+y0*w+x0,i1=z1*h*w+y1*w+x1;
      const blurred=(a[i0]+2*a[i]+a[i1])*.25;
-     b[i]=a[i]*(1-strength)+blurred*strength;
+     b[i]=a[i]*(1-sa)+blurred*sa;
     }
    }
    if((z&15)===0){onProgress((round*axes.length+pass)*d+z+1,rounds*axes.length*d);await frameYield()}
@@ -88,12 +90,14 @@ export async function cpuNlm3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,src=v.data,out=new Float32Array(src);
  const hParam=+params.hHU,h2=hParam*hParam; // build 447: h in HU
  const searchRadius=Math.max(1,Math.round(params.searchRadius)),patchRadius=Math.max(0,Math.round(params.patchRadius));
+ // per-axis radii round(r * hmin/h_a) (params.sp, else from the volume spacing; isotropic = the same radius on every axis)
+ const {sr:[srx,sry,srz],pr:[prx,pry,prz]}=nlmRadii(searchRadius,patchRadius,spacingRatios({sp:params.sp||spacingWeights(v.spacing)}));
  const offsets=[];
- for(let dz=-searchRadius;dz<=searchRadius;dz++)for(let dy=-searchRadius;dy<=searchRadius;dy++)for(let dx=-searchRadius;dx<=searchRadius;dx++){
+ for(let dz=-srz;dz<=srz;dz++)for(let dy=-sry;dy<=sry;dy++)for(let dx=-srx;dx<=srx;dx++){
   if(dx||dy||dz)offsets.push([dx,dy,dz]);
  }
  const patch=[[0,0,0]];
- for(let r=1;r<=patchRadius;r++)patch.push([r,0,0],[-r,0,0],[0,r,0],[0,-r,0],[0,0,r],[0,0,-r]);
+ for(let r=1;r<=Math.max(prx,pry,prz);r++){if(r<=prx)patch.push([r,0,0],[-r,0,0]);if(r<=pry)patch.push([0,r,0],[0,-r,0]);if(r<=prz)patch.push([0,0,r],[0,0,-r])}
  const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
  const sample=(x,y,z)=>src[clamp(z,0,d-1)*h*w+clamp(y,0,h-1)*w+clamp(x,0,w-1)];
  for(let z=0;z<d;z++){
@@ -155,16 +159,17 @@ export async function cpuBilateral3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d;
  // build 445: the intensity sigma is an absolute HU value (params.sigmaHU); it no longer depends on v.min / v.max
  const strength=params.strength,spatialSigma=params.spatialSigma,intensitySigma=Math.max(1e-6,+params.sigmaHU),passes=Math.max(1,Math.round(params.passes));
- const radius=Math.max(1,Math.min(3,Math.ceil(spatialSigma*1.5))),sp2=2*spatialSigma*spatialSigma,int2=2*intensitySigma*intensitySigma;
+ // spatial weight in mm: exp(-sum (d_a*h_a)^2 / (2 sigma^2 hmin^2)) = exp(-sum d_a^2 / w_a / (2 sigma^2)); radius per axis clamp(ceil(1.5 sigma hmin/h_a),0,3)
+ const spw=params.sp||spacingWeights(v.spacing)||[1,1,1],[rx,ry,rz]=bilateralRadii(spatialSigma,spacingRatios({sp:spw})),[ix,iy,iz]=[1/spw[0],1/spw[1],1/spw[2]],sp2=2*spatialSigma*spatialSigma,int2=2*intensitySigma*intensitySigma;
  let a=new Float32Array(v.data),b=new Float32Array(n);
  for(let pass=0;pass<passes;pass++){
   for(let z=0;z<d;z++){
    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const i=z*h*w+y*w+x,center=a[i];let sum=0,wsum=0;
-    for(let dz=-radius;dz<=radius;dz++){const zz=z+dz;if(zz<0||zz>=d)continue;
-     for(let dy=-radius;dy<=radius;dy++){const yy=y+dy;if(yy<0||yy>=h)continue;
-      for(let dx=-radius;dx<=radius;dx++){const xx=x+dx;if(xx<0||xx>=w)continue;
-       const j=zz*h*w+yy*w+xx,dv=a[j]-center,sw=Math.exp(-(dx*dx+dy*dy+dz*dz)/sp2),iw=Math.exp(-(dv*dv)/int2),ww=sw*iw;
+    for(let dz=-rz;dz<=rz;dz++){const zz=z+dz;if(zz<0||zz>=d)continue;
+     for(let dy=-ry;dy<=ry;dy++){const yy=y+dy;if(yy<0||yy>=h)continue;
+      for(let dx=-rx;dx<=rx;dx++){const xx=x+dx;if(xx<0||xx>=w)continue;
+       const j=zz*h*w+yy*w+xx,dv=a[j]-center,sw=Math.exp(-(dx*dx*ix+dy*dy*iy+dz*dz*iz)/sp2),iw=Math.exp(-(dv*dv)/int2),ww=sw*iw;
        sum+=a[j]*ww;wsum+=ww;
       }
      }
@@ -201,7 +206,8 @@ export async function cpuTvDenoising3D(v,params,onProgress=()=>{}){
  return{data:a,iterations};
 }
 export async function cpuUnsharpMask3D(v,params,onProgress=()=>{}){
- const src=v.data,blurred=await boxBlur3D(v,params.radius),out=new Float32Array(src.length);
+ // sp (params.sp, else from the volume spacing; null = isotropic) makes the box the same size in mm along every axis
+ const src=v.data,blurred=await boxBlur3D(v,params.radius,params.sp||spacingWeights(v.spacing)),out=new Float32Array(src.length);
  const amount=params.amount,threshold=+params.thresholdHU;
  for(let i=0;i<src.length;i++){const detail=src[i]-blurred[i];out[i]=Math.abs(detail)>=threshold?src[i]+amount*detail:src[i]}
  return{data:out};
