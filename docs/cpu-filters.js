@@ -4,8 +4,8 @@
 // this module has no UI dependencies and is unit-tested
 // (tests/unit/cpu-filters.test.js). The loops are the former app.js
 // apply* bodies, unchanged apart from reading params instead of sliders.
-import { frameYield } from './utils.js?v=20261005-build444';
-import { boxBlur3D } from './mask-ops.js?v=20261005-build444';
+import { frameYield } from './utils.js?v=20261005-build445';
+import { boxBlur3D } from './mask-ops.js?v=20261005-build445';
 export async function cpuGaussian3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d,src=v.data;
  const strength=params.strength;
@@ -149,8 +149,9 @@ export async function cpuAnisotropicDiffusion(v,params,onProgress=()=>{}){
  return{data:a,iterations};
 }
 export async function cpuBilateral3D(v,params,onProgress=()=>{}){
- const {columns:w,rows:h,slices:d}=v,n=w*h*d,range=Math.max(1,v.max-v.min);
- const strength=params.strength,spatialSigma=params.spatialSigma,intensitySigma=Math.max(1e-6,params.intensitySigma*range),passes=Math.max(1,Math.round(params.passes));
+ const {columns:w,rows:h,slices:d}=v,n=w*h*d;
+ // build 445: the intensity sigma is an absolute HU value (params.sigmaHU); it no longer depends on v.min / v.max
+ const strength=params.strength,spatialSigma=params.spatialSigma,intensitySigma=Math.max(1e-6,+params.sigmaHU),passes=Math.max(1,Math.round(params.passes));
  const radius=Math.max(1,Math.min(3,Math.ceil(spatialSigma*1.5))),sp2=2*spatialSigma*spatialSigma,int2=2*intensitySigma*intensitySigma;
  let a=new Float32Array(v.data),b=new Float32Array(n);
  for(let pass=0;pass<passes;pass++){

@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261005-build444';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build444';
+import { installGpuLedger } from './mem-ledger.js?v=20261005-build445';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build445';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build444';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build444';
-import { runsSliceToMask } from './run-length.js?v=20261005-build444';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build444';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build444';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build445';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build445';
+import { runsSliceToMask } from './run-length.js?v=20261005-build445';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build445';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build445';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -310,7 +310,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
   }
   else if(stage.key==='bilateral'){
    const radius=Math.max(1,Math.min(3,Math.ceil(p.spatialSigma*1.5)));
-   for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.intensitySigma]);
+   for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.sigmaHU]);
   }else if(stage.key==='nlm')await dispatch('nlm',[Math.max(1,Math.round(p.searchRadius)),Math.max(0,Math.round(p.patchRadius))],[minv,maxv,p.strength]);
   else return null;
   // ?debug: GPU time of each filter stage (build 284, per-filter speed work)
