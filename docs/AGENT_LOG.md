@@ -4441,7 +4441,7 @@ processed-filter, plane-orientation, sigmoid — all OK.
 
 ## Handoff (after build 437)
 
-State: build 437 on main (PR #86 merged 2026-10-05, builds 430–437); work branch claude/dicom-viewer-handoff-eaqyyu re-cut from main, next PR is new (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+State: build 437 on main (PR #86 merged 2026-10-05, builds 430–437); work branch claude/dicom-viewer-handoff-eaqyyu re-cut from main, next PR is new (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
