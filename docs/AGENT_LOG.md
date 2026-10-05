@@ -4408,8 +4408,7 @@ human sees and edits the regions; the volume is the human-checked region.
   (width from the slider); they look different (owner's request).
 Checks: lint, unit tests, boot-check, sigmoid-check.
 Open, proposed and accepted for later ("それも検討したい"): exclusive
-(non-overlapping) segments; strands in fat as their own segment ("keep only
-thin parts").
+(non-overlapping) segments (design open, see below); strands in fat dropped.
 
 ## Build 437 — VR: a result colour only on its own segment's surfaces; checks skip the bundled practice project
 
@@ -4448,6 +4447,12 @@ takes the overlap; show the effective range on the lower one; reorder with
 middle. Owner finds B more intuitive, wants to refine before building.
 Either way: closing / hole fill can add voxels across a neighbour, so the
 final runs need a subtraction of higher-priority segments as well.
+
+Strands in fat as their own segment — tried offline on the practice data
+(bilateral planes z 332 / 409, fat < 0 HU, soft pixels with fat on both sides
+along a direction within 2–3 px): the hits are mostly fat-border jaggies,
+small blobs and gut-gas rims; no clear strands at these slices (likely
+thinner than a 0.148 mm voxel). Owner: not realistic — dropped for now.
 
 ## Handoff (after build 437)
 
