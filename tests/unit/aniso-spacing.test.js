@@ -86,7 +86,7 @@ describe('spacingWeights', () => {
 });
 
 describe('stage params and signature', () => {
-  it('only Anisotropic is spacing-aware for now', () => { expect([...SPACING_AWARE_KEYS]).toEqual(['anisotropic', 'tv']); });
+  it('spacing-aware filters: Anisotropic, TV, Gaussian, Bilateral, NLM, Unsharp (see spacing-more-filters.test.js)', () => { expect([...SPACING_AWARE_KEYS]).toEqual(['anisotropic', 'tv', 'gaussian', 'bilateral', 'nlm', 'unsharp']); });
   it('isotropic / missing / invalid spacing: stage params and signature are exactly those without spacing', () => {
     const base = stagesOf(undefined);
     expect(base[0].params.sp).toBeUndefined();
@@ -106,7 +106,7 @@ describe('stage params and signature', () => {
     expect(sourceFilterSignature(stagesOf([1, 1, 2]))).not.toBe(sourceFilterSignature(stagesOf([1, 1, 5])));
   });
   it('filters that are not spacing-aware never get sp', () => {
-    for (const key of ['gaussian', 'nlm', 'bilateral', 'unsharp']) expect(stagesOf([1, 1, 5], key)[0].params.sp).toBeUndefined();
+    for (const key of ['spikeHole', 'sigmoid']) expect(stagesOf([1, 1, 5], key)[0].params.sp).toBeUndefined();
   });
 });
 

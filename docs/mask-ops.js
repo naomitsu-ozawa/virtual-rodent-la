@@ -1,6 +1,7 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { frameYield } from './utils.js?v=20261005-build455';
+import { frameYield } from './utils.js?v=20261005-build456';
+import { spacingRatios, unsharpAxes, unsharpWeight } from './filter-units.js?v=20261005-build456';
 export function valuesToSegmentBits(values,segments){
  const out=new Uint32Array(values.length);
  for(let i=0;i<values.length;i++){const v=values[i];let bits=0;for(let s=0;s<segments.length&&s<4;s++)if(v>=segments[s].seg.min&&v<=segments[s].seg.max)bits|=(1<<s);out[i]=bits}
@@ -31,9 +32,28 @@ export function compactFaceFlags(flags){
  for(let i=0;i<flags.length;i++)if(flags[i]){items[q++]=i;items[q++]=flags[i]}
  return{compact:true,items};
 }
-export async function boxBlur3D(baseVolume,radius){
+// sp = per-axis spacing weights (hmin/h)^2 (null/undefined = isotropic: the plain cube box below, as before). With sp the box
+// is the same physical size along every axis (fractional weights at its edge, see unsharpAxes in filter-units.js).
+export async function boxBlur3D(baseVolume,radius,sp=null){
  const {columns:w,rows:h,slices:d}=baseVolume,n=w*h*d,src=baseVolume.data,r=Math.max(1,Math.round(radius));
  const out=new Float32Array(n);
+ if(sp){
+  const ax=unsharpAxes(radius,spacingRatios({sp})),tab=ax.map(({A,K})=>{const t=[];for(let k=-K;k<=K;k++)t.push(unsharpWeight(A,k));return t});
+  const [kx,ky,kz]=ax.map(a=>a.K),[tx,ty,tz]=tab;
+  for(let z=0;z<d;z++){
+   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    let sum=0,count=0;
+    for(let dz=-kz;dz<=kz;dz++){const zz=z+dz;if(zz<0||zz>=d)continue;
+     for(let dy=-ky;dy<=ky;dy++){const yy=y+dy;if(yy<0||yy>=h)continue;
+      for(let dx=-kx;dx<=kx;dx++){const xx=x+dx;if(xx<0||xx>=w)continue;const wt=tz[dz+kz]*ty[dy+ky]*tx[dx+kx];sum+=wt*src[zz*h*w+yy*w+xx];count+=wt}
+     }
+    }
+    out[z*h*w+y*w+x]=sum/Math.max(1e-12,count);
+   }
+   if((z&7)===0)await frameYield();
+  }
+  return out;
+ }
  for(let z=0;z<d;z++){
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
    let sum=0,count=0;
