@@ -4515,9 +4515,40 @@ Owner: change the card order by dragging.
 Checks: lint, unit tests, boot-check, exclusive-segments-check,
 progress-modal, edit-consistency, plane-sync.
 
-## Handoff (after build 439)
+## Build 440 — GPU threshold at the range ends; WebGPU compatibility adapters (Linux)
 
-State: build 438 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+- Found with a GPU in the headless checks (Chromium --enable-unsafe-webgpu
+  --use-webgpu-adapter=swiftshader gives a WebGPU adapter here): the GPU
+  raw-DICOM threshold counted 5,386,541 fat voxels (−250…−50) where the CPU
+  and the decoded volume count 5,418,876; 386 slices differed, every
+  differing voxel had exactly −50 HU. Cause: the WGSL decoded the 16-bit
+  value from rg8 as channel × 255.0, not exactly an integer, so −50 became
+  about −49.9998 and failed ≤ −50. Fix: round() in every exact (textureLoad)
+  decode of medical-volume.js (6 places: analysis RLE, cap / surface voxel
+  lookups); the interpolated sampling path is unchanged. After: 5,418,876
+  on the GPU, 0 slices apart.
+- Owner (Linux, Chrome 154, NVIDIA RTX 4070 Ti, Chrome started with
+  --ozone-platform=x11, Vulkan disabled): chrome://gpu shows only "OpenGLES
+  backend … (Compatibility Mode)"; the app asked for core adapters only, so
+  compute ran on the CPU and the 3D view on WebGL. gpu-compute.js now falls
+  back to featureLevel 'compatibility' and, on such a device, requests every
+  limit the adapter offers. ?gpucompat (or localStorage vrl.gpucompat = 1)
+  forces a compatibility device for checks. Measured with it (SwiftShader):
+  compute and render devices COMPAT; fat counts plain / Opening 1 /
+  Gaussian / Gaussian + Opening 5,418,876 / 4,086,436 / 5,682,902 /
+  4,718,414 — equal to the CPU path. (three.js on this headless Chromium
+  logs 'createView … swizzle' page errors in core and compat mode alike.)
+  Likely reason the owner's NVIDIA was used before: Chrome's NVIDIA WebGPU
+  needs Wayland (Chrome 147+); the browser is now started with X11.
+- Open: the owner's report (pr-87, Mac): fat colour speckles inside the
+  analysis-result colours, 3D and 2D. Under measurement (practice project:
+  are the result voxels inside today's fat runs, CPU and GPU).
+Checks: lint, unit tests (WGSL 63), boot-check, the GPU / compat
+comparisons above.
+
+## Handoff (after build 440)
+
+State: build 438 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
