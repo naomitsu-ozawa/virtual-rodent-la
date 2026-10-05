@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { cpuAnisotropicDiffusion, cpuTvDenoising3D } from '../../docs/cpu-filters.js';
 import { gpuFilterShader } from '../../docs/gpu-shaders.js';
-import { spacingWeights, withSpacingWeights, SPACING_AWARE_KEYS, sourceFilterSignature, anisotropicLambda } from '../../docs/filter-units.js';
+import { spacingParams, spacingWeights, withSpacingWeights, SPACING_AWARE_KEYS, sourceFilterSignature, anisotropicLambda } from '../../docs/filter-units.js';
 
 // Per-axis weights w_a = (hmin / h_a)^2 for Anisotropic diffusion. Isotropic data: nothing is added to the stage params, so
 // the signature and the result are those of the build before (PR #94).
@@ -48,6 +48,22 @@ const noisy = (nx, ny, nz, f, sd = 8, seed = 7) => {
   return data;
 };
 const P = { strength: 0.6, kappaHU: 60, iterations: 4 };
+
+describe('spacingParams (the values written to params[2..4] of the GPU kernels)', () => {
+  it('returns [wx, wy, wz] of the stage in this order, [1, 1, 1] when the stage has no sp', () => {
+    expect(spacingParams({ sp: [1, 1, 0.04] })).toEqual([1, 1, 0.04]);
+    expect(spacingParams({ sp: [0.25, 1, 1] })).toEqual([0.25, 1, 1]);
+    expect(spacingParams({ sp: [1, 0.36, 1] })).toEqual([1, 0.36, 1]);
+    expect(spacingParams({ sp: [0.2, 0.3, 0.4] })).toEqual([0.2, 0.3, 0.4]);
+    expect(spacingParams({})).toEqual([1, 1, 1]);
+    expect(spacingParams({ strength: 0.5 })).toEqual([1, 1, 1]);
+    expect(spacingParams(undefined)).toEqual([1, 1, 1]);
+  });
+  it('is what spacingWeights puts into a stage', () => {
+    const st = withSpacingWeights({ key: 'tv', params: { weight: 0.3 } }, [0.5, 1, 2]);
+    expect(spacingParams(st.params)).toEqual(spacingWeights([0.5, 1, 2]));
+  });
+});
 
 describe('spacingWeights', () => {
   it('(hmin/h)^2 per axis, min axis has weight 1', () => {
@@ -133,7 +149,7 @@ describe('weights are applied the same way by CPU, worker and WGSL', () => {
     });
   }
   it('GPU dispatch passes sp as params[2..4] (1,1,1 without sp)', () => {
-    expect(gc).toContain("dispatch('anisotropic',[],[p.strength,p.kappaHU,spX(p),spY(p),spZ(p)])");
+    expect(gc).toMatch(/stage\.key==='anisotropic'\)\{const \[wx,wy,wz\]=spacingParams\(p\);[^}]*dispatch\('anisotropic',\[\],\[p\.strength,p\.kappaHU,wx,wy,wz\]\)/);
     expect(gpuFilterShader('anisotropic', 64)).toMatch(/let wx=params\[2\];let wy=params\[3\];let wz=params\[4\]/);
   });
 });
@@ -222,7 +238,7 @@ describe('TV denoising with spacing weights', () => {
     });
   }
   it('GPU dispatch passes sp as params[2..4]', () => {
-    expect(gc).toContain("dispatch('tv',[],[p.weight,p.epsHU,spX(p),spY(p),spZ(p)])");
+    expect(gc).toMatch(/stage\.key==='tv'\)\{const \[wx,wy,wz\]=spacingParams\(p\);[^}]*dispatch\('tv',\[\],\[p\.weight,p\.epsHU,wx,wy,wz\]\)/);
   });
   it.each([2, 5])('hz = %s mm: z blur (mm) gets closer to the in-plane blur with the weights', async hz => {
     const N = 40, C = 40, nz = Math.max(24, Math.round(N / hz));
