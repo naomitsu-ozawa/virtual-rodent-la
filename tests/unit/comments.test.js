@@ -2,13 +2,14 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createComment, sanitizeComments, commentMatchesSeries, commentTarget, commentVoxel,
   addComment, removeComment, getComments, setComments, onCommentsChange, commentsForProject, COMMENT_MAX_TEXT,
+  mergeComments, loadProjectComments, markCommentsSaved, hasUnsavedComments, resetCommentsSaved, restoreComment,
 } from '../../docs/comments.js';
 import { datasetFingerprint, packProject, unpackProject } from '../../docs/project-file.js';
 
 const mk = (uid, extra = {}) => ({ id: 's::' + uid, description: 'Mouse CT', modality: 'CT', columns: 16, rows: 16, spacingX: 0.1, spacingY: 0.1, spacingZ: 0.2, slices: Array.from({ length: 12 }, (_, i) => (i ? {} : { studyUid: 's', seriesUid: uid })), ...extra });
 const fpA = datasetFingerprint(mk('1')), fpB = datasetFingerprint(mk('2'));
 
-beforeEach(() => setComments([]));
+beforeEach(() => { setComments([]); resetCommentsSaved(); });
 
 describe('create / save / restore a position', () => {
   it('keeps text, time, voxel position and the series', () => {
@@ -67,5 +68,54 @@ describe('store', () => {
     expect(getComments()[0].position.i).toBe(1);
     expect(removeComment(c.id)).toBe(true); expect(removeComment(c.id)).toBe(false);
     expect(n).toBe(2); off();
+  });
+});
+
+describe('loading a project merges, it never drops comments in memory', () => {
+  const mkc = (id, series, text = id) => createComment({ id, text, position: { i: 1, j: 2, k: 3 }, series });
+  it('keeps an unsaved comment of the same series and one of another series', () => {
+    addComment(mkc('c1', fpA)); addComment(mkc('c2', fpA)); addComment(mkc('b1', fpB));
+    loadProjectComments([mkc('c1', fpA)], fpA);
+    expect(getComments().map(c => c.id).sort()).toEqual(['b1', 'c1', 'c2']);
+  });
+  it('adds what only the file has; a comment deleted since the save comes back (no data lost)', () => {
+    addComment(mkc('c2', fpA));
+    loadProjectComments([mkc('c1', fpA), mkc('c2', fpA)], fpA);
+    expect(getComments().map(c => c.id).sort()).toEqual(['c1', 'c2']);
+    expect(mergeComments([], [mkc('x', fpA)], fpA).map(c => c.id)).toEqual(['x']);
+  });
+  it('an incoming id used by a comment of another series gets a new id', () => {
+    addComment(mkc('dup', fpB, 'mine on B'));
+    loadProjectComments([mkc('dup', fpA, 'from file')], fpA);
+    const l = getComments();
+    expect(l).toHaveLength(2);
+    expect(l.find(c => c.text === 'mine on B').id).toBe('dup');
+    expect(l.find(c => c.text === 'from file').id).not.toBe('dup');
+  });
+});
+
+describe('unsaved comment changes', () => {
+  const mkc = (id, series) => createComment({ id, text: id, position: { i: 1, j: 1, k: 1 }, series });
+  it('clean at start; add / delete make it dirty; save or load makes it clean', () => {
+    expect(hasUnsavedComments()).toBe(false);
+    addComment(mkc('c1', fpA)); expect(hasUnsavedComments()).toBe(true);
+    markCommentsSaved(fpA); expect(hasUnsavedComments()).toBe(false);
+    const c = getComments()[0]; removeComment('c1'); expect(hasUnsavedComments()).toBe(true);
+    restoreComment(c, 0); expect(hasUnsavedComments()).toBe(false); // undo: back to what was saved
+    removeComment('c1'); markCommentsSaved(fpA); expect(hasUnsavedComments()).toBe(false);
+  });
+  it('a comment of another series is never saved with this project: stays unsaved', () => {
+    addComment(mkc('b1', fpB)); markCommentsSaved(fpA); expect(hasUnsavedComments()).toBe(true);
+  });
+  it('after loading, comments only in memory still count as unsaved', () => {
+    addComment(mkc('c2', fpA)); loadProjectComments([mkc('c1', fpA)], fpA);
+    expect(hasUnsavedComments()).toBe(true);
+  });
+  it('restoreComment puts the comment back at its place and refuses a duplicate', () => {
+    addComment(mkc('a', fpA)); addComment(mkc('b', fpA)); addComment(mkc('c', fpA));
+    const b = getComments()[1]; removeComment('b');
+    expect(restoreComment(b, 1)).toBe(true);
+    expect(getComments().map(c => c.id)).toEqual(['a', 'b', 'c']);
+    expect(restoreComment(b, 1)).toBe(false);
   });
 });

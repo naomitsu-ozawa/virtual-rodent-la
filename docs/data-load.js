@@ -4,7 +4,7 @@ import { mark3DStale, mark3DCurrent } from './three-state.js?v=20261005-build459
 import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-status.js?v=20261005-build459';
 import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20261005-build459';
 import { footer, resetFilterBtn, wc, ww, surfaceSmoothEnabled, surfaceSmoothStrength, planes, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, projectSaveBtn, list, selected, prog, volumeAnalysisToggle, threeLabel, state, renderModeToggle, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, filterAddSelect, filterAddButton, ctRangeAuto, ctRangeFull, $, folderBtn, demoBtn, progLabel, bar, anisotropicKappa, tvEps } from './ui-shell.js?v=20261005-build459';
-import { commentsForProject, setComments } from './comments.js?v=20261005-build459';
+import { commentsForProject, loadProjectComments, markCommentsSaved } from './comments.js?v=20261005-build459';
 import { compareFingerprints, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20261005-build459';
 import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsGlobalMask, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261005-build459';
 import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls, setFilterUnitControl, formatHU } from './filter-pipeline.js?v=20261005-build459';
@@ -385,6 +385,7 @@ export async function saveProject(){
   const{project,binaries}=gatherProject(),bytes=packProject(project,binaries);
   const base=(activeSeries.description||'project').replace(/[^\w\-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,60)||'project';
   const how=await deliverProjectFile(bytes,base+'_'+new Date().toISOString().slice(0,10)+PROJECT_EXTENSION),size=fmt(bytes.byteLength);
+  if(how!=='cancelled')markCommentsSaved(datasetFingerprint(activeSeries),project.comments);
   footer.textContent=how==='cancelled'?(ja?'プロジェクトの保存をキャンセルしました':'Project save cancelled')
    :how==='shared'?(ja?'プロジェクトを書き出しました · '+size+' · 「"ファイル"に保存」でDICOMフォルダを選ぶと、次回はフォルダを開くだけで自動適用されます':'Project exported · '+size+' · choose the DICOM folder in "Save to Files" to apply it automatically next time')
    :(ja?'プロジェクトを保存しました · '+size+' · DICOMフォルダに入れておくと、フォルダを開くだけで自動適用されます':'Project saved · '+size+' · keep it in the DICOM folder to apply it automatically when the folder is opened');
@@ -464,7 +465,7 @@ export async function applyProject({project,files}){
  }
  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active)syncGpuVolumeEdits(sourceVolume||volume);
  // position comments: just stored (no view is moved)
- if(Array.isArray(project.comments))setComments(project.comments);
+ if(Array.isArray(project.comments))loadProjectComments(project.comments,datasetFingerprint(activeSeries)); // merged, never replaced (unsaved / other-series comments stay)
  // slice positions
  for(const[p,idx]of Object.entries(display.slices||{}))if(planes[p]&&Number.isFinite(+idx))planes[p].slider.value=String(Math.max(0,Math.min(+planes[p].slider.max,+idx)));
  // 3D: projects without the flag (saved before build 206) count as applied

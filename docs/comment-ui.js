@@ -5,10 +5,10 @@ import { planes } from './ui-shell.js?v=20261005-build459';
 import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261005-build459';
 import { tr } from './i18n.js?v=20261005-build459';
 import { datasetFingerprint } from './project-file.js?v=20261005-build459';
-import { createComment, addComment, removeComment, getComments, onCommentsChange, commentMatchesSeries, commentTarget } from './comments.js?v=20261005-build459';
-import { showCrosshairAt } from './crosshair-ui.js?v=20261005-build459';
+import { createComment, addComment, removeComment, restoreComment, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget } from './comments.js?v=20261005-build459';
+import { showCrosshairAt, crosshairModeActive } from './crosshair-ui.js?v=20261005-build459';
 
-let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null;
+let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
 const dimsOf=()=>volume?{columns:volume.columns,rows:volume.rows,slices:volume.slices}:null;
 const fingerprint=()=>activeSeries?datasetFingerprint(activeSeries):null;
 const ready=()=>!!volume&&!!activeSeries&&!!planes.axial?.slider&&!planes.axial.slider.disabled;
@@ -30,6 +30,19 @@ export function viewComment(id){
  const target=commentTarget(c,dimsOf());return target?showCrosshairAt(target,'comment'):null;
 }
 
+// delete = remove + an "undo" that stays until the next add / delete / view (or 20 s): a click on a 6-12 px neighbour must not lose data
+function clearUndo(){clearTimeout(undoTimer);lastDeleted=null;if(undoEl){undoEl.hidden=true}}
+function deleteWithUndo(id){
+ const index=getComments().findIndex(c=>c.id===id),c=getComments()[index];if(!c)return;
+ removeComment(id);lastDeleted={c,index};
+ undoEl.querySelector('.comment-undo-text').textContent=tr('commentDeleted');undoEl.querySelector('.comment-undo-btn').textContent=tr('commentUndo');
+ undoEl.hidden=false;noteEl.textContent='';clearTimeout(undoTimer);undoTimer=setTimeout(clearUndo,20000);
+ undoEl.querySelector('.comment-undo-btn').focus(); // the delete button is gone: keep the keyboard focus inside the panel
+}
+function undoDelete(){
+ const d=lastDeleted;if(!d)return;clearUndo();
+ if(restoreComment(d.c,d.index))listEl.querySelector('[data-comment-id="'+CSS.escape(d.c.id)+'"] .comment-view')?.focus();
+}
 function fmtTime(iso){try{const d=new Date(iso);return isNaN(d)?'':d.toLocaleString(currentLanguage==='ja'?'ja-JP':'en-US',{dateStyle:'short',timeStyle:'short'})}catch{return''}}
 function render(){
  if(!root)return;
@@ -42,14 +55,14 @@ function render(){
   const body=document.createElement('div');body.className='comment-body';
   const t=document.createElement('p');t.className='comment-text';t.textContent=c.text;
   const m=document.createElement('p');m.className='comment-meta';
-  m.textContent=`i ${c.position.i} · j ${c.position.j} · k ${c.position.k}`+(c.createdAt?' · '+fmtTime(c.createdAt):'')+(same?'':' · '+tr('commentOtherSeries'));
+  m.textContent=`i ${c.position.i} · j ${c.position.j} · k ${c.position.k}`+(c.createdAt?' · '+fmtTime(c.createdAt):'')+(same?'':' · '+tr('commentOtherSeries')+' · '+tr('commentNotSaved'));
   body.append(t,m);
   const acts=document.createElement('div');acts.className='comment-actions';
   const view=document.createElement('button');view.type='button';view.className='tool-chip comment-view';view.textContent=tr('commentView');
   view.disabled=!same||!ok;view.title=same?'':tr('commentOtherSeriesTitle');
-  view.addEventListener('click',()=>{const at=viewComment(c.id);noteEl.textContent=at?tr('commentViewed'):''});
+  view.addEventListener('click',()=>{clearUndo();const wasOn=crosshairModeActive(),at=viewComment(c.id);noteEl.textContent=at?tr('commentViewed')+(wasOn?'':tr('commentViewedModeOn')):''});
   const del=document.createElement('button');del.type='button';del.className='tool-chip comment-delete';del.textContent=tr('commentDelete');
-  del.addEventListener('click',()=>removeComment(c.id));
+  del.addEventListener('click',()=>deleteWithUndo(c.id));
   acts.append(view,del);li.append(body,acts);listEl.appendChild(li);
  }
 }
@@ -57,21 +70,25 @@ export function refreshCommentsUi(){
  if(!root)return;
  root.querySelector('summary').textContent=tr('commentsTitle');
  root.querySelector('.comment-hint').textContent=tr('commentsHint');
- textEl.placeholder=tr('commentPlaceholder');addBtn.textContent=tr('commentAdd');
+ textEl.placeholder=tr('commentPlaceholder');textEl.setAttribute('aria-label',tr('commentPlaceholder'));addBtn.textContent=tr('commentAdd');
  render();
 }
 export function installComments(){
  const host=document.querySelector('.sidebar-scroll > .panel.compact-panel')||document.querySelector('.sidebar-scroll');
  if(!host||root)return;
  root=document.createElement('details');root.id='comment-panel';root.className='comment-panel';
- root.innerHTML='<summary></summary><p class="comment-hint"></p><textarea class="comment-input" rows="2" maxlength="2000"></textarea><button type="button" class="tool-chip comment-add"></button><p class="comment-note" role="status"></p><ul class="comment-list"></ul>';
+ root.innerHTML='<summary></summary><p class="comment-hint"></p><textarea class="comment-input" rows="2" maxlength="2000"></textarea><button type="button" class="tool-chip comment-add"></button><p class="comment-note" role="status"></p><div class="comment-undo" hidden role="status"><span class="comment-undo-text"></span> <button type="button" class="tool-chip comment-undo-btn"></button></div><ul class="comment-list"></ul>';
  host.appendChild(root);
- listEl=root.querySelector('.comment-list');textEl=root.querySelector('.comment-input');addBtn=root.querySelector('.comment-add');noteEl=root.querySelector('.comment-note');
- addBtn.addEventListener('click',()=>{if(addCommentHere(textEl.value))textEl.value=''});
+ listEl=root.querySelector('.comment-list');textEl=root.querySelector('.comment-input');addBtn=root.querySelector('.comment-add');noteEl=root.querySelector('.comment-note');undoEl=root.querySelector('.comment-undo');
+ undoEl.querySelector('.comment-undo-btn').addEventListener('click',undoDelete);
+ addBtn.addEventListener('click',()=>{if(addCommentHere(textEl.value)){textEl.value='';clearUndo()}});
+ // unsaved comments (added / deleted / edited since the last project save or load) are lost on reload: ask the browser to confirm
+ window.addEventListener('beforeunload',e=>{if(hasUnsavedComments()){e.preventDefault();e.returnValue=''}});
  onCommentsChange(render);
   // (render() rebuilds the buttons: never on pointerdown, it would swallow the click that follows)
  root.addEventListener('toggle',render);
- for(const name of ['vrl-crosshairchange','vrl-serieschange'])document.addEventListener(name,render);
+ // (no render on vrl-crosshairchange: the list does not depend on it, and rebuilding it made "view this place" lose the focus)
+ document.addEventListener('vrl-serieschange',render);
  const mo=typeof MutationObserver!=='undefined'?new MutationObserver(render):null;
  mo?.observe(planes.axial.slider,{attributes:true,attributeFilter:['disabled']});
  refreshCommentsUi();

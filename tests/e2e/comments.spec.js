@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { dicomFolder, syntheticDataset } from '../helpers/dicom-folder.js';
 import { twoSeriesFolder, huA } from '../helpers/two-series-folder.js';
 
@@ -122,6 +125,7 @@ test('without a crosshair the three slices on show are recorded; "view this plac
   await expect(panel(page).locator('.comment-item')).toContainText('i 11 · j 2 · k 6');
   await setSlider(page, 'axial', 1); await setSlider(page, 'coronal', 8); await setSlider(page, 'sagittal', 0);
   await panel(page).locator('.comment-view').click();
+  await expect(panel(page).locator('.comment-note')).toContainText(/Esc/); // the crosshair mode was switched on for the user: say so
   expect(await getCrosshair(page)).toEqual({ i: 11, j: 2, k: 6 });
   expect(await sliderValue(page, 'axial')).toBe(6);
   expect(await sliderValue(page, 'coronal')).toBe(2);
@@ -143,5 +147,93 @@ test('a comment of another series cannot be viewed here', async ({ page }) => {
   await openPanel(page);
   await expect(panel(page).locator('.comment-item')).toContainText('on the 16x16 series');
   await expect(panel(page).locator('.comment-view')).toBeDisabled();
+  await expect(panel(page).locator('.comment-item')).toContainText(/Not saved|保存されません/); // it is not written to this series' project
   expect(await getCrosshair(page)).toBeNull();
+});
+
+const addHere = async (page, text) => {
+  await panel(page).locator('.comment-input').fill(text);
+  await panel(page).locator('.comment-add').click();
+  await expect(panel(page).locator('.comment-item').filter({ hasText: text })).toHaveCount(1);
+};
+const saveProjectFile = async (page, name) => {
+  const download = page.waitForEvent('download');
+  await page.locator('#project-save').click();
+  const path = join(mkdtempSync(join(tmpdir(), 'vrl-proj-')), name + '.vrlab');
+  await (await download).saveAs(path);
+  return path;
+};
+const texts = page => panel(page).locator('.comment-text').allTextContents();
+
+test('loading a project merges: a comment added after the save stays (same series)', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openSeries(page, dicomFolder());
+  await showPlane(page, 'axial');
+  await openPanel(page);
+  await addHere(page, 'c1');
+  const file = await saveProjectFile(page, 'a');
+  await setSlider(page, 'axial', 7);
+  await addHere(page, 'c2'); // not in the file
+  await page.locator('#project-input').setInputFiles(file);
+  await expect(page.locator('#footer')).toContainText(/Project applied|プロジェクトを適用しました/, { timeout: 30_000 });
+  await openPanel(page);
+  expect((await texts(page)).sort()).toEqual(['c1', 'c2']);
+});
+
+test('loading a project merges: a comment written on another series stays', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openSeries(page, twoSeriesFolder(), 'Test CT');
+  await showPlane(page, 'axial');
+  await openPanel(page);
+  await addHere(page, 'on A');
+  const file = await saveProjectFile(page, 'a');
+  await page.locator('[data-ipad-drawer-tab="data"]').click();
+  await page.locator('.series-card').filter({ hasText: 'Small CT' }).click();
+  await expect(page.locator('.ready-badge').first()).toContainText(/ready/i, { timeout: 60_000 });
+  await expect(page.locator('[data-crosshair-toggle="axial"]')).toBeEnabled({ timeout: 30_000 });
+  await openPanel(page);
+  await addHere(page, 'on B');
+  await page.locator('#project-input').setInputFiles(file); // A's project: the app switches to series A
+  await expect(page.locator('#footer')).toContainText(/Project applied|プロジェクトを適用しました/, { timeout: 60_000 });
+  await openPanel(page);
+  expect((await texts(page)).sort()).toEqual(['on A', 'on B']);
+  await expect(panel(page).locator('.comment-item').filter({ hasText: 'on B' })).toContainText(/Not saved|保存されません/);
+});
+
+test('"view this place" keeps the keyboard focus on its button', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openSeries(page, dicomFolder());
+  await showPlane(page, 'axial');
+  await openPanel(page);
+  await addHere(page, 'focus me');
+  const view = panel(page).locator('.comment-item .comment-view');
+  await view.focus();
+  await page.keyboard.press('Enter');
+  await expect(readout(page)).toBeVisible();
+  const active = await page.evaluate(() => { const a = document.activeElement; return { cls: a.className, id: a.closest('.comment-item')?.dataset.commentId ?? null }; });
+  expect(active.cls).toContain('comment-view');
+  expect(active.id).not.toBeNull();
+});
+
+test('delete can be undone; unsaved comments warn before the page is closed', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openSeries(page, dicomFolder());
+  await showPlane(page, 'axial');
+  await openPanel(page);
+  const unload = () => page.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented; });
+  expect(await unload()).toBe(false);
+  await addHere(page, 'one'); await addHere(page, 'two');
+  expect(await unload()).toBe(true);
+  await saveProjectFile(page, 'u');
+  expect(await unload()).toBe(false);
+  await panel(page).locator('.comment-item').filter({ hasText: 'one' }).locator('.comment-delete').click();
+  await expect(panel(page).locator('.comment-item')).toHaveCount(1);
+  expect(await unload()).toBe(true);
+  const undo = panel(page).locator('.comment-undo-btn');
+  await expect(undo).toBeVisible();
+  await expect(undo).toBeFocused();
+  await undo.click();
+  expect(await texts(page)).toEqual(['one', 'two']); // back at its place
+  expect(await unload()).toBe(false); // equal to what was saved again
+  await expect(panel(page).locator('.comment-undo')).toBeHidden();
 });
