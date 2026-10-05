@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WgslReflect } from 'wgsl_reflect/wgsl_reflect.module.js';
 import { gpuFilterShader, normalizeVrlWgsl, GPU_PREWARM_KINDS } from '../../docs/gpu-shaders.js';
+import { readFileSync } from 'node:fs';
 import { volumeShader, brickShader, volumePickShader, mprPlaneShader } from '../../docs/medical-volume.js';
 
 // CI has no GPU, so WGSL compile errors used to surface only on the device.
@@ -41,6 +42,37 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
     expect(gpuFilterShader('spikeHole', 64)).toMatch(/let threshold=params\[1\];/);
     expect(gpuFilterShader('unsharp', 64)).toMatch(/let threshold=params\[1\];/);
     expect(gpuFilterShader('unsharpCombine', 64)).toMatch(/let threshold=params\[1\];/);
+  });
+
+  // build 448: what a kernel reads from params[] must match what runGpuSourceFilters writes there (a wrong order or an extra
+  // value gives wrong results on the GPU only, and the kernels alone cannot show it)
+  describe('params[] layout: dispatch (gpu-compute.js) vs kernel (gpu-shaders.js)', () => {
+    const LAYOUT = {
+      sigmoid: { args: ['p.strength', 'p.center', 'p.width||300'], reads: [/let g=max\(0\.0,params\[0\]\)/, /let c=params\[1\]/, /let hw=max\(1\.0,params\[2\]\*0\.5\)/] },
+      spikeHole: { args: ['p.strength', 'p.thresholdHU'], reads: [/let strength=params\[0\]/, /let threshold=params\[1\]/] },
+      anisotropic: { args: ['p.strength', 'p.kappaHU'], reads: [/let strength=params\[0\]/, /let k=params\[1\]/] },
+      tv: { args: ['p.weight', 'p.epsHU'], reads: [/let weight=params\[0\]/, /let eps=params\[1\]/] },
+      unsharpCombine: { args: ['p.amount', 'p.thresholdHU'], reads: [/params\[0\]\*detail/, /let threshold=params\[1\]/] },
+      bilateral: { args: ['p.strength', 'p.spatialSigma', 'p.sigmaHU'], reads: [/let strength=params\[0\]/, /let spatialSigma=params\[1\]/, /intensitySigma=max\(0\.000001,params\[2\]\)/] },
+      nlm: { args: ['p.hHU'], reads: [/let hp=params\[0\]/] },
+    };
+    const gc = readFileSync('docs/gpu-compute.js', 'utf8');
+    const dispatched = kind => [...gc.matchAll(new RegExp("dispatch\\('" + kind + "',\\[[^\\]]*\\],\\[([^\\]]*)\\]", 'g'))].map(m => m[1].split(',').map(x => x.trim()));
+    it.each(Object.keys(LAYOUT))('%s: the dispatch writes the values in the order the kernel reads them', kind => {
+      const calls = dispatched(kind);
+      expect(calls.length, 'dispatch calls of ' + kind).toBe(1);
+      expect(calls[0]).toEqual(LAYOUT[kind].args);
+      const src = gpuFilterShader(kind, 64);
+      for (const re of LAYOUT[kind].reads) expect(src).toMatch(re);
+      // the kernel reads no params[] index beyond the values that are written
+      const used = [...src.matchAll(/params\[(\d+)\]/g)].map(m => +m[1]);
+      expect(Math.max(...used)).toBeLessThan(LAYOUT[kind].args.length);
+    });
+    it('unsharp (cube kernel) reads the same layout as unsharpCombine', () => {
+      const src = gpuFilterShader('unsharp', 64);
+      expect(src).toMatch(/params\[0\]\*detail/);
+      expect(src).toMatch(/let threshold=params\[1\]/);
+    });
   });
 
   it('uses the workgroup size it is given', () => {

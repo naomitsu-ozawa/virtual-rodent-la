@@ -51,6 +51,9 @@ has enough context to continue without re-deriving decisions from scratch.
 - Old projects: HU value = old parameter × the range the old code used (metadata range for sourceBacked series, decoded data range for small series; Spike/Unsharp ratio × range, NLM range × (0.018 + 0.11 × strength), Anisotropic range × (0.025 + 0.09 × strength), TV 1e-4 × range). Not written back until the next save. A non-finite range falls back to the default. The footer lists every compatibility value used.
 - Slider widening for out-of-range old values is generic (`setFilterUnitControl` / `restoreFilterUnitRange` in filter-pipeline.js), with the same note for all.
 
+- Build 448 (review fix): an Unsharp threshold of 0 HU (slider min 0; "sharpen every detail") became 1310.7 HU after save / load because `0` was taken as "missing" (`> 0` tests in `resolveFilterParams` and `setFilterUnitControl`, `ratioOf`, and `restoreFilterUnitRange` falling back to the default for 0). One predicate `isValidUnitValue(def, v)` (finite, > 0; >= 0 where the slider min is 0) is now used by both; a saved ratio of 0 is a value. Tests: 0 HU round trip, old ratio 0, every parameter's min / max / default round trip.
+- Build 448: `wgsl-shaders.test.js` compares what `runGpuSourceFilters` writes into `params[]` (parsed from the dispatch calls) with what each kernel reads, for sigmoid, Spike/Hole, Anisotropic, TV, Unsharp, Bilateral and NLM; checked to fail for a moved sigmoid, an extra bilateral value and swapped unsharpCombine arguments.
+
 ### Why
 - Same reason as #90: an absolute unit is the only thing that does not depend on which path set v.min / v.max.
 

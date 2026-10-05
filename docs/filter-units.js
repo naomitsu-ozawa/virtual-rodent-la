@@ -9,7 +9,12 @@
 const round6 = x => Math.round(x * 1e6) / 1e6;
 const spanOf = range => Math.max(1, (range?.max ?? 0) - (range?.min ?? 0));
 const num = (x, d) => (Number.isFinite(+x) && x !== '' && x !== null && x !== undefined ? +x : d);
-const ratioOf = (saved, name, def) => { const r = num(saved?.[name], def); return r > 0 ? r : def; };
+// a saved ratio of 0 is a value (Unsharp: 0 = every detail is sharpened), not a missing one; only a negative one is replaced
+const ratioOf = (saved, name, def) => { const r = num(saved?.[name], def); return r >= 0 ? r : def; };
+// A usable HU value: finite and > 0, or >= 0 where the slider itself starts at 0 (Unsharp threshold: 0 HU is a real setting).
+// Used when reading a project and when setting a control, so a value is never taken for "missing" (and then replaced by
+// a derived or default value) just because it is small.
+export const isValidUnitValue = (def, v) => Number.isFinite(v) && (def?.min === 0 ? v >= 0 : v > 0);
 
 // One entry per filter: `algo` = version of its HU-based algorithm (part of the filter signature, so cache entries made
 // by the ratio-era code are never reused); `params` = the HU parameters:
@@ -56,9 +61,9 @@ export function resolveFilterParams(key, saved, range) {
   const out = { values: {}, derived: [] };
   for (const [name, def] of Object.entries(FILTER_UNITS[key]?.params || {})) {
     const own = saved?.[name];
-    if (own !== undefined && own !== null && own !== '' && Number.isFinite(+own) && +own > 0) { out.values[name] = +own; continue; }
+    if (own !== undefined && own !== null && own !== '' && isValidUnitValue(def, +own)) { out.values[name] = +own; continue; }
     const v = legacyFilterValueHU(key, name, saved, range);
-    const ok = Number.isFinite(v) && v > 0;
+    const ok = isValidUnitValue(def, v);
     out.values[name] = ok ? v : def.def;
     out.derived.push({ name, label: def.label, value: out.values[name], fallback: !ok });
   }

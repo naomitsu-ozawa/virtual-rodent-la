@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as K from '../../docs/cpu-filters.js';
 import { sourceRangeFromMetadata } from '../../docs/dicom.js';
-import { FILTER_UNITS, filterLegacyRange, legacyFilterValueHU, resolveFilterParams, sourceFilterSignature } from '../../docs/filter-units.js';
+import { FILTER_UNITS, isValidUnitValue, filterLegacyRange, legacyFilterValueHU, resolveFilterParams, sourceFilterSignature } from '../../docs/filter-units.js';
 import { segmentRunsCacheKey } from '../../docs/segment-cache-key.js';
 import { packProject, unpackProject } from '../../docs/project-file.js';
 
@@ -190,3 +190,45 @@ describe('UI controls match the table', () => {
     expect(ui).toContain('<input type="hidden" id="tv-eps" value="' + FILTER_UNITS.tv.params.epsHU.def + '">');
   });
 });
+
+describe('0 and other small values are values, not "missing" (build 448)', () => {
+  it('Unsharp 0 HU survives a save / load round trip', () => {
+    const { project } = unpackProject(packProject({ filters: { order: [{ key: 'unsharp', params: { radius: '1', amount: '0.8', thresholdHU: 0 } }] } }, {}));
+    const r = resolveFilterParams('unsharp', project.filters.order[0].params, practice);
+    expect(r.values.thresholdHU).toBe(0);
+    expect(r.derived).toEqual([]);
+    expect(resolveFilterParams('unsharp', { thresholdHU: '0' }, practice).values.thresholdHU).toBe(0); // also as the string a control gives
+  });
+  it('an old Unsharp ratio of 0 gives 0 HU, not the default ratio x range (1310.7)', () => {
+    const r = resolveFilterParams('unsharp', { radius: '1', amount: '0.8', threshold: '0' }, practice);
+    expect(r.values.thresholdHU).toBe(0);
+    expect(r.derived).toEqual([{ name: 'thresholdHU', label: 'Unsharp threshold', value: 0, fallback: false }]);
+    expect(legacyFilterValueHU('unsharp', 'thresholdHU', { threshold: 0 }, practice)).toBe(0);
+  });
+  it('0 is not accepted where the slider starts above 0; negative values and junk never are', () => {
+    expect(isValidUnitValue(FILTER_UNITS.unsharp.params.thresholdHU, 0)).toBe(true);
+    for (const [key, p] of Object.entries(FILTER_UNITS)) for (const [name, def] of Object.entries(p.params)) {
+      expect(isValidUnitValue(def, 0), key + '.' + name).toBe(def.min === 0);
+      for (const bad of [-1, NaN, Infinity, undefined]) expect(isValidUnitValue(def, bad), key + '.' + name).toBe(false);
+    }
+    // a saved 0 where 0 is not allowed is taken as missing and derived / defaulted, as before
+    expect(resolveFilterParams('spikeHole', { thresholdHU: 0 }, practice).derived.length).toBe(1);
+  });
+  it('every HU parameter keeps its slider minimum, maximum and default through save / load', () => {
+    for (const [key, p] of Object.entries(FILTER_UNITS)) for (const [name, def] of Object.entries(p.params)) {
+      for (const v of [def.min, def.max, def.def].filter(x => x !== null)) {
+        const { project } = unpackProject(packProject({ filters: { order: [{ key, params: { [name]: v } }] } }, {}));
+        const r = resolveFilterParams(key, project.filters.order[0].params, practice);
+        expect(r.values[name], key + '.' + name + '=' + v).toBe(v);
+        expect(r.derived, key + '.' + name + '=' + v).toEqual([]);
+      }
+    }
+  });
+  it('the control code uses the same test (a 0 HU value reaches the slider)', () => {
+    const fp = read('docs/filter-pipeline.js');
+    expect(fp).toContain('isValidUnitValue(def,v)');
+    expect(fp).not.toMatch(/Number\.isFinite\(v\)\|\|v<=0/);
+    expect(fp).not.toContain('*def.step||def.def'); // 0 must not fall back to the default when the range is restored
+  });
+});
+
