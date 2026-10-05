@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20261005-build447';
-import { currentLanguage, volume, filterRebuildTimer, sourceVolume, setFilterRebuildTimer, incFilterRebuildRevision, setVolume, filterRebuildRevision, filterOrder, setDeferAutomatic3D, setMemoryGpuPreviewActive, incSourceRenderRevision } from './state.js?v=20261005-build447';
-import { clearMemoryFilterPreviewCache, applyCpuFilter } from './rebuild-3d.js?v=20261005-build447';
-import { scheduleSourceMprWarmup, renderPlane, renderAll } from './mpr-render.js?v=20261005-build447';
-import { setProcessingBusy } from './busy.js?v=20261005-build447';
-import { planes, footer, gaussianStrength, spatialPasses, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, resetFilterBtn, mainViewSlot, filterControlList, filterAddButton, filterAddSelect, anisotropicKappa, tvEps } from './ui-shell.js?v=20261005-build447';
-import { planeRenderRevision, sourceFilterStages, filterState, sourceFilterRuntime } from './source-filters.js?v=20261005-build447';
-import { gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20261005-build447';
-import { tr } from './i18n.js?v=20261005-build447';
-import { FILTER_UNITS } from './filter-units.js?v=20261005-build447';
-import { refreshGpuVolumeData } from './gpu-volume-data.js?v=20261005-build447';
-import { render3D } from './surface-build.js?v=20261005-build447';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261005-build447';
+import { mark3DStale } from './three-state.js?v=20261005-build448';
+import { currentLanguage, volume, filterRebuildTimer, sourceVolume, setFilterRebuildTimer, incFilterRebuildRevision, setVolume, filterRebuildRevision, filterOrder, setDeferAutomatic3D, setMemoryGpuPreviewActive, incSourceRenderRevision } from './state.js?v=20261005-build448';
+import { clearMemoryFilterPreviewCache, applyCpuFilter } from './rebuild-3d.js?v=20261005-build448';
+import { scheduleSourceMprWarmup, renderPlane, renderAll } from './mpr-render.js?v=20261005-build448';
+import { setProcessingBusy } from './busy.js?v=20261005-build448';
+import { planes, footer, gaussianStrength, spatialPasses, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, resetFilterBtn, mainViewSlot, filterControlList, filterAddButton, filterAddSelect, anisotropicKappa, tvEps } from './ui-shell.js?v=20261005-build448';
+import { planeRenderRevision, sourceFilterStages, filterState, sourceFilterRuntime } from './source-filters.js?v=20261005-build448';
+import { gpuFilterRuntime, gpuStagesSupported } from './gpu-compute.js?v=20261005-build448';
+import { tr } from './i18n.js?v=20261005-build448';
+import { FILTER_UNITS, isValidUnitValue } from './filter-units.js?v=20261005-build448';
+import { refreshGpuVolumeData } from './gpu-volume-data.js?v=20261005-build448';
+import { render3D } from './surface-build.js?v=20261005-build448';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261005-build448';
 export const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid','bilateral','tv','unsharp'];
 export const liveFilterState={timer:null,base:null,key:null};
 export function beginLiveFilter(key){
@@ -213,7 +213,7 @@ function unitNote(el,show,def){
  n.classList.toggle('is-hidden',!show);
 }
 export function setFilterUnitControl(key,name,value){
- const el=filterUnitInputs()[key]?.[name],def=FILTER_UNITS[key]?.params?.[name],v=+value;if(!el||!def||!Number.isFinite(v)||v<=0)return;
+ const el=filterUnitInputs()[key]?.[name],def=FILTER_UNITS[key]?.params?.[name],v=+value;if(!el||!def||!isValidUnitValue(def,v))return;
  if(el.type!=='range'){el.value=String(v);return}
  const q=v/def.step,std=v>=def.min&&v<=def.max&&Math.abs(q-Math.round(q))<1e-9;
  if(std)restoreFilterUnitRange(el);else{el.dataset.unit=key+'.'+name;el.min=String(Math.min(def.min,v));el.max=String(Math.max(def.max,v));el.step='any';el.dataset.widened='1'}
@@ -225,7 +225,7 @@ export function restoreFilterUnitRange(el){
  const[key,name]=(el.dataset.unit||'').split('.'),def=FILTER_UNITS[key]?.params?.[name];if(!def)return;
  delete el.dataset.widened;unitNote(el,false,def);
  el.min=String(def.min);el.max=String(def.max);el.step=String(def.step);
- el.value=String(Math.max(def.min,Math.min(def.max,Math.round(+el.value/def.step)*def.step||def.def)));
+ {const q=Math.round(+el.value/def.step)*def.step;el.value=String(Number.isFinite(q)?Math.max(def.min,Math.min(def.max,q)):def.def)}
 }
 // reset: widened sliders go back to the standard range and the default value; the hidden TV epsilon to its default
 export function resetFilterUnitControls(){
