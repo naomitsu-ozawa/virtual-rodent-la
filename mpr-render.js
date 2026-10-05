@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { wc, ww, planes, footer, state, wcVal, wwVal } from './ui-shell.js?v=20261005-build457';
-import { activeMprSegments, mprSegmentAlpha, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261005-build457';
-import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane, residentGpuUploadSeriesId, sourceMprWarmupToken } from './state.js?v=20261005-build457';
-import { analysisRunsContain, runsPlaneMask } from './run-length.js?v=20261005-build457';
-import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast, ensureMpr3DPreviewCache } from './mpr3d-overlay.js?v=20261005-build457';
-import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20261005-build457';
-import { request3DRender } from './scene3d.js?v=20261005-build457';
-import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet, currentFilterSignature } from './source-filters.js?v=20261005-build457';
-import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20261005-build457';
-import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20261005-build457';
-import { hexRgb, formatCtValue, frameYield } from './utils.js?v=20261005-build457';
+import { wc, ww, planes, footer, state, wcVal, wwVal } from './ui-shell.js?v=20261005-build458';
+import { activeMprSegments, mprSegmentAlpha, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261005-build458';
+import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane, residentGpuUploadSeriesId, sourceMprWarmupToken, setCrosshairSlice } from './state.js?v=20261005-build458';
+import { analysisRunsContain, runsPlaneMask } from './run-length.js?v=20261005-build458';
+import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast, ensureMpr3DPreviewCache } from './mpr3d-overlay.js?v=20261005-build458';
+import { updateSectionClipPlaneWorld, rebindWebGpuSectionClipGroup, updateSectionViewUi } from './section-view.js?v=20261005-build458';
+import { request3DRender } from './scene3d.js?v=20261005-build458';
+import { planeRenderRevision, sourceFilterStages, getFilteredMemoryPlaneValues, getFilteredSourcePlaneValues, getCachedSourceSlice, sourceFilterSignature, sourceFilterCacheGet, memoryFilterPreviewGet, currentFilterSignature } from './source-filters.js?v=20261005-build458';
+import { cachedSagittalDisplayPlane, cachedSourceMprPlane } from './volume-io.js?v=20261005-build458';
+import { sourceOrthogonalCacheGet, residentGpuMprAvailable, buildSourceOrthogonalPlane } from './mpr-orthogonal.js?v=20261005-build458';
+import { hexRgb, formatCtValue, frameYield } from './utils.js?v=20261005-build458';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { latestOnlyRunner } from './latest-runner.js?v=20261005-build457';
+import { latestOnlyRunner } from './latest-runner.js?v=20261005-build458';
 export function analysisColorCss(color){return '#'+Number(color??0x00d8ff).toString(16).padStart(6,'0')}
 // build 419 (owner: the result colours in 2D too, as in 3D): a voxel of a visible analysis result is painted in the
 // result's colour instead of its segment's, at the segment's opacity, voxel for voxel (the result's own runs; plane
@@ -145,6 +145,7 @@ function reportSlidePath(p,path){if(SLIDE_PATH_DEBUG())footer.textContent='2D '+
 export function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
  const idx=+planes[p].slider.value;planes[p].label.textContent=idx+1;syncMpr3DSliceSliders();
+ setCrosshairSlice(p,idx,'slider-'+p); // linked crosshair: a moved slider changes that coordinate (no-op while hidden)
  if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate){pushCachedMpr3DPlane(p,idx);prefetchOrthogonalHighRes(p,idx)}}
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
  // Filtered planes are computed per slice on the GPU (expensive). While the
@@ -341,6 +342,7 @@ export function renderSectionPlaneLive(p){
  if(!volume||!planes[p])return;
  cancelSourceMprWarmup();clearTimeout(planeRenderTimers[p]);planeRenderTimers[p]=null;
  const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
+ setCrosshairSlice(p,idx,'section-'+p); // the section-view slider / 3D drag set the slice directly, so link the crosshair here too (no-op while hidden)
  if(p==='coronal'||p==='sagittal')pushCachedMpr3DPlane(p,idx);
  if(paintFastOrthogonalPreview(p,idx))return;
  void renderPlane(p,revision,idx).catch(e=>{if(String(e.message||e)!=='__SUPERSEDED__'){console.warn('Live section render failed.',e);footer.textContent='MPR error: '+String(e.message||e)}});
