@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX } from './filter-units.js?v=20261005-build453';
+import { ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX } from './filter-units.js?v=20261005-build454';
 export const AIRDIST_X_MAX_N=64;
 export function gpuFilterShader(kind,workgroupSize){
  const header=`
@@ -179,10 +179,10 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
- let center=src[i];let plane=w*h;let strength=params[0];let k=params[1];let k2=max(k*k,0.000001);let lambda=min(${ANISO_LAMBDA_MIN}+(${ANISO_LAMBDA_MAX}-${ANISO_LAMBDA_MIN})*clamp(strength,0.0,1.0),${ANISO_LAMBDA_MAX});
- var flux=0.0;var diff=src[i-1u]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+1u]-center;flux+=exp(-(diff*diff)/k2)*diff;
- diff=src[i-w]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+w]-center;flux+=exp(-(diff*diff)/k2)*diff;
- diff=src[i-plane]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+plane]-center;flux+=exp(-(diff*diff)/k2)*diff;
+ let center=src[i];let plane=w*h;let strength=params[0];let k=params[1];let k2=max(k*k,0.000001);let lambda=min(${ANISO_LAMBDA_MIN}+(${ANISO_LAMBDA_MAX}-${ANISO_LAMBDA_MIN})*clamp(strength,0.0,1.0),${ANISO_LAMBDA_MAX});let wx=params[2];let wy=params[3];let wz=params[4];
+ var flux=0.0;var diff=src[i-1u]-center;flux+=wx*(exp(-(diff*diff)/k2)*diff);diff=src[i+1u]-center;flux+=wx*(exp(-(diff*diff)/k2)*diff);
+ diff=src[i-w]-center;flux+=wy*(exp(-(diff*diff)/k2)*diff);diff=src[i+w]-center;flux+=wy*(exp(-(diff*diff)/k2)*diff);
+ diff=src[i-plane]-center;flux+=wz*(exp(-(diff*diff)/k2)*diff);diff=src[i+plane]-center;flux+=wz*(exp(-(diff*diff)/k2)*diff);
  dst[i]=center+lambda*flux;
 }`;
  if(kind==='tv')return header+`
@@ -190,10 +190,10 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
- let center=src[i];let plane=w*h;let weight=params[0];let lambda=min(0.18,0.02+weight*0.45);let eps=params[1];
- var flux=0.0;var diff=src[i-1u]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+1u]-center;flux+=diff/sqrt(diff*diff+eps*eps);
- diff=src[i-w]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+w]-center;flux+=diff/sqrt(diff*diff+eps*eps);
- diff=src[i-plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);
+ let center=src[i];let plane=w*h;let weight=params[0];let lambda=min(0.18,0.02+weight*0.45);let eps=params[1];let wx=params[2];let wy=params[3];let wz=params[4];
+ var flux=0.0;var diff=src[i-1u]-center;flux+=wx*(diff/sqrt(diff*diff+eps*eps));diff=src[i+1u]-center;flux+=wx*(diff/sqrt(diff*diff+eps*eps));
+ diff=src[i-w]-center;flux+=wy*(diff/sqrt(diff*diff+eps*eps));diff=src[i+w]-center;flux+=wy*(diff/sqrt(diff*diff+eps*eps));
+ diff=src[i-plane]-center;flux+=wz*(diff/sqrt(diff*diff+eps*eps));diff=src[i+plane]-center;flux+=wz*(diff/sqrt(diff*diff+eps*eps));
  dst[i]=center+lambda*flux;
 }`;
  // Separable unsharp mask (build 271): the clipped box mean is a product of 1D
