@@ -1,35 +1,35 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale, mark3DCurrent } from './three-state.js?v=20261005-build445';
-import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-status.js?v=20261005-build445';
-import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20261005-build445';
-import { footer, resetFilterBtn, wc, ww, surfaceSmoothEnabled, surfaceSmoothStrength, planes, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, projectSaveBtn, list, selected, prog, volumeAnalysisToggle, threeLabel, state, renderModeToggle, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, filterAddSelect, filterAddButton, ctRangeAuto, ctRangeFull, $, folderBtn, demoBtn, progLabel, bar } from './ui-shell.js?v=20261005-build445';
-import { compareFingerprints, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20261005-build445';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsGlobalMask, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261005-build445';
-import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls, setBilateralSigmaControl } from './filter-pipeline.js?v=20261005-build445';
-import { sourceRangeFromMetadata } from './dicom.js?v=20261005-build445';
-import { resolveBilateralParams } from './bilateral-sigma.js?v=20261005-build445';
-import { setControlValue, applyCtRangeMode, removeSegmentPreset, addSegmentPreset, segmentControl, setControlChecked, clearAnalysisHighlight, scheduleSegment3D, updateSegmentOutputs, renderSegmentPresets, THIN_SLIDERS, configureThinSliders } from './segment-ui.js?v=20261005-build445';
-import { syncGpuVolumeEdits, gpuVolumeApplied, gpuVolumeTarget, gpuVolumePlanOptions, updateVolumeCacheControl, gpuVolumeDataSignature } from './gpu-volume-data.js?v=20261005-build445';
-import { renderAll, cancelSourceMprWarmup } from './mpr-render.js?v=20261005-build445';
-import { updateAnalysisEditorControls } from './edit-tools.js?v=20261005-build445';
-import { request3DRender } from './scene3d.js?v=20261005-build445';
-import { downloadBlob, esc, fmt, isIPadRuntime, isIPhoneRuntime, isTabletRuntime, niceCtStep, isDesktopRuntime, withTimeout } from './utils.js?v=20261005-build445';
-import { decode, prepareSourceMprCache } from './volume-io.js?v=20261005-build445';
-import { progress, clearMemoryFilterPreviewCache } from './rebuild-3d.js?v=20261005-build445';
-import { ensureMpr3DPreviewCache, syncMpr3DSliceSliders, syncMpr3DOverlayPresentation, disposeMprPlaneGroup } from './mpr3d-overlay.js?v=20261005-build445';
-import { tr } from './i18n.js?v=20261005-build445';
-import { setGpuComputeBackend, gpuFilterRuntime, gpuFilterPipeline } from './gpu-compute.js?v=20261005-build445';
+import { mark3DStale, mark3DCurrent } from './three-state.js?v=20261005-build446';
+import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-status.js?v=20261005-build446';
+import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20261005-build446';
+import { footer, resetFilterBtn, wc, ww, surfaceSmoothEnabled, surfaceSmoothStrength, planes, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, projectSaveBtn, list, selected, prog, volumeAnalysisToggle, threeLabel, state, renderModeToggle, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, filterAddSelect, filterAddButton, ctRangeAuto, ctRangeFull, $, folderBtn, demoBtn, progLabel, bar } from './ui-shell.js?v=20261005-build446';
+import { compareFingerprints, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20261005-build446';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsGlobalMask, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261005-build446';
+import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls, setBilateralSigmaControl } from './filter-pipeline.js?v=20261005-build446';
+import { sourceRangeFromMetadata } from './dicom.js?v=20261005-build446';
+import { bilateralLegacyRange, resolveBilateralParams } from './bilateral-sigma.js?v=20261005-build446';
+import { setControlValue, applyCtRangeMode, removeSegmentPreset, addSegmentPreset, segmentControl, setControlChecked, clearAnalysisHighlight, scheduleSegment3D, updateSegmentOutputs, renderSegmentPresets, THIN_SLIDERS, configureThinSliders } from './segment-ui.js?v=20261005-build446';
+import { syncGpuVolumeEdits, gpuVolumeApplied, gpuVolumeTarget, gpuVolumePlanOptions, updateVolumeCacheControl, gpuVolumeDataSignature } from './gpu-volume-data.js?v=20261005-build446';
+import { renderAll, cancelSourceMprWarmup } from './mpr-render.js?v=20261005-build446';
+import { updateAnalysisEditorControls } from './edit-tools.js?v=20261005-build446';
+import { request3DRender } from './scene3d.js?v=20261005-build446';
+import { downloadBlob, esc, fmt, isIPadRuntime, isIPhoneRuntime, isTabletRuntime, niceCtStep, isDesktopRuntime, withTimeout } from './utils.js?v=20261005-build446';
+import { decode, prepareSourceMprCache } from './volume-io.js?v=20261005-build446';
+import { progress, clearMemoryFilterPreviewCache } from './rebuild-3d.js?v=20261005-build446';
+import { ensureMpr3DPreviewCache, syncMpr3DSliceSliders, syncMpr3DOverlayPresentation, disposeMprPlaneGroup } from './mpr3d-overlay.js?v=20261005-build446';
+import { tr } from './i18n.js?v=20261005-build446';
+import { setGpuComputeBackend, gpuFilterRuntime, gpuFilterPipeline } from './gpu-compute.js?v=20261005-build446';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20261005-build445';
-import { filterState, currentFilterSignature } from './source-filters.js?v=20261005-build445';
-import { dispose } from './surface-mesh.js?v=20261005-build445';
-import { residentMprJobs } from './mpr-orthogonal.js?v=20261005-build445';
+import { GPU_PREWARM_KINDS } from './gpu-shaders.js?v=20261005-build446';
+import { filterState, currentFilterSignature } from './source-filters.js?v=20261005-build446';
+import { dispose } from './surface-mesh.js?v=20261005-build446';
+import { residentMprJobs } from './mpr-orthogonal.js?v=20261005-build446';
 import { unzip } from 'https://esm.sh/fflate@0.8.2';
-import { ensureSegmentBaseRuns } from './segment-runs.js?v=20261005-build445';
-import { APP_VERSION, APP_BUILD } from './version.js?v=20261005-build445';
-import { setBusySlot, reportBusyProgress, setBusyLabel } from './progress-modal.js?v=20261005-build445';
-import { analysisRegionsForProject, restoreAnalysisRegions } from './analysis-ops.js?v=20261005-build445';
+import { ensureSegmentBaseRuns } from './segment-runs.js?v=20261005-build446';
+import { APP_VERSION, APP_BUILD } from './version.js?v=20261005-build446';
+import { setBusySlot, reportBusyProgress, setBusyLabel } from './progress-modal.js?v=20261005-build446';
+import { analysisRegionsForProject, restoreAnalysisRegions } from './analysis-ops.js?v=20261005-build446';
 export const DEMO_URL='https://zenodo.org/api/records/12761093/files/PET-CT.zip/content';
 export const DEMO_SIZE=20800000;
 export function updateRenderModeControl(v=volume){
@@ -334,6 +334,8 @@ export function configureSegments(v){
 }
 export const FILTER_PARAM_INPUTS={spikeHole:{strength:spikeHoleStrength,threshold:spikeHoleThreshold},nlm:{strength:nlmStrength,searchRadius:nlmSearchRadius,patchRadius:nlmPatchRadius},anisotropic:{strength:anisotropicStrength,iterations:anisotropicIterations},gaussian:{mode:smoothingType,strength:gaussianStrength,passes:spatialPasses},sigmoid:{strength:sigmoidStrength,center:sigmoidCenter,width:sigmoidWidth},bilateral:{strength:bilateralStrength,spatialSigma:bilateralSpatial,sigmaHU:bilateralIntensity,passes:bilateralPasses},tv:{weight:tvWeight,iterations:tvIterations},unsharp:{radius:unsharpRadius,amount:unsharpAmount,threshold:unsharpThreshold}};
 export const pendingProject={value:null};
+// build 446: set by applyProject when a bilateral sigma was derived from an old project (no sigmaHU); shown in the footer
+export const bilateralLegacyNote={value:null};
 export function gatherProject(){
  const series=activeSeries,slices=series.slices.length;
  const project={
@@ -397,10 +399,11 @@ export async function applyPendingProject(){
   return;
  }
  pendingProject.value=null;
- try{await applyProject(pending);footer.textContent=ja?'プロジェクトを適用しました':'Project applied'}
+ try{await applyProject(pending);const n=bilateralLegacyNote.value,hu=n&&(Math.round(n.sigmaHU*10)/10)+' HU';footer.textContent=(ja?'プロジェクトを適用しました':'Project applied')+(n?(ja?' · バイラテラル：'+(n.fallback?'範囲不明のため既定値 ':'互換値 ')+hu+'（古いプロジェクト）':' · Bilateral: '+(n.fallback?'range unknown, default ':'compatibility value ')+hu+' (old project)'):'')}
  catch(e){console.error(e);footer.textContent=(ja?'プロジェクトを適用できませんでした: ':'Could not apply project: ')+String(e.message||e)}
 }
 export async function applyProject({project,files}){
+ bilateralLegacyNote.value=null;
  // validate and decode edits first, so a broken file changes nothing
  const dims={slices:activeSeries.slices.length,columns:activeSeries.columns,rows:activeSeries.rows},edits={};
  for(const[key,entry]of Object.entries(project.edits||{})){
@@ -421,7 +424,10 @@ export async function applyProject({project,files}){
   for(const[name,value]of Object.entries(params||{}))if(!(key==='bilateral'&&name==='sigmaHU'))setControlValue(FILTER_PARAM_INPUTS[key]?.[name],value);
   // build 445: bilateral sigma in HU. A saved sigmaHU is used as it is; an older project (ratio only) gets ratio × the metadata
   // range (before any load path rewrites it). The file is not touched: the next save writes sigmaHU.
-  if(key==='bilateral')setBilateralSigmaControl(resolveBilateralParams(params,sourceRangeFromMetadata(activeSeries.slices)).sigmaHU);
+  if(key==='bilateral'){
+   const r=resolveBilateralParams(params,bilateralLegacyRange(!!activeSeries.sourceBacked,sourceRangeFromMetadata(activeSeries.slices),{min:sourceVolume?.min,max:sourceVolume?.max}));
+   setBilateralSigmaControl(r.sigmaHU);bilateralLegacyNote.value=r.legacy?{sigmaHU:r.sigmaHU,fallback:r.fallback}:null;
+  }
  }
  // display
  const display=project.display||{};

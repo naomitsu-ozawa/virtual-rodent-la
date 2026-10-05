@@ -137,6 +137,7 @@ app.innerHTML=`
     <label class="segment-range"><span data-i18n="strength">強度</span><output id="bilateral-strength-value">0.80</output><input id="bilateral-strength" type="range" min="0" max="1" step="0.05" value="0.80" disabled></label>
     <label class="segment-range"><span data-i18n="spatialSigma">空間Sigma</span><output id="bilateral-spatial-value">1.20</output><input id="bilateral-spatial" type="range" min="0.5" max="2.5" step="0.1" value="1.2" disabled></label>
     <label class="segment-range"><span data-i18n="intensitySigma">強度Sigma（HU）</span><output id="bilateral-intensity-value">50</output><input id="bilateral-intensity" type="range" min="10" max="300" step="1" value="50" disabled></label>
+    <div id="bilateral-legacy-note" class="segment-note is-hidden"></div>
     <label class="segment-range"><span data-i18n="passes">Pass数</span><output id="bilateral-passes-value">2</output><input id="bilateral-passes" type="range" min="1" max="3" step="1" value="2" disabled></label>
   </div>
   <div class="filter-control-card is-hidden" data-filter-key="tv" draggable="true">

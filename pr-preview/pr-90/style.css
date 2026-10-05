@@ -46,6 +46,7 @@ h1{margin:0;font-size:clamp(23px,3vw,34px);line-height:1;letter-spacing:-.035em}
 .segment-color{width:44px;height:32px;padding:0;border:1px solid #344047;border-radius:7px;background:transparent}
 .segment-range{display:grid;grid-template-columns:58px 1fr auto;gap:7px;align-items:center;font-size:10px;color:#8fa0a8}
 .segment-range input[type="range"]{grid-column:1/-1;width:100%;min-height:34px}
+.segment-note{font-size:10px;color:#e0b25a;margin:-2px 0 2px}
 .segment-range output{font-variant-numeric:tabular-nums;color:#d7e2e7}
 .segment-status{font-size:11px;line-height:1.4;color:#bfe6f2;background:#12303a;border-radius:6px;padding:6px 8px;font-variant-numeric:tabular-nums}
 .segment-status.is-error{color:#ffc2b8;background:#3a1a16}
