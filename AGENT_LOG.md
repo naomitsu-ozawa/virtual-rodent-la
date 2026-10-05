@@ -38,6 +38,32 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-05 — claude/viewer-color-themes (colour themes, builds 449-450)
+
+**Agent:** Claude
+**Task:** Owner's request: three light and three dark colour themes for the viewer; today's look stays as the standard dark one.
+
+### What changed
+- Every colour of `style.css` (about 120 literals) is now a token: `rgb(var(--ui-s1))`, `rgb(var(--ui-s1) / .88)`. The tokens are RGB triplets in the new `themes.css` (surfaces s0-s4, text t1-t5, borders b1-b3, blue / green / amber / red states, link). `:root` = dark standard; the other five themes override them on `<html data-theme="...">`. Similar literals were merged into one token (a few levels apart), and the muted text greys were lightened a little in all themes so that every text colour reaches 4.5:1 (the old `#64747c` etc. did not).
+- The IMAGE AREA is fixed: `.viewport-card` / `.view-card` re-declare the standard dark tokens, so everything inside a view card (canvases, the overlays, toolbars and sliders on the image) is identical in the six themes; the backdrop of the card grid (`.viewer-grid`, `--ui-img-surround`) stays dark in the light themes. The canvases (`.mpr-canvas` `#020304`), segment colours (data in segments.js), the window / level and the 3D / VR code do not know about themes (a unit test greps for it).
+- `theme.js` (ids, names, choice, OS following), `theme-ui.js` (select in the top bar + cards in settings > Appearance), an inline script in `index.html` sets `data-theme` before the CSS loads (no flash). Choice saved in localStorage `vrl-theme` (try / catch); first visit follows `prefers-color-scheme` and keeps following it until the user picks a theme.
+- VR (`vr-view.js`, `xr/`) builds its own inline-styled panels and does not use the tokens; only `color-scheme` on `<html>` changes with the theme.
+
+- Build 450 (owner's requests on PR #92): (1) the two blue themes became gray ones: "light cool blue" -> "ライト（グレー） / Light (gray)" (light mid-gray, neutral) and "dark deep blue" -> "ダーク（グレー） / Dark (gray)" (charcoal, a little lighter than the reading theme); their accent colours are grays too, green / amber / red state colours stay; a saved `light-cool` / `dark-navy` is read as the new id (and saved again; the inline script in index.html does the same). The standard light / dark themes keep their blue tint for now (to be decided with the owner). (2) Plan B for the 3D / 2D views: the view cards no longer re-declare the standard dark tokens, so their UI follows the theme, and the canvas backgrounds are tokens (`--ui-canvas-bg-3d`: card backdrop and WebGL clear colour, `--ui-canvas-bg-2d`: around a 2D slice) that every theme sets; `canvas-theme.js` reads the 3D one and `scene-view.js` sets the clear colour and draws again on a theme change (event `vrl-themechange` from theme.js). The image itself (grey levels, window / level, segment colours, transfer function) reads no token: `tools/theme-image-check.mjs` (offline) and `tests/e2e/theme-image.spec.js` (CI) compare the 2D canvas pixels in all six themes (identical) and the backgrounds (light / dark). Annotations over the 3D view got dark outlines (cut / lasso stroke, pivot indicator; the axis and plane labels already had them). The earlier "dark surround" and "card re-declares the standard tokens" rules and their tests were replaced.
+
+- Build 451 (review + owner): the GPU volume view (`MedicalVolumeRenderer`, its own opaque WebGPU canvas over the whole 3D area) had a fixed background (clear colour and the colour of a ray that hits nothing), so the 3D view stayed dark whatever the theme. The owner then asked for the 3D background to be a DARK colour tinted like the theme in every theme (not light): `--ui-canvas-bg-3d` = standard dark 9 12 13 (= the old 0.035, 0.045, 0.05), light standard 11 14 16, light paper 22 18 14, light gray 15 15 15, dark reading 3 3 4, dark gray 14 14 14. It is now read by the GPU volume view (new `background` uniform, 368-byte buffer, filled every frame via `canvasBackground3dUnit()`; `alphaMode:'opaque'` kept; no volume re-upload; the clear value too), by the WebGL fallback clear colour and by the CSS backdrop of the 3D card. The 3D card (`.view-card-3d`) re-declares the standard dark UI tokens so its buttons / labels read on the dark background; the 2D cards and `--ui-canvas-bg-2d` follow the theme as before. The image values (grey levels, window / level, transfer function, segment colours) are untouched. Test: `themes.test.js` checks the shader (`u.background`, no fixed colour), the uniform slot, the clear value and the CSS variable; `theme-image-check` checks the value the renderer reads in all themes (the WebGPU volume itself cannot render in this headless environment). e2e / check wait until the 2D pixels are stable (same twice in a row) before the reference.
+
+- Build 452: the 3D backgrounds of build 451 were too dark to see the tint (the owner saw "black" on the iPad). New `--ui-canvas-bg-3d` (RGB): light standard 34 42 50, light paper 48 40 32, light gray 44 44 44, dark standard 28 36 42, dark reading 6 6 7 (near-black on purpose), dark gray 34 34 34; still dark (relative luminance < 0.05; the standard-dark UI tokens on the 3D card keep >= 4.5:1).
+
+### Why
+- A tokenised palette is the only way to give six themes without six copies of the CSS; fixing the tokens inside the view cards is what keeps the image and everything drawn on it unchanged (a bright surround changes how grey levels are perceived).
+
+### Follow-up / open questions
+- The standard dark theme is not pixel-identical to build 448: near-equal greys were merged and muted text is a little lighter (AA).
+- Contrast is tested for the pairs found in `style.css` plus the text levels on the surfaces; colours set from JS (inline styles in `analysis-results.js` use the tokens now; `scene-view.js` overlays sit on the image and stay as they are) are not covered by pairs.
+
+---
+
 ## 2026-10-05 — claude/filters-hu-units (the other five filters in HU, build 447)
 
 **Agent:** Claude

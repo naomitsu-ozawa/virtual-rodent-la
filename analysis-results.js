@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume } from './state.js?v=20261005-build448';
-import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261005-build448';
-import { tr } from './i18n.js?v=20261005-build448';
-import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261005-build448';
-import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261005-build448';
-import { request3DRender } from './scene3d.js?v=20261005-build448';
-import { dispose } from './surface-mesh.js?v=20261005-build448';
+import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume } from './state.js?v=20261005-build452';
+import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261005-build452';
+import { tr } from './i18n.js?v=20261005-build452';
+import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261005-build452';
+import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261005-build452';
+import { request3DRender } from './scene3d.js?v=20261005-build452';
+import { dispose } from './surface-mesh.js?v=20261005-build452';
 export function analysisRegionRepresentativeVoxel(region){
  if(!region?.runsBySlice)return null;
  const nonEmpty=[];for(let z=0;z<region.runsBySlice.length;z++)if(region.runsBySlice[z]?.length)nonEmpty.push(z);
@@ -44,16 +44,16 @@ export function renderAnalysisResults(statusText=null){
   analysisSummary.textContent=tr('volumeHint');
  }else{
   const focused=analysisRegionById(analysisFocusedRegionId)||analysisRegions[analysisRegions.length-1];
-  const count=document.createElement('div');count.textContent=tr('analysisRegions')+': '+analysisRegions.length;count.style.cssText='font-size:11px;color:#cfe0e7;margin-bottom:7px';
+  const count=document.createElement('div');count.textContent=tr('analysisRegions')+': '+analysisRegions.length;count.style.cssText='font-size:11px;color:rgb(var(--ui-t2));margin-bottom:7px';
   analysisSummary.appendChild(count);
   if(focused){
-   const card=document.createElement('div');card.style.cssText='display:grid;gap:7px;padding:9px 10px;border:1px solid #3a515c;border-radius:9px;background:#10171a;margin-bottom:8px';
-   const title=document.createElement('strong');title.textContent=(currentLanguage==='ja'?'解析結果 · ':'Result · ')+analysisRegionName(focused);title.style.cssText='font-size:11px;color:#e9f5f8';
+   const card=document.createElement('div');card.style.cssText='display:grid;gap:7px;padding:9px 10px;border:1px solid rgb(var(--ui-b3));border-radius:9px;background:rgb(var(--ui-s1));margin-bottom:8px';
+   const title=document.createElement('strong');title.textContent=(currentLanguage==='ja'?'解析結果 · ':'Result · ')+analysisRegionName(focused);title.style.cssText='font-size:11px;color:rgb(var(--ui-t1))';
    const volumeRow=document.createElement('div');volumeRow.style.cssText='display:flex;align-items:baseline;justify-content:space-between;gap:10px';
-   const volumeLabel=document.createElement('span');volumeLabel.textContent=currentLanguage==='ja'?'体積':'Volume';volumeLabel.style.cssText='font-size:10px;color:#9db0b8';
-   const volumeValue=document.createElement('strong');volumeValue.textContent=focused.mm3.toFixed(2)+' mm³';volumeValue.style.cssText='font-size:18px;line-height:1;color:#f1fbff;font-variant-numeric:tabular-nums;white-space:nowrap';
+   const volumeLabel=document.createElement('span');volumeLabel.textContent=currentLanguage==='ja'?'体積':'Volume';volumeLabel.style.cssText='font-size:10px;color:rgb(var(--ui-t4))';
+   const volumeValue=document.createElement('strong');volumeValue.textContent=focused.mm3.toFixed(2)+' mm³';volumeValue.style.cssText='font-size:18px;line-height:1;color:rgb(var(--ui-t1));font-variant-numeric:tabular-nums;white-space:nowrap';
    volumeRow.append(volumeLabel,volumeValue);
-   const meta=document.createElement('div');meta.textContent=focused.segmentKeys.map(k=>tr(k)||k).join(' + ')+' · '+focused.voxels.toLocaleString()+' voxels';meta.style.cssText='font-size:10px;line-height:1.35;color:#9fb2ba;overflow-wrap:anywhere';
+   const meta=document.createElement('div');meta.textContent=focused.segmentKeys.map(k=>tr(k)||k).join(' + ')+' · '+focused.voxels.toLocaleString()+' voxels';meta.style.cssText='font-size:10px;line-height:1.35;color:rgb(var(--ui-t4));overflow-wrap:anywhere';
    card.append(title,volumeRow,meta);analysisSummary.appendChild(card);
   }
  }
