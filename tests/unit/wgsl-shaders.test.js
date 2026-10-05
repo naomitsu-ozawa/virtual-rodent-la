@@ -99,3 +99,29 @@ describe('render shaders (docs/medical-volume.js)', () => {
       expect(parse(fn()).entry.compute.map(e => e.name)).toContain('main');
     });
 });
+
+// Regression: pipelines use layout:'auto', which drops bindings the shader body never
+// references. dispatch() in gpu-compute.js always binds 0..3, so a shader that declares
+// but does not use one of them fails createBindGroup validation and writes nothing
+// (boxMean never read params, so Unsharp came out all zeros on the GPU).
+describe('dispatch() shaders reference every binding it passes', () => {
+  const compute = readFileSync(new URL('../../docs/gpu-compute.js', import.meta.url), 'utf8');
+  const kinds = new Set();
+  for (const m of compute.matchAll(/dispatch\(([^;]*?),\s*\[/g)) {
+    for (const k of m[1].matchAll(/'(\w+)'/g)) kinds.add(k[1]);
+  }
+  it('finds the dispatch() kinds', () => {
+    for (const k of ['boxMean', 'unsharpCombine', 'gaussianK', 'airDistX']) expect(kinds.has(k)).toBe(true);
+  });
+  it.each([...kinds])('%s uses bindings 0-3 in its body', kind => {
+    const src = normalizeVrlWgsl(gpuFilterShader(kind, 64));
+    const decl = [...src.matchAll(/@binding\((\d+)\)\s+var<[^>]*>\s+(\w+)\s*:/g)];
+    const names = new Map(decl.map(m => [Number(m[1]), m[2]]));
+    const mainAt = src.indexOf('@compute');
+    const body = src.slice(mainAt);
+    for (const b of [0, 1, 2, 3]) {
+      expect(names.has(b), `binding ${b} declared`).toBe(true);
+      expect(new RegExp('\\b' + names.get(b) + '\\b').test(body), `binding ${b} (${names.get(b)}) used in main`).toBe(true);
+    }
+  });
+});
