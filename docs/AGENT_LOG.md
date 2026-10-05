@@ -4582,9 +4582,43 @@ Checks: lint, unit tests, boot-check, region-deselect-check,
 analysis-project-check, edit-consistency-check; button rows checked at 1400
 and 820 px wide.
 
-## Handoff (after build 441)
+## Build 442 — slider wheel by one step, typed values, CT sliders by 1 HU
 
-State: build 441 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; 441: unselect results — click toggle, lasso unselect, unselect all, ticks saved; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Owner: the wheel should move a slider by its smallest unit; values should
+be typable.
+- Wheel (app.js, range-entry.js rangeWheelSteps): one notch (line / page
+  event, or ≥ 50 px) = one step, Shift = ten; trackpad pixels add up, one
+  step per 42 px. Before: about span / 110 per notch (two ticks of
+  span / 220), e.g. 40 HU on a CT range slider, 4 slices, 2 on opening 0–3.
+- Typing (range-entry.js installRangeEntry, every slider whose label holds
+  an <output>): click / tap the value → number field; Enter or leaving it
+  sets the slider (input + change, as a drag), Escape cancels. CT values
+  outside the slider's window widen it up to the data's range
+  (ctSliderFullBounds), beyond that they are clamped. "n / N" values are
+  typed 1-based; data-range-entry-invert marks the 3D slice sliders (they
+  run opposite to the slice they show). Values marked by a dotted underline
+  (style.css, label:has(range) output).
+- CT sliders (WC, WW, segment CT range, Sigmoid centre) step by the data's
+  unit: 1 on integer data, else a tenth of the old step (old: span / 700
+  rounded, 10 HU here; it stays the WW minimum). Slider ends sit on the
+  step grid (setCtSliderRange), so the slider stops on whole values.
+- Measured (practice data, fresh / bundled project), 441 → 442: fresh WC /
+  WW 198 / 2640 → 197 / 2639 (= the DICOM window); slider values of the
+  ranges −249…−49 → −250…−50 (the ranges in use were already exact since
+  438). Bundled project: WC 149 → 139 and Sigmoid centre 2 → −8 — 441 and
+  earlier loaded the saved −8 / 139 snapped to the 10 HU grid, so the
+  Sigmoid ran with another centre than the one saved. The saved results
+  still do not match the loaded fat at 442 (fat 7,072,477; outside
+  9,558 + 57,815, enclosed 0, touching-not-in 55,333 + 96,559; at 440:
+  7,344,376, 1,411 + 21,449, 20, 102,324 + 230,365): the snap is one
+  difference, not the whole one. Redoing the analysis stays the fix.
+- tools/slider-entry-check.mjs; tests/unit/range-entry.test.js.
+Checks: lint, unit tests, boot-check, slider-entry, exclusive-segments,
+sigmoid, region-deselect, analysis-project.
+
+## Handoff (after build 442)
+
+State: build 442 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; 441: unselect results — click toggle, lasso unselect, unselect all, ticks saved; 442: wheel one step a notch, typed slider values, CT sliders by 1 HU (fixes the Sigmoid centre / WC snap on project load); PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

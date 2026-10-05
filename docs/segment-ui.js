@@ -1,16 +1,16 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20261005-build441';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261005-build441';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261005-build441';
-import { dispose } from './surface-mesh.js?v=20261005-build441';
-import { request3DRender } from './scene3d.js?v=20261005-build441';
-import { renderAnalysisResults } from './analysis-results.js?v=20261005-build441';
-import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges } from './segments.js?v=20261005-build441';
-import { tr } from './i18n.js?v=20261005-build441';
-import { niceCtStep, formatCtValue } from './utils.js?v=20261005-build441';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261005-build441';
-import { renderAll } from './mpr-render.js?v=20261005-build441';
+import { mark3DStale } from './three-state.js?v=20261005-build442';
+import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261005-build442';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261005-build442';
+import { dispose } from './surface-mesh.js?v=20261005-build442';
+import { request3DRender } from './scene3d.js?v=20261005-build442';
+import { renderAnalysisResults } from './analysis-results.js?v=20261005-build442';
+import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges } from './segments.js?v=20261005-build442';
+import { tr } from './i18n.js?v=20261005-build442';
+import { niceCtStep, formatCtValue } from './utils.js?v=20261005-build442';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261005-build442';
+import { renderAll } from './mpr-render.js?v=20261005-build442';
 // build 439 (owner: change the card order by dragging): a pointer drag on a card's ⋮⋮ handle (mouse and touch alike)
 // moves the card live; on release the new card order becomes the priority (segment-exclusive.js) and every segment
 // whose range in use changed is recomputed
@@ -72,10 +72,22 @@ export function removeSegmentPreset(key){
  if(enabled)enabled.checked=false;if(removeBtn)removeBtn.disabled=true;
  renderSegmentPresets();commitExclusiveRanges();clearAnalysisHighlight();renderAll();scheduleSegment3D();
 }
+export function ctSliderUnit(p){
+ return Number.isInteger(p.fullMin)&&Number.isInteger(p.fullMax)?1:niceCtStep(p.fullSpan)/10;
+}
+// build 442: a typed CT value may widen its slider up to the data's full range (range-entry.js)
+export function ctSliderFullBounds(el){
+ const p=ctRangeProfile;if(!p||!el)return null;
+ if(el===ww)return[Math.max(niceCtStep(p.fullSpan),1e-6),p.fullWidthMax];
+ if(el===wc||el===sigmoidCenter||el.matches?.('[data-seg-min],[data-seg-max]'))return[p.fullMin,p.fullMax];
+ return null;
+}
 export function setCtSliderRange(el,min,max,step){
  if(!el)return;
- const value=+el.value,lo=Math.min(min,value),hi=Math.max(max,value);
- el.min=String(lo);el.max=String(Math.max(lo+step,hi));el.step=String(step);
+ // build 442: the ends on the step grid (multiples of the step), so the slider stops on whole values whatever the
+ // window (an auto window can start at a fraction); before, the grid started at the window's own minimum
+ const value=+el.value,lo=Math.floor(Math.min(min,value)/step)*step,hi=Math.ceil(Math.max(max,value)/step)*step;
+ el.min=String(+lo.toFixed(8));el.max=String(+Math.max(lo+step,hi).toFixed(8));el.step=String(step);
  el.value=String(value);
 }
 export function autoAround(value,halfSpan,fullMin,fullMax){
@@ -89,10 +101,12 @@ export function applyCtRangeMode(mode=ctRangeMode){
  setCtRangeMode(mode==='full'?'full':'auto');
  ctRangeAuto.classList.toggle('is-active',ctRangeMode==='auto');
  ctRangeFull.classList.toggle('is-active',ctRangeMode==='full');
- const p=ctRangeProfile,fullStep=niceCtStep(p.fullSpan),autoStep=niceCtStep(Math.max(p.width*2,p.fullSpan/20));
+ // build 442 (owner: wheel and typing by the smallest unit): the CT sliders step by the data's unit — 1 on integer
+ // data (HU), a tenth of the old step otherwise; the old steps (span / 700, e.g. 10 HU) stay the WW minimum
+ const p=ctRangeProfile,unit=ctSliderUnit(p),fullStep=unit,autoStep=unit,wwFloor=niceCtStep(p.fullSpan),wwAutoFloor=niceCtStep(Math.max(p.width*2,p.fullSpan/20));
  if(ctRangeMode==='full'){
   setCtSliderRange(wc,p.fullMin,p.fullMax,fullStep);
-  setCtSliderRange(ww,Math.max(fullStep,1e-6),p.fullWidthMax,fullStep);
+  setCtSliderRange(ww,Math.max(wwFloor,1e-6),p.fullWidthMax,fullStep);
   setCtSliderRange(sigmoidCenter,p.fullMin,p.fullMax,fullStep);
   for(const key of SEGMENT_PRESET_ORDER){
    setCtSliderRange($('[data-seg-min="'+key+'"]'),p.fullMin,p.fullMax,fullStep);
@@ -101,8 +115,8 @@ export function applyCtRangeMode(mode=ctRangeMode){
  }else{
   const half=Math.max(p.width,p.fullSpan/200);
   let r=autoAround(+wc.value,half,p.fullMin,p.fullMax);setCtSliderRange(wc,r[0],r[1],autoStep);
-  const currentWidth=Math.max(+ww.value,autoStep),wwLo=Math.max(autoStep,currentWidth-p.width),wwHi=Math.min(p.fullWidthMax,Math.max(currentWidth+p.width,currentWidth*1.5));
-  setCtSliderRange(ww,wwLo,Math.max(wwLo+autoStep,wwHi),autoStep);
+  const currentWidth=Math.max(+ww.value,wwAutoFloor),wwLo=Math.max(wwAutoFloor,currentWidth-p.width),wwHi=Math.min(p.fullWidthMax,Math.max(currentWidth+p.width,currentWidth*1.5));
+  setCtSliderRange(ww,wwLo,Math.max(wwLo+wwAutoFloor,wwHi),autoStep);
   r=autoAround(+sigmoidCenter.value,half,p.fullMin,p.fullMax);setCtSliderRange(sigmoidCenter,r[0],r[1],autoStep);
   for(const key of SEGMENT_PRESET_ORDER){
    const minEl=$('[data-seg-min="'+key+'"]'),maxEl=$('[data-seg-max="'+key+'"]');
