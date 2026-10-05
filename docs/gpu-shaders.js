@@ -157,7 +157,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  if(kind==='sigmoid')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
- let i=gid.x;if(i>=meta[3]){return;}let c=params[3];let hw=max(1.0,params[4]*0.5);let g=max(0.0,params[2])*6.0;
+ let i=gid.x;if(i>=meta[3]){return;}let c=params[1];let hw=max(1.0,params[2]*0.5);let g=max(0.0,params[0])*6.0;
  // build 436: see cpuSigmoid (centre and values outside centre ± width/2 kept, strength 0 = none). tanh written as
  // 1 − 2/(exp(2a)+1): no inf/inf on drivers whose tanh overflows; |g·t| ≤ 6 here anyway
  let x=src[i];let t=(x-c)/hw;
@@ -170,7 +170,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
  let n0=src[i-1u];let n1=src[i+1u];let n2=src[i-w];let n3=src[i+w];let plane=w*h;let n4=src[i-plane];let n5=src[i+plane];
  let mean=(n0+n1+n2+n3+n4+n5)/6.0;let lo=min(min(min(n0,n1),min(n2,n3)),min(n4,n5));let hi=max(max(max(n0,n1),max(n2,n3)),max(n4,n5));
- let range=max(1.0,params[1]-params[0]);let strength=params[2];let threshold=range*params[3];let guard=threshold*(0.55+0.35*strength);let diff=src[i]-mean;
+ let strength=params[0];let threshold=params[1];let guard=threshold*(0.55+0.35*strength);let diff=src[i]-mean;
  if(hi-lo<=guard){if(abs(diff)>threshold){let target=mean+sign(diff)*threshold*0.08;let blend=0.20+0.75*strength;dst[i]=src[i]*(1.0-blend)+target*blend;return;}}dst[i]=src[i];
 }`;
  if(kind==='anisotropic')return header+`
@@ -178,7 +178,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
- let center=src[i];let plane=w*h;let range=max(1.0,params[1]-params[0]);let strength=params[2];let k=range*(0.025+0.09*strength);let k2=max(k*k,0.000001);let lambda=0.06+0.14*strength;
+ let center=src[i];let plane=w*h;let strength=params[0];let k=params[1];let k2=max(k*k,0.000001);let lambda=0.06+0.14*strength;
  var flux=0.0;var diff=src[i-1u]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+1u]-center;flux+=exp(-(diff*diff)/k2)*diff;
  diff=src[i-w]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+w]-center;flux+=exp(-(diff*diff)/k2)*diff;
  diff=src[i-plane]-center;flux+=exp(-(diff*diff)/k2)*diff;diff=src[i+plane]-center;flux+=exp(-(diff*diff)/k2)*diff;
@@ -189,7 +189,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=meta[0];let h=meta[1];let d=meta[2];
  if(c.x==0u){dst[i]=src[i];return;}if(c.y==0u){dst[i]=src[i];return;}if(c.z==0u){dst[i]=src[i];return;}if(c.x+1u>=w){dst[i]=src[i];return;}if(c.y+1u>=h){dst[i]=src[i];return;}if(c.z+1u>=d){dst[i]=src[i];return;}
- let center=src[i];let plane=w*h;let range=max(1.0,params[1]-params[0]);let weight=params[2];let lambda=min(0.18,0.02+weight*0.45);let eps=range*0.0001;
+ let center=src[i];let plane=w*h;let weight=params[0];let lambda=min(0.18,0.02+weight*0.45);let eps=params[1];
  var flux=0.0;var diff=src[i-1u]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+1u]-center;flux+=diff/sqrt(diff*diff+eps*eps);
  diff=src[i-w]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+w]-center;flux+=diff/sqrt(diff*diff+eps*eps);
  diff=src[i-plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);diff=src[i+plane]-center;flux+=diff/sqrt(diff*diff+eps*eps);
@@ -213,15 +213,15 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  dst[i]=sum/max(count,1.0);
 }`;
  // unsharpCombine: src = x/y box mean, binding 4 = original; meta[5]=radius;
- // params = min, max, amount, threshold (as 'unsharp').
+ // params = amount, thresholdHU (as 'unsharp'; build 447: no volume range).
  if(kind==='unsharpCombine')return header+`
 @group(0) @binding(4) var<storage, read> orig: array<f32>;
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let d=i32(meta[2]);let r=i32(meta[5]);var sum=0.0;var count=0.0;
  for(var k=-r;k<=r;k++){let zz=i32(c.z)+k;if(zz<0||zz>=d){continue;}sum+=src[idx(c.x,c.y,u32(zz))];count+=1.0;}
- let blur=sum/max(count,1.0);let v=orig[i];let detail=v-blur;let range=max(1.0,params[1]-params[0]);let threshold=params[3]*range;
- dst[i]=select(v,v+params[2]*detail,abs(detail)>=threshold);
+ let blur=sum/max(count,1.0);let v=orig[i];let detail=v-blur;let threshold=params[1];
+ dst[i]=select(v,v+params[0]*detail,abs(detail)>=threshold);
 }`;
  if(kind==='unsharp')return header+`
 @compute @workgroup_size(${workgroupSize})
@@ -233,14 +233,14 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
    for(var dx:i32=-r;dx<=r;dx=dx+1){let xx=i32(c.x)+dx;if(xx<0){continue;}if(xx>=w){continue;}sum+=src[u32(zz)*meta[0]*meta[1]+u32(yy)*meta[0]+u32(xx)];count+=1.0;}
   }
  }
- let blur=sum/max(count,1.0);let detail=src[i]-blur;let range=max(1.0,params[1]-params[0]);let threshold=params[3]*range;
- dst[i]=select(src[i],src[i]+params[2]*detail,abs(detail)>=threshold);
+ let blur=sum/max(count,1.0);let detail=src[i]-blur;let threshold=params[1];
+ dst[i]=select(src[i],src[i]+params[0]*detail,abs(detail)>=threshold);
 }`;
  if(kind==='bilateral')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
- let strength=params[2];let spatialSigma=params[3];let intensitySigma=max(0.000001,params[4]);
+ let strength=params[0];let spatialSigma=params[1];let intensitySigma=max(0.000001,params[2]);
  let radius=i32(meta[4]);let sp2=2.0*spatialSigma*spatialSigma;let int2=2.0*intensitySigma*intensitySigma;
  var sum=0.0;var wsum=0.0;
  for(var dz:i32=-radius;dz<=radius;dz=dz+1){
@@ -261,7 +261,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let center=src[i];
- let sr=i32(meta[4]);let pr=i32(meta[5]);let range=max(1.0,params[1]-params[0]);let hp=range*(0.018+0.11*params[2]);let h2=max(hp*hp,0.000001);
+ let sr=i32(meta[4]);let pr=i32(meta[5]);let hp=params[0];let h2=max(hp*hp,0.000001);
  var weighted=center;var weightSum=1.0;
  for(var dz:i32=-sr;dz<=sr;dz=dz+1){
   let nz=i32(c.z)+dz;if(nz<0){continue;}if(nz>=i32(meta[2])){continue;}

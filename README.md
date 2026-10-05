@@ -102,7 +102,7 @@ DICOMとボリューム
 - `cpu-filters.js` — CPUのフィルター計算（WebGPUが使えないとき）
 - `source-filters.js` — 元DICOMに対するフィルター処理（ワーカー、領域の読み出し、フィルター済みスライスのキャッシュ）
 - `filter-pipeline.js` — フィルターの画面と、フィルターのかけ直し
-- `bilateral-sigma.js` — Bilateral 3Dの強度SigmaをHUの絶対値で扱う処理（既定値、古いプロジェクトの互換値、フィルター署名）
+- `filter-units.js` — フィルターの強さをHUの絶対値で扱う処理（Spike/Hole・NLM・Anisotropic・TV・Unsharp・Bilateralの既定値と範囲、古いプロジェクトの互換値、フィルター署名）。`bilateral-sigma.js` は旧名の再エクスポート
 
 セグメンテーションと解析
 - `segments.js`, `segment-ui.js` — セグメントの状態と操作欄

@@ -1,19 +1,19 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale, mark3DCurrent, set3DState } from './three-state.js?v=20261005-build446';
-import { updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261005-build446';
-import { currentLanguage, volume, threeDApplying, threeRenderMode, sceneState, sourceVolume, setThreeDCancelRequested, threeDCancelRequested, filterRebuildRevision, setCurrent3DVolume, deferAutomatic3D, setDeferAutomatic3D, setMemoryGpuPreviewActive, setVolume, filterOrder } from './state.js?v=20261005-build446';
-import { gpuVolumeApplied, refreshGpuVolumeData } from './gpu-volume-data.js?v=20261005-build446';
-import { renderAll } from './mpr-render.js?v=20261005-build446';
-import { sourceFilterStages, filterState, memoryFilterPreviewCache, sourceFilterHalo, fitSourceTile, processMemoryRegion, currentFilterSignature } from './source-filters.js?v=20261005-build446';
-import { footer, threeLabel, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, bar, progLabel } from './ui-shell.js?v=20261005-build446';
-import { tr } from './i18n.js?v=20261005-build446';
-import { render3D, gpuMeshBlockDepth } from './surface-build.js?v=20261005-build446';
-import { resetAnalysisRegistryAfterRebuild } from './analysis-results.js?v=20261005-build446';
-import { setProcessingBusy } from './busy.js?v=20261005-build446';
-import { reportBusyProgress } from './progress-modal.js?v=20261005-build446';
-import { cpuSpikeHole, cpuNlm3D, cpuAnisotropicDiffusion, cpuGaussian3D, cpuMedian3D, cpuSigmoid, cpuBilateral3D, cpuTvDenoising3D, cpuUnsharpMask3D } from './cpu-filters.js?v=20261005-build446';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build446';
+import { mark3DStale, mark3DCurrent, set3DState } from './three-state.js?v=20261005-build447';
+import { updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261005-build447';
+import { currentLanguage, volume, threeDApplying, threeRenderMode, sceneState, sourceVolume, setThreeDCancelRequested, threeDCancelRequested, filterRebuildRevision, setCurrent3DVolume, deferAutomatic3D, setDeferAutomatic3D, setMemoryGpuPreviewActive, setVolume, filterOrder } from './state.js?v=20261005-build447';
+import { gpuVolumeApplied, refreshGpuVolumeData } from './gpu-volume-data.js?v=20261005-build447';
+import { renderAll } from './mpr-render.js?v=20261005-build447';
+import { sourceFilterStages, filterState, memoryFilterPreviewCache, sourceFilterHalo, fitSourceTile, processMemoryRegion, currentFilterSignature } from './source-filters.js?v=20261005-build447';
+import { footer, threeLabel, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, bar, progLabel, anisotropicKappa, tvEps } from './ui-shell.js?v=20261005-build447';
+import { tr } from './i18n.js?v=20261005-build447';
+import { render3D, gpuMeshBlockDepth } from './surface-build.js?v=20261005-build447';
+import { resetAnalysisRegistryAfterRebuild } from './analysis-results.js?v=20261005-build447';
+import { setProcessingBusy } from './busy.js?v=20261005-build447';
+import { reportBusyProgress } from './progress-modal.js?v=20261005-build447';
+import { cpuSpikeHole, cpuNlm3D, cpuAnisotropicDiffusion, cpuGaussian3D, cpuMedian3D, cpuSigmoid, cpuBilateral3D, cpuTvDenoising3D, cpuUnsharpMask3D } from './cpu-filters.js?v=20261005-build447';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build447';
 export function mark3DUpdating(){set3DState('updating')}
 export async function buildCpuFilteredVolumeFor3D(){
  const previousDefer=deferAutomatic3D;setDeferAutomatic3D(true);setMemoryGpuPreviewActive(false);clearMemoryFilterPreviewCache();setVolume(sourceVolume);
@@ -99,15 +99,15 @@ export function cloneVolumeWithData(base,data){
  return{data,columns:base.columns,rows:base.rows,slices:base.slices,spacing:[...base.spacing],min:base.min,max:base.max,storage:data.constructor.name,sourceBacked:false};
 }
 export const CPU_FILTERS={
- spikeHole:{label:'Spike / Hole',error:'Spike/Hole',run:v=>{const p={strength:+spikeHoleStrength.value,thresholdRatio:+spikeHoleThreshold.value};return[p,cpuSpikeHole(v,p,progress)]},footer:(p,r)=>'Spike / Hole · '+p.strength.toFixed(2)+' · threshold '+p.thresholdRatio.toFixed(3)+' · '+r.corrected.toLocaleString()+' voxels'},
- nlm:{label:'Fast NLM 3D',error:'NLM',run:v=>{const p={strength:+nlmStrength.value,searchRadius:+nlmSearchRadius.value,patchRadius:+nlmPatchRadius.value};return[p,cpuNlm3D(v,p,progress)]},footer:(p,r)=>'Fast NLM 3D · '+p.strength.toFixed(2)+' · search '+r.searchRadius+' · patch '+r.patchRadius},
- anisotropic:{label:'Anisotropic Diffusion',error:'Anisotropic',run:v=>{const p={strength:+anisotropicStrength.value,iterations:+anisotropicIterations.value};return[p,cpuAnisotropicDiffusion(v,p,progress)]},footer:(p,r)=>'Anisotropic Diffusion · '+p.strength.toFixed(2)+' · '+r.iterations+' iterations'},
+ spikeHole:{label:'Spike / Hole',error:'Spike/Hole',run:v=>{const p={strength:+spikeHoleStrength.value,thresholdHU:+spikeHoleThreshold.value};return[p,cpuSpikeHole(v,p,progress)]},footer:(p,r)=>'Spike / Hole · '+p.strength.toFixed(2)+' · threshold '+Math.round(p.thresholdHU)+' HU'+' · '+r.corrected.toLocaleString()+' voxels'},
+ nlm:{label:'Fast NLM 3D',error:'NLM',run:v=>{const p={hHU:+nlmStrength.value,searchRadius:+nlmSearchRadius.value,patchRadius:+nlmPatchRadius.value};return[p,cpuNlm3D(v,p,progress)]},footer:(p,r)=>'Fast NLM 3D · h '+Math.round(p.hHU)+' HU'+' · search '+r.searchRadius+' · patch '+r.patchRadius},
+ anisotropic:{label:'Anisotropic Diffusion',error:'Anisotropic',run:v=>{const p={strength:+anisotropicStrength.value,kappaHU:+anisotropicKappa.value,iterations:+anisotropicIterations.value};return[p,cpuAnisotropicDiffusion(v,p,progress)]},footer:(p,r)=>'Anisotropic Diffusion · '+p.strength.toFixed(2)+' · κ '+Math.round(p.kappaHU)+' HU'+' · '+r.iterations+' iterations'},
  gaussian:{label:'Gaussian 3D',error:'Gaussian',run:v=>{const p={strength:+gaussianStrength.value,passes:+spatialPasses.value};return[p,cpuGaussian3D(v,p,progress)]},footer:p=>'Gaussian 3D · live '+p.strength.toFixed(2)},
  median:{label:'Median 3D',error:'Median',run:v=>{const p={strength:+gaussianStrength.value,passes:+spatialPasses.value};return[p,cpuMedian3D(v,p,progress)]},footer:p=>'Median 3D · live '+p.strength.toFixed(2)},
  sigmoid:{label:'Sigmoid',error:'Sigmoid',run:v=>{const p={strength:+sigmoidStrength.value,center:+sigmoidCenter.value,width:+sigmoidWidth.value};return[p,cpuSigmoid(v,p,progress)]},footer:(p,r)=>'Sigmoid · '+p.strength.toFixed(2)+' · center '+Math.round(r.centerValue)+' · width '+Math.round(p.width)},
  bilateral:{label:'Bilateral 3D',error:'Bilateral',run:v=>{const p={strength:+bilateralStrength.value,spatialSigma:+bilateralSpatial.value,sigmaHU:+bilateralIntensity.value,passes:+bilateralPasses.value};return[p,cpuBilateral3D(v,p,progress)]},footer:p=>'Bilateral 3D · '+p.strength.toFixed(2)+' · σ '+(+p.sigmaHU).toFixed(0)+' HU'},
- tv:{label:'TV Denoising 3D',error:'TV',run:v=>{const p={weight:+tvWeight.value,iterations:+tvIterations.value};return[p,cpuTvDenoising3D(v,p,progress)]},footer:(p,r)=>'TV Denoising 3D · '+p.weight.toFixed(2)+' · '+r.iterations+' iterations'},
- unsharp:{label:'Unsharp Mask 3D',error:'Unsharp',run:v=>{const p={radius:+unsharpRadius.value,amount:+unsharpAmount.value,threshold:+unsharpThreshold.value};return[p,cpuUnsharpMask3D(v,p,progress)]},footer:p=>'Unsharp Mask 3D · amount '+p.amount.toFixed(2)}
+ tv:{label:'TV Denoising 3D',error:'TV',run:v=>{const p={weight:+tvWeight.value,epsHU:+tvEps.value,iterations:+tvIterations.value};return[p,cpuTvDenoising3D(v,p,progress)]},footer:(p,r)=>'TV Denoising 3D · '+p.weight.toFixed(2)+' · '+r.iterations+' iterations'},
+ unsharp:{label:'Unsharp Mask 3D',error:'Unsharp',run:v=>{const p={radius:+unsharpRadius.value,amount:+unsharpAmount.value,thresholdHU:+unsharpThreshold.value};return[p,cpuUnsharpMask3D(v,p,progress)]},footer:p=>'Unsharp Mask 3D · amount '+p.amount.toFixed(2)}
 };
 export function cpuFilterKind(key){return key==='gaussian'&&smoothingType.value==='median'?'median':key}
 export async function applyCpuFilter(key,baseVolume=volume){

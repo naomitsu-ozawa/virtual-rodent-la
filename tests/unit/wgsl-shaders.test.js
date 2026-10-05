@@ -26,11 +26,21 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
     expect(r.entry.compute.map(e => e.name)).toContain('main');
   });
 
-  // build 446: the bilateral intensity sigma is an absolute HU value (params[4]); the volume range params[0] / params[1] must stay unused
-  it('bilateral takes its intensity sigma from params[4] only (no volume range)', () => {
-    const src = gpuFilterShader('bilateral', 64);
-    expect(src).toMatch(/intensitySigma=max\(0\.000001,params\[4\]\)/);
-    expect(src).not.toMatch(/params\[0\]|params\[1\]/);
+  // build 447: the strength parameters are absolute HU values at fixed indexes (params[0..]); the volume range
+  // (min / max) is no longer passed, so no shader may compute a range from the params
+  it.each(['sigmoid', 'spikeHole', 'anisotropic', 'tv', 'unsharp', 'unsharpCombine', 'bilateral', 'nlm'])('%s does not use a volume range', kind => {
+    const src = gpuFilterShader(kind, 64);
+    expect(src).not.toMatch(/params\[1\]\s*-\s*params\[0\]/);
+    expect(src).not.toMatch(/let range=/);
+  });
+  it('the HU parameters are read from params[] at the documented indexes', () => {
+    expect(gpuFilterShader('bilateral', 64)).toMatch(/intensitySigma=max\(0\.000001,params\[2\]\)/);
+    expect(gpuFilterShader('nlm', 64)).toMatch(/let hp=params\[0\];/);
+    expect(gpuFilterShader('anisotropic', 64)).toMatch(/let k=params\[1\];/);
+    expect(gpuFilterShader('tv', 64)).toMatch(/let eps=params\[1\];/);
+    expect(gpuFilterShader('spikeHole', 64)).toMatch(/let threshold=params\[1\];/);
+    expect(gpuFilterShader('unsharp', 64)).toMatch(/let threshold=params\[1\];/);
+    expect(gpuFilterShader('unsharpCombine', 64)).toMatch(/let threshold=params\[1\];/);
   });
 
   it('uses the workgroup size it is given', () => {

@@ -4,8 +4,8 @@
 // this module has no UI dependencies and is unit-tested
 // (tests/unit/cpu-filters.test.js). The loops are the former app.js
 // apply* bodies, unchanged apart from reading params instead of sliders.
-import { frameYield } from './utils.js?v=20261005-build446';
-import { boxBlur3D } from './mask-ops.js?v=20261005-build446';
+import { frameYield } from './utils.js?v=20261005-build447';
+import { boxBlur3D } from './mask-ops.js?v=20261005-build447';
 export async function cpuGaussian3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d,src=v.data;
  const strength=params.strength;
@@ -61,7 +61,8 @@ export async function cpuMedian3D(v,params,onProgress=()=>{}){
 export async function cpuSpikeHole(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,src=v.data,out=new Float32Array(src);
  const strength=params.strength;
- const range=Math.max(1,v.max-v.min),thresholdRatio=params.thresholdRatio,threshold=range*thresholdRatio,edgeGuard=threshold*(.55+.35*strength);
+ // build 447: the threshold is an absolute HU value (params.thresholdHU), not a fraction of v.max - v.min
+ const threshold=+params.thresholdHU,edgeGuard=threshold*(.55+.35*strength);
  const correctionBlend=.20+.75*strength;
  let corrected=0;
  for(let z=1;z<d-1;z++){
@@ -84,8 +85,7 @@ export async function cpuSpikeHole(v,params,onProgress=()=>{}){
 }
 export async function cpuNlm3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,src=v.data,out=new Float32Array(src);
- const strength=params.strength;
- const range=Math.max(1,v.max-v.min),hParam=range*(.018+.11*strength),h2=hParam*hParam;
+ const hParam=+params.hHU,h2=hParam*hParam; // build 447: h in HU
  const searchRadius=Math.max(1,Math.round(params.searchRadius)),patchRadius=Math.max(0,Math.round(params.patchRadius));
  const offsets=[];
  for(let dz=-searchRadius;dz<=searchRadius;dz++)for(let dy=-searchRadius;dy<=searchRadius;dy++)for(let dx=-searchRadius;dx<=searchRadius;dx++){
@@ -124,7 +124,7 @@ export async function cpuAnisotropicDiffusion(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d;
  let a=new Float32Array(v.data),b=new Float32Array(n);
  const strength=params.strength;
- const range=Math.max(1,v.max-v.min),kappa=range*(.025+.09*strength),kappa2=kappa*kappa,lambda=.06+.14*strength,iterations=Math.max(1,Math.round(params.iterations));
+ const kappa=+params.kappaHU,kappa2=kappa*kappa,lambda=.06+.14*strength,iterations=Math.max(1,Math.round(params.iterations));
  for(let iter=0;iter<iterations;iter++){
   b.set(a);
   for(let z=1;z<d-1;z++){
@@ -175,10 +175,10 @@ export async function cpuBilateral3D(v,params,onProgress=()=>{}){
  return{data:a};
 }
 export async function cpuTvDenoising3D(v,params,onProgress=()=>{}){
- const {columns:w,rows:h,slices:d}=v,n=w*h*d,src=v.data,range=Math.max(1,v.max-v.min);
+ const {columns:w,rows:h,slices:d}=v,n=w*h*d,src=v.data;
  const weight=params.weight,iterations=Math.max(1,Math.round(params.iterations)),lambda=Math.min(.18,.02+weight*.45);
  let a=new Float32Array(src),b=new Float32Array(n);
- const eps=range*1e-4;
+ const eps=+params.epsHU; // build 447: HU
  for(let iter=0;iter<iterations;iter++){
   b.set(a);
   for(let z=1;z<d-1;z++)for(let y=1;y<h-1;y++){
@@ -196,8 +196,8 @@ export async function cpuTvDenoising3D(v,params,onProgress=()=>{}){
  return{data:a,iterations};
 }
 export async function cpuUnsharpMask3D(v,params,onProgress=()=>{}){
- const src=v.data,blurred=await boxBlur3D(v,params.radius),out=new Float32Array(src.length),range=Math.max(1,v.max-v.min);
- const amount=params.amount,threshold=params.threshold*range;
+ const src=v.data,blurred=await boxBlur3D(v,params.radius),out=new Float32Array(src.length);
+ const amount=params.amount,threshold=+params.thresholdHU;
  for(let i=0;i<src.length;i++){const detail=src[i]-blurred[i];out[i]=Math.abs(detail)>=threshold?src[i]+amount*detail:src[i]}
  return{data:out};
 }

@@ -14,12 +14,12 @@ const vol = (w, h, d, fill) => {
 const P = {
   cpuGaussian3D: { strength: 0.6, passes: 2 },
   cpuMedian3D: { strength: 1, passes: 1 },
-  cpuSpikeHole: { strength: 0.7, thresholdRatio: 0.05 },
-  cpuNlm3D: { strength: 0.5, searchRadius: 1, patchRadius: 1 },
-  cpuAnisotropicDiffusion: { strength: 0.5, iterations: 2 },
+  cpuSpikeHole: { strength: 0.7, thresholdHU: 100 },
+  cpuNlm3D: { hHU: 40, searchRadius: 1, patchRadius: 1 },
+  cpuAnisotropicDiffusion: { strength: 0.5, kappaHU: 60, iterations: 2 },
   cpuBilateral3D: { strength: 0.6, spatialSigma: 1.2, sigmaHU: 50, passes: 1 },
-  cpuTvDenoising3D: { weight: 0.2, iterations: 2 },
-  cpuUnsharpMask3D: { radius: 1, amount: 0.8, threshold: 0.01 },
+  cpuTvDenoising3D: { weight: 0.2, epsHU: 1, iterations: 2 },
+  cpuUnsharpMask3D: { radius: 1, amount: 0.8, thresholdHU: 60 },
 };
 
 describe('cpu-filters', () => {
@@ -35,7 +35,7 @@ describe('cpu-filters', () => {
   it('spike/hole and median remove an isolated spike', async () => {
     const make = () => { const v = vol(7, 7, 7, 100); v.data[3 * 49 + 3 * 7 + 3] = 3000; v.max = 3000; return v; };
     const center = 3 * 49 + 3 * 7 + 3;
-    const spike = await K.cpuSpikeHole(make(), { strength: 1, thresholdRatio: 0.05 });
+    const spike = await K.cpuSpikeHole(make(), { strength: 1, thresholdHU: 100 });
     expect(spike.corrected).toBe(1);
     expect(spike.data[center]).toBeLessThan(400);
     const median = await K.cpuMedian3D(make(), { strength: 1, passes: 1 });

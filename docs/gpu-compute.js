@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261005-build446';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build446';
+import { installGpuLedger } from './mem-ledger.js?v=20261005-build447';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build447';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build446';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build446';
-import { runsSliceToMask } from './run-length.js?v=20261005-build446';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build446';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build446';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build447';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build447';
+import { runsSliceToMask } from './run-length.js?v=20261005-build447';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build447';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build447';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -266,7 +266,7 @@ export function finishGpuResidentTemps(device,cleanup){
  try{completion=device.queue.onSubmittedWorkDone()}catch{cleanup();return Promise.resolve()}
  completion.then(cleanup,cleanup);return completion;
 }
-export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,segments=null,faceContext=null){
+export async function runGpuSourceFilters(data,w,h,d,stages,target,segments=null,faceContext=null){
  const device=await ensureGpuFilterDevice();if(!device||!gpuStagesSupported(stages))return null;
  const bytes=data.byteLength,n=data.length;
  if(bytes>device.limits.maxStorageBufferBindingSize)return null;
@@ -294,24 +294,24 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     const kernel=gaussianPassKernel(p.strength,p.passes),kr=(kernel.length-1)/2;
     for(let axis=0;axis<3;axis++)await dispatch('gaussianK',[axis,kr],kernel);
    }
-  }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[minv,maxv,p.strength,p.center,p.width||300]);
-  else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[minv,maxv,p.strength,p.threshold]);
-  else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[minv,maxv,p.strength]);
-  else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[minv,maxv,p.weight]);
+  }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[p.strength,p.center,p.width||300]);
+  else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[p.strength,p.thresholdHU]);
+  else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[p.strength,p.kappaHU]);
+  else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[p.weight,p.epsHU]);
   else if(stage.key==='unsharp'){
    // separable: x and y box means, then z mean fused with the sharpening (see gpu-shaders.js)
    const r=Math.max(1,Math.round(p.radius)),orig=current,xw=acquireGpuWorkBuffer(device,bytes),extra=xw.buffer;
    await dispatch('boxMean',[0,r],[]);                     // orig -> next (now current)
    const xMean=current;current=xMean;next=extra;await dispatch('boxMean',[1,r],[]); // xMean -> extra (now current)
    const xyMean=current;next=xMean;                         // write into the x-mean buffer
-   await dispatch('unsharpCombine',[0,r],[minv,maxv,p.amount,p.threshold],[{binding:4,resource:{buffer:orig}}]);
+   await dispatch('unsharpCombine',[0,r],[p.amount,p.thresholdHU],[{binding:4,resource:{buffer:orig}}]);
    // now current = result (old xMean buffer); keep orig as the spare, drop the extra buffer
    next=orig;const spare=xyMean;small.push({destroy:()=>releaseGpuWorkBuffer(spare,xw.size)});
   }
   else if(stage.key==='bilateral'){
    const radius=Math.max(1,Math.min(3,Math.ceil(p.spatialSigma*1.5)));
-   for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[minv,maxv,p.strength,p.spatialSigma,p.sigmaHU]);
-  }else if(stage.key==='nlm')await dispatch('nlm',[Math.max(1,Math.round(p.searchRadius)),Math.max(0,Math.round(p.patchRadius))],[minv,maxv,p.strength]);
+   for(let pass=0;pass<Math.max(1,Math.round(p.passes));pass++)await dispatch('bilateral',[radius],[p.strength,p.spatialSigma,p.sigmaHU]);
+  }else if(stage.key==='nlm')await dispatch('nlm',[Math.max(1,Math.round(p.searchRadius)),Math.max(0,Math.round(p.patchRadius))],[p.hHU]);
   else return null;
   // ?debug: GPU time of each filter stage (build 284, per-filter speed work)
   if(GPU_TIMING_DEBUG()&&/[?&]stagetimes/.test(location.search)){const t=performance.now();device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();addGpuStepTime('f:'+(stage.key==='gaussian'&&p.mode==='median'?'median':stage.key),performance.now()-t);encoder=device.createCommandEncoder({label:'VRL filter stage'})}
@@ -569,7 +569,7 @@ export async function gpuOpenRuns(runs,w,h,d,spacing,thicknessMm,onProgress=null
   const depth=Math.min(core,d-z0),za=Math.max(0,z0-halo),zb=Math.min(d,z0+depth+halo),mask=new Float32Array(plane*(zb-za));
   const tMask=performance.now();for(let z=za;z<zb;z++){const m=runsSliceToMask(runs[z],w,h),base=(z-za)*plane;for(let i=0;i<plane;i++)if(m[i])mask[base+i]=1}addGpuStepTime('open mask',performance.now()-tMask);
   const target={x:0,y:0,z:z0-za,width:w,height:h,depth};
-  const result=await runGpuSourceFilters(mask,w,h,zb-za,0,1,[],target,seg,{analysisRuns:true,openBall:{r2,n,spacing:sp}});
+  const result=await runGpuSourceFilters(mask,w,h,zb-za,[],target,seg,{analysisRuns:true,openBall:{r2,n,spacing:sp}});
   if(!result?.analysisRuns)return null;
   const per=Array.from({length:depth},()=>[]),items=result.items;
   for(let i=0;i<items.length;i+=4){const lz=items[i];if(lz<depth)per[lz].push(items[i+1],items[i+2],items[i+3])}
