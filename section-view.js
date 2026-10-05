@@ -1,9 +1,9 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { sectionViewPlane, volume, sectionViewReverse, sceneState, sectionViewOpen, sectionCapEnabled } from './state.js?v=20261002-build429';
-import { planes, sectionViewToggle, sectionViewResult, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionCapEnabledControl, sectionCapOpacityControl, sectionCapHatchControl, sectionViewReadout } from './ui-shell.js?v=20261002-build429';
+import { sectionViewPlane, volume, sectionViewReverse, sceneState, sectionViewOpen, sectionCapEnabled } from './state.js?v=20261005-build437';
+import { planes, sectionViewToggle, sectionViewResult, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionCapEnabledControl, sectionCapOpacityControl, sectionCapHatchControl, sectionViewReadout } from './ui-shell.js?v=20261005-build437';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { tr } from './i18n.js?v=20261002-build429';
+import { tr } from './i18n.js?v=20261005-build437';
 export function sectionPlaneLabel(p){return p?p[0].toUpperCase()+p.slice(1):''}
 export function updateSectionViewUi(){
  if(!sectionViewToggle)return;
@@ -28,7 +28,10 @@ export function sectionLocalPoint(p=sectionViewPlane,idx=p?+planes[p].slider.val
 }
 export function sectionLocalNormal(p=sectionViewPlane){
  if(!p)return null;
- const normal=p==='axial'?new THREE.Vector3(0,0,1):p==='coronal'?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
+ // build 434: the 3D plane views now face each plane as 2D draws it (app.js setAxisView), so for coronal and sagittal the
+ // camera sits on the other side than before; the base normals follow, so that the default (reversed) cut keeps the half
+ // behind the plane and the cut face is seen, upright as in 2D, for every plane
+ const normal=p==='axial'?new THREE.Vector3(0,0,1):p==='coronal'?new THREE.Vector3(0,-1,0):new THREE.Vector3(-1,0,0);
  if(sectionViewReverse)normal.negate();return normal;
 }
 export function updateSectionClipPlaneWorld(){

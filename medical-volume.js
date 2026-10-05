@@ -1381,7 +1381,9 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
    else if(mode===2)coord=(1-(idx+.5)/Math.max(h,1)*2)*this.halfExtents[1];
    else if(mode===3)coord=((idx+.5)/Math.max(w,1)*2-1)*this.halfExtents[0];
   }
-  put(19,active?mode:0,coord,section.reverse?-1:1,this.regionTexture?1:0);
+  // build 434: kept side = sign·(axis − coord) ≥ 0, the same rule as section-view.js sectionLocalNormal: coronal and
+  // sagittal base normals point to −y / −x (the 3D plane views now face those planes from the other side, as 2D draws them)
+  put(19,active?mode:0,coord,(section.reverse?-1:1)*(mode===2||mode===3?-1:1),this.regionTexture?1:0);
   put(20,section.capEnabled?1:0,Number.isFinite(+section.capOpacity)?Math.max(0,Math.min(1,+section.capOpacity)):.85,section.hatch?1:0,28);
   // w=1: trilinear sampling. It was on for reduced textures only, so the full-size
   // volume used nearest voxels and showed staircases (owner, build 282). rg8 lo/hi
