@@ -50,8 +50,8 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
     const LAYOUT = {
       sigmoid: { args: ['p.strength', 'p.center', 'p.width||300'], reads: [/let g=max\(0\.0,params\[0\]\)/, /let c=params\[1\]/, /let hw=max\(1\.0,params\[2\]\*0\.5\)/] },
       spikeHole: { args: ['p.strength', 'p.thresholdHU'], reads: [/let strength=params\[0\]/, /let threshold=params\[1\]/] },
-      anisotropic: { args: ['p.strength', 'p.kappaHU'], reads: [/let strength=params\[0\]/, /let k=params\[1\]/] },
-      tv: { args: ['p.weight', 'p.epsHU'], reads: [/let weight=params\[0\]/, /let eps=params\[1\]/] },
+      anisotropic: { args: ['p.strength', 'p.kappaHU', 'wx', 'wy', 'wz'], reads: [/let strength=params\[0\]/, /let k=params\[1\]/, /let wx=params\[2\]/, /let wy=params\[3\]/, /let wz=params\[4\]/] },
+      tv: { args: ['p.weight', 'p.epsHU', 'wx', 'wy', 'wz'], reads: [/let weight=params\[0\]/, /let eps=params\[1\]/, /let wx=params\[2\]/, /let wy=params\[3\]/, /let wz=params\[4\]/] },
       unsharpCombine: { args: ['p.amount', 'p.thresholdHU'], reads: [/params\[0\]\*detail/, /let threshold=params\[1\]/] },
       bilateral: { args: ['p.strength', 'p.spatialSigma', 'p.sigmaHU'], reads: [/let strength=params\[0\]/, /let spatialSigma=params\[1\]/, /intensitySigma=max\(0\.000001,params\[2\]\)/] },
       nlm: { args: ['p.hHU'], reads: [/let hp=params\[0\]/] },
