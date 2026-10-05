@@ -1,11 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261005-build437';
-import { hexRgb } from './utils.js?v=20261005-build437';
-import { settings } from './app-settings.js?v=20261005-build437';
-import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261005-build437';
-import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261005-build437';
-import { sourceFilterStages } from './source-filters.js?v=20261005-build437';
+import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261005-build438';
+import { hexRgb } from './utils.js?v=20261005-build438';
+import { settings } from './app-settings.js?v=20261005-build438';
+import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261005-build438';
+import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261005-build438';
+import { effectiveRanges } from './segment-exclusive.js?v=20261005-build438';
+import { sourceFilterStages } from './source-filters.js?v=20261005-build438';
 export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
 export const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
 // build 407 (owner): every segment starts at 100 % opacity (translucent segments are heavy to render)
@@ -15,6 +16,20 @@ export const segmentState={
  fat:{active:false,enabled:false,color:'#e7c85d',opacity:1,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0,_maskCache:null,_maskCacheKey:''},
  lung:{active:false,enabled:false,color:'#6fb8d6',opacity:1,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0,_maskCache:null,_maskCacheKey:''}
 };
+// build 438: non-overlapping segments (segment-exclusive.js). order = the segment cards top → bottom (priority);
+// mode 'priority' (new data) or 'off' (projects saved before 438). seg.userMin / userMax = the sliders; seg.min / max =
+// the range in use. pending = keys whose range in use changed since the last commit (invalidated on slider release).
+export const segmentExclusive={order:['bone','fat','soft','lung'],mode:'priority',pending:new Set(),invalidate:null};
+export function applyExclusiveRanges(){
+ const segs={};
+ for(const key of SEGMENT_PRESET_ORDER){const s=segmentState[key];if(s.userMin==null){s.userMin=s.min;s.userMax=s.max}segs[key]={userMin:s.userMin,userMax:s.userMax,active:!!s.active}}
+ const order=[...segmentExclusive.order.filter(k=>SEGMENT_PRESET_ORDER.includes(k)),...SEGMENT_PRESET_ORDER.filter(k=>!segmentExclusive.order.includes(k))];
+ const r=effectiveRanges(segs,order,segmentExclusive.mode),changed=[];
+ for(const key of SEGMENT_PRESET_ORDER){const s=segmentState[key],e=r[key];s.exclusive=e;if(s.min!==e.min||s.max!==e.max){s.min=e.min;s.max=e.max;s._maskCache=null;changed.push(key);segmentExclusive.pending.add(key)}}
+ return changed;
+}
+// recompute and invalidate every segment whose range in use changed (and the given ones)
+export function commitExclusiveRanges(...keys){applyExclusiveRanges();const all=new Set([...keys,...segmentExclusive.pending]);segmentExclusive.pending.clear();if(all.size)segmentExclusive.invalidate?.([...all]);return [...all]}
 export const segmentMaskVolumeIds=new WeakMap();
 export function segmentMaskVolumeId(v){
  let id=segmentMaskVolumeIds.get(v);if(!id){id=incNextSegmentMaskVolumeId(false);segmentMaskVolumeIds.set(v,id)}return id;

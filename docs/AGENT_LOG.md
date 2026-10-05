@@ -4454,9 +4454,55 @@ along a direction within 2–3 px): the hits are mostly fat-border jaggies,
 small blobs and gut-gas rims; no clear strands at these slices (likely
 thinner than a 0.148 mm voxel). Owner: not realistic — dropped for now.
 
-## Handoff (after build 437)
+## Build 438 — non-overlapping segments by card priority; project ranges load exactly
 
-State: build 437 on main (PR #86 merged 2026-10-05, builds 430–437); work branch claude/dicom-viewer-handoff-eaqyyu re-cut from main, next PR is new (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Owner: no overlap, decided by priority = the order of the segment cards
+(top first); the shared-boundary variant (A) selectable in a setting later;
+as intuitive and convenient as possible.
+- docs/segment-exclusive.js (pure, tests/unit/segment-exclusive.test.js):
+  effectiveRanges(user ranges, card order, mode). 'priority': a segment's
+  range = its user range minus the ranges held by the ACTIVE segments above
+  it (a card hidden by its checkbox still counts, so hiding never moves
+  voxels); a cut at b starts at the next float32 above b (filtered values
+  never fall into a gap); a range strictly inside a lower one leaves two
+  pieces — the piece with the user range's middle is kept, the other
+  reported on the card; a fully covered range is empty. 'off' = as before.
+- segments.js: seg.userMin / userMax (sliders) and seg.min / max (in use, read
+  by every view, the runs, analysis, export unchanged); segmentExclusive
+  {order, mode}; applyExclusiveRanges / commitExclusiveRanges (invalidates
+  every segment whose range in use changed, via app.js segmentInvalidators).
+- UI: segmentation panel 「重なり」: 重複なし（上のカードが優先） / 重複を許す
+  （従来）; cards stand in priority order (default bone → fat → soft → lung);
+  each card shows 「使う範囲 a 〜 b」 when trimmed (and the dropped piece).
+  Reordering the cards (↑↓) and the shared-boundary mode: next build.
+- Project: segmentOptions {exclusive, order}; segment min / max are the user
+  ranges. Projects saved before 438 load with 'off' (results unchanged; the
+  practice project too); new data starts with 'priority'.
+- Found and fixed on the way (on main as well): applyProject set the
+  segment ranges through the sliders, which snap to a step grid that moves
+  with the slider range — each save → load moved a range by one step
+  (measured: fat −249…82 → −245…86 → −241…90). The saved values are now
+  stored exactly (the slider only shows them).
+- tools/exclusive-segments-check.mjs (npm run exclusive-segments-check),
+  bare practice data, fat −250…81 / soft −93…248 (slider-snapped −249…82 /
+  −97…244): 'off' 10,819,055 voxels in both fat and soft; 'priority' 0,
+  fat + soft = union (36,537,973); fat card hidden: soft unchanged; soft
+  −300…300: in use 82…296, dropped −295…−249 shown on the card; project
+  round trip exact.
+- Known limit (measured, not fixed in 438): Closing and hole fill add
+  voxels after the ranges are split; fat with Closing 1 next to soft:
+  1,419,597 voxels in both final runs. The owner's practice project uses
+  neither (fat: air exclusion only, which removes voxels). A fix has to
+  subtract the higher cards' final runs in every path (2D, runs, WebGPU
+  processing masks, VR) — separate build if wanted.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check,
+exclusive-segments-check, progress-modal, analysis-project (plain and
+FILTER=1), edit-consistency, result-2d, plane-sync, mpr-alpha,
+processed-filter, plane-orientation, sigmoid.
+
+## Handoff (after build 438)
+
+State: build 438 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments, new PR) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

@@ -16,10 +16,12 @@ app.innerHTML=`
   </label>
   <button id="segment-add-button" class="tool-chip" type="button" data-i18n="addSegment" disabled>セグメントを追加</button>
 </div>
+<label class="segment-range segment-exclusive-row"><span data-i18n="segExclusive">重なり</span><select id="segment-exclusive-mode" class="filter-select"><option value="priority" data-i18n="segExclusivePriority">重複なし（上のカードが優先）</option><option value="off" data-i18n="segExclusiveOff">重複を許す（従来）</option></select></label>
 <div id="segment-controls" class="segment-controls"><div class="segment-card is-hidden" data-segment="bone">
 <div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="bone" checked disabled><strong data-i18n="bone">骨</strong></label><span class="segment-head-right"><input class="segment-color" data-seg-color="bone" type="color" value="#f3f0e8" disabled><button type="button" class="segment-collapse" data-seg-collapse="bone" aria-expanded="true" aria-label="Collapse">▾</button></span></div>
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="bone">—</output><input data-seg-min="bone" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="bone">—</output><input data-seg-max="bone" type="range" min="0" max="1" value="1" disabled></label>
+<p class="segment-effective is-hidden" data-seg-effective="bone"></p>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="bone">0.85</output><input data-seg-opacity="bone" type="range" min="0" max="1" step="0.05" value="1" disabled></label>
 <div class="segment-postprocess">
 <label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="bone">0</output><input data-seg-opening="bone" type="range" min="0" max="3" step="1" value="0" disabled></label>
@@ -36,6 +38,7 @@ app.innerHTML=`
 <div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="soft"  disabled><strong data-i18n="soft">軟部組織</strong></label><span class="segment-head-right"><input class="segment-color" data-seg-color="soft" type="color" value="#d97f7f" disabled><button type="button" class="segment-collapse" data-seg-collapse="soft" aria-expanded="true" aria-label="Collapse">▾</button></span></div>
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="soft">—</output><input data-seg-min="soft" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="soft">—</output><input data-seg-max="soft" type="range" min="0" max="1" value="1" disabled></label>
+<p class="segment-effective is-hidden" data-seg-effective="soft"></p>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="soft">0.28</output><input data-seg-opacity="soft" type="range" min="0" max="1" step="0.05" value="1" disabled></label>
 <div class="segment-postprocess">
 <label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="soft">0</output><input data-seg-opening="soft" type="range" min="0" max="3" step="1" value="0" disabled></label>
@@ -52,6 +55,7 @@ app.innerHTML=`
 <div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="fat"  disabled><strong data-i18n="fat">脂肪</strong></label><span class="segment-head-right"><input class="segment-color" data-seg-color="fat" type="color" value="#e7c85d" disabled><button type="button" class="segment-collapse" data-seg-collapse="fat" aria-expanded="true" aria-label="Collapse">▾</button></span></div>
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="fat">—</output><input data-seg-min="fat" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="fat">—</output><input data-seg-max="fat" type="range" min="0" max="1" value="1" disabled></label>
+<p class="segment-effective is-hidden" data-seg-effective="fat"></p>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="fat">0.35</output><input data-seg-opacity="fat" type="range" min="0" max="1" step="0.05" value="1" disabled></label>
 <div class="segment-postprocess">
 <label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="fat">0</output><input data-seg-opening="fat" type="range" min="0" max="3" step="1" value="0" disabled></label>
@@ -68,6 +72,7 @@ app.innerHTML=`
 <div class="segment-card-head"><label><input class="segment-enabled" type="checkbox" data-seg-enabled="lung" disabled><strong data-i18n="lung">肺</strong></label><span class="segment-head-right"><input class="segment-color" data-seg-color="lung" type="color" value="#6fb8d6" disabled><button type="button" class="segment-collapse" data-seg-collapse="lung" aria-expanded="true" aria-label="Collapse">▾</button></span></div>
 <label class="segment-range"><span data-i18n="min">最小</span><output data-seg-min-out="lung">—</output><input data-seg-min="lung" type="range" min="0" max="1" value="0" disabled></label>
 <label class="segment-range"><span data-i18n="max">最大</span><output data-seg-max-out="lung">—</output><input data-seg-max="lung" type="range" min="0" max="1" value="1" disabled></label>
+<p class="segment-effective is-hidden" data-seg-effective="lung"></p>
 <label class="segment-range"><span data-i18n="opacity">不透明度</span><output data-seg-opacity-out="lung">0.35</output><input data-seg-opacity="lung" type="range" min="0" max="1" step="0.05" value="1" disabled></label>
 <div class="segment-postprocess">
 <label class="segment-range"><span data-i18n="opening">Opening</span><output data-seg-opening-out="lung">0</output><input data-seg-opening="lung" type="range" min="0" max="3" step="1" value="0" disabled></label>

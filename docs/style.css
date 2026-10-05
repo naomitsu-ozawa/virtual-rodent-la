@@ -865,3 +865,8 @@ footer #footer:empty{display:block}
 .job-button.is-hidden,.job-help.is-hidden,.job-detail.is-hidden{display:none}
 .job-help{color:#8fa0a8;font-size:12px}
 @media (prefers-reduced-motion:reduce){.job-spinner{animation-duration:1.6s}.job-track.is-indeterminate .job-bar{animation:none;width:100%;opacity:.45}}
+
+/* build 438: the range in use when the card priority trims a segment's range */
+.segment-effective{margin:-2px 0 6px;font-size:11px;line-height:1.35;color:var(--muted,#9fb3c3)}
+.segment-effective.is-hidden{display:none}
+.segment-exclusive-row select{width:100%}
