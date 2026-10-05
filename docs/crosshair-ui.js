@@ -129,7 +129,7 @@ export function crosshairPointerEnd(p,e){
 
 // ---- linking ----
 function onChange(detail){
- const c=detail.crosshair;
+ const c=detail.crosshair;huRetries=0; // a new position: look for its HU again
  if(c&&volume){
   for(const q of CROSSHAIR_PLANES){ // Axial (i,j) -> Coronal slice j, Sagittal slice i; Coronal (i,k) -> Axial k, Sagittal i; Sagittal (j,k) -> Axial k, Coronal j
    const s=planes[q].slider,idx=sliceIndexFor(q,c);
