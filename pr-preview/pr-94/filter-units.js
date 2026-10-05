@@ -47,6 +47,8 @@ export function spacingWeights(spacing) {
   if (w.every(x => Math.abs(x - 1) <= SPACING_ISO_TOL)) return null;
   return w.map(round6);
 }
+// The three weights a kernel gets for a stage: params.sp, or [1, 1, 1] when the stage has none (isotropic).
+export const spacingParams = p => [p?.sp?.[0] ?? 1, p?.sp?.[1] ?? 1, p?.sp?.[2] ?? 1];
 // Adds `sp` to a stage (only for spacing-aware filters and only for non-isotropic data); otherwise returns it unchanged.
 export function withSpacingWeights(stage, spacing) {
   if (!SPACING_AWARE_KEYS.has(stage.key)) return stage;
