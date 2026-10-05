@@ -1,3 +1,4 @@
+import { clampVoxel, sameVoxel, withSliceIndex } from './crosshair.js?v=20261005-build458';
 // Shared mutable application state, moved out of app.js by
 // tools/state-codemod.mjs. Read these bindings directly (imports are live);
 // write them only through the setters (imported bindings are read-only).
@@ -7,9 +8,9 @@ export function setCurrentLanguage(v){return currentLanguage=v}
 export let precisionRangeDrag=null;
 export function setPrecisionRangeDrag(v){return precisionRangeDrag=v}
 export let volume=null;
-export function setVolume(v){return volume=v}
+export function setVolume(v){const prev=volume;volume=v;crosshairVolumeChanged(prev,v);return v}
 export let sourceVolume=null;
-export function setSourceVolume(v){return sourceVolume=v}
+export function setSourceVolume(v){if(v!==sourceVolume)clearCrosshair('series');return sourceVolume=v}
 export let sceneState=null;
 export function setSceneState(v){return sceneState=v}
 export let activeId=null;
@@ -105,7 +106,7 @@ export let cutControlPreviewRaf=0;
 export function setCutControlPreviewRaf(v){return cutControlPreviewRaf=v}
 export let smoothingRefreshTimer=null;
 export function setSmoothingRefreshTimer(v){return smoothingRefreshTimer=v}
-import { settings } from './app-settings.js?v=20261005-build457';
+import { settings } from './app-settings.js?v=20261005-build458';
 // 3D volume in-plane size, remembered in the settings (build 280); full size
 // (0) is desktop-only, so an iPad falls back to 512
 export let ipadGpuTargetSide=(()=>{const v=+settings.get('gpuSide');const touch=typeof navigator!=='undefined'&&/Android|OculusBrowser|Quest/i.test(navigator.userAgent||''),ipad=typeof navigator!=='undefined'&&(/iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||'')));return v===768?768:v===0&&!ipad&&!touch?0:512})(); // build 368/371: full size stays desktop-only; iPad, Android tablets and the Quest browser fall back to 512
@@ -147,3 +148,40 @@ export let cutBvhModulePromise=null;
 export function setCutBvhModulePromise(v){return cutBvhModulePromise=v}
 export let cutRaycastMaterial=null;
 export function setCutRaycastMaterial(v){return cutRaycastMaterial=v}
+
+// Linked crosshair (build 458). One shared position in VOXEL indices {i,j,k} (integers inside volume.columns/rows/slices; see
+// crosshair.js for why not millimetres). JSON-ready: a later stage can store it in a comment or the project file.
+// The three MPR views listen with onCrosshairChange (or the 'vrl-crosshairchange' DOM event on document).
+//   setCrosshair({i,j,k}[,source]) -> the stored (clamped) position, or null when there is no volume / bad input
+//   getCrosshair()                 -> a copy {i,j,k}, or null when hidden
+//   clearCrosshair([source])       -> hides it
+//   setCrosshairSlice(plane,idx)   -> a slice slider moved: change that plane's coordinate (does nothing while hidden)
+// Event detail: {crosshair:{i,j,k}|null, previous, source}. No event when nothing changed.
+export const CROSSHAIR_EVENT='vrl-crosshairchange';
+let crosshair=null;
+const crosshairListeners=new Set();
+function emitCrosshair(previous,source){
+ const detail={crosshair:getCrosshair(),previous,source};
+ for(const cb of [...crosshairListeners]){try{cb(detail)}catch(e){console.warn('crosshair listener failed',e)}}
+ try{if(typeof document!=='undefined'&&typeof CustomEvent!=='undefined')document.dispatchEvent(new CustomEvent(CROSSHAIR_EVENT,{detail}))}catch{}
+}
+export function getCrosshair(){return crosshair?{i:crosshair.i,j:crosshair.j,k:crosshair.k}:null}
+export function setCrosshair(v,source='api'){
+ const next=clampVoxel(v,volume);if(!next)return null;
+ if(sameVoxel(crosshair,next))return getCrosshair();
+ const previous=getCrosshair();crosshair=next;emitCrosshair(previous,source);return getCrosshair();
+}
+export function clearCrosshair(source='clear'){
+ if(!crosshair)return;const previous=getCrosshair();crosshair=null;emitCrosshair(previous,source);
+}
+export function setCrosshairSlice(plane,idx,source='slider'){
+ if(!crosshair)return null;
+ const next=withSliceIndex(crosshair,plane,idx,volume||{});return next?setCrosshair(next,source):null;
+}
+export function onCrosshairChange(cb){crosshairListeners.add(cb);return()=>crosshairListeners.delete(cb)}
+// another series (or a volume of a different size) must not keep an old index: hide it; the same size just re-clamps
+function crosshairVolumeChanged(prev,v){
+ if(!crosshair)return;
+ if(!v||!prev||v.columns!==prev.columns||v.rows!==prev.rows||v.slices!==prev.slices){clearCrosshair('series');return}
+ const next=clampVoxel(crosshair,v);if(!sameVoxel(crosshair,next))setCrosshair(next,'clamp');
+}
