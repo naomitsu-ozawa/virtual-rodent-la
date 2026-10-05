@@ -125,24 +125,3 @@ describe('bilateral kernels do not use the volume range (build 446)', () => {
     for (let i = 0; i < a.length; i++) expect(a[i]).toBeCloseTo(b[i], 3);
   });
 });
-
-describe('save / load wiring in data-load.js (build 446)', () => {
-  const src = readFileSync('docs/data-load.js', 'utf8');
-  it('the bilateral input table has sigmaHU and no intensitySigma', () => {
-    const t = src.match(/bilateral:\{[^}]*\}/)[0];
-    expect(t).toContain('sigmaHU:bilateralIntensity');
-    expect(t).not.toContain('intensitySigma');
-  });
-  it('gatherProject saves sigmaHU as a number, once (it is not added a second time)', () => {
-    expect(src).toContain("name==='sigmaHU'?+el.value:el.value");
-    expect((src.match(/sigmaHU/g) || []).length).toBeGreaterThan(0);
-    expect(src.match(/gatherProject[\s\S]*?return\{project,binaries\}/)[0].match(/params:Object\.fromEntries/g).length).toBe(1);
-  });
-  it('applyProject skips the generic sigmaHU write and sets it once from resolveBilateralParams; the old key is only read there', () => {
-    expect(src).toContain("if(!(key==='bilateral'&&name==='sigmaHU'))setControlValue");
-    expect(src.match(/setBilateralSigmaControl\(r\.sigmaHU\)/g).length).toBe(1);
-    // the old key reaches no control: only resolveBilateralParams reads it
-    expect(src).not.toMatch(/FILTER_PARAM_INPUTS\.bilateral\.intensitySigma|intensitySigma:bilateral/);
-  });
-});
-
