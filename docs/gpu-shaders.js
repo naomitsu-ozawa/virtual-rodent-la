@@ -216,7 +216,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  dst[i]=sum/max(count,0.000001);
 }`;
  // unsharpCombine: src = x/y box mean, binding 4 = original; meta[5]=taps K; params = amount, thresholdHU
- // (as 'unsharp'; build 447: no volume range), A of the z axis (see boxMean).
+ // (the Unsharp stage's param layout; build 447: no volume range), A of the z axis (see boxMean).
  if(kind==='unsharpCombine')return header+`
 @group(0) @binding(4) var<storage, read> orig: array<f32>;
 @compute @workgroup_size(${workgroupSize})

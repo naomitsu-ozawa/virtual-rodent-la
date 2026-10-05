@@ -4,8 +4,11 @@ import { readFileSync } from 'node:fs';
 // gpu-compute.js needs a DOM to import, so the two helpers are cut out of the source and evaluated here.
 const src = readFileSync('docs/gpu-compute.js', 'utf8');
 const grab = re => { const m = src.match(re); if (!m) throw new Error('helper not found: ' + re); return m[0]; };
-const { gpuCheckSync, gpuSubmitChecked } = new Function(
-  grab(/async function gpuCheckSync[\s\S]*?\n}\n/) + '\n' + grab(/function gpuSubmitChecked[^\n]*\n/) + '\nreturn{gpuCheckSync,gpuSubmitChecked}')();
+const { gpuCheckBegin, gpuCheckSync, gpuSubmitChecked } = new Function(
+  grab(/export function gpuCheckBegin[\s\S]*?\n}\n/).replace('export ', '') + '\n' +
+  grab(/export async function gpuCheckSync[\s\S]*?\n}\n/).replace('export ', '') + '\n' +
+  grab(/export async function gpuSubmitChecked[\s\S]*?\n}\n/).replace('export ', '') +
+  '\nreturn{gpuCheckBegin,gpuCheckSync,gpuSubmitChecked}')();
 
 // Fake GPUDevice with a real error-scope stack: an error raised by a command goes to the scope
 // that is on top at that moment (as on a real device), or is "uncaptured" when there is none.
@@ -51,5 +54,21 @@ describe('gpuCheckSync', () => {
     await gpuSubmitChecked(d, 'extract', { finish: () => { d.fail('invalid command buffer'); return {}; } }).then(() => { throw new Error('should reject'); }, e => expect(e.message).toBe('extract: invalid command buffer'));
     await gpuSubmitChecked(d, 'ok', { finish: () => ({}) });
     expect(d.log.filter(x => x === 'submit').length).toBe(2);
+  });
+  it('gpuCheckBegin pushes and pops synchronously and returns the value at once', async () => {
+    const d = fakeDevice();
+    const r = gpuCheckBegin(d, 'x', () => { d.log.push('fn'); return 5; });
+    expect(d.log).toEqual(['push', 'fn', 'pop']);
+    expect(r.value).toBe(5);
+    await r.done;
+  });
+  it('a failed gpuCheckBegin is not an unhandled rejection and gpuSubmitChecked awaits the collected checks first', async () => {
+    const d = fakeDevice(), checks = [];
+    checks.push(gpuCheckBegin(d, 'dispatch boxMean', () => d.fail('binding 3 missing')).done);
+    checks.push(gpuCheckBegin(d, 'dispatch ok', () => 1).done);
+    let finished = false;
+    await expect(gpuSubmitChecked(d, 'extract', { finish: () => { finished = true; return {}; } }, checks)).rejects.toThrow('dispatch boxMean: binding 3 missing');
+    expect(finished).toBe(false); // nothing is finished or submitted after a failed check
+    expect(checks.length).toBe(0);
   });
 });

@@ -110,3 +110,22 @@ describe('every declared binding is used by main() (layout:auto keeps only those
     expect(missing).toEqual([]);
   });
 });
+
+// The other direction: dispatch() in gpu-compute.js binds 0..3 (plus the extra entries a stage passes, binding 4
+// for unsharpCombine) for every kind it dispatches, so the kernel has to declare them. Combined with the test above
+// (declared => used) this makes the bind group always valid against the 'auto' layout.
+describe('dispatch() kinds declare the bindings it passes', () => {
+  const compute = readFileSync(new URL('../../docs/gpu-compute.js', import.meta.url), 'utf8');
+  const kinds = new Set();
+  for (const m of compute.matchAll(/dispatch\(([^;]*?),\s*\[/g)) {
+    for (const k of m[1].matchAll(/'(\w+)'/g)) kinds.add(k[1]);
+  }
+  it('finds the dispatch() kinds', () => {
+    for (const k of ['boxMean', 'unsharpCombine', 'gaussianK', 'airDistX', 'sigmoid']) expect(kinds.has(k)).toBe(true);
+  });
+  it.each([...kinds])('%s declares bindings 0-3', kind => {
+    const declared = new Set(new WgslReflect(normalizeVrlWgsl(gpuFilterShader(kind, 64))).getBindGroups().flatMap(g => g.filter(Boolean)).map(v => v.binding));
+    const want = kind === 'unsharpCombine' ? [0, 1, 2, 3, 4] : [0, 1, 2, 3];
+    expect(want.filter(b => !declared.has(b))).toEqual([]);
+  });
+});
