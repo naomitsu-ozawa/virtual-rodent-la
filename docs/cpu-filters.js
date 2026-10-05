@@ -4,9 +4,9 @@
 // this module has no UI dependencies and is unit-tested
 // (tests/unit/cpu-filters.test.js). The loops are the former app.js
 // apply* bodies, unchanged apart from reading params instead of sliders.
-import { frameYield } from './utils.js?v=20261005-build453';
-import { boxBlur3D } from './mask-ops.js?v=20261005-build453';
-import { anisotropicLambda } from './filter-units.js?v=20261005-build453';
+import { frameYield } from './utils.js?v=20261005-build454';
+import { boxBlur3D } from './mask-ops.js?v=20261005-build454';
+import { anisotropicLambda, spacingWeights } from './filter-units.js?v=20261005-build454';
 export async function cpuGaussian3D(v,params,onProgress=()=>{}){
  const {columns:w,rows:h,slices:d}=v,n=w*h*d,src=v.data;
  const strength=params.strength;
@@ -126,6 +126,8 @@ export async function cpuAnisotropicDiffusion(v,params,onProgress=()=>{}){
  let a=new Float32Array(v.data),b=new Float32Array(n);
  const strength=params.strength;
  const kappa=+params.kappaHU,kappa2=kappa*kappa,lambda=anisotropicLambda(strength),iterations=Math.max(1,Math.round(params.iterations));
+ // per-axis weights (hmin/h)^2: params.sp if given (same as the stage params), else from the volume spacing; null = isotropic = all 1
+ const sp=params.sp||spacingWeights(v.spacing)||[1,1,1],weights=[sp[0],sp[0],sp[1],sp[1],sp[2],sp[2]];
  for(let iter=0;iter<iterations;iter++){
   b.set(a);
   for(let z=1;z<d-1;z++){
@@ -135,10 +137,10 @@ export async function cpuAnisotropicDiffusion(v,params,onProgress=()=>{}){
      const i=row+x,c=a[i];
      const neighbors=[a[i-1],a[i+1],a[i-w],a[i+w],a[i-w*h],a[i+w*h]];
      let flux=0;
-     for(const nv of neighbors){
-      const diff=nv-c;
+     for(let q=0;q<6;q++){
+      const diff=neighbors[q]-c;
       const conduct=Math.exp(-(diff*diff)/Math.max(kappa2,1e-6));
-      flux+=conduct*diff;
+      flux+=weights[q]*(conduct*diff);
      }
      b[i]=c+lambda*flux;
     }
@@ -180,6 +182,8 @@ export async function cpuTvDenoising3D(v,params,onProgress=()=>{}){
  const weight=params.weight,iterations=Math.max(1,Math.round(params.iterations)),lambda=Math.min(.18,.02+weight*.45);
  let a=new Float32Array(src),b=new Float32Array(n);
  const eps=+params.epsHU; // build 447: HU
+ // per-axis weights (hmin/h)^2: params.sp if given, else from the volume spacing; null = isotropic = all 1 (lambda unchanged, weights <= 1)
+ const sp=params.sp||spacingWeights(v.spacing)||[1,1,1],weights=[sp[0],sp[0],sp[1],sp[1],sp[2],sp[2]];
  for(let iter=0;iter<iterations;iter++){
   b.set(a);
   for(let z=1;z<d-1;z++)for(let y=1;y<h-1;y++){
@@ -187,7 +191,7 @@ export async function cpuTvDenoising3D(v,params,onProgress=()=>{}){
    for(let x=1;x<w-1;x++){
     const i=row+x,c=a[i],ns=[a[i-1],a[i+1],a[i-w],a[i+w],a[i-w*h],a[i+w*h]];
     let flux=0;
-    for(const nv of ns){const diff=nv-c;flux+=diff/Math.sqrt(diff*diff+eps*eps)}
+    for(let q=0;q<6;q++){const diff=ns[q]-c;flux+=weights[q]*(diff/Math.sqrt(diff*diff+eps*eps))}
     b[i]=c+lambda*flux;
    }
    if((z&7)===0){onProgress(iter*d+z+1,iterations*d);await frameYield()}

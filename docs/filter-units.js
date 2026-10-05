@@ -29,6 +29,30 @@ export const isValidUnitValue = (def, v) => Number.isFinite(v) && (def?.min === 
 // The worker in source-filters.js is serialised and cannot import this; it repeats the two values (a test pins them).
 export const ANISO_LAMBDA_MIN = 0.06;
 export const ANISO_LAMBDA_MAX = 1 / 7;
+
+// Per-axis weights from the voxel spacing (shared by every spacing-aware filter: Anisotropic and TV so far).
+// w_a = (hmin / h_a)^2 with hmin = min(hx, hy, hz), so every weight is in (0, 1]: a finer axis keeps weight 1, a coarser
+// one is weighted down (a physical gradient is diff / h_a, the flux term scales with 1 / h_a^2). Weights <= 1 keep the
+// explicit scheme stable with the same lambda <= 1/7 (the sum of the six weights never exceeds 6).
+// Returns [wx, wy, wz], or null when the data is isotropic (every weight within SPACING_ISO_TOL of 1) or the spacing is
+// unusable (not three finite numbers > 0): callers then add nothing to the stage params, so the filter signature and the
+// result are exactly those of a build without spacing weights.
+export const SPACING_ISO_TOL = 1e-3;
+export const SPACING_AWARE_KEYS = new Set(['anisotropic', 'tv']);
+export function spacingWeights(spacing) {
+  if (!spacing || typeof spacing.length !== 'number' || spacing.length < 3) return null;
+  const h = [+spacing[0], +spacing[1], +spacing[2]];
+  if (!h.every(x => Number.isFinite(x) && x > 0)) return null;
+  const hmin = Math.min(h[0], h[1], h[2]), w = h.map(x => (hmin / x) ** 2);
+  if (w.every(x => Math.abs(x - 1) <= SPACING_ISO_TOL)) return null;
+  return w.map(round6);
+}
+// Adds `sp` to a stage (only for spacing-aware filters and only for non-isotropic data); otherwise returns it unchanged.
+export function withSpacingWeights(stage, spacing) {
+  if (!SPACING_AWARE_KEYS.has(stage.key)) return stage;
+  const sp = spacingWeights(spacing);
+  return sp ? { ...stage, params: { ...stage.params, sp } } : stage;
+}
 export const anisotropicLambda = strength => { const s = Number.isFinite(+strength) ? Math.min(1, Math.max(0, +strength)) : 0; return Math.min(ANISO_LAMBDA_MIN + (ANISO_LAMBDA_MAX - ANISO_LAMBDA_MIN) * s, ANISO_LAMBDA_MAX); };
 
 export const FILTER_UNITS = {

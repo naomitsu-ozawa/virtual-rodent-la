@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261005-build453';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build453';
+import { installGpuLedger } from './mem-ledger.js?v=20261005-build454';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build454';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build453';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build453';
-import { runsSliceToMask } from './run-length.js?v=20261005-build453';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build453';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build453';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build454';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build454';
+import { runsSliceToMask } from './run-length.js?v=20261005-build454';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build454';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build454';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -109,6 +109,8 @@ export async function gpuValidationScope(device,label,fn){
   throw e;
  }
 }
+// per-axis spacing weights of a stage (set by withSpacingWeights in filter-units.js; absent = isotropic = 1,1,1)
+const spX=p=>p.sp?.[0]??1,spY=p=>p.sp?.[1]??1,spZ=p=>p.sp?.[2]??1;
 export const GPU_FILTER_KEYS=new Set(['gaussian','sigmoid','spikeHole','unsharp','anisotropic','tv','bilateral','nlm']);
 export function gpuStagesSupported(stages){
  return stages.every(stage=>GPU_FILTER_KEYS.has(stage.key));
@@ -296,8 +298,8 @@ export async function runGpuSourceFilters(data,w,h,d,stages,target,segments=null
    }
   }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[p.strength,p.center,p.width||300]);
   else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[p.strength,p.thresholdHU]);
-  else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[p.strength,p.kappaHU]);
-  else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[p.weight,p.epsHU]);
+  else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[p.strength,p.kappaHU,spX(p),spY(p),spZ(p)]);
+  else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[p.weight,p.epsHU,spX(p),spY(p),spZ(p)]);
   else if(stage.key==='unsharp'){
    // separable: x and y box means, then z mean fused with the sharpening (see gpu-shaders.js)
    const r=Math.max(1,Math.round(p.radius)),orig=current,xw=acquireGpuWorkBuffer(device,bytes),extra=xw.buffer;
