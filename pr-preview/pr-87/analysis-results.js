@@ -1,12 +1,12 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume } from './state.js?v=20261005-build440';
-import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261005-build440';
-import { tr } from './i18n.js?v=20261005-build440';
-import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261005-build440';
-import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261005-build440';
-import { request3DRender } from './scene3d.js?v=20261005-build440';
-import { dispose } from './surface-mesh.js?v=20261005-build440';
+import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume } from './state.js?v=20261005-build441';
+import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261005-build441';
+import { tr } from './i18n.js?v=20261005-build441';
+import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261005-build441';
+import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261005-build441';
+import { request3DRender } from './scene3d.js?v=20261005-build441';
+import { dispose } from './surface-mesh.js?v=20261005-build441';
 export function analysisRegionRepresentativeVoxel(region){
  if(!region?.runsBySlice)return null;
  const nonEmpty=[];for(let z=0;z<region.runsBySlice.length;z++)if(region.runsBySlice[z]?.length)nonEmpty.push(z);
@@ -14,13 +14,14 @@ export function analysisRegionRepresentativeVoxel(region){
  const z=nonEmpty[Math.floor(nonEmpty.length/2)],rec=region.runsBySlice[z],i=Math.floor((rec.length/3)/2)*3;
  return{x:Math.floor((rec[i+1]+rec[i+2])/2),y:rec[i],z};
 }
-export function setAnalysisFocusedRegion(id,voxel=null){
+// move=false keeps the slice positions (build 441: re-applying the focus look after a lasso unselect)
+export function setAnalysisFocusedRegion(id,voxel=null,move=true){
  const region=analysisRegionById(id);setAnalysisFocusedRegionId(region?.id??null);
  for(const r of analysisRegions){
   r.focused=r.id===analysisFocusedRegionId;
   if(r.meshGroup)r.meshGroup.traverse(o=>{if(!o.isMesh)return;const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){if(!m)continue;m.opacity=r.focused?.98:.46;m.emissiveIntensity=r.focused?.9:.28}});
  }
- if(region){
+ if(region&&move){
   const v=voxel||analysisRegionRepresentativeVoxel(region);
   if(v&&volume){
    planes.axial.slider.value=Math.max(0,Math.min(+planes.axial.slider.max,v.z));

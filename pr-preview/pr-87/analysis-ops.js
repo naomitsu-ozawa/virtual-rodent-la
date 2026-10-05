@@ -1,30 +1,30 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DCurrent, mark3DStale } from './three-state.js?v=20261005-build440';
-import { set3DBusy, set3DBusyLabel } from './three-status.js?v=20261005-build440';
-import { meshSegmentRanges, syncSectionClipParent, applySectionClippingMaterials, refreshEditedSegmentSurface, ensureGpuResidentCpuPositions } from './surface-build.js?v=20261005-build440';
-import { sceneState, setAnalysisFilterSignature, incSourceRenderRevision, sourceRenderRevision, currentLanguage, sectionViewOpen, sectionViewPlane, setAnalysisEditTool, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisCutStroke, setAnalysisCutScreen, setAnalysisPendingCut, current3DVolume, volume, volumeAnalysisMode, analysisRegions, threeRenderMode, threeDDirty, analysisFocusedRegionId, volumeAnalysisBusy, setVolumeAnalysisBusy, setAnalysisRegions, incNextAnalysisRegionId, nextAnalysisColorIndex, incNextAnalysisColorIndex, setNextAnalysisColorIndex, analysisEditTargetKey, sourceVolume, setAnalysisFocusedRegionId, analysisEditTool, analysisEditTargetMode } from './state.js?v=20261005-build440';
+import { mark3DCurrent, mark3DStale } from './three-state.js?v=20261005-build441';
+import { set3DBusy, set3DBusyLabel } from './three-status.js?v=20261005-build441';
+import { meshSegmentRanges, syncSectionClipParent, applySectionClippingMaterials, refreshEditedSegmentSurface, ensureGpuResidentCpuPositions } from './surface-build.js?v=20261005-build441';
+import { sceneState, setAnalysisFilterSignature, incSourceRenderRevision, sourceRenderRevision, currentLanguage, sectionViewOpen, sectionViewPlane, setAnalysisEditTool, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisCutStroke, setAnalysisCutScreen, setAnalysisPendingCut, current3DVolume, volume, volumeAnalysisMode, analysisRegions, threeRenderMode, threeDDirty, analysisFocusedRegionId, volumeAnalysisBusy, setVolumeAnalysisBusy, setAnalysisRegions, incNextAnalysisRegionId, nextAnalysisColorIndex, incNextAnalysisColorIndex, setNextAnalysisColorIndex, analysisEditTargetKey, sourceVolume, setAnalysisFocusedRegionId, analysisEditTool, analysisEditTargetMode } from './state.js?v=20261005-build441';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { eachGeometryTriangleRange, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces, groupToBinaryStl } from './mesh-geometry.js?v=20261005-build440';
-import { surfaceSmoothingActive } from './settings.js?v=20261005-build440';
-import { SEGMENT_PRESET_ORDER, segmentState, getProcessedSegmentMask, segmentEditState, segmentEditActive, segmentNeedsGlobalMask } from './segments.js?v=20261005-build440';
-import { request3DRender } from './scene3d.js?v=20261005-build440';
-import { threeLabel, footer, analysisEditTargetSelect, selected, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutOffset, threeEditOverlay, volumeAnalysisResult, analysisSummary, threeBusyLabel } from './ui-shell.js?v=20261005-build440';
-import { dispose, buildSmoothIsoMesh, geometryFromSourcePositions, buildEditableRunsGroup } from './surface-mesh.js?v=20261005-build440';
-import { ensureSegmentBaseRuns, getFinalSegmentRuns, sourceAnalysisBlockDepth, sourceSegmentRunBlockGpu, sourceSegmentMaskBlock } from './segment-runs.js?v=20261005-build440';
-import { maskFromAnalysisRuns, unionAnalysisRuns, analysisRunsVoxelCount, unionRunArrays, intersectRunArrays, subtractRunArrays, componentsFromRuns, analysisRunsOverlap, componentsFromRunsAsync, analysisRunsContain, sourceResultToAnalysisRuns, maskToAnalysisRuns, RunUnionFind, consumeGpuAnalysisRuns, sourceRunSlice } from './run-length.js?v=20261005-build440';
-import { frameYield } from './utils.js?v=20261005-build440';
-import { updateSectionClipPlaneWorld } from './section-view.js?v=20261005-build440';
-import { setGpuComputeBackend, ensureGpuFilterDevice, gpuValidationScope, runGpuSourceFilters, gpuFilterRuntime } from './gpu-compute.js?v=20261005-build440';
-import { clearSegmentEditCache, clearAnalysisHighlight } from './segment-ui.js?v=20261005-build440';
-import { clearCutResultPreview, updateThreeEditUi, analysisRegionById, editTargetRegions, cutRunsFromVoxelStroke, cutWidthMm, updateAnalysisEditorControls } from './edit-tools.js?v=20261005-build440';
-import { currentFilterSignature, sourceFilterStages, readMemoryRegion, sourceFilterRuntime, getFilteredSourcePlaneValues, getCachedSourceSlice } from './source-filters.js?v=20261005-build440';
-import { downloadBlob } from './utils.js?v=20261005-build440';
-import { renderAnalysisResults, disposeAnalysisRegionMesh, setAnalysisFocusedRegion } from './analysis-results.js?v=20261005-build440';
-import { tr } from './i18n.js?v=20261005-build440';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261005-build440';
-import { renderAll } from './mpr-render.js?v=20261005-build440';
-import { makeVoxelProjector, polygonBounds, componentFullyInside } from './lasso.js?v=20261005-build440';
+import { eachGeometryTriangleRange, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces, groupToBinaryStl } from './mesh-geometry.js?v=20261005-build441';
+import { surfaceSmoothingActive } from './settings.js?v=20261005-build441';
+import { SEGMENT_PRESET_ORDER, segmentState, getProcessedSegmentMask, segmentEditState, segmentEditActive, segmentNeedsGlobalMask } from './segments.js?v=20261005-build441';
+import { request3DRender } from './scene3d.js?v=20261005-build441';
+import { threeLabel, footer, analysisEditTargetSelect, selected, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutOffset, threeEditOverlay, volumeAnalysisResult, analysisSummary, threeBusyLabel } from './ui-shell.js?v=20261005-build441';
+import { dispose, buildSmoothIsoMesh, geometryFromSourcePositions, buildEditableRunsGroup } from './surface-mesh.js?v=20261005-build441';
+import { ensureSegmentBaseRuns, getFinalSegmentRuns, sourceAnalysisBlockDepth, sourceSegmentRunBlockGpu, sourceSegmentMaskBlock } from './segment-runs.js?v=20261005-build441';
+import { maskFromAnalysisRuns, unionAnalysisRuns, analysisRunsVoxelCount, unionRunArrays, intersectRunArrays, subtractRunArrays, componentsFromRuns, analysisRunsOverlap, componentsFromRunsAsync, analysisRunsContain, sourceResultToAnalysisRuns, maskToAnalysisRuns, RunUnionFind, consumeGpuAnalysisRuns, sourceRunSlice } from './run-length.js?v=20261005-build441';
+import { frameYield } from './utils.js?v=20261005-build441';
+import { updateSectionClipPlaneWorld } from './section-view.js?v=20261005-build441';
+import { setGpuComputeBackend, ensureGpuFilterDevice, gpuValidationScope, runGpuSourceFilters, gpuFilterRuntime } from './gpu-compute.js?v=20261005-build441';
+import { clearSegmentEditCache, clearAnalysisHighlight } from './segment-ui.js?v=20261005-build441';
+import { clearCutResultPreview, updateThreeEditUi, analysisRegionById, editTargetRegions, cutRunsFromVoxelStroke, cutWidthMm, updateAnalysisEditorControls } from './edit-tools.js?v=20261005-build441';
+import { currentFilterSignature, sourceFilterStages, readMemoryRegion, sourceFilterRuntime, getFilteredSourcePlaneValues, getCachedSourceSlice } from './source-filters.js?v=20261005-build441';
+import { downloadBlob } from './utils.js?v=20261005-build441';
+import { renderAnalysisResults, disposeAnalysisRegionMesh, setAnalysisFocusedRegion } from './analysis-results.js?v=20261005-build441';
+import { tr } from './i18n.js?v=20261005-build441';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261005-build441';
+import { renderAll } from './mpr-render.js?v=20261005-build441';
+import { makeVoxelProjector, polygonBounds, componentFullyInside } from './lasso.js?v=20261005-build441';
 export function clearThreeEditOverlay(){const ctx=threeEditOverlay?.getContext('2d');ctx?.clearRect(0,0,threeEditOverlay.width,threeEditOverlay.height)}
 // build 408 (owner): 14 colours (the 8 earlier ones keep their order; VR / AR show up to 14 distinct ones)
 export const ANALYSIS_REGION_COLORS=[0x00d8ff,0xff9f1c,0x7ae582,0xff4d8d,0xf4e409,0x9b5cff,0xff5a5f,0x2ec4b6,0x4361ee,0xf15bb5,0xb5e48c,0xc08552,0x80ffdb,0xe0aaff];
@@ -204,6 +204,60 @@ export async function selectRegionsInLasso(poly,canvas,camera){
  if(pieces)returnToNavigate();
  updateThreeEditUi(pieces?(currentLanguage==='ja'?pieces+'個の塊を選択しました · 「選択領域を削除」で削除できます':pieces+' piece(s) selected · use Delete selected region'):(currentLanguage==='ja'?'囲みの中に完全に入っている領域がありません':'No piece lies completely inside the loop'));
 }
+// build 441: "n selected" after a selection change (the 3D view shows no tick, only the list does)
+export function selectionCountText(message){
+ const n=analysisRegions.filter(r=>r.selected).length;
+ return message+(currentLanguage==='ja'?' · 選択中 '+n+' 件':' · '+n+' selected');
+}
+// build 441 (owner): untick every result (the results stay; "delete selected" / "keep selected only" then act on nothing)
+export function deselectAllAnalysisRegions(){
+ for(const r of analysisRegions)r.selected=false;
+ setAnalysisFocusedRegion(null);updateAnalysisEditorControls();
+ updateThreeEditUi(selectionCountText(currentLanguage==='ja'?'選択をすべて外しました':'All regions unselected'));
+}
+// build 441 (owner): lasso unselect — the pieces of the ticked results that lie completely inside the loop leave the
+// selection. A result whose pieces all lie inside is unticked; one only partly inside is split into the pieces inside
+// (a new unticked result, same colour) and the rest (still ticked), so no voxel leaves the results and the colours stay.
+export async function deselectRegionsInLasso(poly,canvas,camera){
+ if(!volume||!sceneState?.obj||volumeAnalysisBusy)return;
+ const v=current3DVolume||volume,[vx,vy,vz]=v.spacing,w=v.columns,h=v.rows,d=v.slices,vox=vx*vy*vz;
+ const keys=analysisEditTargetMode==='auto'?SEGMENT_PRESET_ORDER:[analysisEditTargetMode];
+ sceneState.obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
+ const rect=canvas.getBoundingClientRect(),viewProjection=new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+ const project=makeVoxelProjector(v,sceneState.obj.matrixWorld.elements,viewProjection.elements,rect.width,rect.height),bounds=polygonBounds(poly);
+ setVolumeAnalysisBusy(true);set3DBusy(true,currentLanguage==='ja'?'囲み範囲の選択を外しています…':'Unselecting inside the loop…',false);await frameYield();
+ let pieces=0,failed=false;
+ try{
+  for(const r of analysisRegions.filter(r=>r.selected&&r.runsBySlice&&r.segmentKeys.some(k=>keys.includes(k)))){
+   const comps=await componentsFromRunsAsync(r.runsBySlice,w,h,d,(phase,done,total)=>{set3DBusyLabel((currentLanguage==='ja'?'囲み範囲の選択を外しています… ':'Unselecting inside the loop… ')+(total?Math.round(done/total*100)+'%':''))});
+   const inside=[],outside=[];
+   for(let i=0;i<comps.length;i++){(componentFullyInside(comps[i].runsBySlice,project,poly,{bounds})?inside:outside).push(comps[i]);if(i%200===199)await frameYield()}
+   if(!inside.length)continue;
+   pieces+=inside.length;
+   if(!outside.length){r.selected=false;if(analysisFocusedRegionId===r.id)setAnalysisFocusedRegionId(null);continue}
+   const union=list=>{let runs=list[0].runsBySlice,voxels=list[0].voxels;for(let i=1;i<list.length;i++){runs=unionRunArrays(runs,list[i].runsBySlice,d);voxels+=list[i].voxels}return{runs,voxels}};
+   const kept=union(outside),left=union(inside);
+   disposeAnalysisRegionMesh(r);r.runsBySlice=kept.runs;r.voxels=kept.voxels;r.mm3=kept.voxels*vox;r.merged=outside.length>1;
+   const id=incNextAnalysisRegionId(false),split={id,regionId:'r'+id,groupId:inside.length>1?'g'+id:null,key:r.key,segmentKeys:[...r.segmentKeys],runsBySlice:left.runs,voxels:left.voxels,mm3:left.voxels*vox,merged:inside.length>1,selected:false,focused:false,visible:r.visible,meshGroup:null,color:r.color};
+   analysisRegions.splice(analysisRegions.indexOf(r)+1,0,split);
+   await attachAnalysisRegion(r,v);await attachAnalysisRegion(split,v);
+  }
+ }catch(e){failed=true;if(String(e.message||e)!=='__SUPERSEDED__'){console.error(e);renderAnalysisResults((currentLanguage==='ja'?'囲み解除エラー: ':'Lasso unselect error: ')+String(e.message||e))}}
+ finally{setVolumeAnalysisBusy(false);set3DBusy(false,'',false)}
+ setAnalysisFocusedRegion(analysisFocusedRegionId,null,false);syncVolumeAnalysisOverlay();updateAnalysisEditorControls();
+ if(failed)return;
+ if(pieces)returnToNavigate();
+ updateThreeEditUi(selectionCountText(pieces?(currentLanguage==='ja'?pieces+'個の塊の選択を外しました':'Unselected '+pieces+' piece(s)'):(currentLanguage==='ja'?'囲みの中に完全に入っている選択中の塊がありません':'No selected piece lies completely inside the loop')));
+}
+// build 441 (owner): Select region on a result toggles its tick; unticking also drops the focus, else "delete selected"
+// would still fall back to it (editTargetRegions). Returns the new state.
+export function toggleAnalysisRegionSelection(region,voxel=null){
+ if(region.selected){
+  region.selected=false;if(analysisFocusedRegionId===region.id)setAnalysisFocusedRegion(null);else renderAnalysisResults();
+  updateAnalysisEditorControls();returnToNavigate();updateThreeEditUi(selectionCountText(currentLanguage==='ja'?'選択を外しました':'Region unselected'));return false;
+ }
+ region.selected=true;setAnalysisFocusedRegion(region.id,voxel);updateAnalysisEditorControls();returnToNavigate();updateThreeEditUi(selectionCountText(currentLanguage==='ja'?'領域を選択しました · 「選択領域を削除」で削除できます':'Region selected · use Delete selected region'));return true;
+}
 export async function analyzeEditRegionAtPointer(event,canvas,camera){
  if(!volume||!sceneState?.obj||volumeAnalysisBusy)return;
  const preferredKey=analysisEditTargetMode==='auto'?null:analysisEditTargetMode;
@@ -219,7 +273,8 @@ export async function analyzeEditRegionAtPointer(event,canvas,camera){
  }
  const key=preferredKey||picked.key;if(!key)return;
  const existing=analysisRegionAtVoxel(picked.x,picked.y,picked.z);
- if(existing?.segmentKeys?.includes(key)){setAnalysisFocusedRegion(existing.id,{x:picked.x,y:picked.y,z:picked.z});updateAnalysisEditorControls();returnToNavigate();updateThreeEditUi(currentLanguage==='ja'?'領域を選択しました · 「選択領域を削除」で削除できます':'Region selected · use Delete selected region');return}
+ // build 441: a result already there toggles its tick (also after a project load)
+ if(existing?.segmentKeys?.includes(key)){toggleAnalysisRegionSelection(existing,{x:picked.x,y:picked.y,z:picked.z});return}
  set3DBusy(true,currentLanguage==='ja'?'領域を解析中…':'Analyzing region…',false);await frameYield();
  let ok=false;try{ok=await analyzeVolumeAtVoxel(picked.x,picked.y,picked.z,key,false)}finally{set3DBusy(false,'',false)}
  if(ok){updateAnalysisEditorControls();returnToNavigate();updateThreeEditUi(currentLanguage==='ja'?'領域を選択しました · 「選択領域を削除」で削除できます':'Region selected · use Delete selected region')}
@@ -301,14 +356,15 @@ export async function trimAnalysisRegionsAfterEdit(key,refs){
  renderAnalysisResults();syncVolumeAnalysisOverlay();renderAll();request3DRender();
 }
 // build 408: analysis results in the project file (kept like an edit): meta + runs per region
+// build 441: the tick (selection) is saved too; projects saved before 441 load with every result unticked, as before
 export function analysisRegionsForProject(){
- return analysisRegions.filter(r=>r.runsBySlice&&r.voxels>0).map(r=>({key:r.key,segmentKeys:[...(r.segmentKeys||[])],color:Number(r.color??ANALYSIS_REGION_COLORS[0]),visible:r.visible!==false,merged:!!r.merged,groupId:r.groupId||null,runsBySlice:r.runsBySlice}));
+ return analysisRegions.filter(r=>r.runsBySlice&&r.voxels>0).map(r=>({key:r.key,segmentKeys:[...(r.segmentKeys||[])],color:Number(r.color??ANALYSIS_REGION_COLORS[0]),visible:r.visible!==false,selected:!!r.selected,merged:!!r.merged,groupId:r.groupId||null,runsBySlice:r.runsBySlice}));
 }
 export async function restoreAnalysisRegions(list,v=current3DVolume||volume){
  if(!v||!list?.length)return;const vox=v.spacing[0]*v.spacing[1]*v.spacing[2];
  for(const e of list){
   const voxels=analysisRunsVoxelCount(e.runsBySlice);if(!voxels)continue;
-  const id=incNextAnalysisRegionId(false),region={id,regionId:'r'+id,groupId:e.groupId||null,key:e.key,segmentKeys:e.segmentKeys,runsBySlice:e.runsBySlice,voxels,mm3:voxels*vox,merged:!!e.merged,selected:false,focused:false,visible:e.visible!==false,meshGroup:null,color:e.color};
+  const id=incNextAnalysisRegionId(false),region={id,regionId:'r'+id,groupId:e.groupId||null,key:e.key,segmentKeys:e.segmentKeys,runsBySlice:e.runsBySlice,voxels,mm3:voxels*vox,merged:!!e.merged,selected:!!e.selected,focused:false,visible:e.visible!==false,meshGroup:null,color:e.color};
   analysisRegions.push(region);await attachAnalysisRegion(region,v);
  }
  // build 428: the project's filters are already replayed: the results belong to them
