@@ -60,7 +60,8 @@ export function withSpacingWeights(stage, spacing) {
 // of the finest axis are scaled by these to cover the same distance in mm along every axis.
 export const spacingRatios = p => spacingParams(p).map(Math.sqrt);
 // Bilateral: half-width in voxels per axis, clamp(ceil(1.5 * sigma * ratio_a), 0, 3). The finest axis (ratio 1) keeps the
-// lower bound 1 of the isotropic filter, so isotropic data gets exactly [r, r, r] as before.
+// lower bound 1 of the isotropic filter, so isotropic data gets exactly [r, r, r] as before. On a coarser axis (ratio < 1)
+// the radius is 0 only when sigma = 0: any sigma > 0 rounds up to at least 1.
 export const bilateralRadii = (spatialSigma, ratios) => ratios.map(r => Math.min(3, Math.max(r >= 1 ? 1 : 0, Math.ceil(spatialSigma * 1.5 * r))));
 // NLM: search / patch radius per axis = round(base * ratio_a) (a coarse axis may drop to 0 = no search / patch along it).
 export function nlmRadii(searchRadius, patchRadius, ratios) {

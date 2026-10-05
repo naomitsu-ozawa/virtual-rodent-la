@@ -182,9 +182,9 @@ describe('isotropic data (or no spacing): output equals main exactly (bit for bi
       same(worker[key](data, n, n, n, { ...PARAMS[key], sp: [1, 1, 1] }), want, key + ' sp=1');
     });
   }
-  it('boxBlur3D (also used by the app outside Unsharp) is unchanged without sp', async () => {
+  it('boxBlur3D (used by the CPU Unsharp; app.js only imports it) is unchanged without sp', async () => {
     const v = vol(n, data), a = await boxBlur3D(v, 2), b = await boxBlur3D(v, 2, null), c = await boxBlur3D(v, 2, [1, 1, 1]);
-    same(a, b); close(a, c, 1e-4); // sp = [1,1,1] takes the weighted path (weights are all 1 there): same up to rounding
+    same(a, b); same(a, c); // sp = [1,1,1] takes the weighted path (weights are all 1 there): same, bit for bit
   });
 });
 
@@ -255,9 +255,6 @@ describe('CPU, worker and WGSL treat the weights the same way', () => {
     expect(gc).toContain("dispatch('boxMean',[0,ux.K],[0,ux.A])");
     expect(gc).toContain("dispatch('boxMean',[1,uy.K],[0,uy.A])");
     expect(gc).toContain("dispatch('unsharpCombine',[0,uz.K],[p.amount,p.thresholdHU,uz.A]");
-  });
-  it('boxMean keeps the params reference of PR #95 (all four bindings used)', () => {
-    expect(gpuFilterShader('boxMean', 64)).toContain('let keepParams=params[0];');
   });
 });
 

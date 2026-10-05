@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX } from './filter-units.js?v=20261005-build456';
+import { ANISO_LAMBDA_MIN, ANISO_LAMBDA_MAX } from './filter-units.js?v=20261005-build457';
 export const AIRDIST_X_MAX_N=64;
 export function gpuFilterShader(kind,workgroupSize){
  const header=`
@@ -199,13 +199,13 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  // Separable unsharp mask (build 271): the clipped box mean is a product of 1D
  // means, so x and y passes ('boxMean') then a z pass fused with the sharpening
  // ('unsharpCombine', original CT at binding 4) give the same result as the cube
- // loop below with 3(2r+1) reads per voxel instead of (2r+1)³.
+ // loop (since removed) with 3(2r+1) reads per voxel instead of (2r+1)³.
  // boxMean: meta[4]=axis, meta[5]=taps K on each side, params[1]=A (half-width of the box in voxels along the axis,
-// (R+0.5)*hmin/h_a); voxel k weighs clamp(A-|k|+0.5,0,1) (all 1 when isotropic = the plain box). params[0] is unused.
+ // (R+0.5)*hmin/h_a); voxel k weighs clamp(A-|k|+0.5,0,1) (all 1 when isotropic = the plain box). params[0] is unused.
  if(kind==='boxMean')return header+`
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid:vec3<u32>){
- let i=gid.x;if(i>=meta[3]){return;}let keepParams=params[0];let c=vec3<i32>(coord(i));let axis=meta[4];let r=i32(meta[5]);
+ let i=gid.x;if(i>=meta[3]){return;}let c=vec3<i32>(coord(i));let axis=meta[4];let r=i32(meta[5]);
  let dims=vec3<i32>(i32(meta[0]),i32(meta[1]),i32(meta[2]));var sum=0.0;var count=0.0;
  for(var k=-r;k<=r;k++){
   var q=c;if(axis==0u){q.x=c.x+k;}else if(axis==1u){q.y=c.y+k;}else{q.z=c.z+k;}
@@ -216,7 +216,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  dst[i]=sum/max(count,0.000001);
 }`;
  // unsharpCombine: src = x/y box mean, binding 4 = original; meta[5]=taps K; params = amount, thresholdHU
- // (as 'unsharp'; build 447: no volume range), A of the z axis (see boxMean).
+ // (the Unsharp stage's param layout; build 447: no volume range), A of the z axis (see boxMean).
  if(kind==='unsharpCombine')return header+`
 @group(0) @binding(4) var<storage, read> orig: array<f32>;
 @compute @workgroup_size(${workgroupSize})
@@ -225,19 +225,6 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
  for(var k=-r;k<=r;k++){let zz=i32(c.z)+k;if(zz<0||zz>=d){continue;}let wk=clamp(params[2]-f32(abs(k))+0.5,0.0,1.0);sum+=wk*src[idx(c.x,c.y,u32(zz))];count+=wk;}
  let blur=sum/max(count,0.000001);let v=orig[i];let detail=v-blur;let threshold=params[1];
  dst[i]=select(v,v+params[0]*detail,abs(detail)>=threshold);
-}`;
- if(kind==='unsharp')return header+`
-@compute @workgroup_size(${workgroupSize})
-fn main(@builtin(global_invocation_id) gid:vec3<u32>){
- let i=gid.x;if(i>=meta[3]){return;}let c=coord(i);let w=i32(meta[0]);let h=i32(meta[1]);let d=i32(meta[2]);let r=i32(meta[4]);
- var sum=0.0;var count=0.0;
- for(var dz:i32=-r;dz<=r;dz=dz+1){let zz=i32(c.z)+dz;if(zz<0){continue;}if(zz>=d){continue;}
-  for(var dy:i32=-r;dy<=r;dy=dy+1){let yy=i32(c.y)+dy;if(yy<0){continue;}if(yy>=h){continue;}
-   for(var dx:i32=-r;dx<=r;dx=dx+1){let xx=i32(c.x)+dx;if(xx<0){continue;}if(xx>=w){continue;}sum+=src[u32(zz)*meta[0]*meta[1]+u32(yy)*meta[0]+u32(xx)];count+=1.0;}
-  }
- }
- let blur=sum/max(count,1.0);let detail=src[i]-blur;let threshold=params[1];
- dst[i]=select(src[i],src[i]+params[0]*detail,abs(detail)>=threshold);
 }`;
  if(kind==='bilateral')return header+`
 @compute @workgroup_size(${workgroupSize})
@@ -649,7 +636,7 @@ fn main(@builtin(global_invocation_id) gid:vec3<u32>){
 export function normalizeVrlWgsl(source){
  return source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
 }
-export const GPU_PREWARM_KINDS=['gaussian','gaussianK','packReduce','median','sigmoid','spikeHole','anisotropic','tv','unsharp','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','airDistX','classRunCount','classRunWrite','boxMean','unsharpCombine'];
+export const GPU_PREWARM_KINDS=['gaussian','gaussianK','packReduce','median','sigmoid','spikeHole','anisotropic','tv','bilateral','nlm','extract','maskExtract','faceCompact','meshCount','meshWrite','meshCornerInit','meshCornerSmooth','meshWriteSmooth','analysisRunCount','analysisRunWrite','airDist','airDistX','classRunCount','classRunWrite','boxMean','unsharpCombine'];
 
 // weights of n passes of out=b*(1-s)+s*(a+2b+c)/4, i.e. the 3-tap kernel
 // [s/4, 1-s/2, s/4] convolved with itself n times (length 2n+1). Equal to the
