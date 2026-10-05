@@ -4616,9 +4616,18 @@ be typable.
 Checks: lint, unit tests, boot-check, slider-entry, exclusive-segments,
 sigmoid, region-deselect, analysis-project.
 
-## Handoff (after build 442)
+## Build 443 — practice data: bundled project removed
 
-State: build 442 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; 441: unselect results — click toggle, lasso unselect, unselect all, ticks saved; 442: wheel one step a notch, typed slider values, CT sliders by 1 HU (fixes the Sigmoid centre / WC snap on project load); PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Owner: remove the practice project for now; they will make a new one (the
+saved analysis results did not match the loaded segments, see 441 / 442).
+docs/demo/sample1/project.vrlab deleted; 練習用データ opens bare (a missing
+project is silent, app.js loadSampleProject). The tools' SAMPLE_PROJECT=1
+has nothing to load until a new file is added.
+Checks: lint, unit tests, boot-check.
+
+## Handoff (after build 443)
+
+State: build 443 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; 441: unselect results — click toggle, lasso unselect, unselect all, ticks saved; 442: wheel one step a notch, typed slider values, CT sliders by 1 HU (fixes the Sigmoid centre / WC snap on project load); 443: practice project removed, owner makes a new one; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
