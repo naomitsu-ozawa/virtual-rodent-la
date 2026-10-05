@@ -4439,6 +4439,16 @@ Checks: lint, unit tests, boot-check, vr-gpu-prepare-check, vr-volume-check
 (plain and FILTER=1), edit-consistency, result-2d, plane-sync, mpr-alpha,
 processed-filter, plane-orientation, sigmoid — all OK.
 
+Exclusive (non-overlapping) segments — design open (owner: wants it, still
+thinking). Practice project overlap: fat −250…81 and soft −93…248 share
+−93…81 HU (double-counted today). Options shown: A one shared boundary per
+neighbour pair (linked sliders, no gaps), B priority order (higher segment
+takes the overlap; show the effective range on the lower one; reorder with
+↑↓; proposed default bone → fat → soft → lung), C split at the overlap's
+middle. Owner finds B more intuitive, wants to refine before building.
+Either way: closing / hole fill can add voxels across a neighbour, so the
+final runs need a subtraction of higher-priority segments as well.
+
 ## Handoff (after build 437)
 
 State: build 437 on main (PR #86 merged 2026-10-05, builds 430–437); work branch claude/dicom-viewer-handoff-eaqyyu re-cut from main, next PR is new (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
