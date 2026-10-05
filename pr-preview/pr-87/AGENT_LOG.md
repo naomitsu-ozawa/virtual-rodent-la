@@ -4500,9 +4500,24 @@ exclusive-segments-check, progress-modal, analysis-project (plain and
 FILTER=1), edit-consistency, result-2d, plane-sync, mpr-alpha,
 processed-filter, plane-orientation, sigmoid.
 
-## Handoff (after build 438)
+## Build 439 — drag the segment cards to set the priority
 
-State: build 438 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments, new PR) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Owner: change the card order by dragging.
+- Each segment card has a ⋮⋮ handle (segment-ui.js installSegmentReorder):
+  pointer events (mouse and touch alike), the card moves live under the
+  pointer; on release the card order becomes segmentExclusive.order and
+  every segment whose range in use changed is recomputed (commit). Move /
+  up are followed on the window: moving the card in the DOM drops the
+  handle's pointer capture (first version lost the release — kept on the
+  wip/segment-card-drag branch meanwhile, now merged here).
+- exclusive-segments-check: a real mouse drag of soft's handle above fat →
+  cards bone, soft, fat; soft keeps −93…248, fat in use −249…−93 (card note).
+Checks: lint, unit tests, boot-check, exclusive-segments-check,
+progress-modal, edit-consistency, plane-sync.
+
+## Handoff (after build 439)
+
+State: build 438 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

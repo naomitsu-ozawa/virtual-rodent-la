@@ -870,3 +870,8 @@ footer #footer:empty{display:block}
 .segment-effective{margin:-2px 0 6px;font-size:11px;line-height:1.35;color:var(--muted,#9fb3c3)}
 .segment-effective.is-hidden{display:none}
 .segment-exclusive-row select{width:100%}
+
+/* build 439: drag the segment cards (⋮⋮) to set their priority */
+.segment-drag-handle{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;padding:2px 6px;margin-right:4px;color:var(--muted,#9fb3c3);font-size:14px;line-height:1}
+.segment-drag-handle:active{cursor:grabbing}
+.segment-card.is-dragging{opacity:.75;outline:2px solid var(--accent,#3d8bfd);outline-offset:2px}
