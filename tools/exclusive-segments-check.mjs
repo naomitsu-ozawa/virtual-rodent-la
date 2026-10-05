@@ -65,7 +65,17 @@ const r=await pg.evaluate(async()=>{
  {const f=await sr.getFinalSegmentRuns('fat',vol),s2=await sr.getFinalSegmentRuns('soft',vol);out.closingBoth=rl.analysisRunsVoxelCount(rl.intersectRunArrays(f,s2,d))}
  return out;
 });
+// build 439: drag the soft card's ⋮⋮ above the fat card (pointer events, as on a touch screen): soft then takes the overlap
+await pg.evaluate(()=>{document.querySelector('[data-seg-closing="fat"]').value='0';document.querySelector('[data-seg-closing="fat"]').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('[data-seg-closing="fat"]').dispatchEvent(new Event('change',{bubbles:true}))});
+await idle();
+const h=pg.locator('[data-seg-drag="soft"]'),fatCard=pg.locator('[data-segment="fat"]');await fatCard.scrollIntoViewIfNeeded();await h.scrollIntoViewIfNeeded();
+const hb=await h.boundingBox(),fb=await fatCard.boundingBox();
+await pg.mouse.move(hb.x+hb.width/2,hb.y+hb.height/2);await pg.mouse.down();
+for(let i=1;i<=12;i++)await pg.mouse.move(hb.x+hb.width/2,hb.y+hb.height/2+(fb.y+fb.height*0.2-(hb.y+hb.height/2))*i/12);
+await pg.mouse.up();await idle();
+r.drag=await pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,sg=await import('./segments.js'+v);const S=sg.segmentState;
+ return{order:[...sg.segmentExclusive.order],cards:[...document.querySelectorAll('#segment-controls [data-segment]')].filter(c=>!c.classList.contains('is-hidden')).map(c=>c.dataset.segment),soft:[S.soft.min,S.soft.max],fat:[S.fat.min,S.fat.max],fatUser:[S.fat.userMin,S.fat.userMax],softUser:[S.soft.userMin,S.soft.userMax],fatNote:document.querySelector('[data-seg-effective="fat"]').textContent}});
 console.log(JSON.stringify(r));
-const ok=r.off.both>0&&r.priority.both===0&&r.priority.union===r.priority.fat+r.priority.soft&&r.hidden.soft===r.priority.soft&&r.nested.dropped?.length===1&&r.nested.note.length>0&&JSON.stringify(r.roundTrip.before)===JSON.stringify(r.roundTrip.after)&&r.cards.join()==='bone,fat,soft';
+const ok=r.drag.cards.join()==='bone,soft,fat'&&r.drag.order.slice(0,3).join()==='bone,soft,fat'&&r.drag.soft[0]===r.drag.softUser[0]&&r.drag.fat[1]<r.drag.softUser[0]&&r.drag.fatNote.length>0&&r.off.both>0&&r.priority.both===0&&r.priority.union===r.priority.fat+r.priority.soft&&r.hidden.soft===r.priority.soft&&r.nested.dropped?.length===1&&r.nested.note.length>0&&JSON.stringify(r.roundTrip.before)===JSON.stringify(r.roundTrip.after)&&r.cards.join()==='bone,fat,soft';
 await b.close();srv.close();
 if(errors.length||!ok){console.error('exclusive segments check FAILED');process.exit(1)}console.log('exclusive segments check OK');

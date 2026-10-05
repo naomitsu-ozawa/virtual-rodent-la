@@ -11,6 +11,33 @@ import { tr } from './i18n.js?v=20261005-build438';
 import { niceCtStep, formatCtValue } from './utils.js?v=20261005-build438';
 import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261005-build438';
 import { renderAll } from './mpr-render.js?v=20261005-build438';
+// build 439 (owner: change the card order by dragging): a pointer drag on a card's ⋮⋮ handle (mouse and touch alike)
+// moves the card live; on release the new card order becomes the priority (segment-exclusive.js) and every segment
+// whose range in use changed is recomputed
+export function installSegmentReorder(onCommit){
+ let drag=null;
+ const cards=()=>[...segmentControls.querySelectorAll('[data-segment]')];
+ for(const handle of segmentControls.querySelectorAll('[data-seg-drag]')){
+  handle.addEventListener('pointerdown',e=>{
+   const card=handle.closest('[data-segment]');if(!card)return;
+   drag={card,handle,id:e.pointerId,before:cards().map(c=>c.dataset.segment).join()};handle.setPointerCapture?.(e.pointerId);card.classList.add('is-dragging');e.preventDefault();
+  });
+  // moving the card in the DOM drops the handle's pointer capture: move / up are followed on the window
+  window.addEventListener('pointermove',e=>{
+   if(!drag||e.pointerId!==drag.id||drag.handle!==handle)return;
+   const over=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-segment]');
+   if(!over||over===drag.card||over.classList.contains('is-hidden')||over.parentElement!==drag.card.parentElement)return;
+   const r=over.getBoundingClientRect(),after=e.clientY>r.top+r.height/2;
+   over.parentElement.insertBefore(drag.card,after?over.nextSibling:over);
+  });
+  const end=e=>{
+   if(!drag||e.pointerId!==drag.id)return;const d=drag;drag=null;d.card.classList.remove('is-dragging');
+   const order=cards().map(c=>c.dataset.segment);if(order.join()===d.before)return;
+   segmentExclusive.order=order.filter(k=>SEGMENT_PRESET_ORDER.includes(k));onCommit?.();
+  };
+  window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);
+ }
+}
 export function renderSegmentPresets(){
  const active=new Set(SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active));
  // build 438: the cards stand in the priority order (top = first), see segment-exclusive.js
