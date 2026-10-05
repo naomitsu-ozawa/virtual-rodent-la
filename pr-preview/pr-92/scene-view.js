@@ -3,17 +3,18 @@
 // verbatim from app.js; each factory takes the locals they used as parameters.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { frameYield } from './utils.js?v=20261005-build449';
-import { tr } from './i18n.js?v=20261005-build449';
-import { analysisCutScreen, analysisEditTargetMode, analysisEditTool, current3DVolume, sceneState, sectionViewOpen, sectionViewPlane, setAnalysisCutScreen, setAnalysisEditTargetKey, threeRenderMode, volume } from './state.js?v=20261005-build449';
-import { planes, sectionPosition, threeEditOverlay, viewport } from './ui-shell.js?v=20261005-build449';
-import { adoptRendererGpuDevice, requestVrlGpuDevice } from './gpu-compute.js?v=20261005-build449';
-import { request3DRender } from './scene3d.js?v=20261005-build449';
-import { updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261005-build449';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261005-build449';
-import { rebindWebGpuSectionClipGroup, sectionLocalPoint, updateSectionClipPlaneWorld, updateSectionViewUi, sectionLocalStep } from './section-view.js?v=20261005-build449';
-import { renderSectionPlaneLive } from './mpr-render.js?v=20261005-build449';
-import { cutPointerVoxel } from './analysis-ops.js?v=20261005-build449';
+import { frameYield } from './utils.js?v=20261005-build450';
+import { tr } from './i18n.js?v=20261005-build450';
+import { analysisCutScreen, analysisEditTargetMode, analysisEditTool, current3DVolume, sceneState, sectionViewOpen, sectionViewPlane, setAnalysisCutScreen, setAnalysisEditTargetKey, threeRenderMode, volume } from './state.js?v=20261005-build450';
+import { planes, sectionPosition, threeEditOverlay, viewport } from './ui-shell.js?v=20261005-build450';
+import { adoptRendererGpuDevice, requestVrlGpuDevice } from './gpu-compute.js?v=20261005-build450';
+import { request3DRender } from './scene3d.js?v=20261005-build450';
+import { canvasBackground3d, onCanvasThemeChange } from './canvas-theme.js?v=20261005-build450';
+import { updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261005-build450';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261005-build450';
+import { rebindWebGpuSectionClipGroup, sectionLocalPoint, updateSectionClipPlaneWorld, updateSectionViewUi, sectionLocalStep } from './section-view.js?v=20261005-build450';
+import { renderSectionPlaneLive } from './mpr-render.js?v=20261005-build450';
+import { cutPointerVoxel } from './analysis-ops.js?v=20261005-build450';
 // Orientation axes widget attached to the camera (bottom-left XYZ).
 export function makeAxisWidget(camera){
  const axisWidget=new THREE.Group();axisWidget.name='orientation_axes';camera.add(axisWidget);
@@ -42,13 +43,16 @@ export async function create3DRenderer(){
  if(!renderer){
   renderer=new WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,2));backend='WEBGL';
  }
+ // build 450: the background follows the theme (WebGL clear colour; the WebGPU canvas is transparent over the card's CSS backdrop)
+ const applyThemeBackground=()=>{if(backend==='WEBGL'){const c=canvasBackground3d();if(c)renderer.setClearColor(new THREE.Color('rgb('+c.join(',')+')'),1)}};
+ applyThemeBackground();onCanvasThemeChange(()=>{applyThemeBackground();request3DRender()});
  return{renderer,backend};
 }
 // 3D view overlays: rotation pivot indicator, view buttons container and the help button/panel.
 export function makeViewOverlays(renderer){
  const pivotIndicator=document.createElement('div');
- Object.assign(pivotIndicator.style,{position:'absolute',left:'50%',top:'50%',width:'18px',height:'18px',transform:'translate(-50%,-50%)',border:'1px solid rgba(255,255,255,.78)',borderRadius:'50%',boxSizing:'border-box',pointerEvents:'none',zIndex:'12',opacity:'0',transition:'opacity 90ms linear'});
- const pivotDot=document.createElement('div');Object.assign(pivotDot.style,{position:'absolute',left:'50%',top:'50%',width:'4px',height:'4px',transform:'translate(-50%,-50%)',borderRadius:'50%',background:'rgba(255,255,255,.92)'});
+ Object.assign(pivotIndicator.style,{position:'absolute',left:'50%',top:'50%',width:'18px',height:'18px',transform:'translate(-50%,-50%)',border:'1px solid rgba(255,255,255,.78)',boxShadow:'0 0 0 1px rgba(0,0,0,.55),inset 0 0 0 1px rgba(0,0,0,.35)',borderRadius:'50%',boxSizing:'border-box',pointerEvents:'none',zIndex:'12',opacity:'0',transition:'opacity 90ms linear'});
+ const pivotDot=document.createElement('div');Object.assign(pivotDot.style,{position:'absolute',left:'50%',top:'50%',width:'4px',height:'4px',transform:'translate(-50%,-50%)',borderRadius:'50%',background:'rgba(255,255,255,.92)',boxShadow:'0 0 0 1px rgba(0,0,0,.55)'});
  pivotIndicator.appendChild(pivotDot);viewport.appendChild(pivotIndicator);
  const viewControls=document.createElement('div');viewControls.setAttribute('aria-label','3D view controls');
  Object.assign(viewControls.style,{position:'absolute',right:'10px',bottom:'10px',display:'flex',gap:'5px',padding:'5px',border:'1px solid rgba(122,145,154,.55)',borderRadius:'9px',background:'rgba(10,14,16,.78)',backdropFilter:'blur(5px)',zIndex:'13',pointerEvents:'auto'});
@@ -164,7 +168,7 @@ export function makeCutTools(renderer,camera){
   planes[p].slider.value=idx;planes[p].label.textContent=idx+1;if(sectionPosition)sectionPosition.value=idx;
   updateMpr3DPlanePositions();updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender();renderSectionPlaneLive(p);
  };
- const drawEditStroke=mode=>{const ctx=threeEditOverlay?.getContext('2d');if(!ctx)return;ctx.clearRect(0,0,threeEditOverlay.width,threeEditOverlay.height);if(!analysisCutScreen.length)return;ctx.save();ctx.strokeStyle='#00e5ff';ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round';ctx.setLineDash(mode==='line'?[8,5]:[]);ctx.beginPath();ctx.moveTo(analysisCutScreen[0].x,analysisCutScreen[0].y);for(let i=1;i<analysisCutScreen.length;i++)ctx.lineTo(analysisCutScreen[i].x,analysisCutScreen[i].y);if(mode==='lasso'){ctx.closePath();ctx.fillStyle='rgba(0,229,255,.12)';ctx.fill()}ctx.stroke();ctx.restore()};
+ const drawEditStroke=mode=>{const ctx=threeEditOverlay?.getContext('2d');if(!ctx)return;ctx.clearRect(0,0,threeEditOverlay.width,threeEditOverlay.height);if(!analysisCutScreen.length)return;ctx.save();ctx.strokeStyle='#00e5ff';ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round';ctx.setLineDash(mode==='line'?[8,5]:[]);ctx.beginPath();ctx.moveTo(analysisCutScreen[0].x,analysisCutScreen[0].y);for(let i=1;i<analysisCutScreen.length;i++)ctx.lineTo(analysisCutScreen[i].x,analysisCutScreen[i].y);if(mode==='lasso'){ctx.closePath();ctx.fillStyle='rgba(0,229,255,.12)';ctx.fill()}ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=6;ctx.stroke();ctx.strokeStyle='#00e5ff';ctx.lineWidth=3;ctx.stroke();ctx.restore()}; // dark outline: readable on a light background too
  const appendCutScreenPoints=(e,mode)=>{
   const rect=renderer.domElement.getBoundingClientRect(),events=typeof e.getCoalescedEvents==='function'&&e.getCoalescedEvents().length?e.getCoalescedEvents():[e];
   for(const ce of events){

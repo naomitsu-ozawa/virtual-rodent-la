@@ -7,21 +7,25 @@ export const DEFAULT_LIGHT_THEME='light-standard',DEFAULT_DARK_THEME='dark-stand
 export const THEMES=[
  {id:'light-standard',mode:'light',ja:'ライト（標準）',en:'Light (standard)',preview:['#e8ecef', '#ffffff', '#2b7fa3', '#11181c']},
  {id:'light-paper',mode:'light',ja:'ライト（紙・暖色）',en:'Light (paper, warm)',preview:['#ebe5d8', '#fbf8f1', '#3a7a90', '#231f17']},
- {id:'light-cool',mode:'light',ja:'ライト（涼・青）',en:'Light (cool blue)',preview:['#e3ebf4', '#f8fbff', '#2f6fd0', '#0e1a2b']},
+ {id:'light-gray',mode:'light',ja:'ライト（グレー）',en:'Light (gray)',preview:['#cfcfcf', '#e8e8e8', '#4a4a4a', '#101010']},
  {id:'dark-standard',mode:'dark',ja:'ダーク（標準）',en:'Dark (standard)',preview:['#0b0d0f', '#11171a', '#67b2d1', '#e9eef1']},
  {id:'dark-reading',mode:'dark',ja:'ダーク（読影・黒）',en:'Dark (reading, near-black)',preview:['#050506', '#0b0c0d', '#67b2d1', '#ececec']},
- {id:'dark-navy',mode:'dark',ja:'ダーク（深い青）',en:'Dark (deep blue)',preview:['#070b16', '#0c1324', '#6aa8f0', '#e8eefb']},
+ {id:'dark-gray',mode:'dark',ja:'ダーク（グレー）',en:'Dark (gray)',preview:['#161616', '#1e1e1e', '#c4c4c4', '#ededed']},
 ];
 export const THEME_IDS=THEMES.map(t=>t.id);
 export const isThemeId=id=>THEME_IDS.includes(id);
+// themes that were renamed (build 450: the blue ones became gray): a saved old id is read as the new one
+export const THEME_ALIASES={'light-cool':'light-gray','dark-navy':'dark-gray'};
+export const normalizeThemeId=id=>THEME_ALIASES[id]||id;
 export const themeMode=id=>THEMES.find(t=>t.id===id)?.mode||'dark';
 // the first visit follows the OS setting (prefers-color-scheme); nothing reported = the dark standard theme (the look before themes)
 export function resolveInitialTheme(stored,prefersLight){
+ stored=normalizeThemeId(stored);
  if(isThemeId(stored))return stored;
  return prefersLight?DEFAULT_LIGHT_THEME:DEFAULT_DARK_THEME;
 }
 export function readStoredTheme(storage=globalThis.localStorage){
- try{const v=storage?.getItem(THEME_STORAGE_KEY);return isThemeId(v)?v:null}catch{return null}
+ try{const v=normalizeThemeId(storage?.getItem(THEME_STORAGE_KEY));return isThemeId(v)?v:null}catch{return null}
 }
 export function writeStoredTheme(id,storage=globalThis.localStorage){
  try{storage?.setItem(THEME_STORAGE_KEY,id);return true}catch{return false}
@@ -33,11 +37,14 @@ export function applyTheme(id,doc=globalThis.document){
  const root=doc.documentElement;root.dataset.theme=id;root.dataset.themeMode=themeMode(id);
  const meta=doc.querySelector?.('meta[name="theme-color"]'),t=THEMES.find(x=>x.id===id);
  if(meta&&t)meta.setAttribute('content',t.preview[0]);
+ // canvas-theme.js listens (the 3D clear colour follows the theme and the 3D view is drawn again)
+ try{doc.dispatchEvent?.(new CustomEvent('vrl-themechange',{detail:{id}}))}catch{}
  return true;
 }
 // state: the stored choice wins; with no choice the theme follows the OS setting (also when it changes while the app is open)
 export function createThemeController({storage=globalThis.localStorage,matchMedia=globalThis.matchMedia,doc=globalThis.document}={}){
  let stored=readStoredTheme(storage),current=resolveInitialTheme(stored,prefersLightNow(matchMedia));
+ try{const raw=storage?.getItem(THEME_STORAGE_KEY);if(stored&&raw!==stored)writeStoredTheme(stored,storage)}catch{}
  const listeners=new Set();
  const emit=()=>{for(const f of listeners)try{f(current,stored!==null)}catch{}};
  applyTheme(current,doc);
