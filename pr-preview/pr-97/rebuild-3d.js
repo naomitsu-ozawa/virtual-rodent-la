@@ -3,6 +3,7 @@
 import { mark3DStale, mark3DCurrent, set3DState } from './three-state.js?v=20261005-build457';
 import { updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261005-build457';
 import { currentLanguage, volume, threeDApplying, threeRenderMode, sceneState, sourceVolume, setThreeDCancelRequested, threeDCancelRequested, filterRebuildRevision, setCurrent3DVolume, deferAutomatic3D, setDeferAutomatic3D, setMemoryGpuPreviewActive, setVolume, filterOrder } from './state.js?v=20261005-build457';
+import { setGpuComputeBackend } from './gpu-compute.js?v=20261005-build457';
 import { gpuVolumeApplied, refreshGpuVolumeData } from './gpu-volume-data.js?v=20261005-build457';
 import { renderAll } from './mpr-render.js?v=20261005-build457';
 import { sourceFilterStages, filterState, memoryFilterPreviewCache, sourceFilterHalo, fitSourceTile, processMemoryRegion, currentFilterSignature } from './source-filters.js?v=20261005-build457';
@@ -58,7 +59,7 @@ export async function rebuildCurrent3D(){
       if(threeDCancelRequested){footer.textContent=tr('threeCancelled');threeLabel.textContent=(sceneState?.backend||'3D')+(sceneState?.obj?' · previous 3D':'')}
       return;
      }
-     console.warn('Full GPU filter rebuild failed; using exact CPU filter stack.',e);
+     console.warn('Full GPU filter rebuild failed; using exact CPU filter stack.',e);setGpuComputeBackend('CPU STACK · GPU FAIL','rebuild: '+String(e?.message||e));
      buildVolume=await buildCpuFilteredVolumeFor3D();
      if(threeDCancelRequested){set3DBusy(false);mark3DStale();footer.textContent=tr('threeCancelled');return}
     }
