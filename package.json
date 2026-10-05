@@ -24,7 +24,8 @@
     "plane-sync-check": "node tools/plane-sync-check.mjs",
     "mpr-alpha-check": "node tools/mpr-alpha-check.mjs",
     "processed-filter-check": "node tools/processed-filter-check.mjs",
-    "plane-orientation-check": "node tools/plane-orientation-check.mjs"
+    "plane-orientation-check": "node tools/plane-orientation-check.mjs",
+    "sigmoid-check": "node tools/sigmoid-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261004-build435';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261004-build435';
+import { installGpuLedger } from './mem-ledger.js?v=20261005-build436';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261005-build436';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261004-build435';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261004-build435';
-import { runsSliceToMask } from './run-length.js?v=20261004-build435';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261004-build435';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261004-build435';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261005-build436';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261005-build436';
+import { runsSliceToMask } from './run-length.js?v=20261005-build436';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261005-build436';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261005-build436';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -282,7 +282,7 @@ export async function runGpuSourceFilters(data,w,h,d,minv,maxv,stages,target,seg
     const kernel=gaussianPassKernel(p.strength,p.passes),kr=(kernel.length-1)/2;
     for(let axis=0;axis<3;axis++)await dispatch('gaussianK',[axis,kr],kernel);
    }
-  }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[minv,maxv,p.strength,p.center]);
+  }else if(stage.key==='sigmoid')await dispatch('sigmoid',[],[minv,maxv,p.strength,p.center,p.width||300]);
   else if(stage.key==='spikeHole')await dispatch('spikeHole',[],[minv,maxv,p.strength,p.threshold]);
   else if(stage.key==='anisotropic')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('anisotropic',[],[minv,maxv,p.strength]);
   else if(stage.key==='tv')for(let iter=0;iter<Math.max(1,Math.round(p.iterations));iter++)await dispatch('tv',[],[minv,maxv,p.weight]);
