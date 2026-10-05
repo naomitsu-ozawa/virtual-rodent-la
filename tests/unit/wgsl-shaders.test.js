@@ -26,6 +26,13 @@ describe('compute shaders (docs/gpu-shaders.js)', () => {
     expect(r.entry.compute.map(e => e.name)).toContain('main');
   });
 
+  // build 446: the bilateral intensity sigma is an absolute HU value (params[4]); the volume range params[0] / params[1] must stay unused
+  it('bilateral takes its intensity sigma from params[4] only (no volume range)', () => {
+    const src = gpuFilterShader('bilateral', 64);
+    expect(src).toMatch(/intensitySigma=max\(0\.000001,params\[4\]\)/);
+    expect(src).not.toMatch(/params\[0\]|params\[1\]/);
+  });
+
   it('uses the workgroup size it is given', () => {
     expect(gpuFilterShader('gaussian', 128)).toContain('@workgroup_size(128)');
   });

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { cpuBilateral3D } from '../../docs/cpu-filters.js';
 import { sourceRangeFromMetadata } from '../../docs/dicom.js';
-import { sourceFilterSignature, resolveBilateralParams, legacyBilateralSigmaHU, BILATERAL_SIGMA_HU_DEFAULT } from '../../docs/bilateral-sigma.js';
+import { sourceFilterSignature, resolveBilateralParams, legacyBilateralSigmaHU, bilateralLegacyRange, BILATERAL_SIGMA_HU_DEFAULT } from '../../docs/bilateral-sigma.js';
 import { segmentRunsCacheKey } from '../../docs/segment-cache-key.js';
 import { packProject, unpackProject } from '../../docs/project-file.js';
 
@@ -63,8 +64,85 @@ describe('bilateral intensity sigma in HU (build 445)', () => {
       expect(typeof saved.sigmaHU).toBe('number');
       // even with a stale ratio in the file and another range, the saved value wins
       const r = resolveBilateralParams({ ...saved, intensitySigma: '0.25' }, { min: 0, max: 100 });
-      expect(r).toEqual({ sigmaHU, legacy: false });
+      expect(r).toEqual({ sigmaHU, legacy: false, fallback: false });
       expect(resolveBilateralParams(saved, range).sigmaHU).toBe(sigmaHU);
     }
   });
 });
+
+describe('compatibility value by load path (build 446)', () => {
+  const dataRange = { min: -1361, max: 3102 };
+  const meta = sl => sourceRangeFromMetadata(sl);
+  const old = { intensitySigma: '0.02' };
+
+  it('large (sourceBacked) series use the metadata range, small series the decoded data range', () => {
+    const m = meta(practiceSlices);
+    expect(bilateralLegacyRange(true, m, dataRange)).toBe(m);
+    expect(bilateralLegacyRange(false, m, dataRange)).toBe(dataRange);
+    expect(resolveBilateralParams(old, bilateralLegacyRange(true, m, dataRange)).sigmaHU).toBeCloseTo(1310.7, 6);
+    expect(resolveBilateralParams(old, bilateralLegacyRange(false, m, dataRange)).sigmaHU).toBeCloseTo(0.02 * 4463, 6);
+  });
+
+  it('metadata range with DICOM tags (0..4095, intercept -1024) and signed data', () => {
+    const tagged = [{ bits: 16, bitsStored: 12, signed: false, slope: 1, intercept: -1024, smallest: 0, largest: 4095 }];
+    expect(meta(tagged)).toEqual({ min: -1024, max: 3071 });
+    expect(resolveBilateralParams(old, meta(tagged)).sigmaHU).toBeCloseTo(0.02 * 4095, 6);
+    // signed 16 bit without tags: -32768..32767, slope 1, intercept 0
+    const signed = [{ bits: 16, bitsStored: 16, signed: true, slope: 1, intercept: 0 }];
+    expect(meta(signed)).toEqual({ min: -32768, max: 32767 });
+    expect(resolveBilateralParams(old, meta(signed)).sigmaHU).toBeCloseTo(0.02 * 65535, 6);
+    // signed with tags stored as unsigned words (wrap-around is undone)
+    const wrapped = [{ bits: 16, bitsStored: 16, signed: true, slope: 1, intercept: 0, smallest: 64536, largest: 3000 }];
+    expect(meta(wrapped)).toEqual({ min: -1000, max: 3000 });
+  });
+
+  it('a range that is not finite falls back to the default and says so', () => {
+    for (const range of [{ min: NaN, max: 10 }, { min: 0, max: undefined }, undefined, { min: -Infinity, max: 5 }]) {
+      expect(resolveBilateralParams(old, range)).toEqual({ sigmaHU: BILATERAL_SIGMA_HU_DEFAULT, legacy: true, fallback: true });
+    }
+    expect(resolveBilateralParams(old, { min: 0, max: 100 })).toEqual({ sigmaHU: 2, legacy: true, fallback: false });
+  });
+});
+
+describe('bilateral kernels do not use the volume range (build 446)', () => {
+  const src = readFileSync('docs/source-filters.js', 'utf8');
+  // the worker function is stringified into a Blob worker in the app; here the same source text is evaluated
+  const fn = src.match(/function bilateral\(input,w,h,d,p\)\{[^\n]*\}\n/)?.[0];
+
+  it('the worker bilateral takes no min / max and uses sigmaHU', () => {
+    expect(fn).toBeTruthy();
+    expect(fn).toContain('p.sigmaHU');
+    expect(fn).not.toMatch(/max\s*-\s*min|\bmin\s*,\s*max\b|range/);
+    expect(src).toMatch(/return bilateral\(input,w,h,d,p\)/);
+  });
+
+  it('the worker kernel and cpuBilateral3D give the same result', async () => {
+    const worker = new Function(fn + '; return bilateral;')();
+    const params = { strength: 0.8, spatialSigma: 1.2, sigmaHU: 50, passes: 2 };
+    const v = noisy(-1361, 3102);
+    const a = worker(new Float32Array(v.data), v.columns, v.rows, v.slices, params);
+    const b = (await cpuBilateral3D(v, params)).data;
+    for (let i = 0; i < a.length; i++) expect(a[i]).toBeCloseTo(b[i], 3);
+  });
+});
+
+describe('save / load wiring in data-load.js (build 446)', () => {
+  const src = readFileSync('docs/data-load.js', 'utf8');
+  it('the bilateral input table has sigmaHU and no intensitySigma', () => {
+    const t = src.match(/bilateral:\{[^}]*\}/)[0];
+    expect(t).toContain('sigmaHU:bilateralIntensity');
+    expect(t).not.toContain('intensitySigma');
+  });
+  it('gatherProject saves sigmaHU as a number, once (it is not added a second time)', () => {
+    expect(src).toContain("name==='sigmaHU'?+el.value:el.value");
+    expect((src.match(/sigmaHU/g) || []).length).toBeGreaterThan(0);
+    expect(src.match(/gatherProject[\s\S]*?return\{project,binaries\}/)[0].match(/params:Object\.fromEntries/g).length).toBe(1);
+  });
+  it('applyProject skips the generic sigmaHU write and sets it once from resolveBilateralParams; the old key is only read there', () => {
+    expect(src).toContain("if(!(key==='bilateral'&&name==='sigmaHU'))setControlValue");
+    expect(src.match(/setBilateralSigmaControl\(r\.sigmaHU\)/g).length).toBe(1);
+    // the old key reaches no control: only resolveBilateralParams reads it
+    expect(src).not.toMatch(/FILTER_PARAM_INPUTS\.bilateral\.intensitySigma|intensitySigma:bilateral/);
+  });
+});
+
