@@ -4546,9 +4546,45 @@ progress-modal, edit-consistency, plane-sync.
 Checks: lint, unit tests (WGSL 63), boot-check, the GPU / compat
 comparisons above.
 
-## Handoff (after build 440)
+## Build 441 — take results out of the selection (click toggle, lasso unselect, unselect all)
 
-State: build 438 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Owner: after a project load, redo the 3D-edit selection — take regions out
+of the selection again. Option A of the proposal (no image change):
+- 領域選択: a click on a result already there toggles its tick
+  (analysis-ops.js toggleAnalysisRegionSelection); unticking also drops the
+  focus, else 選択領域を削除 would still fall back to it (editTargetRegions).
+  Before, a click only focused it (and did not tick an unticked one).
+- 囲んで外す (tool 'unlasso', same loop as 囲んで選択): the pieces of the
+  ticked results that lie completely inside the loop leave the selection. A
+  result all inside is unticked; one partly inside is split into the pieces
+  inside (new unticked result, same colour) and the rest (ticked): no voxel
+  leaves the results, the colours stay.
+- 選択を外す buttons (edit toolbar and results panel): untick all, no focus.
+- The status line says how many are selected (the 3D view shows no tick).
+- The tick is saved in the project (analysis region meta 'selected');
+  projects saved before 441 load with every result unticked, as before.
+- tools/region-deselect-check.mjs (synthetic boxes on the practice data):
+  toggle off / on, lasso split 216 + 216 / 216 with colours kept and 648
+  voxels before and after, lasso whole result unticked, ticks after save →
+  load [true, false, false], unselect all → 0 edit targets.
+- Result-colour speckles (owner, 438 report), measured on the practice
+  project (SwiftShader WebGPU): builds 438 and 440 load identical results —
+  fat 7,344,376 (−250…81, surface 0.74 mm); of the two saved results 1,411 +
+  21,449 voxels are no longer fat and 102,324 + 230,365 fat voxels touch a
+  result without being in it (a fresh analysis gives 0 for both). So 440 is
+  not the cause. At build 436 the same project loads surface 0.592 mm (the
+  pre-438 slider snap), fat 7,128,598, and no results at all (not looked
+  into). Saved results are fixed voxel sets (restoreAnalysisRegions); they
+  do not follow a changed segment. Redoing the analysis fixes it (owner saw
+  that). Open: re-derive saved results against the loaded segment on load,
+  owner decision.
+Checks: lint, unit tests, boot-check, region-deselect-check,
+analysis-project-check, edit-consistency-check; button rows checked at 1400
+and 820 px wide.
+
+## Handoff (after build 441)
+
+State: build 441 on claude/dicom-viewer-handoff-eaqyyu (main = build 437, PR #86 merged 2026-10-05, builds 430–437; 438: non-overlapping segments; 439: drag the cards; 440: GPU range ends exact, compatibility adapters; 441: unselect results — click toggle, lasso unselect, unselect all, ticks saved; PR #87) (earlier: PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and

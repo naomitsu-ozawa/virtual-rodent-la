@@ -26,7 +26,8 @@
     "processed-filter-check": "node tools/processed-filter-check.mjs",
     "plane-orientation-check": "node tools/plane-orientation-check.mjs",
     "sigmoid-check": "node tools/sigmoid-check.mjs",
-    "exclusive-segments-check": "node tools/exclusive-segments-check.mjs"
+    "exclusive-segments-check": "node tools/exclusive-segments-check.mjs",
+    "region-deselect-check": "node tools/region-deselect-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
