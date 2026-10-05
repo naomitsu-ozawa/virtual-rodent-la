@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { I18N } from '../../docs/i18n.js';
 import {
   THEMES, THEME_IDS, THEME_STORAGE_KEY, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME,
-  isThemeId, themeMode, resolveInitialTheme, readStoredTheme, writeStoredTheme, applyTheme, createThemeController,
+  THEME_ALIASES, normalizeThemeId, isThemeId, themeMode, resolveInitialTheme, readStoredTheme, writeStoredTheme, applyTheme, createThemeController,
 } from '../../docs/theme.js';
 
 const read = p => readFileSync(p, 'utf8');
@@ -15,7 +15,7 @@ const block = sel => {
   return themesCss.slice(i, themesCss.indexOf('}', i));
 };
 const tokensOf = text => Object.fromEntries([...text.matchAll(/--ui-([\w-]+):\s*([^;]+);/g)].map(m => [m[1], m[2].trim()]));
-const standard = tokensOf(block(':root,\n.viewport-card,\n.view-card'));
+const standard = tokensOf(block(':root'));
 const themeTokens = id => id === 'dark-standard' ? standard : { ...standard, ...tokensOf(block('html[data-theme="' + id + '"]')) };
 const rgbOf = v => v.split(/\s+/).map(Number);
 const lum = ([r, g, b]) => { const f = c => (c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
@@ -59,14 +59,27 @@ describe('saving and loading the choice', () => {
     expect(s._m.get(THEME_STORAGE_KEY)).toBe(THEME_IDS.at(-1));
     expect(readStoredTheme(fakeStorage({ [THEME_STORAGE_KEY]: 'rainbow' }))).toBeNull();
   });
+  it('a saved id of a renamed theme (the blue ones became gray in build 450) is read as the new id and saved again under it', () => {
+    expect(THEME_ALIASES).toEqual({ 'light-cool': 'light-gray', 'dark-navy': 'dark-gray' });
+    for (const [old, now] of Object.entries(THEME_ALIASES)) {
+      expect(isThemeId(old)).toBe(false); expect(isThemeId(now)).toBe(true); expect(normalizeThemeId(old)).toBe(now);
+      expect(readStoredTheme(fakeStorage({ [THEME_STORAGE_KEY]: old }))).toBe(now);
+      expect(resolveInitialTheme(old, false)).toBe(now);
+      const s = fakeStorage({ [THEME_STORAGE_KEY]: old }), doc = fakeDoc();
+      const ctl = createThemeController({ storage: s, matchMedia: fakeMedia(true).fn, doc });
+      expect(ctl.get()).toBe(now); expect(ctl.isChosen()).toBe(true); expect(s._m.get(THEME_STORAGE_KEY)).toBe(now);
+      expect(doc.documentElement.dataset.theme).toBe(now);
+    }
+    expect(readStoredTheme(fakeStorage({ [THEME_STORAGE_KEY]: 'rainbow' }))).toBeNull();
+  });
   it('never throws when storage is blocked (private window, cleared site data)', () => {
     expect(readStoredTheme(fakeStorage({}, { failGet: true }))).toBeNull();
     expect(writeStoredTheme('light-paper', fakeStorage({}, { failSet: true }))).toBe(false);
     expect(readStoredTheme(null)).toBeNull();
     const ctl = createThemeController({ storage: fakeStorage({}, { failGet: true, failSet: true }), matchMedia: fakeMedia(false).fn, doc: fakeDoc() });
     expect(ctl.get()).toBe('dark-standard');
-    expect(ctl.set('light-cool')).toBe(true); // still applied for this session
-    expect(ctl.get()).toBe('light-cool');
+    expect(ctl.set('light-gray')).toBe(true); // still applied for this session
+    expect(ctl.get()).toBe('light-gray');
   });
 });
 
@@ -74,7 +87,7 @@ describe('first visit follows the OS setting', () => {
   it('light OS -> light standard, dark or unknown OS -> dark standard, a saved choice always wins', () => {
     expect(resolveInitialTheme(null, true)).toBe('light-standard');
     expect(resolveInitialTheme(null, false)).toBe('dark-standard');
-    expect(resolveInitialTheme('dark-navy', true)).toBe('dark-navy');
+    expect(resolveInitialTheme('dark-gray', true)).toBe('dark-gray');
     expect(resolveInitialTheme('light-paper', false)).toBe('light-paper');
     expect(resolveInitialTheme('nonsense', true)).toBe('light-standard');
   });
@@ -100,7 +113,7 @@ describe('first visit follows the OS setting', () => {
   });
   it('applyTheme rejects unknown ids and themeMode follows the id', () => {
     expect(applyTheme('nope', fakeDoc())).toBe(false);
-    expect(isThemeId('light-cool')).toBe(true); expect(themeMode('light-cool')).toBe('light'); expect(themeMode('dark-navy')).toBe('dark');
+    expect(isThemeId('light-gray')).toBe(true); expect(themeMode('light-gray')).toBe('light'); expect(themeMode('dark-gray')).toBe('dark');
   });
   it('the inline script in index.html (set before the CSS loads) accepts every theme id and falls back like theme.js', () => {
     for (const f of ['docs/index.html', 'index.html']) {
@@ -111,6 +124,7 @@ describe('first visit follows the OS setting', () => {
         return root.dataset;
       };
       for (const id of THEME_IDS) expect(run(id, false)).toEqual({ theme: id, themeMode: themeMode(id) });
+      for (const [old, now] of Object.entries(THEME_ALIASES)) expect(run(old, false)).toEqual({ theme: now, themeMode: themeMode(now) });
       expect(run(null, true).theme).toBe('light-standard'); expect(run(null, false).theme).toBe('dark-standard'); expect(run('x', true).theme).toBe('light-standard');
       expect(html).toMatch(/themes\.css\?v=|\/docs\/themes\.css/);
     }
@@ -119,7 +133,7 @@ describe('first visit follows the OS setting', () => {
 
 describe('tokens', () => {
   it('every theme overrides the same tokens (nothing is left from another theme)', () => {
-    const all = Object.keys(standard).filter(k => k !== 'img-bg' && k !== 'img-surround');
+    const all = Object.keys(standard);
     for (const t of THEME_IDS) { const own = Object.keys(themeTokens(t)); for (const k of all) expect(own, t + ' ' + k).toContain(k); }
     for (const t of THEME_IDS.filter(x => x !== 'dark-standard')) {
       const own = tokensOf(block('html[data-theme="' + t + '"]'));
@@ -161,39 +175,63 @@ describe('contrast (WCAG AA, 4.5:1) in all six themes', () => {
   });
 });
 
-describe('the image area does not change with the theme', () => {
-  it('view cards re-declare the standard tokens (so everything in them looks the same in every theme)', () => {
-    const sel = themesCss.slice(0, themesCss.indexOf('{', themesCss.indexOf(':root,'))).split('*/').pop();
-    expect(sel).toMatch(/:root,\s*\.viewport-card,\s*\.view-card/);
-    expect(standard['img-bg']).toBe('15 18 20');
-    // the html[data-theme] rules never set the image background
-    for (const id of THEME_IDS.filter(x => x !== 'dark-standard')) expect(tokensOf(block('html[data-theme="' + id + '"]'))).not.toHaveProperty('img-bg');
+describe('the image does not change with the theme; the backgrounds around it follow it (build 450)', () => {
+  it('both groups follow the theme: the UI of the view cards uses the ordinary tokens, the canvas backgrounds have their own', () => {
+    // no card re-declares the standard dark tokens any more
+    expect(themesCss).not.toMatch(/\.viewport-card|\.view-card/);
+    expect(themesCss).not.toMatch(/img-bg|img-surround/);
+    expect(standard['canvas-bg-3d']).toBe('15 18 20'); expect(standard['canvas-bg-2d']).toBe('2 3 4'); // the standard dark theme keeps today's backgrounds
+    expect(styleCss).toMatch(/\.viewport-card\{[^}]*background:rgb\(var\(--ui-canvas-bg-3d\)\)/);
+    expect(styleCss).toMatch(/\.mpr-canvas\{[^}]*background:rgb\(var\(--ui-canvas-bg-2d\)\)/);
+    expect(styleCss).not.toMatch(/\.viewer-grid\{background/);
   });
-  it('the surround of the view cards is dark in every theme (a bright surround changes how grey levels look)', () => {
-    const tk = id => tokensOf(block('html[data-theme="' + id + '"]'));
-    for (const id of THEME_IDS.filter(x => x !== 'dark-standard')) {
-      const sur = tk(id)['img-surround']; expect(sur, id).toBeTruthy();
-      expect(lum(rgbOf(sur)), id).toBeLessThan(0.03);
+  it('every theme sets its own canvas backgrounds; light themes have light ones, dark themes dark ones', () => {
+    for (const t of THEMES) {
+      const tk = themeTokens(t.id);
+      for (const k of ['canvas-bg-3d', 'canvas-bg-2d']) {
+        expect(tk[k], t.id + ' ' + k).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/);
+        const l = lum(rgbOf(tk[k])); if (t.mode === 'light') expect(l, t.id + ' ' + k).toBeGreaterThan(0.3); else expect(l, t.id + ' ' + k).toBeLessThan(0.02);
+      }
     }
-    expect(standard['img-surround']).toBe(standard.s0);
-    expect(styleCss).toMatch(/\.viewer-grid\{background:rgb\(var\(--ui-img-surround\)\)/);
+    const own = id => tokensOf(block('html[data-theme="' + id + '"]'));
+    for (const id of THEME_IDS.filter(x => x !== 'dark-standard')) expect(own(id)['canvas-bg-3d'], id).toBeTruthy();
   });
-  it('the canvases and the image backdrop use fixed colours, not theme tokens', () => {
-    expect(styleCss).toMatch(/\.mpr-canvas\{[^}]*background:#020304/);
-    expect(styleCss).toMatch(/\.viewport-card\{[^}]*background:rgb\(var\(--ui-img-bg\)\)/);
+  it('text and overlays drawn on the canvas backgrounds stay readable in every theme (4.5:1)', () => {
+    for (const id of THEME_IDS) { const tk = themeTokens(id); for (const t of ['t1', 't2', 't3']) for (const c of ['canvas-bg-3d', 'canvas-bg-2d']) expect(contrast(tk[t], tk[c]), id + ' ' + t + ' on ' + c).toBeGreaterThanOrEqual(4.5); }
   });
-  it('the code that draws images, segments and overlays knows nothing about themes', () => {
-    for (const f of ['mpr-render', 'medical-volume', 'mpr3d-overlay', 'mpr-orthogonal', 'segments', 'segment-runs', 'scene3d', 'scene-view', 'surface-build', 'surface-mesh', 'gpu-shaders', 'gpu-compute', 'volume-io', 'vr-view', 'section-view']) {
+  it('canvas-theme.js reads only the background variable; scene-view.js is the only drawing code that uses it', () => {
+    const ct = read('docs/canvas-theme.js').replace(/\/\/[^\n]*/g, '');
+    expect(ct).toMatch(/--ui-canvas-bg-3d/); expect(ct).not.toMatch(/--ui-(?!canvas-bg)/);
+    expect(ct).not.toMatch(/getContext|canvas\.width|ImageData|windowCenter|segment/);
+    expect(read('docs/scene-view.js')).toContain("from './canvas-theme.js");
+    // the clear colour is the only thing set from it
+    expect(read('docs/scene-view.js')).toMatch(/applyThemeBackground=\(\)=>\{if\(backend==='WEBGL'\)\{const c=canvasBackground3d\(\);if\(c\)renderer\.setClearColor\(/);
+  });
+  it('the code that makes the image (grey levels, window / level, segments, volume rendering) knows nothing about themes', () => {
+    for (const f of ['mpr-render', 'medical-volume', 'mpr3d-overlay', 'mpr-orthogonal', 'segments', 'segment-runs', 'scene3d', 'surface-build', 'surface-mesh', 'gpu-shaders', 'gpu-compute', 'volume-io', 'vr-view', 'section-view', 'cpu-filters', 'source-filters', 'filter-units']) {
       const t = read('docs/' + f + '.js');
-      expect(t, f).not.toMatch(/data-theme|themeMode|theme\.js|theme-ui|--ui-|getComputedStyle/);
+      expect(t, f).not.toMatch(/data-theme|themeMode|theme\.js|theme-ui|canvas-theme|--ui-|getComputedStyle/);
     }
-    // the theme code touches only <html> attributes and the theme-color meta
+    // scene-view.js: only the canvas-theme import and the clear colour
+    const sv = read('docs/scene-view.js'); expect(sv.match(/--ui-/g)).toBeNull(); expect(sv).not.toMatch(/data-theme|themeMode|theme-ui|from '\.\/theme\.js/);
+    // the theme code touches only <html> attributes, the theme-color meta and one event
     const th = (read('docs/theme.js') + read('docs/theme-ui.js')).replace(/\/\/[^\n]*/g, ''); // code, not comments
     expect(th).not.toMatch(/canvas|getContext|WebGL|gpu|segment|window.?level|windowCenter/i);
+  });
+  it('the volume shader and the window / level LUT take no colour from the page', () => {
+    const mv = read('docs/medical-volume.js') + read('docs/mpr-render.js');
+    expect(mv).not.toMatch(/getComputedStyle|var\(--ui/);
   });
   it('segment preset colours are data, not theme colours', () => {
     const seg = read('docs/segments.js');
     for (const c of ['#f3f0e8', '#d97f7f', '#e7c85d', '#6fb8d6']) expect(seg).toContain(c);
+  });
+  it('annotations drawn over the 3D view have a dark outline, so they read on a light background', () => {
+    const sv = read('docs/scene-view.js');
+    expect(sv).toContain("ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=6;ctx.stroke();ctx.strokeStyle='#00e5ff'"); // cut / lasso stroke
+    expect(sv).toMatch(/pivotIndicator\.style,\{[^}]*boxShadow:'0 0 0 1px rgba\(0,0,0/);
+    expect(sv).toMatch(/ctx\.strokeStyle='rgba\(0,0,0,\.85\)';ctx\.strokeText\(label/); // axis letters
+    expect(read('docs/mpr3d-overlay.js')).toMatch(/ctx\.strokeStyle='rgba\(0,0,0,\.9\)';ctx\.strokeText\(text/); // plane labels
   });
 });
 
@@ -201,7 +239,7 @@ describe('colours left as literals in style.css are the intended ones', () => {
   it('only overlay scrims, shadows, spinners and image-area colours stay literal', () => {
     const css = styleCss.replace(/\/\*[\s\S]*?\*\//g, '');
     const lits = new Set([...css.matchAll(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)/g)].map(m => m[0].toLowerCase().replace(/\s/g, '')).filter(x => !/^rgba?\(var/.test(x)));
-    const allowed = ['#020304', '#fff', '#0a84ff', '#3d8bfd', '#00b8d4', '#9bd7ee', 'rgba(5,8,10,.28)', 'rgba(5,8,10,.54)', 'rgba(5,8,10,.55)', 'rgba(93,141,255,.24)', 'rgba(0,229,255,.8)', 'rgba(0,229,255,.45)', 'rgba(255,255,255,.2)', 'rgba(255,255,255,.22)', 'rgba(255,255,255,.42)', 'rgba(255,255,255,.08)', 'rgba(105,184,216,.18)', 'rgba(128,128,128,.45)'];
+    const allowed = ['#fff', '#0a84ff', '#3d8bfd', '#00b8d4', '#9bd7ee', 'rgba(5,8,10,.28)', 'rgba(5,8,10,.54)', 'rgba(5,8,10,.55)', 'rgba(93,141,255,.24)', 'rgba(0,229,255,.8)', 'rgba(0,229,255,.45)', 'rgba(255,255,255,.2)', 'rgba(255,255,255,.22)', 'rgba(255,255,255,.42)', 'rgba(255,255,255,.08)', 'rgba(105,184,216,.18)', 'rgba(128,128,128,.45)'];
     const extra = [...lits].filter(x => !allowed.includes(x) && !/^rgba\(0,0,0,[\d.]+\)$/.test(x) && !/^rgba\((118,141,151|110,130,140|216,230,236),[\d.]+\)$/.test(x));
     expect(extra).toEqual([]);
   });
