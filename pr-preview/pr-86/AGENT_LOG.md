@@ -4411,9 +4411,37 @@ Open, proposed and accepted for later ("それも検討したい"): exclusive
 (non-overlapping) segments; strands in fat as their own segment ("keep only
 thin parts").
 
-## Handoff (after build 436)
+## Build 437 — VR: a result colour only on its own segment's surfaces; checks skip the bundled practice project
 
-State: build 436 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
+Owner (Quest, practice project with two fat results): fat hidden, the soft
+tissue borders still coloured.
+- Cause: VR regionColor read the result index 0.75 voxel inside the hit on
+  the 256³ grid and used any result's colour, whatever segment was hit; next
+  to a fat result a soft-tissue surface took the fat result's colour.
+- Fix: per colour slot a segment bit mask (buildRegionIndex segs, uniform
+  regionSeg[14]); regionColor(p, base, s) colours only when bit s is set
+  (surface hits, cut faces, slice tint).
+- tools/vr-volume-check.mjs REGION=fat (result on the fat voxels of the
+  x < N/2 half), REGZERO=1 (no result voxels), SEGS=nofat. FAT=1 phantom,
+  fat hidden, fat result vs none: before 69 (HU) / 94 (cls) pixels differ,
+  after 0 / 0. Fat shown: 7 / 2 pixels take the result colour (still shown).
+  REGION=1 (result on all segments) A/B old vs new: 0 differing channels.
+- Practice project (owner): docs/demo/sample1/project.vrlab replaced twice
+  by the owner's files (bilateral → Sigmoid −8 / 410 / 0.85; bone 354…,
+  soft −93…248, fat −250…81 with air exclusion 0.74 mm; two fat results).
+  It is applied whenever the practice data is opened, which made the
+  headless checks start from that state and run the filters over the whole
+  volume on the CPU (tens of minutes). The check tools' servers now answer
+  404 for project.vrlab unless SAMPLE_PROJECT=1, so they start from the bare
+  data as they were written.
+Checks: lint, unit tests, boot-check, vr-gpu-prepare-check, vr-volume-check
+(above); with the bare practice data: progress-modal, analysis-project
+(plain and FILTER=1), edit-consistency, result-2d, plane-sync, mpr-alpha,
+processed-filter, plane-orientation, sigmoid — all OK.
+
+## Handoff (after build 437)
+
+State: build 437 on claude/dicom-viewer-handoff-eaqyyu, PR #86 (main = build 429, PR #85 merged 2026-10-02, builds 403–429; 430: 2D colour strength setting; 431: Sigmoid redone, reverted in 432; 432: bilateral defaults; 433: processed segments follow the filters; 434: 3D plane views as 2D; 435: default cut keeps the far half; 436: Sigmoid as border-steepening S-curve; 437: VR result colour per segment, checks skip the bundled project). Open (Monday): owner checks on the device — see the Monday checklist above; owner check that 2D is no longer white. (VR/AR: WebGL2
 volume, 256³ default, auto resolution, precomputed classification with
 processing mask, up to 4 section planes with cap / slice colouring / clip
 modes, beginner menu, screenshots, data prepared before the session and
