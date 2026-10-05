@@ -38,6 +38,43 @@ export const getComments=()=>list.map(c=>({...c,position:{...c.position}}));
 export function addComment(c){if(!c)return null;list=[...list,c];emit();return c}
 export function removeComment(id){const n=list.length;list=list.filter(c=>c.id!==id);if(list.length!==n)emit();return list.length!==n}
 export function setComments(next){list=sanitizeComments(next);emit()}
+// put a deleted comment back where it was (the "undo" of the delete button)
+export function restoreComment(c,index=list.length){if(!c||list.some(x=>x.id===c.id))return false;const at=Math.max(0,Math.min(+index||0,list.length));list=[...list.slice(0,at),{...c,position:{...c.position}},...list.slice(at)];emit();return true}
+// Loading a project must not throw away what is in memory and not in that file (a comment added after the last save, or one written on
+// another series): other series stay as they are; for the project's own series the two sets are united by id (a comment deleted in
+// memory since the save comes back: the side that loses no data). An id already used by a comment of another series gets a new one.
+export function mergeComments(current,incoming,fingerprint){
+ const keep=current.filter(c=>!commentMatchesSeries(c,fingerprint)),same=current.filter(c=>commentMatchesSeries(c,fingerprint));
+ const ids=new Set(current.map(c=>c.id)),add=[];
+ for(const c of sanitizeComments(incoming)){
+  if(same.some(x=>x.id===c.id))continue;
+  let id=c.id;while(ids.has(id))id+='_';ids.add(id);add.push({...c,id});
+ }
+ return[...keep,...same,...add];
+}
+export function loadProjectComments(incoming,fingerprint){
+ const inc=sanitizeComments(incoming);
+ list=mergeComments(list,inc,fingerprint);
+ // what the file now holds for this series (other files' comments stay as they were)
+ for(const [id,e] of [...saved])if(commentMatchesSeries({series:e.series},fingerprint))saved.delete(id);
+ for(const c of inc)saved.set(c.id,{sig:sigOf(c),series:c.series});
+ emit();
+}
+// ---- unsaved changes: what was last written to / read from a project file, against what is in memory now ----
+const sigOf=c=>[c.id,c.text,c.position.i,c.position.j,c.position.k].join('|');
+const saved=new Map();
+export function markCommentsSaved(fingerprint,written=commentsForProject(fingerprint)){
+ for(const [id,e] of [...saved])if(commentMatchesSeries({series:e.series},fingerprint))saved.delete(id);
+ for(const c of written)saved.set(c.id,{sig:sigOf(c),series:c.series});
+}
+export function hasUnsavedComments(){
+ const now=getComments();
+ if(now.some(c=>saved.get(c.id)?.sig!==sigOf(c)))return true;
+ const ids=new Set(now.map(c=>c.id));
+ for(const id of saved.keys())if(!ids.has(id))return true;
+ return false;
+}
+export const resetCommentsSaved=()=>saved.clear();
 export const onCommentsChange=cb=>{listeners.add(cb);return()=>listeners.delete(cb)};
 // for the project file: only what belongs to the series being saved
 export const commentsForProject=fingerprint=>getComments().filter(c=>commentMatchesSeries(c,fingerprint));
