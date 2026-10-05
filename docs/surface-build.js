@@ -9,7 +9,7 @@ import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings
 import { frameYield, isDesktopRuntime } from './utils.js?v=20261005-build458';
 import { gpuFilterRuntime, setGpuComputeBackend, ensureGpuFilterDevice, runGpuSourceFilters, gpuStagesSupported } from './gpu-compute.js?v=20261005-build458';
 import { setProcessingBusy } from './busy.js?v=20261005-build458';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentEditActive, segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, sourceMemoryUsable } from './segments.js?v=20261005-build458';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentEditActive, segmentState, segmentHasProcessedMask, sourceMprMemoryView, sourceMemoryUsable } from './segments.js?v=20261005-build458';
 import { dispose, buildEditableRunsGroup, geometryFromSourcePositions, consolidateSegmentForStrongSmoothing } from './surface-mesh.js?v=20261005-build458';
 import { renderAll } from './mpr-render.js?v=20261005-build458';
 import { getFinalSegmentRuns, thresholdRunsFromMemory, decodeSourceSegmentMasks } from './segment-runs.js?v=20261005-build458';
@@ -139,7 +139,7 @@ export function setBaseSegmentSurfaceVisibility(key,visible){
  });
 }
 export function segmentUsesRunSurface(key,v=current3DVolume||volume){
- return segmentEditActive(key)||!!(v?.sourceBacked&&segmentState[key]?.active&&segmentState[key]?.enabled&&segmentNeedsGlobalMask(segmentState[key]));
+ return segmentEditActive(key)||!!(v?.sourceBacked&&segmentState[key]?.active&&segmentState[key]?.enabled&&segmentHasProcessedMask(key));
 }
 export async function refreshEditedSegmentSurface(key,v=current3DVolume||volume,expectedRevision=null){
  if(!sceneState?.obj||!v)return false;const st=segmentEditState[key],isCurrent=()=>expectedRevision==null||st.revision===expectedRevision;
@@ -186,7 +186,7 @@ export async function render3DSourceBacked(v){
  const group=new THREE.Group();
  if(previous){group.position.copy(previous.position);group.quaternion.copy(previous.quaternion);group.scale.copy(previous.scale)}
  const active=SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active&&segmentState[key].enabled).map(key=>({key,seg:segmentState[key]}));
- const processedActive=active.filter(({seg})=>segmentNeedsGlobalMask(seg)&&!!v.mprData),streamActive=active.filter(({seg})=>!(segmentNeedsGlobalMask(seg)&&!!v.mprData));
+ const processedActive=active.filter(({key})=>segmentHasProcessedMask(key)&&!!v.mprData),streamActive=active.filter(({key})=>!(segmentHasProcessedMask(key)&&!!v.mprData));
  threeLabel.textContent=(sceneState.backend||'3D')+' · building…';set3DBusy(true,'3D構築中…');
  if(!active.length){
   if(revision!==sourceRenderRevision){dispose(group);return}
@@ -209,7 +209,7 @@ export async function render3DSourceBacked(v){
  try{
   for(const {key,seg} of processedActive){
    // build 433: with a filter active the unfiltered memory copy is not the segment's data: use its (filtered) runs
-   const runs=sourceMemoryUsable(v)?thresholdRunsFromMemory(sourceMprMemoryView(v),seg):await getFinalSegmentRuns(key,v),processedGroup=await buildEditableRunsGroup(v,runs,key);
+   const runs=sourceMemoryUsable(v)?thresholdRunsFromMemory(sourceMprMemoryView(v),seg,key):await getFinalSegmentRuns(key,v),processedGroup=await buildEditableRunsGroup(v,runs,key);
    if(processedGroup){processedGroup.name='processed_segment_'+key;group.add(processedGroup)}
    await frameYield();
   }

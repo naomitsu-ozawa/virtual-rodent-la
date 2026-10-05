@@ -17,13 +17,26 @@ const f32=new Float32Array(1),u32=new Uint32Array(f32.buffer);
 export function nextUp(x){f32[0]=x;if(f32[0]<=x){if(f32[0]===0){u32[0]=1}else if(f32[0]>0)u32[0]+=1;else u32[0]-=1}return f32[0]}
 export function nextDown(x){f32[0]=x;if(f32[0]>=x){if(f32[0]===0){u32[0]=0x80000001}else if(f32[0]>0)u32[0]-=1;else u32[0]+=1}return f32[0]}
 
-// segs: {key: {userMin, userMax, active}}; order: keys top → bottom. Returns {key: {min, max, empty, dropped:[[a,b],…]}}
+// segs: {key: {userMin, userMax, active, takes?, adds?}}; order: keys top → bottom.
+// Returns {key: {min, max, empty, dropped:[[a,b],…], sources:[key…], legacy:{min,max,empty,dropped}}}.
+//
+// build 459 (owner: the higher segment wins, and what it adds or removes — Closing, hole filling, small-component
+// removal, air boundary, manual edits — also moves the segments below it, in every view): a segment is either
+//  - plain (takes !== false): nothing but its range decides its voxels, so the range itself is taken from the lower
+//    ones (min/max, as before);
+//  - a voxel taker (takes === false: it has post-processing or manual edits): its final voxels are subtracted from the
+//    lower segments voxel by voxel, so its range is NOT taken from them; the lower segment lists it in `sources`.
+// min/max are the range after the plain upper segments only. `sources` = the active upper segments whose final voxels
+// are subtracted from this one voxel by voxel: the voxel takers whose range overlaps this one's, or either side can ADD
+// voxels outside its range (adds: Closing or hole filling) — and when THIS segment adds, every active upper segment,
+// plain ones included, since what it adds may lie on any of them (the reference is the upper segment's final voxels,
+// so a plain upper segment's final voxels are its range minus its own sources). `legacy` = the old result
+// (every active upper segment taken by range), kept for the checks. With takes omitted every segment is plain.
 export function effectiveRanges(segs,order,mode){
- const out={},taken=[];
- for(const key of order){
-  const s=segs[key];if(!s)continue;
+ const out={},taken=[],legacyTaken=[],uppers=[];
+ const cut=(s,list)=>{
   let pieces=[[+s.userMin,+s.userMax]];const dropped=[];
-  if(mode==='priority'&&s.active)for(const [a,b] of taken){
+  if(mode==='priority'&&s.active)for(const [a,b] of list){
    const next=[];
    for(const [lo,hi] of pieces){
     if(b<lo||a>hi){next.push([lo,hi]);continue}
@@ -38,9 +51,23 @@ export function effectiveRanges(segs,order,mode){
    const mid=(+s.userMin+ +s.userMax)/2;keep=pieces.find(([lo,hi])=>lo<=mid&&mid<=hi)||pieces.reduce((a,b)=>(b[1]-b[0]>a[1]-a[0]?b:a));
    for(const p of pieces)if(p!==keep)dropped.push(p);
   }
-  out[key]=keep?{min:keep[0],max:keep[1],empty:false,dropped}:{min:+s.userMin,max:nextDown(+s.userMin),empty:true,dropped:[]};
+  return{keep,res:keep?{min:keep[0],max:keep[1],empty:false,dropped}:{min:+s.userMin,max:nextDown(+s.userMin),empty:true,dropped:[]}};
+ };
+ for(const key of order){
+  const s=segs[key];if(!s)continue;
+  const {keep,res}=cut(s,taken),leg=cut(s,legacyTaken);
+  const sources=[];
+  if(mode==='priority'&&s.active&&!res.empty)for(const u of uppers){
+   // a segment that adds voxels (Closing / hole filling) may add them anywhere, on a plain upper segment's range too
+   if(s.adds||(u.takes===false&&(u.adds||!(u.hi<res.min||u.lo>res.max))))sources.push(u.key);
+  }
+  out[key]={...res,sources,legacy:leg.res};
   // what this segment really holds is taken from the ones below (a piece it dropped stays free for them)
-  if(s.active&&keep)taken.push([keep[0],keep[1]]);
+  if(s.active&&leg.keep)legacyTaken.push([leg.keep[0],leg.keep[1]]);
+  if(s.active&&keep){
+   uppers.push({key,lo:keep[0],hi:keep[1],adds:!!s.adds,takes:s.takes!==false});
+   if(s.takes!==false)taken.push([keep[0],keep[1]]);
+  }
  }
  return out;
 }

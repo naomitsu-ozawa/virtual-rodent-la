@@ -7,7 +7,7 @@ import { sceneState, setAnalysisFilterSignature, incSourceRenderRevision, source
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { eachGeometryTriangleRange, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces, groupToBinaryStl } from './mesh-geometry.js?v=20261005-build458';
 import { surfaceSmoothingActive } from './settings.js?v=20261005-build458';
-import { SEGMENT_PRESET_ORDER, segmentState, getProcessedSegmentMask, segmentEditState, segmentEditActive, segmentNeedsGlobalMask } from './segments.js?v=20261005-build458';
+import { SEGMENT_PRESET_ORDER, segmentState, getProcessedSegmentMask, segmentEditState, segmentEditActive, segmentHasProcessedMask, segmentEditsChanged } from './segments.js?v=20261005-build458';
 import { request3DRender } from './scene3d.js?v=20261005-build458';
 import { threeLabel, footer, analysisEditTargetSelect, selected, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutOffset, threeEditOverlay, volumeAnalysisResult, analysisSummary, threeBusyLabel } from './ui-shell.js?v=20261005-build458';
 import { dispose, buildSmoothIsoMesh, geometryFromSourcePositions, buildEditableRunsGroup } from './surface-mesh.js?v=20261005-build458';
@@ -38,7 +38,7 @@ export function analysisRegionAtVoxel(x,y,z){
  return analysisRegions.find(r=>r.visible&&analysisRunsContain(r.runsBySlice,x,y,z))||null;
 }
 export async function connectedComponentVolumeGpuRuns(v,key,seg,x0,y0,z0){
- const device=await ensureGpuFilterDevice();if(!device||segmentNeedsGlobalMask(seg))return null;
+ const device=await ensureGpuFilterDevice();if(!device||segmentHasProcessedMask(key))return null;
  const w=v.columns,h=v.rows,d=v.slices,uf=new RunUnionFind(),sliceRuns=new Array(d),seed={x:Math.max(0,Math.min(w-1,x0)),y:Math.max(0,Math.min(h-1,y0)),z:Math.max(0,Math.min(d-1,z0)),label:null,bestDist2:Infinity},plane=w*h;
  let prevRows=null,done=0;const blockDepth=sourceAnalysisBlockDepth(w,h);
  try{
@@ -100,7 +100,7 @@ export function surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey=null
 export async function segmentKeyAtVoxel(v,x,y,z){
  const w=v.columns,h=v.rows,d=v.slices;if(x<0||y<0||z<0||x>=w||y>=h||z>=d)return null;
  for(const key of SEGMENT_PRESET_ORDER){
-  const seg=segmentState[key];if(!seg.active||!seg.enabled||!(segmentEditActive(key)||(v.sourceBacked&&segmentNeedsGlobalMask(seg))))continue;
+  const seg=segmentState[key];if(!seg.active||!seg.enabled||!(segmentEditActive(key)||(v.sourceBacked&&segmentHasProcessedMask(key))))continue;
   const runs=await getFinalSegmentRuns(key,v);if(analysisRunsContain(runs,x,y,z))return key;
  }
  let value=null;
@@ -112,8 +112,8 @@ export async function segmentKeyAtVoxel(v,x,y,z){
   }
  }else value=v.data[z*h*w+y*w+x];
  for(const key of SEGMENT_PRESET_ORDER){
-  const seg=segmentState[key];if(!seg.active||!seg.enabled||segmentEditActive(key)||(v.sourceBacked&&segmentNeedsGlobalMask(seg)))continue;
-  if(!v.sourceBacked&&segmentNeedsGlobalMask(seg)){const mask=getProcessedSegmentMask(v,seg);if(mask[z*h*w+y*w+x]===1)return key}
+  const seg=segmentState[key];if(!seg.active||!seg.enabled||segmentEditActive(key)||(v.sourceBacked&&segmentHasProcessedMask(key)))continue;
+  if(!v.sourceBacked&&segmentHasProcessedMask(key)){const mask=getProcessedSegmentMask(v,seg,key);if(mask[z*h*w+y*w+x]===1)return key}
   else if(value>=seg.min&&value<=seg.max)return key;
  }
  return null;
@@ -123,7 +123,7 @@ export async function analyzeVolumeComponentAtVoxel(analysisVolume,key,x,y,z){
  // Filtered source-backed volumes: analyse the cached filtered runs of the
  // segment (built once per filter/segment setting, shared with the edit
  // tools) instead of re-filtering the whole volume on every click.
- if(segmentEditActive(key)||(analysisVolume.sourceBacked&&(segmentNeedsGlobalMask(seg)||sourceFilterStages().length>0))){
+ if(segmentEditActive(key)||(analysisVolume.sourceBacked&&(segmentHasProcessedMask(key)||sourceFilterStages().length>0))){
   const showRunProgress=(done,total)=>{const text=(currentLanguage==='ja'?'フィルター適用済みの領域を準備中… ':'Preparing filtered segment… ')+done+' / '+total;analysisSummary.textContent=text;set3DBusyLabel(text)};
   const runs=await getFinalSegmentRuns(key,analysisVolume,showRunProgress),comps=await componentsFromRunsAsync(runs,w,h,d,(phase,done,total)=>{set3DBusyLabel((currentLanguage==='ja'?'領域を解析中… ':'Analyzing region… ')+done+' / '+total)});let comp=comps.find(item=>analysisRunsContain(item.runsBySlice,x,y,z));
   if(!comp){for(let r=1;r<=2&&!comp;r++)for(let dz=-r;dz<=r&&!comp;dz++)for(let dy=-r;dy<=r&&!comp;dy++)for(let dx=-r;dx<=r;dx++){const ix=x+dx,iy=y+dy,iz=z+dz;if(ix<0||iy<0||iz<0||ix>=w||iy>=h||iz>=d)continue;comp=comps.find(item=>analysisRunsContain(item.runsBySlice,ix,iy,iz));if(comp)break}}
@@ -139,7 +139,7 @@ export async function analyzeVolumeComponentAtVoxel(analysisVolume,key,x,y,z){
   const runsBySlice=sourceResultToAnalysisRuns(gpuResult,d);return addAnalysisRegion(analysisVolume,{key,segmentKeys:[key],runsBySlice,voxels:gpuResult.voxels,mm3:gpuResult.mm3});
  }
  setGpuComputeBackend('CPU ANALYSIS');
- const processedMask=getProcessedSegmentMask(analysisVolume,seg),inside=(ix,iy,iz)=>ix>=0&&iy>=0&&iz>=0&&ix<w&&iy<h&&iz<d&&processedMask[iz*h*w+iy*w+ix]===1;
+ const processedMask=getProcessedSegmentMask(analysisVolume,seg,key),inside=(ix,iy,iz)=>ix>=0&&iy>=0&&iz>=0&&ix<w&&iy<h&&iz<d&&processedMask[iz*h*w+iy*w+ix]===1;
  if(!inside(x,y,z)){
   let found=null;for(let r=1;r<=2&&!found;r++)for(let dz=-r;dz<=r&&!found;dz++)for(let dy=-r;dy<=r&&!found;dy++)for(let dx=-r;dx<=r;dx++){const ix=x+dx,iy=y+dy,iz=z+dz;if(inside(ix,iy,iz)){found=[ix,iy,iz];break}}
   if(!found)throw new Error(currentLanguage==='ja'?'選択位置から領域を特定できませんでした':'Could not identify a component at the selected point');
@@ -379,7 +379,7 @@ export function snapshotAnalysisRegionsForSegment(key){
 }
 export function editSnapshot(key){const st=segmentEditState[key];return{keepRuns:st.keepRuns,excludeRuns:st.excludeRuns,cutRuns:st.cutRuns,rawCutSurface:!!st.rawCutSurface,analysisRefs:snapshotAnalysisRegionsForSegment(key)}}
 export function pushEditUndo(key){const st=segmentEditState[key];st.undo.push(editSnapshot(key));if(st.undo.length>20)st.undo.shift();st.redo=[]}
-export function restoreEditSnapshot(key,snap){const st=segmentEditState[key];st.keepRuns=snap?.keepRuns||null;st.excludeRuns=snap?.excludeRuns||null;st.cutRuns=snap?.cutRuns||null;st.rawCutSurface=!!snap?.rawCutSurface;st.finalRuns=null;st.revision++}
+export function restoreEditSnapshot(key,snap){const st=segmentEditState[key];st.keepRuns=snap?.keepRuns||null;st.excludeRuns=snap?.excludeRuns||null;st.cutRuns=snap?.cutRuns||null;st.rawCutSurface=!!snap?.rawCutSurface;st.finalRuns=null;st.revision++;segmentEditsChanged(key)}
 export async function rebuildEditedAnalysisForSegment(key,referenceRegions=null){
  const v=current3DVolume||volume;if(!v)return;
  const refs=referenceRegions||snapshotAnalysisRegionsForSegment(key);
@@ -408,7 +408,7 @@ export async function applyEditKeepSelected(){
   const runs=regions.reduce((acc,r)=>acc?unionRunArrays(acc,r.runsBySlice,v.slices):r.runsBySlice,null);
   return{key,runs,refs:snapshotAnalysisRegionsForSegment(key).filter(ref=>analysisRunsOverlap(ref.runsBySlice,runs))};
  });
- for(const {key,runs} of plans){const st=segmentEditState[key];pushEditUndo(key);st.keepRuns=runs;st.excludeRuns=null;st.finalRuns=null;st.revision++}
+ for(const {key,runs} of plans){const st=segmentEditState[key];pushEditUndo(key);st.keepRuns=runs;st.excludeRuns=null;st.finalRuns=null;st.revision++;segmentEditsChanged(key)}
  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);for(const {key,refs} of plans)await trimAnalysisRegionsAfterEdit(key,refs)}else{for(const {key,refs} of plans){await refreshEditedSegmentSurface(key);await rebuildEditedAnalysisForSegment(key,refs)}}
  footer.textContent=currentLanguage==='ja'?'選択領域だけを残しました':'Kept the selected region only';
  returnToNavigate();
@@ -421,7 +421,7 @@ export async function applyEditRemoveSelected(){
  });
  set3DBusy(true,currentLanguage==='ja'?'選択領域を削除中…':'Deleting selected region…',false);await frameYield();
  try{
-  for(const {key,runs} of plans){const st=segmentEditState[key];pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,runs,v.slices);st.finalRuns=null;st.revision++}
+  for(const {key,runs} of plans){const st=segmentEditState[key];pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,runs,v.slices);st.finalRuns=null;st.revision++;segmentEditsChanged(key)}
   if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);for(const {key,refs} of plans)await trimAnalysisRegionsAfterEdit(key,refs)}else{for(const {key,refs} of plans){await refreshEditedSegmentSurface(key,v);await rebuildEditedAnalysisForSegment(key,refs)}}
   footer.textContent=currentLanguage==='ja'?'選択領域を削除しました':'Deleted the selected region';
   returnToNavigate();
@@ -438,7 +438,7 @@ export async function redoSegmentEdit(){
  updateAnalysisEditorControls();footer.textContent='Redo';
 }
 export async function resetFocusedSegmentEdit(){
- const region=analysisRegionById(analysisFocusedRegionId),key=analysisEditTargetKey||(region?.segmentKeys?.length===1?region.segmentKeys[0]:null)||SEGMENT_PRESET_ORDER.find(k=>segmentEditActive(k));if(!key)return;setAnalysisEditTargetKey(key);const refs=snapshotAnalysisRegionsForSegment(key);pushEditUndo(key);const st=segmentEditState[key];st.keepRuns=null;st.excludeRuns=null;st.cutRuns=null;st.rawCutSurface=false;st.finalRuns=null;st.revision++;
+ const region=analysisRegionById(analysisFocusedRegionId),key=analysisEditTargetKey||(region?.segmentKeys?.length===1?region.segmentKeys[0]:null)||SEGMENT_PRESET_ORDER.find(k=>segmentEditActive(k));if(!key)return;setAnalysisEditTargetKey(key);const refs=snapshotAnalysisRegionsForSegment(key);pushEditUndo(key);const st=segmentEditState[key];st.keepRuns=null;st.excludeRuns=null;st.cutRuns=null;st.rawCutSurface=false;st.finalRuns=null;st.revision++;segmentEditsChanged(key);
  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){syncGpuVolumeEdits(sourceVolume||volume);await trimAnalysisRegionsAfterEdit(key,refs)}else{await refreshEditedSegmentSurface(key);if(refs.length)await rebuildEditedAnalysisForSegment(key,refs)}
  updateAnalysisEditorControls();footer.textContent=currentLanguage==='ja'?'編集をリセットしました':'Edits reset';
 }
@@ -450,7 +450,7 @@ export async function applyCutStroke(points,key=analysisEditTargetKey,mode='pen'
   const cut=cutRunsFromVoxelStroke(v,points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,mode,+analysisCutOffset.value||0);
   const cutVoxels=analysisRunsVoxelCount(cut);
   if(!cutVoxels)throw new Error(currentLanguage==='ja'?'切断空間のボクセル化に失敗しました':'Cut volume voxelization produced no voxels');
-  pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,cut,v.slices);st.cutRuns=unionRunArrays(st.cutRuns,cut,v.slices);st.rawCutSurface=true;st.finalRuns=null;st.revision++;setAnalysisEditTargetKey(key);
+  pushEditUndo(key);st.excludeRuns=unionRunArrays(st.excludeRuns,cut,v.slices);st.cutRuns=unionRunArrays(st.cutRuns,cut,v.slices);st.rawCutSurface=true;st.finalRuns=null;st.revision++;segmentEditsChanged(key);setAnalysisEditTargetKey(key);
   console.info('[VRL CUT] solid voxel mask',{key,cutVoxels,widthMm:cutWidthMm(),depthMm:+analysisCutDepth.value||5});
   const revision=st.revision;
   if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){
@@ -538,7 +538,7 @@ export async function render3DSmoothIsosurface(v){
    if(v.sourceBacked){
     const runs=await ensureSegmentBaseRuns(key,v);if(revision!==sourceRenderRevision){dispose(group);return null}
     mask=maskFromAnalysisRuns(v,runs);
-   }else mask=getProcessedSegmentMask(v,seg);
+   }else mask=getProcessedSegmentMask(v,seg,key);
    const mesh=await buildSmoothIsoMesh(v,mask,seg,key,false);if(mesh)group.add(mesh);await frameYield();
   }
   if(revision!==sourceRenderRevision){dispose(group);return null}

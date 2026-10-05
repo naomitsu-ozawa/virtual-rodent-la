@@ -4,7 +4,7 @@ import { beginSharedMpr3DPreview } from './mpr3d-overlay.js?v=20261005-build458'
 import { gpuStepTimes, gpuFilterRuntime, gpuCounts } from './gpu-compute.js?v=20261005-build458';
 import { gpuVolumeRefresh, updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261005-build458';
 import { sourceVolume, volume, sceneState, currentLanguage, threeRenderMode, ipadGpuTargetSide } from './state.js?v=20261005-build458';
-import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261005-build458';
+import { SEGMENT_PRESET_ORDER, segmentEditState, segmentState, segmentHasProcessedMask, segmentAddsVoxels } from './segments.js?v=20261005-build458';
 import { request3DRender } from './scene3d.js?v=20261005-build458';
 import { footer, volumeCacheClearBtn } from './ui-shell.js?v=20261005-build458';
 import { subtractRunArrays, intersectRunArrays } from './run-length.js?v=20261005-build458';
@@ -132,12 +132,13 @@ export function gpuVolumeEditDescriptors(v=sourceVolume||volume){
  const out={};if(!v)return out;
  for(const key of SEGMENT_PRESET_ORDER){
   const st=segmentEditState[key],seg=segmentState[key];if(!st)continue;
-  // post-processed segments (Opening, thin-region suppression, ...): the
-  // volume shader only thresholds, so show the processed voxels as a keep mask
-  if(seg?.active&&seg.enabled&&segmentNeedsGlobalMask(seg)&&st.baseRuns?.length===v.slices){
+  // post-processed segments (Opening, thin-region suppression, ...) and segments below a voxel taker (build 459): the
+  // volume shader only thresholds, so show the final voxels as a keep mask. maskOnly (Closing / hole filling can add
+  // voxels outside the HU range): the shader decides by the mask alone, as the 2D views do.
+  if(seg?.active&&seg.enabled&&segmentHasProcessedMask(key)&&st.baseRuns?.length===v.slices){
    let runs=st.keepRuns?intersectRunArrays(st.baseRuns,st.keepRuns,v.slices):st.baseRuns;
    if(st.excludeRuns)runs=subtractRunArrays(runs,st.excludeRuns,v.slices);
-   out[key]={mode:'keep',runs,cutRuns:st.cutRuns};continue;
+   out[key]={mode:'keep',runs,cutRuns:st.cutRuns,maskOnly:segmentAddsVoxels(seg)};continue;
   }
   if(st.keepRuns){out[key]={mode:'keep',runs:st.excludeRuns?subtractRunArrays(st.keepRuns,st.excludeRuns,v.slices):st.keepRuns,cutRuns:st.cutRuns}}
   else if(st.excludeRuns){out[key]={mode:'exclude',runs:st.excludeRuns,cutRuns:st.cutRuns}}
@@ -155,7 +156,7 @@ export function syncGpuVolumeEdits(v=sourceVolume||volume){
  // rebuilt (2D kept showing deleted voxels): app.js rebuilds them and repaints 2D on this event
  if(v&&typeof document!=='undefined')document.dispatchEvent(new CustomEvent('vrl-gpu-edits-synced'));
  const mv=sceneState?.medicalVolume;if(!mv||!v)return;
- const descs=gpuVolumeEditDescriptors(v),processed=Object.keys(descs).filter(key=>segmentNeedsGlobalMask(segmentState[key]||{}));
+ const descs=gpuVolumeEditDescriptors(v),processed=Object.keys(descs).filter(key=>segmentHasProcessedMask(key));
  try{mv.setEditRuns(descs,SEGMENT_PRESET_ORDER,v);request3DRender();for(const key of processed)noteSegment3D(key,currentLanguage==='ja'?'3D反映済み':'shown in 3D',false)}
  catch(e){console.error(e);footer.textContent=(currentLanguage==='ja'?'GPU編集マスク更新エラー: ':'GPU edit mask error: ')+String(e.message||e);for(const key of processed)noteSegment3D(key,(currentLanguage==='ja'?'3D反映エラー: ':'3D error: ')+String(e.message||e),true)}
 }

@@ -1,7 +1,7 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
 import { wc, ww, planes, footer, state, wcVal, wwVal } from './ui-shell.js?v=20261005-build458';
-import { activeMprSegments, mprSegmentAlpha, segmentEditActive, segmentState, segmentNeedsGlobalMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261005-build458';
+import { activeMprSegments, mprSegmentAlpha, segmentEditActive, segmentState, segmentHasProcessedMask, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261005-build458';
 import { volume, volumeAnalysisMode, analysisRegions, analysisFocusedRegionId, sectionViewPlane, memoryGpuPreviewActive, sourceVolume, setMemoryGpuPreviewActive, sceneState, incSourceMprWarmupToken, sourceMprWarmupPlane, setSourceMprWarmupPlane, residentGpuUploadSeriesId, sourceMprWarmupToken, setCrosshairSlice } from './state.js?v=20261005-build458';
 import { analysisRunsContain, runsPlaneMask } from './run-length.js?v=20261005-build458';
 import { mpr3DVisibility, refreshMpr3DPlaneTexture, updateMpr3DPlanePositions, syncMpr3DSliceSliders, mpr3DOrthoSliding, pushCachedMpr3DPlane, mpr3DPreviewCache, mpr3DPreviewSignature, paintMpr3DCacheSliceFast, ensureMpr3DPreviewCache } from './mpr3d-overlay.js?v=20261005-build458';
@@ -212,7 +212,7 @@ export async function renderPlane(p,revision,idx){
  const dims=p==='axial'?[volume.columns,volume.rows]:p==='coronal'?[volume.columns,volume.slices]:[volume.rows,volume.slices],ctx=c.canvas.getContext('2d');if(c.canvas.width!==dims[0])c.canvas.width=dims[0];if(c.canvas.height!==dims[1])c.canvas.height=dims[1];
  const img=reusableMprImage(p,ctx,dims),values=volume.mprData?cachedSourceMprPlane(volume,p,idx):null,low=+wc.value-(+ww.value)/2,scale=255/Math.max(+ww.value,1);let q=0;
  const layers=resultPlaneLayers(p,idx,true);
- const segOrder=['lung','fat','soft','bone'],segMasks={};for(const key of segOrder){const seg=segmentState[key];if(seg.active&&seg.enabled&&segmentNeedsGlobalMask(seg))segMasks[key]=getProcessedSegmentMask(volume,seg)}
+ const segOrder=['lung','fat','soft','bone'],segMasks={};for(const key of segOrder){const seg=segmentState[key];if(seg.active&&seg.enabled&&segmentHasProcessedMask(key))segMasks[key]=getProcessedSegmentMask(volume,seg,key)}
  for(let y=0;y<dims[1];y++)for(let x=0;x<dims[0];x++){
   let v;if(values)v=values[y*dims[0]+x];else if(p==='axial')v=volume.data[idx*volume.rows*volume.columns+y*volume.columns+x];else if(p==='coronal'){const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+idx*volume.columns+x]}else{const z=volume.slices-1-y;v=volume.data[z*volume.rows*volume.columns+x*volume.columns+idx]}
   const g=Math.max(0,Math.min(255,Math.round((v-low)*scale)));let rr=g,gg=g,bb=g;

@@ -5,7 +5,7 @@ import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-st
 import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20261005-build458';
 import { footer, resetFilterBtn, wc, ww, surfaceSmoothEnabled, surfaceSmoothStrength, planes, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, projectSaveBtn, list, selected, prog, volumeAnalysisToggle, threeLabel, state, renderModeToggle, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, filterAddSelect, filterAddButton, ctRangeAuto, ctRangeFull, $, folderBtn, demoBtn, progLabel, bar, anisotropicKappa, tvEps } from './ui-shell.js?v=20261005-build458';
 import { compareFingerprints, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20261005-build458';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsGlobalMask, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261005-build458';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsVoxelMask, segmentEditGen, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261005-build458';
 import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls, setFilterUnitControl, formatHU } from './filter-pipeline.js?v=20261005-build458';
 import { sourceRangeFromMetadata } from './dicom.js?v=20261005-build458';
 import { FILTER_UNITS, filterLegacyRange, resolveFilterParams } from './filter-units.js?v=20261005-build458';
@@ -79,7 +79,7 @@ export function setThreeVolumeOverlay(active){
 // background and show them as keep masks (gpuVolumeEditDescriptors).
 export function syncProcessedSegmentsToVolume(){
  if(threeRenderMode!=='volume')return;
- const v=current3DVolume||volume,keys=SEGMENT_PRESET_ORDER.filter(key=>{const s=segmentState[key];return s?.active&&s.enabled&&segmentNeedsGlobalMask(s)});
+ const v=current3DVolume||volume,keys=SEGMENT_PRESET_ORDER.filter(key=>{const s=segmentState[key];return s?.active&&s.enabled&&segmentNeedsVoxelMask(key)});
  if(!v||!keys.length)return;
  setTimeout(async()=>{
   for(const key of keys){
@@ -458,7 +458,10 @@ export async function applyProject({project,files}){
  for(const key of SEGMENT_PRESET_ORDER){
   const st=segmentEditState[key],e=edits[key]||{};
   st.keepRuns=e.keep||null;st.excludeRuns=e.exclude||null;st.cutRuns=null;st.finalRuns=null;st.undo=[];st.redo=[];st.revision++;
+  segmentEditGen[key]=(segmentEditGen[key]|0)+1;
  }
+ // build 459: the restored edits make their segments voxel takers: the segments below follow
+ commitExclusiveRanges();
  if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active)syncGpuVolumeEdits(sourceVolume||volume);
  // slice positions
  for(const[p,idx]of Object.entries(display.slices||{}))if(planes[p]&&Number.isFinite(+idx))planes[p].slider.value=String(Math.max(0,Math.min(+planes[p].slider.max,+idx)));
