@@ -6,12 +6,12 @@
 // renders on request, so a change of the comments, the switch or the series asks for a render). Depth: dots are never hidden by the
 // volume (a lesion inside dense tissue would vanish); a dot farther than the volume's centre is shown fainter and smaller instead.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool } from './state.js?v=20261005-build459';
-import { tr } from './i18n.js?v=20261005-build459';
-import { datasetFingerprint } from './project-file.js?v=20261005-build459';
-import { voxelToLocal3D } from './crosshair.js?v=20261005-build459';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261005-build459';
-import { request3DRender } from './scene3d.js?v=20261005-build459';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool } from './state.js?v=20261006-build460';
+import { tr } from './i18n.js?v=20261006-build460';
+import { datasetFingerprint } from './project-file.js?v=20261006-build460';
+import { voxelToLocal3D } from './crosshair.js?v=20261006-build460';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build460';
+import { request3DRender } from './scene3d.js?v=20261006-build460';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
 const els=new Map(); // comment id -> {el,x,y,vis,no}
