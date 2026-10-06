@@ -44,3 +44,10 @@ describe('VR position markers', () => {
     void c; m.dispose();
   });
 });
+
+import { sectionCursorSize } from '../../docs/vr-point-markers.js';
+describe('sectionCursorSize', () => {
+  it('2.2 percent of the distance, never below two voxels', () => {
+    expect(sectionCursorSize(1, 0.001)).toBeCloseTo(0.022); expect(sectionCursorSize(0.1, 0.005)).toBeCloseTo(0.01); expect(sectionCursorSize(0, 0)).toBe(0);
+  });
+});

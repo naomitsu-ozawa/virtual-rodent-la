@@ -102,6 +102,8 @@ export function surfaceCursorSizes(dist,voxelM){
  const d=Math.max(1e-3,+dist||0),core=Math.max(0.5*(+voxelM||0),d*SURFACE_CURSOR_MIN_CORE_RAD),ring=Math.max(d*SURFACE_CURSOR_RING_RAD,core*2.6);
  return{core,ring};
 }
+// pure: side (world metres) of the section-mode cursor, a flat square lying on the section (about the surface ring's diameter, 0.022 of the distance)
+export const sectionCursorSize=(dist,voxelM)=>Math.max((+dist||0)*0.022,2*(+voxelM||0));
 export function createSurfaceCursor(THREE,scene){
  const mat=()=>new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide});
  const core=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),mat()),ring=new THREE.Mesh(new THREE.RingGeometry(1-SURFACE_CURSOR_RING_WIDTH,1,40),mat());

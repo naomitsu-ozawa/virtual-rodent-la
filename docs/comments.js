@@ -58,6 +58,14 @@ export function updateCommentText(id,text){
  if(list[i].text!==t){list=list.map((c,n)=>n===i?{...c,text:t}:c);emit()}
  return getComments()[i];
 }
+// move a point: the position only (id, text, createdAt and series stay). An invalid voxel or unknown id gives null, an unchanged position is not a change.
+export function updateCommentPosition(id,position){
+ const pos=commentVoxel(position);if(!pos)return null;
+ const i=list.findIndex(c=>c.id===id);if(i<0)return null;
+ const o=list[i].position;
+ if(o.i!==pos.i||o.j!==pos.j||o.k!==pos.k){list=list.map((c,n)=>n===i?{...c,position:pos}:c);emit()}
+ return getComments()[i];
+}
 export function removeComment(id){const n=list.length;list=list.filter(c=>c.id!==id);if(list.length!==n)emit();return list.length!==n}
 export function setComments(next){list=sanitizeComments(next);emit()}
 // put a deleted comment back where it was (the "undo" of the delete button)

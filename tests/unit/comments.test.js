@@ -184,3 +184,22 @@ describe('editing the text', () => {
     expect(got[0].text).toBe('edited'); expect(got[0].position).toEqual({ i: 3, j: 4, k: 5 }); expect(got[0].createdAt).toBe(written[0].createdAt);
   });
 });
+
+import { updateCommentPosition } from '../../docs/comments.js';
+describe('updateCommentPosition', () => {
+  const add = () => addComment(createComment({ text: 'a', position: { i: 1, j: 2, k: 3 }, series: fpA, id: 'm1', now: Date.UTC(2026, 9, 5) }));
+  it('changes the position only', () => {
+    add(); const r = updateCommentPosition('m1', { i: 4, j: 5, k: 6 });
+    expect(r).toMatchObject({ id: 'm1', text: 'a', createdAt: '2026-10-05T00:00:00.000Z', series: fpA, position: { i: 4, j: 5, k: 6 } });
+    expect(getComments()[0].position).toEqual({ i: 4, j: 5, k: 6 });
+  });
+  it('null for an invalid voxel or unknown id', () => {
+    add(); expect(updateCommentPosition('m1', { i: 'x', j: 1, k: 1 })).toBeNull(); expect(updateCommentPosition('m1', null)).toBeNull();
+    expect(updateCommentPosition('nope', { i: 1, j: 1, k: 1 })).toBeNull(); expect(getComments()[0].position).toEqual({ i: 1, j: 2, k: 3 });
+  });
+  it('emits only when it changed, and counts as unsaved', () => {
+    add(); markCommentsSaved(fpA); let n = 0; const off = onCommentsChange(() => n++);
+    updateCommentPosition('m1', { i: 1, j: 2, k: 3 }); expect(n).toBe(0); expect(hasUnsavedComments()).toBe(false);
+    updateCommentPosition('m1', { i: 2, j: 2, k: 3 }); expect(n).toBe(1); expect(hasUnsavedComments()).toBe(true); off();
+  });
+});
