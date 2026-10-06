@@ -32,7 +32,7 @@ import { GPU_FILTER_KEYS, acquireGpuWorkBuffer, adoptRendererGpuDevice, clearGpu
 import { cachedSagittalDisplayPlane, cachedSourceMprPlane, decode, decodeCompressedDicomSlice, decodeSourceSlice, getDicomCodecModule, prepareSourceMprCache, readSourceColumn, readSourceRow, readSourceRows, sourceMprCacheLimit, sourceMprDecodeConcurrency, sourceSliceCache } from './volume-io.js?v=20261006-build469';
 import { componentFullyInside, makeVoxelProjector, polygonBounds } from './lasso.js?v=20261006-build469';
 import { spacingWarningText } from './slice-spacing.js?v=20261006-build469';
-import { PROJECT_EXTENSION, compareFingerprints, datasetFingerprint, decodeRuns, encodeRuns, isProjectArchiveName, packProject, projectFromEntries, unpackProject } from './project-file.js?v=20261006-build469';
+import { PROJECT_EXTENSION, compareFingerprints, legacySpacingUpgrade, projectMismatchReason, resolveProjectMatch, datasetFingerprint, decodeRuns, encodeRuns, isProjectArchiveName, packProject, projectFromEntries, unpackProject } from './project-file.js?v=20261006-build469';
 import { cacheKey, openVolumeCache, textureCacheHandle } from './gpu-volume-cache.js?v=20261006-build469';
 import { createSourceFilterSlot, ensureSourceFilterWorkers, filterState, fitSourceTile, getCachedSourceSlice, getFilteredMemoryPlaneValues, getFilteredSourceAxialBlock, getFilteredSourcePlaneValues, memoryFilterPreviewCache, memoryFilterPreviewGet, memoryFilterPreviewSet, memoryPreviewCacheLimit, planeRenderRevision, processMemoryRegion, processSourceRegion, pumpSourceFilterWorkers, readMemoryRegion, readSourceRegion, readSourceSubregion, runSourceFilterWorker, sourceFilterCacheGet, sourceFilterCacheLimit, sourceFilterCacheSet, sourceFilterHalo, sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterWorkerMain, sourceSliceCacheLimit, sourceTileBudget, currentFilterSignature } from './source-filters.js?v=20261006-build469';
 import { buildSourceOrthogonalPlane, readResidentGpuMprPlane, readSourceOrthogonalStrip, residentGpuMprAvailable, residentMprJobs, sourceOrthogonalCacheGet, sourceOrthogonalCacheLimit, sourceOrthogonalCacheSet, sourceOrthogonalPlaneCache, sourceOrthogonalPlanePending } from './mpr-orthogonal.js?v=20261006-build469';
@@ -387,7 +387,13 @@ folderInput.onchange=async e=>{
  const ds=pendingProject.value.project.dataset,match=detectedSeries.list.find(s=>compareFingerprints(ds,datasetFingerprint(s)).ok);
  const ja=currentLanguage==='ja',others=found.length>1?(ja?'（'+found.length+'件中、最新を使用）':' (newest of '+found.length+')'):'';
  if(match){footer.textContent=(ja?'フォルダ内のプロジェクトを適用します: ':'Applying project from the folder: ')+chosen.name+others;await selectSeries(match)}
- else footer.textContent=(ja?'フォルダ内のプロジェクト（':'The project in the folder (')+chosen.name+(ja?'）はこのフォルダのシリーズと一致しません':') does not match any series in this folder');
+ else{
+  // build 469: old project whose only difference is the z spacing rule -> ask, then apply with the new spacing
+  const legacy=detectedSeries.list.find(s=>legacySpacingUpgrade(ds,datasetFingerprint(s)));
+  if(legacy){const r=resolveProjectMatch(ds,datasetFingerprint(legacy),t=>window.confirm(t),currentLanguage);if(r.action==='apply'){pendingProject.value.legacyAccepted=true;footer.textContent=(ja?'フォルダ内のプロジェクトを適用します: ':'Applying project from the folder: ')+chosen.name+others;await selectSeries(legacy)}else footer.textContent=ja?'プロジェクトの適用をキャンセルしました（スライス間隔が保存時と異なります）':'Project not applied (the slice spacing differs from the saved one)';return}
+  const reason=detectedSeries.list.map(s=>projectMismatchReason(ds,datasetFingerprint(s))).find(Boolean);
+  footer.textContent=reason?(ja?reason.ja:reason.en):(ja?'フォルダ内のプロジェクト（':'The project in the folder (')+chosen.name+(ja?'）はこのフォルダのシリーズと一致しません':') does not match any series in this folder');
+ }
 };
 demoBtn.onclick=async()=>{busy(true);resetVolume();list.replaceChildren();state.classList.remove('is-hidden');prog.classList.remove('is-hidden');state.innerHTML='<strong>'+tr('demoLoading')+'</strong><span>'+tr('demoSize')+'</span>';try{const files=await loadDemo();await inspect(files,true)}catch(e){console.error(e);state.innerHTML='<strong>'+tr('demoFailed')+'</strong><span>'+esc(e.message||e)+'</span>';footer.textContent='Demo error: '+String(e.message||e)}finally{busy(false);prog.classList.add('is-hidden')}};
 // build 335: practice dataset on this site (docs/demo/sample1)

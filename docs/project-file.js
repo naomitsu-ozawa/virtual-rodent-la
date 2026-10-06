@@ -15,17 +15,60 @@ export function datasetFingerprint(series){
   seriesId:series?.id??null,studyUid:f.studyUid??null,seriesUid:f.seriesUid??null,
   description:series?.description??'',modality:series?.modality??'',
   columns:series?.columns??0,rows:series?.rows??0,slices:series?.slices?.length??0,
+  // build 469: legacy first-two-slices spacing (recognises projects saved before the new rule) and excluded duplicates
+  legacySpacingZ:series?.spacingCheck?.legacyZ??null,duplicatesExcluded:series?.spacingCheck?.duplicatesExcluded||0,
   spacing:[series?.spacingX,series?.spacingY,series?.spacingZ].map(n=>Number.isFinite(+n)?+(+n).toPrecision(8):null),
  };
 }
 
-export function compareFingerprints(saved,current){
+const SPACING_TOL=(v)=>1e-4*Math.max(1,Math.abs(v));
+const spacingDiffers=(a,b)=>a==null||b==null||Math.abs(a-b)>SPACING_TOL(a);
+// opts.legacyZ: also accept a project whose ONLY difference is the z spacing of the pre-build-469 rule (see legacySpacingUpgrade)
+export function compareFingerprints(saved,current,opts){
  const issues=[];
  if(saved?.seriesUid&&current?.seriesUid&&saved.seriesUid!==current.seriesUid)issues.push('seriesUid');
  for(const k of['columns','rows','slices'])if(saved?.[k]!==current?.[k])issues.push(k);
  const a=saved?.spacing||[],b=current?.spacing||[];
- if(a.length!==3||b.length!==3||a.some((v,i)=>v==null||b[i]==null||Math.abs(v-b[i])>1e-4*Math.max(1,Math.abs(v))))issues.push('spacing');
+ if(a.length!==3||b.length!==3||a.some((v,i)=>spacingDiffers(v,b[i])))issues.push('spacing');
+ if(opts?.legacyZ&&issues.length===1&&issues[0]==='spacing'&&legacySpacingUpgrade(saved,current))return{ok:true,issues:[],legacyZ:true};
  return{ok:issues.length===0,issues};
+}
+// Project saved before build 469 whose z spacing was the first-two-slices difference: only the z spacing differs,
+// slice count / size / x,y spacing are unchanged and the saved z equals the legacy value of the current series.
+// Returns {savedZ,newZ} (the user is asked) or null (reject).
+export function legacySpacingUpgrade(saved,current){
+ const c=compareFingerprints(saved,current);
+ if(c.issues.length!==1||c.issues[0]!=='spacing')return null;
+ const a=saved.spacing,b=current.spacing,lz=current.legacySpacingZ;
+ if(spacingDiffers(a[0],b[0])||spacingDiffers(a[1],b[1])||lz==null||spacingDiffers(a[2],lz))return null;
+ return{savedZ:a[2],newZ:b[2]};
+}
+// Why a project does not fit the series: {ja,en} for the footer, or null for the generic case.
+export function projectMismatchReason(saved,current){
+ const ex=current?.duplicatesExcluded||0;
+ if(ex>0&&saved?.slices===current.slices+ex)return{ja:'このデータは重複スライスを除外するようになったため、以前のプロジェクトとスライス数が合いません',en:'Duplicate slices are now excluded from this data, so the slice count no longer matches the earlier project'};
+ return null;
+}
+
+const mm=n=>(Math.round(n*10000)/10000).toString();
+// The confirm text for a legacy-spacing project ({ja,en}).
+export function legacySpacingPrompt(up){
+ return{
+  ja:'build 469 からスライス間隔の決め方が変わりました（先頭 2 枚の差 → 全体から計算）。保存時 '+mm(up.savedZ)+' mm → 新しい間隔 '+mm(up.newZ)+' mm。新しい間隔で開きますか？体積がわずかに変わります',
+  en:'Since build 469 the slice spacing is computed differently (first two slices -> whole series). Saved: '+mm(up.savedZ)+' mm -> new: '+mm(up.newZ)+' mm. Open with the new spacing? Volumes change slightly',
+ };
+}
+// Decide what to do with a project for a series. confirmFn(text) -> boolean (window.confirm on the page).
+// {action:'apply'} | {action:'cancel',legacy:true} | {action:'reject',reason:{ja,en}|null,issues}
+export function resolveProjectMatch(saved,current,confirmFn,lang='ja'){
+ const c=compareFingerprints(saved,current);
+ if(c.ok)return{action:'apply'};
+ const up=legacySpacingUpgrade(saved,current);
+ if(up){
+  const t=legacySpacingPrompt(up);
+  return confirmFn(lang==='ja'?t.ja:t.en)?{action:'apply',legacy:up}:{action:'cancel',legacy:up};
+ }
+ return{action:'reject',reason:projectMismatchReason(saved,current),issues:c.issues};
 }
 
 // Run-length edit masks: per axial slice a flat Uint32Array of [y,x0,x1]
