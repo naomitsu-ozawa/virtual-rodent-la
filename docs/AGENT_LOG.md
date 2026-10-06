@@ -38,6 +38,27 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-06 — claude/slice-spacing-check (slice-spacing check and warning, build 469)
+
+**Agent:** Claude
+**Task:** Check every slice gap on load, warn about missing / duplicate / uneven slices, and make the volume spacing reliable.
+
+### What changed
+- New `docs/slice-spacing.js` (pure): gaps along the slice normal (ImageOrientationPatient cross product; Z when absent), classification and the spacing to use. Thresholds: duplicate gap <= max(1e-3 mm, 5% of median); missing gap > 1.5x median (count = round(gap/median)-1); non-uniform when (max-min) of regular gaps > 1% of median; SpacingBetweenSlices mismatch > 2% (SliceThickness difference is recorded only, since overlapping recon is legitimate).
+- `dicom.js`: parses ImageOrientationPatient (`orientation`), sorts by position along the normal, `groupSeries` sets `spacingZ` and `spacingCheck`. Uniform data keeps the old first-gap value (identical volumes); irregular data uses the median gap. Series with no positions or a single slice keep the tag fallback.
+- UI: amber `.spacing-warn` (ja/en) under the selected-series overlay and inside the analysis result card, plus the voxel spacing x/y/z used. Non-blocking.
+- Project: optional `spacingCheck` field in project.json (informational, never applied on load). PROJECT_VERSION stays 1 (unknown fields are ignored by older readers).
+- Tests: `tests/unit/slice-spacing.test.js` (synthetic data only).
+
+### Why
+- Volume = voxel count x spacings, and Z used only the first two slices, so a missing or duplicated slice silently skewed volumes.
+
+### Follow-up / open questions
+- VR volume labels (`vr-view.js`) do not show the warning yet (kept out to avoid conflict with PR #103). Duplicate slices stay in the volume (not removed); only the spacing is corrected.
+- Oblique series now use the normal-projected gap instead of the Z difference (axial series are unchanged).
+
+---
+
 ## 2026-10-05 — claude/viewer-color-themes (colour themes, builds 449-450)
 
 **Agent:** Claude
