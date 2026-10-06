@@ -4,8 +4,8 @@
 // How a point is shown when it is hidden inside / behind the volume is NOT decided here (a later PR): the spheres are drawn after the
 // volume without a depth test, so they are always visible. To change the look, replace this module (or only drawMarker / the materials);
 // vr-view.js only calls createVrPointMarkers(THREE, scene) -> { update, dispose }.
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build462';
-import { voxelToLocal } from './vr-point.js?v=20261006-build462';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build463';
+import { voxelToLocal } from './vr-point.js?v=20261006-build463';
 
 export const VR_MARKER_COLOR=0x4dd8ff;
 const RADIUS_UNITS=0.045,MIN_RADIUS_M=0.003; // radius in volume units (the longest side is 3.3) and the least radius in metres

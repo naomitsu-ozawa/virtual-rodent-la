@@ -2,8 +2,8 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build462';
-import { compareFingerprints } from './project-file.js?v=20261006-build462';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build463';
+import { compareFingerprints } from './project-file.js?v=20261006-build463';
 
 export const COMMENT_MAX_TEXT=2000;
 const isIdx=n=>Number.isFinite(+n)&&n!==null&&n!==''&&n!==true&&n!==false;
@@ -51,6 +51,13 @@ const listeners=new Set();
 const emit=()=>{for(const cb of [...listeners]){try{cb(getComments())}catch(e){console.warn('comment listener failed',e)}}};
 export const getComments=()=>list.map(c=>({...c,position:{...c.position}}));
 export function addComment(c){if(!c)return null;list=[...list,c];emit();return c}
+// edit the text only: position, createdAt and series stay as they are. Blank text is refused (null), unchanged text is not a change.
+export function updateCommentText(id,text){
+ const t=String(text??'').slice(0,COMMENT_MAX_TEXT);if(!t.trim())return null;
+ const i=list.findIndex(c=>c.id===id);if(i<0)return null;
+ if(list[i].text!==t){list=list.map((c,n)=>n===i?{...c,text:t}:c);emit()}
+ return getComments()[i];
+}
 export function removeComment(id){const n=list.length;list=list.filter(c=>c.id!==id);if(list.length!==n)emit();return list.length!==n}
 export function setComments(next){list=sanitizeComments(next);emit()}
 // put a deleted comment back where it was (the "undo" of the delete button)

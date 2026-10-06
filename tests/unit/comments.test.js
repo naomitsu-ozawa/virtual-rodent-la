@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createComment, sanitizeComments, commentMatchesSeries, commentTarget, commentVoxel,
   addComment, removeComment, getComments, setComments, onCommentsChange, commentsForProject, COMMENT_MAX_TEXT,
-  mergeComments, loadProjectComments, commentMarkers, COMMENT_NEAR_SLICES, markCommentsSaved, hasUnsavedComments, resetCommentsSaved, restoreComment,
+  updateCommentText, mergeComments, loadProjectComments, commentMarkers, COMMENT_NEAR_SLICES, markCommentsSaved, hasUnsavedComments, resetCommentsSaved, restoreComment,
 } from '../../docs/comments.js';
 import { datasetFingerprint, packProject, unpackProject } from '../../docs/project-file.js';
 
@@ -148,5 +148,39 @@ describe('markers on the planes', () => {
   it('a position outside the volume is clamped, not dropped', () => {
     const o = createComment({ text: 'o', position: { i: 99, j: 0, k: 50 }, series: fpA, id: 'o' });
     expect(commentMarkers('axial', [o], fpA, 11, dims)[0]).toMatchObject({ exact: true });
+  });
+});
+
+describe('editing the text', () => {
+  const mkc = (id, text = 'old') => createComment({ id, text, position: { i: 3, j: 4, k: 5 }, series: fpA, now: 1700000000000 });
+  it('changes the text only and notifies listeners', () => {
+    addComment(mkc('e1')); const before = getComments()[0]; let n = 0, seen = null;
+    const off = onCommentsChange(l => { n++; seen = l; });
+    const r = updateCommentText('e1', 'new text');
+    off();
+    expect(r.text).toBe('new text'); expect(n).toBe(1); expect(seen[0].text).toBe('new text');
+    const after = getComments()[0];
+    expect(after.position).toEqual(before.position); expect(after.createdAt).toBe(before.createdAt); expect(after.series).toEqual(before.series); expect(after.id).toBe('e1');
+  });
+  it('refuses blank text and unknown ids, and does not notify for unchanged text', () => {
+    addComment(mkc('e1')); let n = 0; const off = onCommentsChange(() => n++);
+    expect(updateCommentText('e1', '')).toBeNull(); expect(updateCommentText('e1', '  \n ')).toBeNull(); expect(updateCommentText('nope', 'x')).toBeNull();
+    expect(updateCommentText('e1', 'old')).not.toBeNull();
+    off(); expect(n).toBe(0); expect(getComments()[0].text).toBe('old');
+  });
+  it('is cut at the maximum length', () => {
+    addComment(mkc('e1')); expect(updateCommentText('e1', 'x'.repeat(COMMENT_MAX_TEXT + 50)).text.length).toBe(COMMENT_MAX_TEXT);
+  });
+  it('marks the project unsaved, and editing back to the saved text is clean again', () => {
+    addComment(mkc('e1')); markCommentsSaved(fpA); expect(hasUnsavedComments()).toBe(false);
+    updateCommentText('e1', 'changed'); expect(hasUnsavedComments()).toBe(true);
+    updateCommentText('e1', 'old'); expect(hasUnsavedComments()).toBe(false);
+  });
+  it('survives a save / load round trip with the position unchanged', () => {
+    addComment(mkc('e1')); updateCommentText('e1', 'edited');
+    const written = commentsForProject(fpA);
+    const { project } = unpackProject(packProject({ dataset: fpA, comments: written }));
+    const got = sanitizeComments(project.comments);
+    expect(got[0].text).toBe('edited'); expect(got[0].position).toEqual({ i: 3, j: 4, k: 5 }); expect(got[0].createdAt).toBe(written[0].createdAt);
   });
 });

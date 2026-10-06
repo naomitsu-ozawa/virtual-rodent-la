@@ -1,16 +1,17 @@
 // Position comments UI (Issue #88, stage 2): a small panel in the display drawer. "Add" records the current position (the linked
 // crosshair, or the three slices on show) with the text; "View this place" moves the crosshair and the three sliders there. Nothing
 // here runs by itself on load, and no pointer handler is added to the image canvases (the click / swipe on them is untouched).
-import { planes } from './ui-shell.js?v=20261006-build462';
-import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261006-build462';
-import { tr } from './i18n.js?v=20261006-build462';
-import { datasetFingerprint } from './project-file.js?v=20261006-build462';
-import { createComment, addComment, removeComment, restoreComment, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build462';
-import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261006-build462';
+import { planes } from './ui-shell.js?v=20261006-build463';
+import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261006-build463';
+import { tr } from './i18n.js?v=20261006-build463';
+import { datasetFingerprint } from './project-file.js?v=20261006-build463';
+import { COMMENT_MAX_TEXT, createComment, addComment, removeComment, restoreComment, updateCommentText, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build463';
+import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261006-build463';
 
 let pop=null,popText=null,popPos=null,popStatus=null,popTimer=0,popFrom=null;
 let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
 let showEl=null,bubble=null,bubbleTimer=0;
+let editId=null,editDraft='',editFocus=false; // the comment being edited in the list (the draft survives a re-render of the list)
 const hits={axial:[],coronal:[],sagittal:[]}; // exact markers last drawn per plane (CSS px on the overlay canvas), for the tap test
 const dimsOf=()=>volume?{columns:volume.columns,rows:volume.rows,slices:volume.slices}:null;
 const fingerprint=()=>activeSeries?datasetFingerprint(activeSeries):null;
@@ -99,6 +100,13 @@ function undoDelete(){
  const d=lastDeleted;if(!d)return;clearUndo();
  if(restoreComment(d.c,d.index))listEl.querySelector('[data-comment-id="'+CSS.escape(d.c.id)+'"] .comment-view')?.focus();
 }
+// edit = the text of that list item turns into an input in place; save keeps position / time / series (comments.js updateCommentText)
+function startEdit(id){const c=getComments().find(x=>x.id===id);if(!c)return;clearUndo();noteEl.textContent='';editId=id;editDraft=c.text;editFocus=true;render()}
+function stopEdit(id){const had=editId;editId=null;editDraft='';render();if(had)listEl.querySelector('[data-comment-id="'+CSS.escape(id||had)+'"] .comment-edit')?.focus()}
+function saveEdit(id){
+ if(updateCommentText(id,editDraft)===null){noteEl.textContent=tr('commentEmptyNotSaved');return} // blank: nothing changes, stay in the editor
+ noteEl.textContent='';stopEdit(id); // (a changed text re-rendered the list already; an unchanged one did not)
+}
 function fmtTime(iso){try{const d=new Date(iso);return isNaN(d)?'':d.toLocaleString(currentLanguage==='ja'?'ja-JP':'en-US',{dateStyle:'short',timeStyle:'short'})}catch{return''}}
 function render(){
  if(!root)return;
@@ -107,6 +115,7 @@ function render(){
  document.querySelectorAll('[data-comment-toggle]').forEach(b=>{b.disabled=!ok;b.title=tr('commentAddTitle')});
  if(!ok)closePopover();
  requestOverlayDraw();closeBubble();
+ if(editId&&!list.some(c=>c.id===editId)){editId=null;editDraft=''}
  listEl.replaceChildren();
  if(!list.length){const e=document.createElement('p');e.className='comment-empty';e.textContent=tr('commentEmpty');listEl.appendChild(e);return}
  for(const c of list){
@@ -116,6 +125,21 @@ function render(){
   const t=document.createElement('p');t.className='comment-text';t.textContent=c.text;
   const m=document.createElement('p');m.className='comment-meta';
   m.textContent=`i ${c.position.i} · j ${c.position.j} · k ${c.position.k}`+(c.createdAt?' · '+fmtTime(c.createdAt):'')+(same?'':' · '+tr('commentOtherSeries')+' · '+tr('commentNotSaved'));
+  const editing=c.id===editId;
+  if(editing){
+   const ta=document.createElement('textarea');ta.className='comment-input comment-edit-input';ta.rows=2;ta.maxLength=COMMENT_MAX_TEXT;ta.value=editDraft;
+   ta.setAttribute('aria-label',tr('commentEditLabel'));
+   ta.addEventListener('input',()=>{editDraft=ta.value;if(noteEl.textContent===tr('commentEmptyNotSaved'))noteEl.textContent=''});
+   // Esc cancels only this edit (not the crosshair mode / drawer); Ctrl/Cmd+Enter saves
+   ta.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();noteEl.textContent='';stopEdit(c.id)}else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveEdit(c.id)}});
+   body.append(no,ta,m);
+   const ea=document.createElement('div');ea.className='comment-actions';
+   const sv=document.createElement('button');sv.type='button';sv.className='tool-chip comment-edit-save';sv.textContent=tr('commentSave');sv.addEventListener('click',()=>saveEdit(c.id));
+   const cn=document.createElement('button');cn.type='button';cn.className='tool-chip comment-edit-cancel';cn.textContent=tr('commentCancel');cn.addEventListener('click',()=>{noteEl.textContent='';stopEdit(c.id)});
+   ea.append(sv,cn);li.append(body,ea);listEl.appendChild(li);
+   if(editFocus){editFocus=false;ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length)}
+   continue;
+  }
   body.append(no,t,m);
   const acts=document.createElement('div');acts.className='comment-actions';
   const view=document.createElement('button');view.type='button';view.className='tool-chip comment-view';view.textContent=tr('commentView');
@@ -123,7 +147,9 @@ function render(){
   view.addEventListener('click',()=>{clearUndo();const wasOn=crosshairModeActive(),at=viewComment(c.id);noteEl.textContent=at?tr('commentViewed')+(wasOn?'':tr('commentViewedModeOn')):''});
   const del=document.createElement('button');del.type='button';del.className='tool-chip comment-delete';del.textContent=tr('commentDelete');
   del.addEventListener('click',()=>deleteWithUndo(c.id));
-  acts.append(view,del);li.append(body,acts);listEl.appendChild(li);
+  const ed=document.createElement('button');ed.type='button';ed.className='tool-chip comment-edit';ed.textContent=tr('commentEdit');
+  ed.addEventListener('click',()=>startEdit(c.id));
+  acts.append(view,ed,del);li.append(body,acts);listEl.appendChild(li);
  }
 }
 export function refreshCommentsUi(){

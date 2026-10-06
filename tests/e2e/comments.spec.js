@@ -335,3 +335,54 @@ test('markers: a tap on a marker in crosshair mode places the crosshair and open
   expect(await getCrosshair(page)).toEqual({ i: 10, j: 4, k: 2 });
   await expect(page.locator('.comment-bubble:not([hidden])')).toHaveCount(0);
 });
+
+test('edit: the list text changes in place, Esc cancels, blank is not saved, position / time stay, the marker bubble shows the new text', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openSeries(page, dicomFolder());
+  await showPlane(page, 'axial');
+  await setSlider(page, 'axial', 4); await setSlider(page, 'coronal', 5); await setSlider(page, 'sagittal', 3);
+  await openPanel(page);
+  await panel(page).locator('.comment-input').fill('first text');
+  await panel(page).locator('.comment-add').click();
+  const item = panel(page).locator('.comment-item');
+  await expect(item).toContainText('first text');
+  const meta = await item.locator('.comment-meta').textContent();
+
+  // Esc cancels: the old text stays, the editor closes, the focus returns to the edit button
+  await item.locator('.comment-edit').click();
+  const input = item.locator('.comment-edit-input');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('first text');
+  await input.fill('discarded');
+  await input.press('Escape');
+  await expect(item.locator('.comment-edit-input')).toHaveCount(0);
+  await expect(item).toContainText('first text');
+  await expect(item.locator('.comment-edit')).toBeFocused();
+
+  // blank is not saved: still editing, the text is unchanged
+  await item.locator('.comment-edit').click();
+  await input.fill('   ');
+  await item.locator('.comment-edit-save').click();
+  await expect(input).toBeVisible();
+  await expect(panel(page).locator('.comment-note')).not.toHaveText('');
+  await item.locator('.comment-edit-cancel').click();
+  await expect(item).toContainText('first text');
+
+  // save: list, marker bubble and the project data follow; position and time do not change
+  await item.locator('.comment-edit').click();
+  await input.fill('second text');
+  await item.locator('.comment-edit-save').click();
+  await expect(item.locator('.comment-edit-input')).toHaveCount(0);
+  await expect(item.locator('.comment-text')).toHaveText('second text');
+  expect(await item.locator('.comment-meta').textContent()).toBe(meta);
+  const at = await pixelOf(page, 'axial', 3, 5);
+  await page.mouse.click(at.x, at.y);
+  await expect(page.locator('.comment-bubble:not([hidden])')).toContainText('second text');
+  const saved = await page.evaluate(async () => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search;
+    return (await import('./data-load.js' + v)).gatherProject().project.comments;
+  });
+  expect(saved).toHaveLength(1);
+  expect(saved[0].text).toBe('second text');
+  expect(saved[0].position).toEqual({ i: 3, j: 5, k: 4 });
+});
