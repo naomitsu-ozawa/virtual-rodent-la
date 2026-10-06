@@ -69,6 +69,8 @@ has enough context to continue without re-deriving decisions from scratch.
 - No clamping while dragging; on release the centre is brought back into the volume box without changing the cut where possible (`snapPlaneCenterIntoBox`). The jump to the perpendicular foot at drag start is removed.
 - Cursor: the square 断面 cursor and the outer ring are removed; both modes use the small dot (`createSurfaceCursor`), in 断面 mode at the voxel projected onto the plane.
 
+- Build 471: every recorded VR marker is drawn small (0.4 x the base radius) in all states (no 1.4x on a section, no normal-size disc); hidden / visible differ by look only (rim or not). The laser hit radius is unchanged (base radius x 1.56, min 4 mm); the number chip sits above the smaller marker. PC/iPad markers are untouched.
+
 ### Follow-up / open questions
 - Thresholds (2 cm / 5 deg, 1 cm / 1.5 deg) and the empty-space section choice need a check on the Quest.
 

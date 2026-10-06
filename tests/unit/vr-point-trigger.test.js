@@ -191,18 +191,17 @@ describe('hidden behind tissue: from the point to the head, a shown-segment voxe
 });
 
 describe('marker style (exposed solid + white rim, hidden dot, on / off the section, halos)', () => {
-  it('exposed = solid with a rim; hidden = a small dot without a rim', () => {
+  it('exposed = solid with a rim; hidden = a dot without a rim; the SAME small size in every state (build 471)', () => {
     const e = markerStyle({}), h = markerStyle({ hidden: true });
-    expect(e).toMatchObject({ fill: 'solid', rim: true, scale: 1 });
-    expect(h).toMatchObject({ fill: 'dot', rim: false });
-    expect(h.scale).toBeLessThan(e.scale);
+    expect(e).toMatchObject({ fill: 'solid', rim: true, scale: 0.4 });
+    expect(h).toMatchObject({ fill: 'dot', rim: false, scale: 0.4 });
+    for (const hidden of [false, true]) for (const section of [null, 'on', 'off']) expect(markerStyle({ hidden, section }).scale).toBe(0.4);
   });
-  it('on the section: emphasised and no perpendicular; off the section: a perpendicular; no active section: neither', () => {
+  it('on the section: no perpendicular and no enlargement; off the section: a perpendicular; no active section: neither', () => {
     const on = markerStyle({ section: 'on' }), off = markerStyle({ section: 'off' }), none = markerStyle({ section: null });
-    expect(on.scale).toBeGreaterThan(off.scale); expect(on.perpendicular).toBe(false);
+    expect(on.scale).toBe(off.scale); expect(on.perpendicular).toBe(false);
     expect(off.perpendicular).toBe(true);
     expect(none.perpendicular).toBe(false); expect(none.scale).toBe(off.scale);
-    expect(markerStyle({ hidden: true, section: 'on' }).scale).toBeGreaterThan(markerStyle({ hidden: true, section: 'off' }).scale);
   });
   it('halo: selected (yellow) wins over hover (white)', () => {
     expect(markerStyle({ hover: true }).halo).toBe('hover');
@@ -218,7 +217,7 @@ describe('markers in the scene: hidden / section / halo / pick', () => {
   const globalDoc = globalThis.document;
   beforeEach(() => { globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) } });
   const finish = () => { globalThis.document = globalDoc };
-  it('on-section point is bigger with no line; off-section has a line down to the plane; hidden is smaller; the halo follows hover / selected', () => {
+  it('on-section point is the same small size with no line; off-section has a line down to the plane; hidden is the same size, drawn as a dot; the halo follows hover / selected', () => {
     const a = addComment(createComment({ text: 'a', position: { i: 5, j: 3, k: 2 }, series: fp })); // x centre = 0.5
     const b = addComment(createComment({ text: 'b', position: { i: 9, j: 3, k: 2 }, series: fp })); // x centre = 4.5
     const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2));
@@ -227,13 +226,13 @@ describe('markers in the scene: hidden / section / halo / pick', () => {
     m.update({ fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 0, 3), section: plane });
     const sph = scene.children.filter(o => o.geometry?.type === 'SphereGeometry' && o.renderOrder === 4), lines = scene.children.filter(o => o.isLine);
     expect(sph).toHaveLength(2);
-    expect(sph[0].scale.x).toBeGreaterThan(sph[1].scale.x); // a on, b off
+    expect(sph[0].scale.x).toBeCloseTo(sph[1].scale.x, 9); // a on, b off: the same small size (build 471)
     expect(lines.map(l => l.visible)).toEqual([false, true]);
     const pos = lines[1].geometry.attributes.position; // foot is on x = 0.5 (object) -> the line is horizontal in x
     expect(pos.getY(0)).toBeCloseTo(pos.getY(1), 9); expect(pos.getX(0)).not.toBeCloseTo(pos.getX(1), 3);
-    // hidden: smaller
+    // hidden: the same size
     m.update({ fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 0, 3), section: plane, hidden: new Set([a.id]) });
-    expect(sph[0].scale.x).toBeLessThan(sph[1].scale.x * 1.4);
+    expect(sph[0].scale.x).toBeCloseTo(sph[1].scale.x, 9);
     // halos
     const halos = scene.children.filter(o => o.renderOrder === 2);
     m.update({ fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 0, 3), hover: new Set([a.id]), selectedId: b.id });
