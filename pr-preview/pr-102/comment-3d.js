@@ -4,8 +4,9 @@
 // Position: the voxel {i,j,k} -> the scene's local coordinates with voxelToLocal3D (the mapping of the 3D MPR planes), then the
 // object's world matrix and the camera, so rotation / zoom / pan follow by themselves. Updated after every 3D frame (the 3D loop only
 // renders on request, so a change of the comments, the switch or the series asks for a render).
-// Look (build 465, the same as VR, vr-point-markers.js): an EXPOSED point is a solid dot with a white rim; a point HIDDEN behind tissue is
-// faint and small (never removed: a lesion inside dense tissue must stay findable). The hidden rule is VR's vr-point.js pointIsHidden over
+// Look (build 465, the same colours and shapes as VR, vr-point-markers.js): an EXPOSED point is a solid dot with a white rim; a point HIDDEN
+// behind tissue is a smaller dot in the VR hidden colour (never removed: a lesion inside dense tissue must stay findable); the number is a
+// small chip beside the dot. The hidden rule is VR's vr-point.js pointIsHidden over
 // the classification bytes of the shown segments (vr-view.js hiddenClsFor, built lazily, in the background), eye = the camera, the section
 // view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
 // (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
@@ -95,7 +96,7 @@ export function updateComment3dMarkers(){
    let m=els.get(c.id);
    if(!m){const el=document.createElement('div');el.className='comment-marker-3d';el.setAttribute('role','img');layer.appendChild(el);m={el,x:0,y:0,vis:false,no:0,label:'',back:null};els.set(c.id,m)}
    m.x=x;m.y=y;m.vis=vis;
-   if(m.no!==n+1){m.no=n+1;m.el.textContent=String(n+1)}
+   if(m.no!==n+1){m.no=n+1;m.el.textContent='';const sp=document.createElement('span');sp.className='comment-marker-3d-no';sp.textContent=String(n+1);m.el.appendChild(sp)} // the dot is the element (its centre = the point); the number sits beside it
    const label=tr('commentMarker3d')+' '+(n+1);if(m.label!==label){m.label=label;m.el.setAttribute('aria-label',label)}
    m.el.hidden=!vis;
    if(vis)m.el.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-50%)';
