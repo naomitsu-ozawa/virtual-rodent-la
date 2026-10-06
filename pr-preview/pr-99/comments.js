@@ -2,7 +2,7 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel } from './crosshair.js?v=20261005-build459';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261005-build459';
 import { compareFingerprints } from './project-file.js?v=20261005-build459';
 
 export const COMMENT_MAX_TEXT=2000;
@@ -29,6 +29,21 @@ export function sanitizeComments(list){
 export const commentMatchesSeries=(comment,fingerprint)=>!!comment?.series&&!!fingerprint&&compareFingerprints(comment.series,fingerprint).ok;
 // the voxel to move to: inside the volume (a position outside, e.g. from a coarser grid, is clamped, never rejected)
 export const commentTarget=(comment,dims)=>{const p=commentVoxel(comment?.position);return p&&dims?clampVoxel(p,dims):null};
+
+// Markers on the three MPR planes: the comments of the open series whose position lies on the slice on show (exact) or within
+// `near` slices of it (faint, an aid to find the slice: a lesion spans several). The number is the place in the whole list (as in the panel).
+export const COMMENT_NEAR_SLICES=3;
+export function commentMarkers(plane,comments,fingerprint,sliceIdx,dims,near=COMMENT_NEAR_SLICES){
+ const out=[];
+ (comments||[]).forEach((c,n)=>{
+  if(!commentMatchesSeries(c,fingerprint))return;
+  const t=commentTarget(c,dims);if(!t)return;
+  const delta=sliceIndexFor(plane,t)-Math.round(+sliceIdx);if(!(Math.abs(delta)<=near))return;
+  const{fx,fy}=planePointFromVoxel(plane,t,dims);
+  out.push({id:c.id,number:n+1,fx,fy,delta,exact:delta===0});
+ });
+ return out;
+}
 
 // ---- store ----
 let list=[];
