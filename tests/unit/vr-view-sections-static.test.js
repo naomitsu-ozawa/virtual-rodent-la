@@ -66,6 +66,7 @@ describe('vr-view.js: review fixes (F1-F9)', () => {
   it('F1: no vibration when a drag starts from empty space', () => { expect(src.includes('HAPTIC.dragStart')).toBe(false); });
   it('F3: disconnect closes the rings and clears the move', () => {
     const a = src.indexOf("addEventListener('disconnected'"), blk = src.slice(a, a + 400);
+    expect(blk).toContain('endDrag(c)'); // a drag cut by tracking loss still snaps the section back into the box
     for (const w of ['closeWheel()', 'closePointWheel()', 'moving=null', 'axPress?.reset()', 'stickLock=false']) expect(blk.includes(w), w).toBe(true);
   });
   it('F6: a move to the same place pushes no undo', () => { expect(src).toContain('the same place: nothing to undo'); });

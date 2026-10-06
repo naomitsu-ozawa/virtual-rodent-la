@@ -1291,7 +1291,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  for(const c of controllers){
   c.addEventListener('connected',e=>{c.userData.source=e.data;if(c.userData.source?.handedness==='left')c.add(badge)});
   c.addEventListener('disconnected',()=>{
-   c.userData.drag=null;c.userData.press=null;c.userData.moving=null;c.userData.axPress?.reset();c.userData.stickLock=false;
+   endDrag(c);c.userData.press=null;c.userData.moving=null;c.userData.axPress?.reset();c.userData.stickLock=false;
    if(wheelOwner===c)closeWheel();if(pw?.c===c)closePointWheel();
    c.userData.source=null;
   });
