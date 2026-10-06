@@ -3,7 +3,7 @@
 import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume, current3DVolume, activeSeries } from './state.js?v=20261006-build469';
 import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261006-build469';
 import { tr } from './i18n.js?v=20261006-build469';
-import { spacingWarningText } from './slice-spacing.js?v=20261006-build469';
+import { spacingWarningHtml } from './slice-spacing.js?v=20261006-build469';
 import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261006-build469';
 import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261006-build469';
 import { request3DRender } from './scene3d.js?v=20261006-build469';
@@ -59,8 +59,8 @@ export function renderAnalysisResults(statusText=null){
    // build 469: spacing used for the volume, plus the slice-spacing warning whenever one applies
    const v=current3DVolume||volume,sp=v?.spacing;
    if(sp){const used=document.createElement('div');used.textContent=(currentLanguage==='ja'?'ボクセル間隔 (x, y, z): ':'Voxel spacing (x, y, z): ')+sp.map(n=>(+n).toFixed(4).replace(/0+$/,'').replace(/\.$/,'')).join(' × ')+' mm';used.className='analysis-spacing-used';used.style.cssText='font-size:10px;line-height:1.35;color:rgb(var(--ui-t4));overflow-wrap:anywhere';card.append(used)}
-   const warn=spacingWarningText((v?.series||activeSeries)?.spacingCheck);
-   if(warn){const w=document.createElement('div');w.className='spacing-warn';w.setAttribute('role','alert');w.textContent='⚠ '+(currentLanguage==='ja'?warn.ja:warn.en);card.append(w)}
+   const warnHtml=spacingWarningHtml((v?.series||activeSeries)?.spacingCheck,currentLanguage,s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+   if(warnHtml)card.insertAdjacentHTML('beforeend',warnHtml);
    analysisSummary.appendChild(card);
   }
  }

@@ -50,6 +50,9 @@ has enough context to continue without re-deriving decisions from scratch.
 - Project: optional `spacingCheck` field in project.json (informational, never applied on load). PROJECT_VERSION stays 1 (unknown fields are ignored by older readers).
 - Tests: `tests/unit/slice-spacing.test.js` (synthetic data only).
 
+- Review fixes (same build 469): normal sign oriented so axial keeps main's z-ascending order (coronal/sagittal follow InstanceNumber, else read order); multi-frame frames carry `syntheticPos` and are sorted by sortIndex with `basis:'frames'` (tag spacing, no warning); non-uniform needs range > max(1% median, 2e-3 mm) (position rounding on thin slices); case-specific warning texts (missing / duplicate / non-uniform); info-level note when positions are missing or partial (method `none` / `partial`, previous behaviour kept); warning on mixed orientation tags; series-card marker; `role="status"`; warning redrawn on language switch; summary line with expandable details (iPad).
+- Waiting for the owner: excluding duplicate slices, fit/average spacing, old-project re-match prompt.
+
 ### Why
 - Volume = voxel count x spacings, and Z used only the first two slices, so a missing or duplicated slice silently skewed volumes.
 

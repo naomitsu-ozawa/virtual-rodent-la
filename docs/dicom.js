@@ -22,7 +22,7 @@ export function expandParsedFrames(meta){
  const frames=Math.max(1,meta.numberOfFrames||1);
  if(frames===1||!COMPRESSED_DICOM_TRANSFER_SYNTAXES.has(meta.ts))return[meta];
  const dz=meta.spacingBetween||meta.thickness||1,baseInstance=Number.isFinite(meta.instance)?meta.instance:0;
- return Array.from({length:frames},(_,frameIndex)=>({...meta,frameIndex,sortIndex:baseInstance+frameIndex/Math.max(frames,1),instance:baseInstance+frameIndex,pos:meta.pos?[meta.pos[0],meta.pos[1],meta.pos[2]+frameIndex*dz]:null}));
+ return Array.from({length:frames},(_,frameIndex)=>({...meta,frameIndex,syntheticPos:true,sortIndex:baseInstance+frameIndex/Math.max(frames,1),instance:baseInstance+frameIndex,pos:meta.pos?[meta.pos[0],meta.pos[1],meta.pos[2]+frameIndex*dz]:null}));
 }
 export function canDecodeToInt16(slices){
  for(const meta of slices){
@@ -55,11 +55,11 @@ export function groupSeries(slices){
  const m=new Map();
  for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}
  return[...m.entries()].map(([id,g])=>{
-  const normal=seriesNormal(g),key=s=>slicePosition(s,normal)??s.sortIndex??s.instance??0;
+  const normal=seriesNormal(g),synthetic=g.some(s=>s.syntheticPos),key=s=>synthetic?(s.sortIndex??s.instance??0):(slicePosition(s,normal)??s.sortIndex??s.instance??0);
   g.sort((a,b)=>key(a)-key(b));
   const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),compact=canDecodeToInt16(g),count=rows*columns*g.length,decodedBytes=count*(compact?2:4),sourceBacked=decodedBytes>256*1024*1024,range=sourceRangeFromMetadata(g);
   // build 469: every gap along the slice normal is checked; uniform data keeps the first-gap spacing, irregular data uses the median
-  const spacingCheck=analyzeSliceSpacing(g,f.spacingBetween||f.thickness||1),z=spacingCheck.used;
+  const spacingCheck=analyzeSliceSpacing(g,f.spacingBetween||f.thickness||1,normal),z=spacingCheck.used;
   const windowCenter=g.find(x=>Number.isFinite(x.windowCenter))?.windowCenter,windowWidth=g.find(x=>Number.isFinite(x.windowWidth)&&x.windowWidth>0)?.windowWidth;
   return{id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes:decodedBytes,decodedBytes,compact,sourceBacked,min:range.min,max:range.max,windowCenter,windowWidth,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z,spacingCheck};
  }).sort((a,b)=>b.slices.length-a.slices.length)
