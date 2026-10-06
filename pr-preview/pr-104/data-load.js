@@ -9,7 +9,7 @@ import { compareFingerprints, datasetFingerprint, decodeRuns, packProject, PROJE
 import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsVoxelMask, segmentEditGen, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261006-build469';
 import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls, setFilterUnitControl, formatHU } from './filter-pipeline.js?v=20261006-build469';
 import { sourceRangeFromMetadata } from './dicom.js?v=20261006-build469';
-import { spacingCheckForProject, spacingWarningText } from './slice-spacing.js?v=20261006-build469';
+import { spacingCheckForProject, spacingWarningHtml as spacingHtml } from './slice-spacing.js?v=20261006-build469';
 import { FILTER_UNITS, filterLegacyRange, resolveFilterParams } from './filter-units.js?v=20261006-build469';
 import { setControlValue, applyCtRangeMode, removeSegmentPreset, addSegmentPreset, segmentControl, setControlChecked, clearAnalysisHighlight, scheduleSegment3D, updateSegmentOutputs, renderSegmentPresets, THIN_SLIDERS, configureThinSliders } from './segment-ui.js?v=20261006-build469';
 import { syncGpuVolumeEdits, gpuVolumeApplied, gpuVolumeTarget, gpuVolumePlanOptions, updateVolumeCacheControl, gpuVolumeDataSignature } from './gpu-volume-data.js?v=20261006-build469';
@@ -212,9 +212,14 @@ export function requestIPadSettingsTab(tab){
  document.dispatchEvent(new CustomEvent('vrl-ipad-settings-tab',{detail:{tab}}));
 }
 // build 469: non-blocking slice-spacing warning shown with the selected series (wraps; fine on iPad)
-function spacingWarningHtml(s){
- const w=spacingWarningText(s.spacingCheck);if(!w)return'';
- return'<span class="spacing-warn" role="alert">⚠ '+esc(currentLanguage==='ja'?w.ja:w.en)+'</span>';
+function spacingWarningHtml(s){return spacingHtml(s.spacingCheck,currentLanguage,esc)}
+// language switch: redraw the warning in the selected-series overlay
+export function refreshSpacingWarning(){
+ if(!activeSeries||!selected)return;
+ selected.querySelector('.spacing-warn')?.remove();
+ const html=spacingWarningHtml(activeSeries);if(!html)return;
+ const badge=selected.querySelector('.ready-badge');
+ if(badge)badge.insertAdjacentHTML('beforebegin',html);else selected.insertAdjacentHTML('beforeend',html);
 }
 export async function selectSeries(s){
  setActiveId(s.id);setActiveSeries(s);clear3DForSeriesChange();projectSaveBtn.disabled=true;
