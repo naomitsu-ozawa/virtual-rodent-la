@@ -9,7 +9,7 @@
 // that another clipping section has cut away. A section whose intersection is outside the volume is skipped, never clamped.
 // Voxel rule: voxel i covers the fraction [i/n, (i+1)/n) of the box along its axis, so the index is floor(fraction * n); a point
 // outside [0,1) on any axis (the far face itself included) is NOT recorded: it is never moved into the volume.
-import { createComment, addComment, getComments, removeComment, restoreComment, commentMatchesSeries } from './comments.js?v=20261006-build467';
+import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, commentMatchesSeries } from './comments.js?v=20261006-build467';
 import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build467';
 
 const T_MIN=1e-6,EDGE_EPS=1e-4;
@@ -38,9 +38,11 @@ export function voxelToLocal(v,halfExt,dims){
 // The section point of a ray: {t,plane,point,voxel} or null.
 // planes/count: the shader's cutPlanes and planeCount (all sections shown); cutBits: which of them clip (bit i), used only to leave out
 // a point that another clipping plane has removed (the plane's own side test is skipped).
-export function sectionRayHit(o,q,{halfExt,dims,planes,count=0,cutBits=0}){
+// only: a plane number = that plane is the only candidate (the other planes still cut away parts, as before)
+export function sectionRayHit(o,q,{halfExt,dims,planes,count=0,cutBits=0,only=null}){
  let best=null;
  for(let i=0;i<count;i++){
+  if(typeof only==='number'&&i!==only)continue;
   const pl=planes[i],t=rayPlaneT(o,q,pl);if(t===null||(best&&t>=best.t))continue;
   const point={x:o.x+q.x*t,y:o.y+q.y*t,z:o.z+q.z*t},voxel=localToVoxel(point,halfExt,dims);if(!voxel)continue;
   let cut=false;
@@ -191,4 +193,162 @@ export function resolveTriggerMode({ui=false,handle=false,point=null,section=fal
  const surf=normalizePointMode(mode)==='surface';
  const k=resolveTrigger({ui,handle,point,section:surf?false:section});
  return k===null&&surf&&surface?'surface':k;
+}
+
+// ======================================================================================================================
+// One-handed redesign, stage 1 (build 468): pure functions only, not yet called by vr-view.js. See the one-hand spec.
+// ======================================================================================================================
+
+// ---- quaternions {x,y,z,w} (no three.js) ----
+export const qMul=(a,b)=>({
+ x:a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
+ y:a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,
+ z:a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w,
+ w:a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z,
+});
+export const qNorm=q=>{const l=Math.hypot(q.x,q.y,q.z,q.w)||1;return{x:q.x/l,y:q.y/l,z:q.z/l,w:q.w/l}};
+export const qInv=q=>{const l2=q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w||1;return{x:-q.x/l2,y:-q.y/l2,z:-q.z/l2,w:q.w/l2}};
+// rotate the vector v by the unit quaternion q
+export function qRot(q,v){
+ const tx=2*(q.y*v.z-q.z*v.y),ty=2*(q.z*v.x-q.x*v.z),tz=2*(q.x*v.y-q.y*v.x);
+ return{x:v.x+q.w*tx+q.y*tz-q.z*ty,y:v.y+q.w*ty+q.z*tx-q.x*tz,z:v.z+q.w*tz+q.x*ty-q.y*tx};
+}
+// rotation angle of a unit quaternion in degrees, 0..180
+export const qAngleDeg=q=>2*Math.atan2(Math.hypot(q.x,q.y,q.z),Math.abs(q.w))*180/Math.PI;
+
+// ---- trigger target (spec 2.3) ----
+// c: {board, ringOwnOpen, ringHighlight, moving, placement, tab, point, band, tissue, plane, mode, analysis, canDrag}
+//  board: anything truthy when the laser's nearest thing is a menu / help board / ring item; ringOwnOpen: this hand's ring (hand or point ring)
+//  is open; ringHighlight: its lit item (null = none); moving: this hand is moving a point, placement = where it would land (or null);
+//  tab: a section number tag hit {t,...}; point: {t|distance,id,...}; band: {t,...}; tissue / plane: {t,...} (tissue = first shown surface,
+//  plane = the selected section's plane hit); mode 'section'|'surface'; analysis: the analysis tab is open; canDrag: a selected section exists
+//  and the other hand is not dragging it.
+// Returns {kind,ref}; kind: 'board'|'ring-confirm'|'ring-close'|'move'|'section'|'point'|'record'|'label'|'empty'|'none'.
+// A hit's distance is t (or distance, as pickPoint returns); all in world metres. Ties within 1e-6 m: point > band > target.
+export const TIE_EPS=1e-6;
+const hitT=h=>h?(Number.isFinite(h.t)?h.t:(Number.isFinite(h.distance)?h.distance:null)):null;
+export function resolveTriggerTarget(c={}){
+ if(c.board)return{kind:'board',ref:c.board};
+ if(c.ringOwnOpen){
+  const h=c.ringHighlight;
+  return h!==null&&h!==undefined?{kind:'ring-confirm',ref:h}:{kind:'ring-close',ref:null};
+ }
+ if(c.moving)return{kind:'move',ref:c.placement||null};
+ if(c.tab)return{kind:'section',ref:c.tab};
+ let target=null;
+ if(c.analysis){if(c.tissue)target={kind:'label',ref:c.tissue}}
+ else if(normalizePointMode(c.mode)==='surface'){if(c.tissue)target={kind:'record',ref:c.tissue,plane:false}}
+ else if(c.plane)target={kind:'record',ref:c.plane,plane:true};
+ const cands=[];
+ if(c.point&&hitT(c.point)!==null)cands.push({kind:'point',ref:c.point,t:hitT(c.point),rank:0});
+ if(c.band&&hitT(c.band)!==null)cands.push({kind:'section',ref:c.band,t:hitT(c.band),rank:1});
+ if(target&&hitT(target.ref)!==null)cands.push({kind:target.kind,ref:target.ref,t:hitT(target.ref),rank:2});
+ let best=null;
+ for(const k of cands){
+  if(!best||k.t<best.t-TIE_EPS||(Math.abs(k.t-best.t)<=TIE_EPS&&k.rank<best.rank))best=k;
+ }
+ if(best)return{kind:best.kind,ref:best.ref};
+ return c.canDrag?{kind:'empty',ref:null}:{kind:'none',ref:null};
+}
+
+// ---- press classification ----
+export const LONG_PRESS_MS=500;
+// trigger: press(now); update(now) -> 'long' once when the press reaches longMs; release(now) -> 'tap' (released before longMs) | 'late' | null (not pressed)
+export function createTriggerPress({longMs=LONG_PRESS_MS}={}){
+ let t0=null,fired=false;
+ return{
+  press(now){t0=now;fired=false},
+  update(now){if(t0===null||fired)return null;if(now-t0>=longMs){fired=true;return'long'}return null},
+  release(now){
+   if(t0===null)return null;
+   const tap=now-t0<longMs&&!fired;t0=null;fired=false;return tap?'tap':'late';
+  },
+  get pressed(){return t0!==null},
+ };
+}
+// when a press on a section turns into a drag: hand moved > posM (m) or turned > angDeg or held >= holdMs
+export function dragShouldStart({dPosM=0,dAngleDeg=0,heldMs=0}={},{posM=0.01,angDeg=1.5,holdMs=LONG_PRESS_MS}={}){
+ return dPosM>posM||dAngleDeg>angDeg||heldMs>=holdMs;
+}
+
+// ---- section drag (spec 4.3), holder space ----
+// reach of a plane with unit normal n over the box +-halfExt: R(n) = |nx|hx+|ny|hy+|nz|hz
+export const planeReach=(n,halfExt)=>Math.abs(n.x)*halfExt[0]+Math.abs(n.y)*halfExt[1]+Math.abs(n.z)*halfExt[2];
+// the foot of the perpendicular from the origin: n*w
+export const planeFoot=(n,w)=>({x:n.x*w,y:n.y*w,z:n.z*w});
+// keep n.c within [-R(n), R(n)] so the plane still meets the box
+export function clampPlaneCenter(c,n,halfExt){
+ const R=planeReach(n,halfExt),d=n.x*c.x+n.y*c.y+n.z*c.z,e=d-Math.max(-R,Math.min(R,d));
+ return e===0?{x:c.x,y:c.y,z:c.z}:{x:c.x-n.x*e,y:c.y-n.y*e,z:c.z-n.z*e};
+}
+// p0,q0: hand position / orientation (holder space) at the start of the drag; c0: the section's centre then; Qp0: its orientation then;
+// p,q: the hand now (holder space). The section's local X is its normal. -> {c, Qp, n}
+export function sectionDragStep({p0,q0,c0,Qp0,p,q,halfExt}){
+ const dR=qMul(qNorm(q),qInv(qNorm(q0))),Qp=qNorm(qMul(dR,qNorm(Qp0))),n=qRot(Qp,{x:1,y:0,z:0});
+ const s=(p.x-p0.x)*n.x+(p.y-p0.y)*n.y+(p.z-p0.z)*n.z;
+ const c=clampPlaneCenter({x:c0.x+n.x*s,y:c0.y+n.y*s,z:c0.z+n.z*s},n,halfExt);
+ return{c,Qp,n};
+}
+
+// ---- frame band of a section (spec 4.1), pure parts ----
+// a point (y,z) on the section plane (local coordinates, square half side h) lies on the band of half width b around the edge
+export function squareBandContains(y,z,h,b){return Math.abs(Math.max(Math.abs(y),Math.abs(z))-h)<=b+1e-12}
+// ray (o,q in the section's local space) with the plane X=0 -> {t,y,z} or null (parallel, or behind the origin)
+export function rayLocalPlaneX(o,q){
+ if(!(Math.abs(q.x)>=1e-6))return null;
+ const t=-o.x/q.x;if(!(t>T_MIN))return null;
+ return{t,y:o.y+q.y*t,z:o.z+q.z*t};
+}
+
+// ---- hover vibration (spec 3) ----
+// update(id, now) -> true when a pulse is due: a new id (not null) that differs from the previous frame's, at most once per debounceMs
+export function createHoverPulse({debounceMs=100}={}){
+ let last=null,lastPulse=-Infinity;
+ return{
+  update(id,now){
+   if(id===null||id===undefined){last=null;return false}
+   if(id===last)return false;
+   last=id;
+   if(now-lastPulse>=debounceMs){lastPulse=now;return true}
+   return false;
+  },
+  reset(){last=null;lastPulse=-Infinity},
+ };
+}
+
+// ---- haptic event table (spec 3), data only: amp 0..1, ms per pulse, count pulses, gapMs between them ----
+export const HAPTIC={
+ hover:{amp:0.08,ms:8,count:1,debounceMs:100},
+ record:{amp:0.5,ms:20,count:1},
+ select:{amp:0.35,ms:18,count:1},
+ longPress:{amp:0.35,ms:18,count:2,gapMs:90}, // point ring opened, or the menu opened by a long A/X
+ menuClose:{amp:0.35,ms:18,count:1},
+ ringHighlight:{amp:0.12,ms:10,count:1},
+ ringConfirm:{amp:0.35,ms:18,count:1},
+ dragStart:{amp:0.35,ms:18,count:1}, // from an empty place only
+ moveDrop:{amp:0.35,ms:18,count:1},
+};
+// no vibration at all: a tap on nothing, a record stopped by the thumbstick gate, a failed undo, a cancelled move, release of a drag
+export const HAPTIC_SILENT=['emptyTap','gateBlocked','undoFailed','moveCancel','dragEnd'];
+
+// ---- undo stack (spec 7) ----
+// ops: {type:'add',id} | {type:'delete',c,index} | {type:'move',id,from,to}; the oldest is dropped beyond max
+export function createUndoStack({max=20}={}){
+ let ops=[];
+ return{
+  push(op){if(!op)return;ops.push(op);if(ops.length>max)ops=ops.slice(ops.length-max)},
+  pop(){return ops.length?ops.pop():null},
+  clear(){ops=[]},
+  get size(){return ops.length},
+ };
+}
+// undo one op on the comment store; true when it worked
+export function applyUndo(op,store={removeComment,restoreComment,updateCommentPosition}){
+ if(!op)return false;
+ try{
+  if(op.type==='add')return!!store.removeComment(op.id);
+  if(op.type==='delete')return!!store.restoreComment(op.c,op.index);
+  if(op.type==='move')return!!store.updateCommentPosition(op.id,op.from);
+ }catch(e){console.warn('undo failed',e)}
+ return false;
 }
