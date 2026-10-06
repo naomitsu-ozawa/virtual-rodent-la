@@ -295,7 +295,7 @@ describe('colours left as literals in style.css are the intended ones', () => {
   it('only overlay scrims, shadows, spinners and image-area colours stay literal', () => {
     const css = styleCss.replace(/\/\*[\s\S]*?\*\//g, '');
     const lits = new Set([...css.matchAll(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)/g)].map(m => m[0].toLowerCase().replace(/\s/g, '')).filter(x => !/^rgba?\(var/.test(x)));
-    const allowed = ['#fff', '#0a84ff', '#3d8bfd', '#00b8d4', '#9bd7ee', 'rgba(5,8,10,.28)', 'rgba(5,8,10,.54)', 'rgba(5,8,10,.55)', 'rgba(93,141,255,.24)', 'rgba(0,229,255,.8)', 'rgba(0,229,255,.45)', 'rgba(255,255,255,.2)', 'rgba(255,255,255,.22)', 'rgba(255,255,255,.42)', 'rgba(255,255,255,.08)', 'rgba(105,184,216,.18)', 'rgba(128,128,128,.45)'];
+    const allowed = ['#fff', '#0a84ff', '#3d8bfd', '#00b8d4', '#9bd7ee', 'rgba(5,8,10,.28)', 'rgba(5,8,10,.54)', 'rgba(5,8,10,.55)', 'rgba(93,141,255,.24)', 'rgba(0,229,255,.8)', 'rgba(0,229,255,.45)', 'rgba(255,255,255,.2)', 'rgba(255,255,255,.22)', 'rgba(255,255,255,.42)', 'rgba(255,255,255,.08)', 'rgba(105,184,216,.18)', 'rgba(128,128,128,.45)', '#0b6f8c', '#4dd8ff', '#04202a' /* 3D point dots: the VR point colours (build 465), the same on every theme */];
     const extra = [...lits].filter(x => !allowed.includes(x) && !/^rgba\(0,0,0,[\d.]+\)$/.test(x) && !/^rgba\((118,141,151|110,130,140|216,230,236),[\d.]+\)$/.test(x));
     expect(extra).toEqual([]);
   });
