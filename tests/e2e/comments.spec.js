@@ -237,3 +237,45 @@ test('delete can be undone; unsaved comments warn before the page is closed', as
   expect(await unload()).toBe(false); // equal to what was saved again
   await expect(panel(page).locator('.comment-undo')).toBeHidden();
 });
+
+test('the toolbar "add comment" button next to the crosshair button makes a positioned comment that shows in the list', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openSeries(page, dicomFolder());
+  await showPlane(page, 'axial');
+  await setSlider(page, 'axial', 4);
+  await page.locator('[data-crosshair-toggle="axial"]').click();
+  const p = await pixelOf(page, 'axial', 3, 5);
+  await page.mouse.click(p.x, p.y);
+  expect(await getCrosshair(page)).toEqual({ i: 3, j: 5, k: 4 });
+
+  const btn = page.locator('[data-comment-toggle="axial"]');
+  await expect(btn).toBeEnabled();
+  await expect(btn).toHaveText(/\S/); // a text label, not an icon only
+  const [cb, bb] = await Promise.all([page.locator('[data-crosshair-toggle="axial"]').boundingBox(), btn.boundingBox()]);
+  expect(bb.height).toBeGreaterThanOrEqual(cb.height - 1); // as big as the crosshair button
+  await btn.click(); // the drawer stays closed: the popover is in the card
+  const pop = page.locator('.comment-popover');
+  await expect(pop).toBeVisible();
+  await expect(pop.locator('.comment-input')).toBeFocused();
+  await expect(pop).toContainText('i 3 · j 5 · k 4');
+  expect(await getCrosshair(page)).toEqual({ i: 3, j: 5, k: 4 }); // opening it moved nothing
+  await pop.locator('.comment-input').fill('from the toolbar');
+  await pop.locator('.comment-pop-save').click();
+  await expect(pop).toBeHidden({ timeout: 5_000 });
+  expect(await getCrosshair(page)).toEqual({ i: 3, j: 5, k: 4 });
+
+  await openPanel(page);
+  const item = panel(page).locator('.comment-item');
+  await expect(item).toHaveCount(1);
+  await expect(item).toContainText('from the toolbar');
+  await expect(item).toContainText('i 3 · j 5 · k 4');
+
+  // Esc closes the popover only: the crosshair mode stays on
+  await page.locator('[data-ipad-drawer-tab="display"]').click().catch(() => {});
+  await btn.click();
+  await expect(pop).toBeVisible();
+  await pop.locator('.comment-input').press('Escape');
+  await expect(pop).toBeHidden();
+  await expect(page.locator('[data-crosshair-toggle="axial"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(item).toHaveCount(1);
+});

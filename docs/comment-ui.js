@@ -8,6 +8,7 @@ import { datasetFingerprint } from './project-file.js?v=20261005-build459';
 import { createComment, addComment, removeComment, restoreComment, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget } from './comments.js?v=20261005-build459';
 import { showCrosshairAt, crosshairModeActive } from './crosshair-ui.js?v=20261005-build459';
 
+let pop=null,popText=null,popPos=null,popStatus=null,popTimer=0,popFrom=null;
 let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
 const dimsOf=()=>volume?{columns:volume.columns,rows:volume.rows,slices:volume.slices}:null;
 const fingerprint=()=>activeSeries?datasetFingerprint(activeSeries):null;
@@ -48,6 +49,8 @@ function render(){
  if(!root)return;
  const fp=fingerprint(),list=getComments(),ok=ready();
  addBtn.disabled=!ok;
+ document.querySelectorAll('[data-comment-toggle]').forEach(b=>{b.disabled=!ok;b.title=tr('commentAddTitle')});
+ if(!ok)closePopover();
  listEl.replaceChildren();
  if(!list.length){const e=document.createElement('p');e.className='comment-empty';e.textContent=tr('commentEmpty');listEl.appendChild(e);return}
  for(const c of list){
@@ -71,7 +74,41 @@ export function refreshCommentsUi(){
  root.querySelector('summary').textContent=tr('commentsTitle');
  root.querySelector('.comment-hint').textContent=tr('commentsHint');
  textEl.placeholder=tr('commentPlaceholder');textEl.setAttribute('aria-label',tr('commentPlaceholder'));addBtn.textContent=tr('commentAdd');
+ if(pop){pop.setAttribute('aria-label',tr('commentAddShort'));popText.placeholder=tr('commentPlaceholder');popText.setAttribute('aria-label',tr('commentPlaceholder'));pop.querySelector('.comment-pop-save').textContent=tr('commentSave');pop.querySelector('.comment-pop-cancel').textContent=tr('commentCancel')}
  render();
+}
+// Toolbar "add comment" button (next to the crosshair button of each MPR card): a small popover inside that card, so it works on the iPad
+// workspace UI without opening the drawer. Saving, the list and "view this place" stay in the panel. It records the position at the
+// moment of saving (the same rule as the panel).
+function closePopover(restoreFocus){
+ clearTimeout(popTimer);if(!pop||pop.hidden)return;
+ pop.hidden=true;document.querySelectorAll('[data-comment-toggle]').forEach(b=>b.setAttribute('aria-expanded','false'));
+ if(restoreFocus&&popFrom?.isConnected)popFrom.focus();
+}
+function openPopover(btn){
+ clearTimeout(popTimer);
+ const card=btn.closest('.view-card');if(!card||!ready())return;
+ if(pop.parentNode!==card)card.appendChild(pop);
+ document.querySelectorAll('[data-comment-toggle]').forEach(b=>b.setAttribute('aria-expanded',b===btn?'true':'false'));
+ popFrom=btn;popStatus.textContent='';popStatus.hidden=true;pop.querySelector('.comment-pop-form').hidden=false;
+ const c=currentCommentPosition();popPos.textContent=c?tr('commentAtPos')+' i '+c.i+' · j '+c.j+' · k '+c.k:'';
+ pop.hidden=false;popText.focus();
+}
+function savePopover(){
+ const saved=addCommentHere(popText.value);if(!saved)return;
+ popText.value='';clearUndo();
+ pop.querySelector('.comment-pop-form').hidden=true;popStatus.textContent=tr('commentSaved')+' · i '+saved.position.i+' · j '+saved.position.j+' · k '+saved.position.k;popStatus.hidden=false;
+ popTimer=setTimeout(()=>closePopover(true),1800);
+}
+function installPopover(){
+ pop=document.createElement('div');pop.className='comment-popover';pop.setAttribute('role','dialog');pop.hidden=true;
+ pop.innerHTML='<div class="comment-pop-form" style="display:grid;gap:6px"><p class="comment-pop-pos"></p><textarea class="comment-input" rows="2" maxlength="2000"></textarea><div class="comment-pop-actions"><button type="button" class="tool-chip comment-pop-save"></button><button type="button" class="tool-chip comment-pop-cancel"></button></div></div><p class="comment-pop-pos" role="status" hidden></p>';
+ popText=pop.querySelector('.comment-input');popPos=pop.querySelector('.comment-pop-pos');popStatus=pop.querySelector('[role=status]');
+ pop.querySelector('.comment-pop-save').addEventListener('click',savePopover);
+ pop.querySelector('.comment-pop-cancel').addEventListener('click',()=>closePopover(true));
+ // Esc closes only this popover (the crosshair mode keeps its own Esc); the key never reaches the document handler while typing
+ pop.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();closePopover(true)}});
+ document.querySelectorAll('[data-comment-toggle]').forEach(b=>b.addEventListener('click',()=>{if(!pop.hidden&&popFrom===b)closePopover();else openPopover(b)}));
 }
 export function installComments(){
  const host=document.querySelector('.sidebar-scroll > .panel.compact-panel')||document.querySelector('.sidebar-scroll');
@@ -91,5 +128,6 @@ export function installComments(){
  document.addEventListener('vrl-serieschange',render);
  const mo=typeof MutationObserver!=='undefined'?new MutationObserver(render):null;
  mo?.observe(planes.axial.slider,{attributes:true,attributeFilter:['disabled']});
+ installPopover();
  refreshCommentsUi();
 }
