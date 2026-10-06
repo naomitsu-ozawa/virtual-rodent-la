@@ -902,13 +902,13 @@ html.vrl-ipad-ui .theme-quick select{min-height:40px;padding:7px 8px;font-size:1
    readout is a small label over the card. Fixed colours with a dark halo (drawn in crosshair-ui.js): visible in every theme. */
 .mpr-crosshair-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
 .view-card-mpr .view-toolbar{flex-wrap:wrap}
-.crosshair-toggle{min-height:30px;border:1px solid rgb(var(--ui-b2));border-radius:7px;background:rgb(var(--ui-s1) / 0.88);color:rgb(var(--ui-t2));padding:4px 8px;font-size:10px;font-weight:700;pointer-events:auto;touch-action:manipulation}
+.crosshair-toggle,.comment-toggle{min-height:30px;border:1px solid rgb(var(--ui-b2));border-radius:7px;background:rgb(var(--ui-s1) / 0.88);color:rgb(var(--ui-t2));padding:4px 8px;font-size:10px;font-weight:700;pointer-events:auto;touch-action:manipulation}
 .crosshair-toggle.is-active{border-color:rgb(var(--ui-blue-bd));background:rgb(var(--ui-blue-bg));color:rgb(var(--ui-blue-tx))}
-.crosshair-toggle:disabled{opacity:.45}
+.crosshair-toggle:disabled,.comment-toggle:disabled{opacity:.45}
 .crosshair-readout{position:absolute;z-index:4;left:10px;bottom:58px;max-width:calc(100% - 20px);padding:4px 8px;border:1px solid rgba(255,255,255,.2);border-radius:7px;background:rgba(0,0,0,.78);color:#fff;font-size:11px;line-height:1.45;font-variant-numeric:tabular-nums;pointer-events:none;display:grid;gap:0}
 .crosshair-readout[hidden]{display:none}
 .crosshair-readout b{color:#fff;font-weight:800}
-html.vrl-ipad-ui .crosshair-toggle{min-height:38px;padding:6px 11px;font-size:12px}
+html.vrl-ipad-ui .crosshair-toggle,html.vrl-ipad-ui .comment-toggle{min-height:38px;padding:6px 11px;font-size:12px}
 html.vrl-ipad-ui .crosshair-readout{font-size:12px}
 /* Position comments (Issue #88 stage 2): theme tokens only, touch-sized buttons */
 .comment-panel{margin-top:10px;border:1px solid rgb(var(--ui-b2));border-radius:8px;padding:6px 8px;background:rgb(var(--ui-s1) / 0.5)}
@@ -924,3 +924,14 @@ html.vrl-ipad-ui .crosshair-readout{font-size:12px}
 .comment-panel .tool-chip{min-height:34px;touch-action:manipulation}
 .comment-panel .tool-chip:disabled{opacity:.45}
 html.vrl-ipad-ui .comment-panel .tool-chip{min-height:40px}
+
+/* Comment popover opened from the toolbar button of an MPR card: sits inside the card above the slider, theme tokens only */
+.comment-toggle[aria-expanded="true"]{border-color:rgb(var(--ui-blue-bd));background:rgb(var(--ui-blue-bg));color:rgb(var(--ui-blue-tx))}
+.comment-popover{position:absolute;z-index:6;left:10px;right:10px;bottom:62px;max-width:420px;display:grid;gap:6px;padding:8px;border:1px solid rgb(var(--ui-b2));border-radius:9px;background:rgb(var(--ui-s1));color:rgb(var(--ui-t1));box-shadow:0 4px 18px rgba(0,0,0,.35);pointer-events:auto}
+.comment-popover[hidden]{display:none}
+.comment-popover .comment-pop-pos{margin:0;font-size:11px;color:rgb(var(--ui-t2));font-variant-numeric:tabular-nums}
+.comment-popover .comment-input{margin:0}
+.comment-popover .comment-pop-actions{display:flex;gap:10px;flex-wrap:wrap}
+.comment-popover .tool-chip{min-height:34px;touch-action:manipulation}
+html.vrl-ipad-ui .comment-popover .tool-chip{min-height:40px}
+html.vrl-ipad-ui .comment-popover .comment-input{font-size:16px}
