@@ -8,22 +8,22 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build466';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build466';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build466';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build466';
-import { datasetFingerprint } from './project-file.js?v=20261006-build466';
-import { sectionRayHit, recordVrPoint, resolveTrigger, resolveTriggerMode, normalizePointMode, surfaceVoxelFromHit, createStickGate, deleteSelected, undoDelete, pointIsHidden } from './vr-point.js?v=20261006-build466';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261006-build466';
-import { buildClsData } from './point-cls.js?v=20261006-build466';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261006-build466';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment } from './comments.js?v=20261006-build466';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build466';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build466';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build466';
-import { tr } from './i18n.js?v=20261006-build466';
-import { APP_BUILD } from './version.js?v=20261006-build466';
-import { wc, ww } from './ui-shell.js?v=20261006-build466';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build467';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build467';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build467';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build467';
+import { datasetFingerprint } from './project-file.js?v=20261006-build467';
+import { sectionRayHit, recordVrPoint, resolveTrigger, resolveTriggerMode, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, undoDelete, pointIsHidden } from './vr-point.js?v=20261006-build467';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261006-build467';
+import { buildClsData } from './point-cls.js?v=20261006-build467';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261006-build467';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment } from './comments.js?v=20261006-build467';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build467';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build467';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build467';
+import { tr } from './i18n.js?v=20261006-build467';
+import { APP_BUILD } from './version.js?v=20261006-build467';
+import { wc, ww } from './ui-shell.js?v=20261006-build467';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1048,7 +1048,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // VR position points (Issue #88, stage 3; vr-point.js): vrHalfExt / vrDims / vrFp are set when the data is ready (null before)
  let vrHalfExt=null,vrDims=null,vrFp=null;const vpMarkers=createVrPointMarkers(THREE,scene);
  // build 465: surface mode (vrPointMode, kept while the page lives, default 断面). It is in force except while the 解析 tab is open (the trigger pins labels there)
- const surfaceActive=()=>vrPointMode==='surface'&&!(ui.open&&ui.tab===5),surfCursors=controllers.map(()=>createSurfaceCursor(THREE,scene));
+ const surfaceActive=()=>vrPointMode==='surface'&&!(ui.open&&ui.tab===5),surfCursors=controllers.map(()=>createSurfaceCursor(THREE,scene)),tmpSc=new THREE.Vector3(),tmpSh=new THREE.Vector3(),tmpSs=new THREE.Vector3();
+ // build 467: the cursor sits at the CENTRE of the voxel that will be recorded (sf.voxel), as a small core + a thin ring that keeps its angular size
+ const placeSurfCursor=(c,sf)=>{
+  if(!mesh?.parent||!vrHalfExt||!vrDims){surfCursors[controllers.indexOf(c)].set(null);return}
+  const l=voxelToLocal(sf.voxel,vrHalfExt,vrDims),vs=voxelSize(vrHalfExt,vrDims);mesh.localToWorld(tmpSc.set(l.x,l.y,l.z));mesh.getWorldScale(tmpSs);
+  renderer.xr.getCamera().getWorldPosition(tmpSh);
+  surfCursors[controllers.indexOf(c)].set(tmpSc,tmpSh,Math.min(vs[0]*tmpSs.x,vs[1]*tmpSs.y,vs[2]*tmpSs.z));
+ };
  // where this controller's laser meets a section (the first one it meets inside the volume): {distance (world m), voxel, plane} or null;
  // the section planes are the shader's uniforms (volume object space, all sections shown; cutBits: the clipping ones)
  const sectionPointOf=c=>{
@@ -1523,7 +1530,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const gd=c.userData.guide;gd.visible=!!np;gd.material.color.setHex(handColor(c));if(np){const a=gd.geometry.attributes.position;c.getWorldPosition(tmpA);np.handle.getWorldPosition(tmpB);a.setXYZ(0,tmpA.x,tmpA.y,tmpA.z);a.setXYZ(1,tmpB.x,tmpB.y,tmpB.z);a.needsUpdate=true}
    const hc=handColor(c),hit=h||bh||ph||hh||pt||sh||rp||vh,dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=!!hit&&!sf;dot.scale.setScalar(sh&&!pt?1.8:1); // the tip of a laser on a section is the place that would be recorded (bigger dot)
    
-   if(hit){ray.scale.z=hit.distance;ray.material.opacity=1;setRay(c);raycaster.ray.at(hit.distance,dot.position);if(sf)surfCursors[controllers.indexOf(c)].set(dot.position,performance.now());if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}if(ph){const i=panel.hit(ph.uv);if(i>=0)panelHover=i}}
+   if(hit){ray.scale.z=hit.distance;ray.material.opacity=1;setRay(c);raycaster.ray.at(hit.distance,dot.position);if(sf)placeSurfCursor(c,sf);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}if(ph){const i=panel.hit(ph.uv);if(i>=0)panelHover=i}}
    else{ray.scale.z=0.6;ray.material.opacity=0.35}
    if(!sf)surfCursors[controllers.indexOf(c)].set(null);
    // thumbstick Y (xr-standard axes[3], up is negative), dead zone 0.15, squared response; both hands add up

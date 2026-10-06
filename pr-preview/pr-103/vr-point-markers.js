@@ -10,8 +10,8 @@
 //    Off the section: normal size and a thin line (the perpendicular) down to the section. No active section: neither.
 //  - laser on a point: a white halo; the selected point: a yellow halo (kept until it is deselected or deleted).
 // Spheres are drawn after the volume without a depth test, so a hidden point is still visible (as the small dot).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build466';
-import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build466';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build467';
+import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build467';
 
 export const VR_MARKER_COLOR=0x4dd8ff,VR_MARKER_FILL=0x0b6f8c,VR_RIM_COLOR=0xffffff,VR_HALO_HOVER=0xffffff,VR_HALO_SELECTED=0xffd23d;
 const RADIUS_UNITS=0.045,MIN_RADIUS_M=0.003,PICK_MIN_M=0.012; // radius in volume units (the longest side is 3.3) and the least radius in metres
@@ -90,23 +90,34 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
  };
 }
 
-// ---- surface-mode cursor (build 465) ----
-// A glowing lime dot where the laser first meets visible tissue (the place a trigger press would record). Clearly different from the point
-// markers (cyan sphere with a white rim / yellow halo) and from the section-mode tip (a small dot in the hand colour, bigger on a section).
-export const SURFACE_CURSOR_COLOR=0x8dff4a,SURFACE_CURSOR_CORE_M=0.0055,SURFACE_CURSOR_GLOW_M=0.0150;
+// ---- surface-mode cursor (build 467) ----
+// Where a trigger press would record in surface mode: a small lime core (about one voxel, centred EXACTLY on the voxel that will be recorded)
+// plus a thin ring around it so the cursor is not lost. No glow. Clearly different from the point markers (cyan sphere with a white rim /
+// yellow halo) and from the section-mode tip (a small dot in the hand colour). Drawn without a depth test, like the markers.
+// Size: the core is one voxel wide in the world but never smaller than MIN_CORE_RAD angular radius seen from the head; the ring is a
+// constant angular size (it scales with the distance to the head) and faces the head.
+export const SURFACE_CURSOR_COLOR=0x8dff4a,SURFACE_CURSOR_MIN_CORE_RAD=0.0022,SURFACE_CURSOR_RING_RAD=0.011,SURFACE_CURSOR_RING_WIDTH=0.14;
+// pure: core and ring radii (world metres). dist: head -> cursor distance (m); voxelM: the voxel's world size (m).
+export function surfaceCursorSizes(dist,voxelM){
+ const d=Math.max(1e-3,+dist||0),core=Math.max(0.5*(+voxelM||0),d*SURFACE_CURSOR_MIN_CORE_RAD),ring=Math.max(d*SURFACE_CURSOR_RING_RAD,core*2.6);
+ return{core,ring};
+}
 export function createSurfaceCursor(THREE,scene){
- const core=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,depthTest:false,toneMapped:false}));
- const glow=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,opacity:0.32,depthTest:false,depthWrite:false,toneMapped:false,blending:THREE.AdditiveBlending}));
- core.renderOrder=6;glow.renderOrder=6;core.frustumCulled=false;glow.frustumCulled=false;
- const group=new THREE.Group();group.add(glow);group.add(core);group.visible=false;scene.add(group);
+ const mat=()=>new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide});
+ const core=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),mat()),ring=new THREE.Mesh(new THREE.RingGeometry(1-SURFACE_CURSOR_RING_WIDTH,1,40),mat());
+ core.renderOrder=6;ring.renderOrder=6;core.frustumCulled=false;ring.frustumCulled=false;
+ const group=new THREE.Group();group.add(ring);group.add(core);group.visible=false;scene.add(group);
+ const d=new THREE.Vector3();
  return{
-  group,
-  // world: a Vector3-like {x,y,z} or null (hidden); now: ms, for a slow pulse of the glow
-  set(world,now=0){
-   group.visible=!!world;if(!world)return;
-   group.position.set(world.x,world.y,world.z);
-   core.scale.setScalar(SURFACE_CURSOR_CORE_M);glow.scale.setScalar(SURFACE_CURSOR_GLOW_M*(1+0.18*Math.sin(now/180)));
+  group,core,ring,
+  // centre: the centre of the voxel that will be recorded (world); head: the head's world position; voxelM: the voxel's world size. null = hidden
+  set(centre,head,voxelM=0){
+   group.visible=!!centre;if(!centre)return;
+   group.position.set(centre.x,centre.y,centre.z);
+   const dist=head?d.set(head.x-centre.x,head.y-centre.y,head.z-centre.z).length():1,sz=surfaceCursorSizes(dist,voxelM);
+   core.scale.setScalar(sz.core);ring.scale.setScalar(sz.ring);
+   if(head)ring.lookAt(head.x,head.y,head.z);
   },
-  dispose(){scene.remove(group);for(const m of [core,glow]){m.geometry.dispose();m.material.dispose()}},
+  dispose(){scene.remove(group);for(const m of [core,ring]){m.geometry.dispose();m.material.dispose()}},
  };
 }
