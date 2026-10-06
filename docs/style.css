@@ -957,6 +957,13 @@ html.vrl-ipad-ui .comment-popover .comment-input{font-size:16px}
 .comment-marker-3d{position:absolute;left:0;top:0;width:14px;height:14px;box-sizing:border-box;border-radius:50%;background:var(--vr-point-fill);border:2px solid var(--vr-point-rim);box-shadow:0 0 0 1px rgba(0,0,0,.55);will-change:transform}
 .comment-marker-3d[hidden]{display:none}
 .comment-marker-3d.is-behind{width:8px;height:8px;background:var(--vr-point-dot);border:0}
+.comment-lines-3d{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.comment-lines-3d line{stroke:var(--vr-point-dot);stroke-opacity:.6;stroke-width:1.2}
+/* on the active section: x1.4 like VR (centre unchanged) */
+.comment-marker-3d.is-on-section{width:20px;height:20px}
+.comment-marker-3d.is-behind.is-on-section{width:11px;height:11px}
+.vrl-ipad-ui .comment-marker-3d.is-on-section{width:25px;height:25px}
+.vrl-ipad-ui .comment-marker-3d.is-behind.is-on-section{width:14px;height:14px}
 .comment-marker-3d-no{position:absolute;left:100%;bottom:100%;margin:0 0 -3px 3px;min-width:14px;padding:1px 3px;box-sizing:border-box;border-radius:7px;background:var(--vr-point-dot);color:#04202a;font:800 10px/12px sans-serif;text-align:center;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;white-space:nowrap}
 .comment-marker-3d.is-behind .comment-marker-3d-no{font-size:9px;line-height:11px;min-width:12px;padding:0 3px;margin:0 0 -2px 2px}
 .vrl-ipad-ui .comment-marker-3d{width:18px;height:18px}

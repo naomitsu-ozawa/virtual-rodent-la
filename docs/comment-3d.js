@@ -20,13 +20,15 @@ import { request3DRender } from './scene3d.js?v=20261006-build465';
 import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261006-build465';
 import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261006-build465';
 import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261006-build465';
+import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261006-build465';
 import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261006-build465';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
+let rels=new Map(),relSig='',svg=null,cuesOn=false;
 let hiddenIds=new Set(),hiddenSig='',hiddenTimer=0,vrMod=null,vrModLoading=false,vrModFailed=false;
 const throttle=createHiddenThrottle();
 const els=new Map(); // comment id -> {el,x,y,vis,no}
-const v3=new THREE.Vector3(),c3=new THREE.Vector3(),eye3=new THREE.Vector3(),p3=new THREE.Vector3();
+const v3=new THREE.Vector3(),c3=new THREE.Vector3(),eye3=new THREE.Vector3(),p3=new THREE.Vector3(),q3=new THREE.Vector3();
 
 export function closeBubble3d(){clearTimeout(bubbleTimer);bubbleId=null;if(bubble)bubble.hidden=true}
 function placeBubble(){
@@ -73,6 +75,41 @@ function refreshHidden(obj,camera,pts,plane){
  hiddenIds=next;return changed;
 }
 
+// the cues of the active section: bigger dots on it, lines from the other points to their foot on it
+function ensureSvg(){
+ if(svg)return svg;
+ svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','comment-lines-3d');svg.setAttribute('aria-hidden','true');
+ layer.insertBefore(svg,layer.firstChild); // under the dots
+ return svg;
+}
+function projectPair(obj,camera,W,H,a,b,out){
+ // both ends to camera space, clipped to the front of the camera, then projected: out = [x1,y1,x2,y2] in px, or false when nothing is in front
+ p3.set(a.x,a.y,a.z).applyMatrix4(obj.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+ q3.set(b.x,b.y,b.z).applyMatrix4(obj.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+ const seg=clipSegmentNear({x:p3.x,y:p3.y,z:p3.z},{x:q3.x,y:q3.y,z:q3.z},camera.near||0.01);if(!seg)return false;
+ p3.set(seg[0].x,seg[0].y,seg[0].z).applyMatrix4(camera.projectionMatrix);q3.set(seg[1].x,seg[1].y,seg[1].z).applyMatrix4(camera.projectionMatrix);
+ out[0]=(p3.x+1)/2*W;out[1]=(1-p3.y)/2*H;out[2]=(q3.x+1)/2*W;out[3]=(1-q3.y)/2*H;
+ return out.every(Number.isFinite);
+}
+const seg4=[0,0,0,0];
+function drawSectionCues(obj,camera,W,H,pts){
+ const hasPlane=rels.size>0;
+ if(!hasPlane&&!cuesOn)return; // no active section and nothing left to clear
+ cuesOn=hasPlane;
+ if(hasPlane)ensureSvg();
+ if(svg){svg.setAttribute('width',W);svg.setAttribute('height',H)}
+ for(const p of pts){
+  const m=els.get(p.id),r=rels.get(p.id);if(!m)continue;
+  const on=!!r&&r.on;if(m.on!==on){m.on=on;m.el.classList.toggle('is-on-section',on)}
+  const want=!!r&&!r.on;
+  if(want){
+   if(!m.line){m.line=document.createElementNS('http://www.w3.org/2000/svg','line');svg.appendChild(m.line)}
+   if(projectPair(obj,camera,W,H,p.local,r.foot,seg4)){m.line.setAttribute('x1',seg4[0].toFixed(1));m.line.setAttribute('y1',seg4[1].toFixed(1));m.line.setAttribute('x2',seg4[2].toFixed(1));m.line.setAttribute('y2',seg4[3].toFixed(1));m.line.style.display=''}
+   else m.line.style.display='none';
+  }else if(m.line){m.line.remove();m.line=null}
+ }
+}
+
 // called after each 3D frame (and when the camera / object / comments may have changed)
 export function updateComment3dMarkers(){
  if(!layer)return;
@@ -94,7 +131,7 @@ export function updateComment3dMarkers(){
    const x=(v3.x+1)/2*W,y=(1-v3.y)/2*H,vis=v3.z>-1&&v3.z<1&&x>-12&&x<W+12&&y>-12&&y<H+12;
    keep.add(c.id);
    let m=els.get(c.id);
-   if(!m){const el=document.createElement('div');el.className='comment-marker-3d';el.setAttribute('role','img');layer.appendChild(el);m={el,x:0,y:0,vis:false,no:0,label:'',back:null};els.set(c.id,m)}
+   if(!m){const el=document.createElement('div');el.className='comment-marker-3d';el.setAttribute('role','img');layer.appendChild(el);m={el,x:0,y:0,vis:false,no:0,label:'',back:null,on:false,line:null};els.set(c.id,m)}
    m.x=x;m.y=y;m.vis=vis;
    if(m.no!==n+1){m.no=n+1;m.el.textContent='';const sp=document.createElement('span');sp.className='comment-marker-3d-no';sp.textContent=String(n+1);m.el.appendChild(sp)} // the dot is the element (its centre = the point); the number sits beside it
    const label=tr('commentMarker3d')+' '+(n+1);if(m.label!==label){m.label=label;m.el.setAttribute('aria-label',label)}
@@ -108,9 +145,14 @@ export function updateComment3dMarkers(){
   if(st.run){hiddenSig=sig;refreshHidden(obj,camera,pts,plane)}
   else if(st.wait>0)hiddenTimer=setTimeout(refreshSoon,st.wait);
   for(const [id,m] of els){const back=hiddenIds.has(id);if(m.back!==back){m.back=back;m.el.classList.toggle('is-behind',back)}}
+  // position cues relative to the active section (VR's rule): on it = bigger (.is-on-section); off it = a thin line to its foot (SVG layer).
+  // The relation only changes with the plane / points, so it is recomputed then; the lines follow the camera every frame.
+  const rsig=(plane?[plane.x,plane.y,plane.z,plane.w].join(','):'')+'|'+pts.map(p=>p.id+':'+p.local.x+','+p.local.y+','+p.local.z).join(';');
+  if(rsig!==relSig){relSig=rsig;rels=planeRelations(pts,plane,boxHalfExtent(dims,volume.spacing),dims)}
+  drawSectionCues(obj,camera,W,H,pts);
  }
  if(!list.length){clearTimeout(hiddenTimer);hiddenTimer=0}
- for(const [id,m] of [...els])if(!keep.has(id)){m.el.remove();els.delete(id)}
+ for(const [id,m] of [...els])if(!keep.has(id)){m.el.remove();m.line?.remove();els.delete(id)}
  if(bubbleId!=null)placeBubble();
 }
 // tap on a dot (not a drag): the pointer handlers of the 3D view are untouched (listeners are only added, nothing is stopped); taps in
