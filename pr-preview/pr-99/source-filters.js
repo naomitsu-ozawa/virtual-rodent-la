@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20261005-build459';
-import { sourceVolume, filterOrder } from './state.js?v=20261005-build459';
-import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicKappa, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvEps, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20261005-build459';
-import { frameYield, isIPhoneRuntime, isTabletRuntime, isDesktopRuntime } from './utils.js?v=20261005-build459';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20261005-build459';
-import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20261005-build459';
-import { cacheKey } from './gpu-volume-cache.js?v=20261005-build459';
-import { sourceFilterSignature as signatureOf, withSpacingWeights } from './filter-units.js?v=20261005-build459';
+import { gpuStagesSupported, runGpuSourceFilters, gpuFilterRuntime, setGpuComputeBackend, addGpuStepTime } from './gpu-compute.js?v=20261006-build461';
+import { sourceVolume, filterOrder } from './state.js?v=20261006-build461';
+import { ww, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicKappa, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvEps, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold } from './ui-shell.js?v=20261006-build461';
+import { frameYield, isIPhoneRuntime, isTabletRuntime, isDesktopRuntime } from './utils.js?v=20261006-build461';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20261006-build461';
+import { decodeSourceSlice, sourceSliceCache } from './volume-io.js?v=20261006-build461';
+import { cacheKey } from './gpu-volume-cache.js?v=20261006-build461';
+import { sourceFilterSignature as signatureOf, withSpacingWeights } from './filter-units.js?v=20261006-build461';
 export const memoryFilterPreviewCache={map:new Map(),bytes:0};
 export const filterState={spikeHole:false,nlm:false,anisotropic:false,gaussian:false,sigmoid:false,bilateral:false,tv:false,unsharp:false};
 export function sourceSliceCacheLimit(){return isIPhoneRuntime()?64*1024*1024:isTabletRuntime()?192*1024*1024:256*1024*1024}

@@ -56,6 +56,12 @@ export function voxelToMm(v,spacing){
  const[sx,sy,sz]=spacing||[1,1,1];
  return{x:v.i*sx,y:v.j*sy,z:v.k*sz};
 }
+// voxel -> the 3D scene's local coordinates (the same mapping the 3D MPR planes / section view use: centred on the volume, mm * 3.3/longest
+// side, y flipped; sagittal index i -> x, coronal j -> y, axial k -> z), so a 3D marker sits exactly on its plane position
+export function voxelToLocal3D(v,dims,spacing){
+ const[sx,sy,sz]=spacing||[1,1,1],px=dims.columns*sx,py=dims.rows*sy,pz=dims.slices*sz,scale=3.3/Math.max(px,py,pz,1);
+ return{x:((v.i+.5)*sx-px/2)*scale,y:-((v.j+.5)*sy-py/2)*scale,z:((v.k+.5)*sz-pz/2)*scale};
+}
 // calibrated HU of the ORIGINAL data at a voxel, or null when it cannot be read without decoding.
 // Memory volumes: the array. Source-backed volumes are not in memory: read only a slice that is already in the slice cache
 // (peekSlice(meta) must NOT decode); a miss is null, never 0.

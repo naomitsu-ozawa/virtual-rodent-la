@@ -1,16 +1,16 @@
 // Position comments UI (Issue #88, stage 2): a small panel in the display drawer. "Add" records the current position (the linked
 // crosshair, or the three slices on show) with the text; "View this place" moves the crosshair and the three sliders there. Nothing
 // here runs by itself on load, and no pointer handler is added to the image canvases (the click / swipe on them is untouched).
-import { planes } from './ui-shell.js?v=20261005-build459';
-import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261005-build459';
-import { tr } from './i18n.js?v=20261005-build459';
-import { datasetFingerprint } from './project-file.js?v=20261005-build459';
-import { createComment, addComment, removeComment, restoreComment, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers } from './comments.js?v=20261005-build459';
-import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261005-build459';
+import { planes } from './ui-shell.js?v=20261006-build461';
+import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261006-build461';
+import { tr } from './i18n.js?v=20261006-build461';
+import { datasetFingerprint } from './project-file.js?v=20261006-build461';
+import { createComment, addComment, removeComment, restoreComment, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build461';
+import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261006-build461';
 
 let pop=null,popText=null,popPos=null,popStatus=null,popTimer=0,popFrom=null;
 let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
-let showMarkers=true,showEl=null,bubble=null,bubbleTimer=0;
+let showEl=null,bubble=null,bubbleTimer=0;
 const hits={axial:[],coronal:[],sagittal:[]}; // exact markers last drawn per plane (CSS px on the overlay canvas), for the tap test
 const dimsOf=()=>volume?{columns:volume.columns,rows:volume.rows,slices:volume.slices}:null;
 const fingerprint=()=>activeSeries?datasetFingerprint(activeSeries):null;
@@ -36,7 +36,7 @@ export function viewComment(id){
 // ---- markers (drawn on the crosshair overlay canvases, never on the slice canvases) ----
 const MARK='#4dd8ff';
 function paintMarkers(ctx,p,g){
- hits[p]=[];if(!ctx||!showMarkers||!volume)return;
+ hits[p]=[];if(!ctx||!getMarkersShown()||!volume)return;
  const fp=fingerprint(),dims=dimsOf();if(!fp||!dims)return;
  const ms=commentMarkers(p,getComments(),fp,+planes[p].slider.value,dims);if(!ms.length)return;
  const ipad=document.documentElement.classList.contains('vrl-ipad-ui'),R=ipad?13:11,r=R*0.62;
@@ -76,7 +76,7 @@ function installMarkerTap(){
   const cv=planes[p].canvas;let d=null;
   cv.addEventListener('pointerdown',e=>{d={id:e.pointerId,x:e.clientX,y:e.clientY}});
   cv.addEventListener('pointerup',e=>{
-   const s=d;d=null;if(!s||s.id!==e.pointerId||crosshairModeActive()||!showMarkers)return;
+   const s=d;d=null;if(!s||s.id!==e.pointerId||crosshairModeActive()||!getMarkersShown())return;
    if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>6)return;
    const o=document.getElementById(p+'-crosshair').getBoundingClientRect(),x=e.clientX-o.left,y=e.clientY-o.top;
    let best=null,bd=1e9;for(const h of hits[p]){const dd=Math.hypot(h.x-x,h.y-y);if(dd<=h.r&&dd<bd){best=h;bd=dd}}
@@ -174,7 +174,7 @@ export function installComments(){
  root=document.createElement('details');root.id='comment-panel';root.className='comment-panel';
  root.innerHTML='<summary></summary><p class="comment-hint"></p><label class="comment-show"><input type="checkbox" class="comment-show-input" checked><span></span></label><textarea class="comment-input" rows="2" maxlength="2000"></textarea><button type="button" class="tool-chip comment-add"></button><p class="comment-note" role="status"></p><div class="comment-undo" hidden role="status"><span class="comment-undo-text"></span> <button type="button" class="tool-chip comment-undo-btn"></button></div><ul class="comment-list"></ul>';
  host.appendChild(root);
- showEl=root.querySelector('.comment-show-input');showEl.addEventListener('change',()=>{showMarkers=showEl.checked;closeBubble();requestOverlayDraw()});
+ showEl=root.querySelector('.comment-show-input');showEl.addEventListener('change',()=>setMarkersShown(showEl.checked));onMarkersShownChange(on=>{if(showEl.checked!==on)showEl.checked=on;closeBubble();requestOverlayDraw()});
  setOverlayPainter(paintMarkers);installMarkerTap();document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBubble()});
  listEl=root.querySelector('.comment-list');textEl=root.querySelector('.comment-input');addBtn=root.querySelector('.comment-add');noteEl=root.querySelector('.comment-note');undoEl=root.querySelector('.comment-undo');
  undoEl.querySelector('.comment-undo-btn').addEventListener('click',undoDelete);

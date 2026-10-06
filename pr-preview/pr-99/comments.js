@@ -2,8 +2,8 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261005-build459';
-import { compareFingerprints } from './project-file.js?v=20261005-build459';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build461';
+import { compareFingerprints } from './project-file.js?v=20261006-build461';
 
 export const COMMENT_MAX_TEXT=2000;
 const isIdx=n=>Number.isFinite(+n)&&n!==null&&n!==''&&n!==true&&n!==false;
@@ -90,6 +90,12 @@ export function hasUnsavedComments(){
  return false;
 }
 export const resetCommentsSaved=()=>saved.clear();
+// "show the positions on the images": one switch for the 2D overlays and the 3D markers (a view setting, not saved in the project)
+let markersShown=true;
+const shownListeners=new Set();
+export const getMarkersShown=()=>markersShown;
+export function setMarkersShown(on){const v=!!on;if(v===markersShown)return;markersShown=v;for(const cb of [...shownListeners]){try{cb(v)}catch(e){console.warn('marker listener failed',e)}}}
+export const onMarkersShownChange=cb=>{shownListeners.add(cb);return()=>shownListeners.delete(cb)};
 export const onCommentsChange=cb=>{listeners.add(cb);return()=>listeners.delete(cb)};
 // for the project file: only what belongs to the series being saved
 export const commentsForProject=fingerprint=>getComments().filter(c=>commentMatchesSeries(c,fingerprint));

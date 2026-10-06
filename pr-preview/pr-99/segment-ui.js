@@ -1,16 +1,16 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20261005-build459';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261005-build459';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261005-build459';
-import { dispose } from './surface-mesh.js?v=20261005-build459';
-import { request3DRender } from './scene3d.js?v=20261005-build459';
-import { renderAnalysisResults } from './analysis-results.js?v=20261005-build459';
-import { segmentEditState, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges } from './segments.js?v=20261005-build459';
-import { tr } from './i18n.js?v=20261005-build459';
-import { niceCtStep, formatCtValue } from './utils.js?v=20261005-build459';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261005-build459';
-import { renderAll } from './mpr-render.js?v=20261005-build459';
+import { mark3DStale } from './three-state.js?v=20261006-build461';
+import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261006-build461';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261006-build461';
+import { dispose } from './surface-mesh.js?v=20261006-build461';
+import { request3DRender } from './scene3d.js?v=20261006-build461';
+import { renderAnalysisResults } from './analysis-results.js?v=20261006-build461';
+import { segmentEditState, segmentEditGen, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges } from './segments.js?v=20261006-build461';
+import { tr } from './i18n.js?v=20261006-build461';
+import { niceCtStep, formatCtValue } from './utils.js?v=20261006-build461';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261006-build461';
+import { renderAll } from './mpr-render.js?v=20261006-build461';
 // build 439 (owner: change the card order by dragging): a pointer drag on a card's ⋮⋮ handle (mouse and touch alike)
 // moves the card live; on release the new card order becomes the priority (segment-exclusive.js) and every segment
 // whose range in use changed is recomputed
@@ -135,8 +135,10 @@ export function updateSegmentOutputs(key){
  $('[data-seg-max-out="'+key+'"]').value=formatCtValue(s.userMax??s.max,+maxEl?.step||1);
  // build 438: the range in use when the card priority trims the user range
  const note=$('[data-seg-effective="'+key+'"]');
- if(note){const e=s.exclusive,trimmed=s.active&&e&&(e.empty||e.min!==(s.userMin??s.min)||e.max!==(s.userMax??s.max));note.classList.toggle('is-hidden',!trimmed);
-  if(trimmed){const f=v=>formatCtValue(v,st);note.textContent=e.empty?tr('segEffectiveEmpty'):tr('segEffective')+' '+f(e.min)+' 〜 '+f(e.max)+(e.dropped?.length?' · '+tr('segEffectiveDropped')+' '+e.dropped.map(([a,b])=>f(a)+'〜'+f(b)).join(', '):'')}}
+ if(note){const e=s.exclusive,trimmed=s.active&&e&&(e.empty||e.min!==(s.userMin??s.min)||e.max!==(s.userMax??s.max)),srcs=s.active&&e&&!e.empty?(e.sources||[]):[];note.classList.toggle('is-hidden',!trimmed&&!srcs.length);
+  // build 459: the segments above that hold voxels (post-processing / edits) are subtracted voxel by voxel, not by range
+  const names=srcs.map(k=>tr(k)||k).join(', '),from=srcs.length?tr('segExcludesUpper')+' ('+names+')':'';
+  if(trimmed||srcs.length){const f=v=>formatCtValue(v,st);note.textContent=(trimmed?(e.empty?tr('segEffectiveEmpty'):tr('segEffective')+' '+f(e.min)+' 〜 '+f(e.max)+(e.dropped?.length?' · '+tr('segEffectiveDropped')+' '+e.dropped.map(([a,b])=>f(a)+'〜'+f(b)).join(', '):'')):'')+(trimmed&&from?' · ':'')+from}}
  $('[data-seg-opacity-out="'+key+'"]').value=segmentState[key].opacity.toFixed(2);
  for(const [attr,field] of THIN_SLIDERS){const out=$('[data-seg-'+attr+'-out="'+key+'"]');if(out)out.value=formatMmVoxels(segmentState[key][field])}
 }
@@ -163,7 +165,7 @@ export function clearSegmentEditCache(key,clearEdits=false){
  const st=segmentEditState[key];if(!st)return;
  // a removed or reset segment must not leave its run surface in the scene
  if(clearEdits&&st.surfaceGroup){const old=st.surfaceGroup;if(old.parent)old.parent.remove(old);dispose(old);st.surfaceGroup=null;request3DRender()}st.baseRuns=null;st.baseSignature='';st.finalRuns=null;st.pendingBase=null;
- if(clearEdits){st.keepRuns=null;st.excludeRuns=null;st.cutRuns=null;st.rawCutSurface=false;st.undo=[];st.redo=[];st.revision=0}
+ if(clearEdits){segmentEditGen[key]=(segmentEditGen[key]|0)+1;st.keepRuns=null;st.excludeRuns=null;st.cutRuns=null;st.rawCutSurface=false;st.undo=[];st.redo=[];st.revision=0}
 }
 export function clearAnalysisHighlight(){
  if(sceneState?.analysisMesh){const root=sceneState.analysisMesh;if(root.parent)root.parent.remove(root);dispose(root);sceneState.analysisMesh=null}
