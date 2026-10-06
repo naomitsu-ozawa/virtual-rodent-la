@@ -10,8 +10,8 @@
 //    Off the section: normal size and a thin line (the perpendicular) down to the section. No active section: neither.
 //  - laser on a point: a white halo; the selected point: a yellow halo (kept until it is deselected or deleted).
 // Spheres are drawn after the volume without a depth test, so a hidden point is still visible (as the small dot).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build468';
-import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build468';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build469';
+import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build469';
 
 export const VR_MARKER_COLOR=0x4dd8ff,VR_MARKER_FILL=0x0b6f8c,VR_RIM_COLOR=0xffffff,VR_HALO_HOVER=0xffffff,VR_HALO_SELECTED=0xffd23d;
 export const PICK_MIN_M=0.004;

@@ -8,23 +8,23 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build468';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build468';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build468';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build468';
-import { datasetFingerprint } from './project-file.js?v=20261006-build468';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, sectionDragStep, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261006-build468';
-import { createVrPointMarkers, createSurfaceCursor, createSectionCursor } from './vr-point-markers.js?v=20261006-build468';
-import { buildClsData } from './point-cls.js?v=20261006-build468';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261006-build468';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261006-build468';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText } from './comments.js?v=20261006-build468';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build468';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build468';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build468';
-import { tr } from './i18n.js?v=20261006-build468';
-import { APP_BUILD } from './version.js?v=20261006-build468';
-import { wc, ww } from './ui-shell.js?v=20261006-build468';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build469';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build469';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build469';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build469';
+import { datasetFingerprint } from './project-file.js?v=20261006-build469';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, sectionDragStep, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261006-build469';
+import { createVrPointMarkers, createSurfaceCursor, createSectionCursor } from './vr-point-markers.js?v=20261006-build469';
+import { buildClsData } from './point-cls.js?v=20261006-build469';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261006-build469';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261006-build469';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText } from './comments.js?v=20261006-build469';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build469';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build469';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build469';
+import { tr } from './i18n.js?v=20261006-build469';
+import { APP_BUILD } from './version.js?v=20261006-build469';
+import { wc, ww } from './ui-shell.js?v=20261006-build469';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
