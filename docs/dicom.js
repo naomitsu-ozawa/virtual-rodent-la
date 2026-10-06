@@ -1,7 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { multi, safePair, num, safeTriple, numberOr, frameYield } from './utils.js?v=20261006-build465';
+import { multi, safePair, num, safeTriple, numberOr, frameYield } from './utils.js?v=20261006-build469';
+import { analyzeSliceSpacing, excludeDuplicateSlices, seriesNormal, slicePosition } from './slice-spacing.js?v=20261006-build469';
 export async function parseDicomHeader(file){
  const attempts=[Math.min(file.size,256*1024),Math.min(file.size,1024*1024)];
  let lastError=null;
@@ -14,14 +15,14 @@ export async function parseDicomHeader(file){
 }
 export function parsedSliceMeta(f,ds){
  const seriesUid=ds.string('x0020000e')?.trim();if(!seriesUid)return null;
- const ps=multi(ds.string('x00280030'),2),pos=multi(ds.string('x00200032'),3);
- return{file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,bitsStored:ds.uint16('x00280101')||ds.uint16('x00280100')||16,highBit:ds.uint16('x00280102'),signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,photometricInterpretation:ds.string('x00280004')?.trim()||'MONOCHROME2',planarConfiguration:ds.uint16('x00280006')||0,numberOfFrames:Number(ds.string('x00280008')||1),pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),windowCenter:num(ds.string('x00281050')),windowWidth:num(ds.string('x00281051')),smallest:ds.uint16('x00280106'),largest:ds.uint16('x00280107'),pixelOffset:ds.elements.x7fe00010?.dataOffset??null,pixelLength:ds.elements.x7fe00010?.length??null,ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'};
+ const ps=multi(ds.string('x00280030'),2),pos=multi(ds.string('x00200032'),3),iop=multi(ds.string('x00200037'),6);
+ return{file:f,studyUid:ds.string('x0020000d')?.trim()||'study',seriesUid,description:ds.string('x0008103e')?.trim()||'Unnamed series',modality:ds.string('x00080060')?.trim()||'Unknown',rows:ds.uint16('x00280010')||0,columns:ds.uint16('x00280011')||0,bits:ds.uint16('x00280100')||16,bitsStored:ds.uint16('x00280101')||ds.uint16('x00280100')||16,highBit:ds.uint16('x00280102'),signed:ds.uint16('x00280103')||0,samples:ds.uint16('x00280002')||1,photometricInterpretation:ds.string('x00280004')?.trim()||'MONOCHROME2',planarConfiguration:ds.uint16('x00280006')||0,numberOfFrames:Number(ds.string('x00280008')||1),pixelSpacing:ps?safePair(ps):null,thickness:num(ds.string('x00180050')),spacingBetween:num(ds.string('x00180088')),instance:num(ds.string('x00200013')),pos:pos?safeTriple(pos):null,orientation:iop,slope:numberOr(ds.string('x00281053'),1),intercept:numberOr(ds.string('x00281052'),0),windowCenter:num(ds.string('x00281050')),windowWidth:num(ds.string('x00281051')),smallest:ds.uint16('x00280106'),largest:ds.uint16('x00280107'),pixelOffset:ds.elements.x7fe00010?.dataOffset??null,pixelLength:ds.elements.x7fe00010?.length??null,ts:ds.string('x00020010')?.trim()||'1.2.840.10008.1.2.1'};
 }
 export function expandParsedFrames(meta){
  const frames=Math.max(1,meta.numberOfFrames||1);
  if(frames===1||!COMPRESSED_DICOM_TRANSFER_SYNTAXES.has(meta.ts))return[meta];
  const dz=meta.spacingBetween||meta.thickness||1,baseInstance=Number.isFinite(meta.instance)?meta.instance:0;
- return Array.from({length:frames},(_,frameIndex)=>({...meta,frameIndex,sortIndex:baseInstance+frameIndex/Math.max(frames,1),instance:baseInstance+frameIndex,pos:meta.pos?[meta.pos[0],meta.pos[1],meta.pos[2]+frameIndex*dz]:null}));
+ return Array.from({length:frames},(_,frameIndex)=>({...meta,frameIndex,syntheticPos:true,sortIndex:baseInstance+frameIndex/Math.max(frames,1),instance:baseInstance+frameIndex,pos:meta.pos?[meta.pos[0],meta.pos[1],meta.pos[2]+frameIndex*dz]:null}));
 }
 export function canDecodeToInt16(slices){
  for(const meta of slices){
@@ -53,13 +54,21 @@ export function sourceRangeFromMetadata(slices){
 export function groupSeries(slices){
  const m=new Map();
  for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}
- return[...m.entries()].map(([id,g])=>{
-  g.sort((a,b)=>((a.pos?.[2]??a.sortIndex??a.instance??0)-(b.pos?.[2]??b.sortIndex??b.instance??0)));
+ return[...m.entries()].map(([id,all])=>{
+  const readIndex=new Map(all.map((x,i)=>[x,i])),g0=[...all],normal=seriesNormal(g0),synthetic=g0.some(s=>s.syntheticPos),key=s=>synthetic?(s.sortIndex??s.instance??0):(slicePosition(s,normal)??s.sortIndex??s.instance??0);
+  g0.sort((a,b)=>key(a)-key(b));
+  // build 469: every gap along the slice normal is checked; duplicate slices are excluded (smaller InstanceNumber stays);
+  // the z spacing is the whole span / (N-1), or a gap-corrected fit when slices are missing
+  const tagZ=g0[0].spacingBetween||g0[0].thickness||1;
+  let g=g0,spacingCheck=analyzeSliceSpacing(g0,tagZ,normal);
+  if(spacingCheck.duplicateIndices.length&&!spacingCheck.allDuplicates){
+   const r=excludeDuplicateSlices(g0,spacingCheck.duplicateIndices,readIndex);g=r.slices;
+   spacingCheck={...analyzeSliceSpacing(g,tagZ,normal),duplicates:r.excluded,duplicatesExcluded:r.excluded,warn:true,legacyZ:spacingCheck.legacyZ};
+  }
+  const z=spacingCheck.used;
   const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),compact=canDecodeToInt16(g),count=rows*columns*g.length,decodedBytes=count*(compact?2:4),sourceBacked=decodedBytes>256*1024*1024,range=sourceRangeFromMetadata(g);
-  let z=f.spacingBetween||f.thickness||1;
-  if(g.length>1&&g[0].pos&&g[1].pos)z=Math.abs(g[1].pos[2]-g[0].pos[2])||z;
   const windowCenter=g.find(x=>Number.isFinite(x.windowCenter))?.windowCenter,windowWidth=g.find(x=>Number.isFinite(x.windowWidth)&&x.windowWidth>0)?.windowWidth;
-  return{id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes:decodedBytes,decodedBytes,compact,sourceBacked,min:range.min,max:range.max,windowCenter,windowWidth,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z};
+  return{id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes:decodedBytes,decodedBytes,compact,sourceBacked,min:range.min,max:range.max,windowCenter,windowWidth,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z,spacingCheck};
  }).sort((a,b)=>b.slices.length-a.slices.length)
 }
 export const NATIVE_DICOM_TRANSFER_SYNTAXES=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
