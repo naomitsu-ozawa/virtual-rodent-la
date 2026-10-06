@@ -119,8 +119,13 @@ describe('createRingMenu (drawing)', () => {
     try {
       const r = createRingMenu(THREE); r.setItems(['a', 'b', null, 'd', 'e', 'f'], [true, true, false, true, true, true], []);
       expect(r.n()).toBe(6); expect(r.mesh.visible).toBe(false);
-      const R = 0.055 / 0.16; // item radius as a fraction of the board side
-      expect(r.slotFromUv({ x: 0.5, y: 0.5 + R })).toBe(0); expect(r.slotFromUv({ x: 0.5 + R, y: 0.5 })).not.toBeNull(); expect(r.slotFromUv({ x: 0.5, y: 0.5 })).toBeNull();
+      const R = 0.055 / 0.16, at = (deg, f = R) => ({ x: 0.5 + f * Math.sin(deg * Math.PI / 180), y: 0.5 + f * Math.cos(deg * Math.PI / 180) });
+      expect(r.slotFromUv(at(0))).toBe(0); expect(r.slotFromUv(at(60))).toBe(1);
+      expect(r.slotFromUv(at(120))).toBeNull(); // empty slot
+      expect(r.slotFromUv(at(180))).toBe(3);
+      expect(r.slotFromUv({ x: 0.5, y: 0.5 })).toBeNull(); expect(r.slotFromUv(at(0, 0.45))).toBeNull(); // the hole and the margin
+      r.setItems(['a', 'b', 'c', 'd', 'e', 'f'], [true, false, true, true, true, true], []);
+      expect(r.slotFromUv(at(60))).toBeNull(); // disabled slot
       r.placeAt({ x: 1, y: 2, z: 3 }, { x: 1, y: 2, z: 5 }); expect(r.mesh.position.toArray()).toEqual([1, 2, 3]);
       r.dispose();
     } finally { delete globalThis.document; }

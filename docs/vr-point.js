@@ -305,7 +305,6 @@ export const HAPTIC={
  menuClose:{amp:0.35,ms:18,count:1},
  ringHighlight:{amp:0.12,ms:10,count:1},
  ringConfirm:{amp:0.35,ms:18,count:1},
- dragStart:{amp:0.35,ms:18,count:1}, // from an empty place only
  moveDrop:{amp:0.35,ms:18,count:1},
 };
 // no vibration at all: a tap on nothing, a record stopped by the thumbstick gate, a failed undo, a cancelled move, release of a drag

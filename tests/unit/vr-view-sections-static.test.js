@@ -55,3 +55,21 @@ describe('vr-view.js: ring menus, undo and the removed left-hand panel (stage 3)
     for (const w of ["undo.push({type:'add'", "undo.push({type:'delete'", "undo.push({type:'move'", 'createUndoStack()']) expect(src.includes(w), w).toBe(true);
   });
 });
+
+describe('vr-view.js: review fixes (F1-F9)', () => {
+  it('F2: endAllDrags keeps presses for record / label / point / move', () => {
+    const a = src.indexOf('const endAllDrags='), line = src.slice(a, src.indexOf('\n', a));
+    expect(line).toContain("pr.res.kind==='section'||pr.res.kind==='empty'");
+    expect(line).not.toContain('press=null');
+  });
+  it('F1: no vibration when a drag starts from empty space', () => { expect(src.includes('HAPTIC.dragStart')).toBe(false); });
+  it('F3: disconnect closes the rings and clears the move', () => {
+    const a = src.indexOf("addEventListener('disconnected'"), blk = src.slice(a, a + 400);
+    for (const w of ['closeWheel()', 'closePointWheel()', 'moving=null', 'axPress?.reset()', 'stickLock=false']) expect(blk.includes(w), w).toBe(true);
+  });
+  it('F6: a move to the same place pushes no undo', () => { expect(src).toContain('the same place: nothing to undo'); });
+  it('F7 / F8: the selected point is checked, a stale drag ends at the press', () => {
+    expect(src).toContain("getComments().some(x=>x.id===pr.res.ref.id))selectPoint");
+    expect(src).toMatch(/addEventListener\('selectstart',\(\)=>\{\s*endDrag\(c\);/);
+  });
+});
