@@ -23,12 +23,12 @@ describe('VR position markers', () => {
     holder.position.set(0, 1.3, -0.6); holder.scale.setScalar(0.05); holder.add(mesh); scene.add(holder); scene.updateMatrixWorld(true);
     const m = createVrPointMarkers(THREE, scene, deps);
     m.update({ fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 1.6, 0) });
-    const spheres = scene.children.filter(o => o.geometry?.type === 'SphereGeometry');
+    const spheres = scene.children.filter(o => o.geometry?.type === 'SphereGeometry' && o.renderOrder === 4); // the core (rim / halo spheres are other meshes)
     expect(spheres).toHaveLength(1);
     const l = voxelToLocal({ i: 7, j: 1, k: 4 }, halfExt, dims), want = new THREE.Vector3(l.x, l.y, l.z).applyMatrix4(holder.matrixWorld);
     expect(spheres[0].position.distanceTo(want)).toBeLessThan(1e-9);
-    expect(spheres[0].material.depthTest).toBe(false); // always visible: how hidden points show is a later decision
-    expect(scene.children.length).toBe(3); // holder + sphere + chip
+    expect(spheres[0].material.depthTest).toBe(false); // always visible (a hidden point is drawn as a small dot, see vr-point-trigger.test.js)
+    expect(scene.children.length).toBe(6); // holder + halo + rim + sphere + perpendicular line + chip
     m.dispose(); expect(scene.children.length).toBe(1);
   });
   it('follows the comments: removed / switched off / other series -> nothing left', () => {
@@ -36,9 +36,9 @@ describe('VR position markers', () => {
     const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2));
     scene.add(mesh); scene.updateMatrixWorld(true);
     const m = createVrPointMarkers(THREE, scene, deps), args = { fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 0, 3) };
-    m.update(args); expect(scene.children.length).toBe(3);
+    m.update(args); expect(scene.children.length).toBe(6);
     setMarkersShown(false); m.update(args); expect(scene.children.length).toBe(1);
-    setMarkersShown(true); m.update(args); expect(scene.children.length).toBe(3);
+    setMarkersShown(true); m.update(args); expect(scene.children.length).toBe(6);
     m.update({ ...args, fingerprint: other }); expect(scene.children.length).toBe(1);
     m.update(args); setComments([]); m.update(args); expect(scene.children.length).toBe(1);
     void c; m.dispose();

@@ -9,7 +9,8 @@
 // that another clipping section has cut away. A section whose intersection is outside the volume is skipped, never clamped.
 // Voxel rule: voxel i covers the fraction [i/n, (i+1)/n) of the box along its axis, so the index is floor(fraction * n); a point
 // outside [0,1) on any axis (the far face itself included) is NOT recorded: it is never moved into the volume.
-import { createComment, addComment, getComments, commentMatchesSeries } from './comments.js?v=20261006-build463';
+import { createComment, addComment, getComments, removeComment, restoreComment, commentMatchesSeries } from './comments.js?v=20261006-build464';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build464';
 
 const T_MIN=1e-6,EDGE_EPS=1e-4;
 
@@ -68,4 +69,89 @@ export function recordVrPoint({voxel,series,language='ja',now=Date.now(),store={
  if(!voxel||!series)return null;
  const text=vrPointText(nextVrPointNumber(store.getComments(),series),language);
  return store.addComment(createComment({text,position:voxel,series,now}));
+}
+
+// ---- trigger priority (build 464) ----
+// What a hand's trigger acts on, first match wins: the menu / UI panels, then a section's handle or the hand's selected target, then an
+// existing point (select it), then the face of a section (record a new point). Returns 'ui' | 'handle' | 'point' | 'section' | null.
+export function resolveTrigger({ui=false,handle=false,point=null,section=false}={}){
+ if(ui)return'ui';
+ if(handle)return'handle';
+ if(point!==null&&point!==undefined&&point!=='')return'point';
+ if(section)return'section';
+ return null;
+}
+
+// ---- thumbstick gate (build 464) ----
+// The trigger of a hand must not record while that hand's thumbstick is being used (it scrolls the selected section; a stray trigger
+// would add a point), nor for HOLDOFF_MS after the stick came back to the centre (the stick passes the dead zone on its way back).
+// A state machine per hand: update(x, y, now) every frame with the stick axes (xr-standard axes[2], axes[3]) and the time in ms;
+// canRecord(now) when the trigger is pressed. Outside the dead zone (length > deadzone) = active; back inside, recording is allowed once
+// holdoffMs have passed since the last frame that was outside. A stick that never moved allows recording.
+export const STICK_DEADZONE=0.15,STICK_HOLDOFF_MS=300;
+export function createStickGate({deadzone=STICK_DEADZONE,holdoffMs=STICK_HOLDOFF_MS}={}){
+ let active=false,lastActive=-Infinity;
+ return{
+  update(x,y,now){
+   const m=Math.hypot(+x||0,+y||0);
+   if(m>deadzone){active=true;lastActive=now}else active=false;
+   return this.canRecord(now);
+  },
+  canRecord(now){return!active&&now-lastActive>=holdoffMs},
+  reset(){active=false;lastActive=-Infinity},
+ };
+}
+
+// ---- select / delete / undo (the same store operations as the 2D list) ----
+// A point = a comment of the open series. deleteSelected removes it and returns what the undo needs ({c,index}); undoDelete puts it back
+// at its place in the list (restoreComment, as the 2D "元に戻す").
+export function deleteSelected(id,store){
+ if(!id)return null;
+ const all=store.getComments(),index=all.findIndex(c=>c.id===id),c=all[index];
+ if(!c||!store.removeComment(id))return null;
+ return{c,index};
+}
+export function undoDelete(d,store){return!!d&&store.restoreComment(d.c,d.index)}
+
+// ---- hit test of a laser against a point (a sphere, world space) ----
+// distance along the ray (unit direction d) to the first hit of the sphere, or null
+export function raySphereT(o,d,c,r){
+ const ox=o.x-c.x,oy=o.y-c.y,oz=o.z-c.z,b=ox*d.x+oy*d.y+oz*d.z,k=ox*ox+oy*oy+oz*oz-r*r,disc=b*b-k;
+ if(disc<0)return null;
+ const s=Math.sqrt(disc),t=-b-s>T_MIN?-b-s:(-b+s>T_MIN?-b+s:null);
+ return t;
+}
+// the nearest point a ray touches: items [{id,center,radius}] -> {id,distance} or null
+export function pickPoint(o,d,items){
+ let best=null;
+ for(const it of items){const t=raySphereT(o,d,it.center,it.radius);if(t!==null&&(!best||t<best.distance))best={id:it.id,distance:t}}
+ return best;
+}
+
+// ---- distance to a section and the perpendicular ----
+// Voxel size in object space (the box is +-halfExt over dims voxels).
+export const voxelSize=(halfExt,dims)=>[2*halfExt[0]/dims.columns,2*halfExt[1]/dims.rows,2*halfExt[2]/dims.slices];
+// Half of the voxel's thickness measured along the plane normal n (unit): |nx|*sx/2 + |ny|*sy/2 + |nz|*sz/2. A point is ON the section
+// when its distance from the plane is within this (= the plane passes through that voxel's box; half a voxel for an axis-aligned section).
+export const halfVoxelAlong=(n,size)=>(Math.abs(n.x)*size[0]+Math.abs(n.y)*size[1]+Math.abs(n.z)*size[2])/2;
+// p: voxel centre in object space; plane {x,y,z,w} with a unit normal. -> {distance (signed, n.p-w), onSection, foot (the nearest point on the plane)}
+export function sectionRelation(p,plane,halfExt,dims){
+ const len=Math.hypot(plane.x,plane.y,plane.z)||1,n={x:plane.x/len,y:plane.y/len,z:plane.z/len},w=plane.w/len;
+ const d=n.x*p.x+n.y*p.y+n.z*p.z-w,tol=halfVoxelAlong(n,voxelSize(halfExt,dims));
+ return{distance:d,onSection:Math.abs(d)<=tol+1e-9,foot:{x:p.x-n.x*d,y:p.y-n.y*d,z:p.z-n.z*d}};
+}
+
+// ---- hidden behind tissue ----
+// RULE (build 464): a point is HIDDEN when, walking in half-voxel steps (vr-pick.js marchClassificationHitInfo, the same march as the laser) from the
+// point towards the head (the middle of both eyes), a voxel of a SHOWN segment (the classification channels `chs`, >= 128) is met on the side
+// that every clipping section keeps, before reaching the head. The point's own voxel is skipped: the march starts one half voxel diagonal
+// away from the point. Otherwise the point is EXPOSED. Nothing shown = exposed. Segment opacity is not considered (VR draws 100 % by default).
+// pLocal / headLocal: object space of the volume (the head converted with the mesh's worldToLocal). pick: {cls,dims,halfExt} of volPick.
+export function pointIsHidden(pLocal,headLocal,{cls,dims,halfExt,chs,planes=[],count=0,cut=0,voxel}){
+ if(!cls||!chs||!chs.length)return false;
+ const q={x:headLocal.x-pLocal.x,y:headLocal.y-pLocal.y,z:headLocal.z-pLocal.z},L=Math.hypot(q.x,q.y,q.z);
+ if(!(L>1e-9))return false;
+ const sz=voxel||[2*halfExt[0]/dims[0],2*halfExt[1]/dims[1],2*halfExt[2]/dims[2]],skip=0.5*Math.hypot(sz[0],sz[1],sz[2])/L;
+ if(skip>=1)return false;
+ return marchClassificationHitInfo(pLocal,q,halfExt,dims,cls,chs,planes,count,cut,skip,1)!==null;
 }
