@@ -10,9 +10,11 @@ export function marchClassificationHit(o,q,halfExt,dims,cls,chs,planes=[],planeC
  const h=marchClassificationHitInfo(o,q,halfExt,dims,cls,chs,planes,planeCount,planeCut);return h?h.t:-1;
 }
 // build 423: the same march, returning the hit voxel and the channel that matched (null when nothing is hit)
-export function marchClassificationHitInfo(o,q,halfExt,dims,cls,chs,planes=[],planeCount=0,planeCut=0){
+// tMin / tMax (optional, default 0 / Infinity): only the part of the ray between them is marched (VR points: from just outside a point's own
+// voxel to the head, see vr-point.js pointIsHidden)
+export function marchClassificationHitInfo(o,q,halfExt,dims,cls,chs,planes=[],planeCount=0,planeCut=0,tMin=0,tMax=Infinity){
  if(!chs.length)return null;
- const he=halfExt,[w,h,d]=dims,O=[o.x,o.y,o.z],Q=[q.x,q.y,q.z];let t0=0,t1=Infinity;
+ const he=halfExt,[w,h,d]=dims,O=[o.x,o.y,o.z],Q=[q.x,q.y,q.z];let t0=tMin,t1=tMax;
  for(let a=0;a<3;a++){
   if(Math.abs(Q[a])<1e-12){if(Math.abs(O[a])>he[a])return null;continue}
   const ta=(-he[a]-O[a])/Q[a],tb=(he[a]-O[a])/Q[a];t0=Math.max(t0,Math.min(ta,tb));t1=Math.min(t1,Math.max(ta,tb));
