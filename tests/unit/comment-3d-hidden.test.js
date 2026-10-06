@@ -121,3 +121,14 @@ describe('the 3D view\'s voxel positions are the VR object-space positions', () 
     }
   });
 });
+
+describe('the PC dots use the VR colours', () => {
+  it('style.css custom properties = vr-point-markers.js constants', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { VR_MARKER_COLOR, VR_MARKER_FILL, VR_RIM_COLOR } = await import('../../docs/vr-point-markers.js');
+    const css = readFileSync(new URL('../../docs/style.css', import.meta.url), 'utf8'), hex = n => '#' + n.toString(16).padStart(6, '0');
+    expect(css).toContain('--vr-point-fill:' + hex(VR_MARKER_FILL));
+    expect(css).toContain('--vr-point-dot:' + hex(VR_MARKER_COLOR));
+    expect(hex(VR_RIM_COLOR)).toBe('#ffffff'); expect(css).toContain('--vr-point-rim:#fff');
+  });
+});
