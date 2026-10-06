@@ -3,19 +3,28 @@
 // fallback) because they all share the same scene object and camera; the dots cost no GPU work and stay crisp at any DPR.
 // Position: the voxel {i,j,k} -> the scene's local coordinates with voxelToLocal3D (the mapping of the 3D MPR planes), then the
 // object's world matrix and the camera, so rotation / zoom / pan follow by themselves. Updated after every 3D frame (the 3D loop only
-// renders on request, so a change of the comments, the switch or the series asks for a render). Depth: dots are never hidden by the
-// volume (a lesion inside dense tissue would vanish); a dot farther than the volume's centre is shown fainter and smaller instead.
+// renders on request, so a change of the comments, the switch or the series asks for a render).
+// Look (build 465, the same as VR, vr-point-markers.js): an EXPOSED point is a solid dot with a white rim; a point HIDDEN behind tissue is
+// faint and small (never removed: a lesion inside dense tissue must stay findable). The hidden rule is VR's vr-point.js pointIsHidden over
+// the classification bytes of the shown segments (vr-view.js hiddenClsFor, built lazily, in the background), eye = the camera, the section
+// view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
+// (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool } from './state.js?v=20261006-build464';
-import { tr } from './i18n.js?v=20261006-build464';
-import { datasetFingerprint } from './project-file.js?v=20261006-build464';
-import { voxelToLocal3D } from './crosshair.js?v=20261006-build464';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build464';
-import { request3DRender } from './scene3d.js?v=20261006-build464';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261006-build465';
+import { tr } from './i18n.js?v=20261006-build465';
+import { datasetFingerprint } from './project-file.js?v=20261006-build465';
+import { voxelToLocal3D } from './crosshair.js?v=20261006-build465';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build465';
+import { request3DRender } from './scene3d.js?v=20261006-build465';
+import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261006-build465';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261006-build465';
+import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261006-build465';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
+let hiddenIds=new Set(),hiddenSig='',hiddenTimer=0,vrMod=null,vrModLoading=false;
+const throttle=createHiddenThrottle();
 const els=new Map(); // comment id -> {el,x,y,vis,no}
-const v3=new THREE.Vector3(),c3=new THREE.Vector3();
+const v3=new THREE.Vector3(),c3=new THREE.Vector3(),eye3=new THREE.Vector3(),p3=new THREE.Vector3();
 
 export function closeBubble3d(){clearTimeout(bubbleTimer);bubbleId=null;if(bubble)bubble.hidden=true}
 function placeBubble(){
@@ -33,6 +42,31 @@ function showBubble3d(id){
  clearTimeout(bubbleTimer);bubbleTimer=setTimeout(closeBubble3d,7000);
 }
 
+
+// what the hidden judgement depends on, as a string: the view (object + camera matrices), the points, the shown segments and their edits,
+// the section plane. A change of it makes the judgement due (throttled); the same string = nothing to do.
+function hiddenSignature(obj,camera,ids,plane){
+ const segs=SEGMENT_PRESET_ORDER.map(k=>{const g=segmentState[k]||{};return(g.active?1:0)+''+(g.enabled?1:0)+','+g.min+','+g.max+','+(segmentEditState[k]?.revision|0)}).join(';');
+ return obj.matrixWorld.elements.join(',')+'|'+camera.matrixWorld.elements.join(',')+'|'+ids.join(',')+'|'+segs+'|'+(plane?[plane.x,plane.y,plane.z,plane.w].join(','):'');
+}
+const refreshSoon=()=>request3DRender();
+// the throttled judgement: returns true when the hidden set changed
+function refreshHidden(obj,camera,pts,plane){
+ const anyShown=SEGMENT_PRESET_ORDER.some(k=>segmentState[k]?.active&&segmentState[k]?.enabled);
+ if(!anyShown||!pts.length){const had=hiddenIds.size>0;hiddenIds=new Set();return had}
+ if(!vrMod){ // the classification builder lives in vr-view.js: loaded once, on the first need
+  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261006-build465').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModLoading=false})}
+  const had=hiddenIds.size>0;hiddenIds=new Set();return had;
+ }
+ const prep=vrMod.hiddenClsFor(()=>{throttle.reset();refreshSoon()});
+ const chs=shownChannels(prep?.cls,segmentState,SEGMENT_PRESET_ORDER);
+ eye3.setFromMatrixPosition(camera.matrixWorld);obj.worldToLocal(eye3);
+ const eye={x:eye3.x,y:eye3.y,z:eye3.z};
+ const next=computeHiddenIds(pts,eye,prep,{chs,plane});
+ const changed=next.size!==hiddenIds.size||[...next].some(id=>!hiddenIds.has(id));
+ hiddenIds=next;return changed;
+}
+
 // called after each 3D frame (and when the camera / object / comments may have changed)
 export function updateComment3dMarkers(){
  if(!layer)return;
@@ -43,13 +77,13 @@ export function updateComment3dMarkers(){
  if(list.length&&W>=8&&H>=8){
   const dims={columns:volume.columns,rows:volume.rows,slices:volume.slices};
   obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
-  const centreZ=c3.setFromMatrixPosition(obj.matrixWorld).applyMatrix4(camera.matrixWorldInverse).z;
+  const pts=[];
   list.forEach((c,n)=>{
    if(!commentMatchesSeries(c,fp))return;
    const t=commentTarget(c,dims);if(!t)return;
    const l=voxelToLocal3D(t,dims,volume.spacing);
+   pts.push({id:c.id,local:{x:l.x,y:l.y,z:l.z}});
    v3.set(l.x,l.y,l.z).applyMatrix4(obj.matrixWorld);
-   const viewZ=v3.clone().applyMatrix4(camera.matrixWorldInverse).z;
    v3.project(camera);
    const x=(v3.x+1)/2*W,y=(1-v3.y)/2*H,vis=v3.z>-1&&v3.z<1&&x>-12&&x<W+12&&y>-12&&y<H+12;
    keep.add(c.id);
@@ -58,10 +92,16 @@ export function updateComment3dMarkers(){
    m.x=x;m.y=y;m.vis=vis;
    if(m.no!==n+1){m.no=n+1;m.el.textContent=String(n+1)}
    const label=tr('commentMarker3d')+' '+(n+1);if(m.label!==label){m.label=label;m.el.setAttribute('aria-label',label)}
-   const back=viewZ<centreZ;if(m.back!==back){m.back=back;m.el.classList.toggle('is-behind',back)}
    m.el.hidden=!vis;
    if(vis)m.el.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-50%)';
   });
+  // hidden behind tissue: judged at most ~10 times a second (the positions above follow every frame), plus once more after the view stops
+  const plane=sectionViewOpen&&sectionViewPlane?sectionPlaneLocal(sectionLocalPoint(),sectionLocalNormal()):null;
+  const sig=hiddenSignature(obj,camera,pts.map(p=>p.id),plane),now=performance.now(),st=throttle.step(now,sig!==hiddenSig);
+  clearTimeout(hiddenTimer);hiddenTimer=0;
+  if(st.run){hiddenSig=sig;refreshHidden(obj,camera,pts,plane)}
+  else if(st.wait>0)hiddenTimer=setTimeout(refreshSoon,st.wait);
+  for(const [id,m] of els){const back=hiddenIds.has(id);if(m.back!==back){m.back=back;m.el.classList.toggle('is-behind',back)}}
  }
  for(const [id,m] of [...els])if(!keep.has(id)){m.el.remove();els.delete(id)}
  if(bubbleId!=null)placeBubble();

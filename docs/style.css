@@ -950,9 +950,10 @@ html.vrl-ipad-ui .comment-popover .comment-input{font-size:16px}
 
 /* position comments on the 3D view (comment-3d.js): a layer of numbered dots over the viewport, never catching the pointer */
 .comment-layer-3d{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:6}
-.comment-marker-3d{position:absolute;left:0;top:0;min-width:22px;height:22px;padding:0 4px;box-sizing:border-box;border-radius:11px;display:flex;align-items:center;justify-content:center;background:rgb(var(--ui-blue-bg2));color:rgb(var(--ui-blue-tx));border:2px solid rgb(var(--ui-blue-bd2));font:800 12px/1 sans-serif;box-shadow:0 0 0 1px rgba(0,0,0,.6),0 1px 6px rgba(0,0,0,.5);will-change:transform}
+/* build 465: the same look as the VR points. exposed = a solid dot with a white rim; hidden behind tissue (.is-behind, the VR rule) = faint and small, no rim */
+.comment-marker-3d{position:absolute;left:0;top:0;min-width:22px;height:22px;padding:0 4px;box-sizing:border-box;border-radius:11px;display:flex;align-items:center;justify-content:center;background:rgb(var(--ui-blue-bg2));color:rgb(var(--ui-blue-tx));border:2px solid #fff;font:800 12px/1 sans-serif;box-shadow:0 0 0 1px rgba(0,0,0,.6),0 1px 6px rgba(0,0,0,.5);will-change:transform}
 .comment-marker-3d[hidden]{display:none}
-.comment-marker-3d.is-behind{opacity:.5;min-width:18px;height:18px;border-radius:9px;font-size:10px}
+.comment-marker-3d.is-behind{opacity:.45;min-width:14px;height:14px;border-radius:7px;border:1px solid rgb(var(--ui-blue-bd2));font-size:9px;padding:0 2px}
 .vrl-ipad-ui .comment-marker-3d{min-width:26px;height:26px;border-radius:13px;font-size:13px}
-.vrl-ipad-ui .comment-marker-3d.is-behind{min-width:20px;height:20px;border-radius:10px;font-size:11px}
+.vrl-ipad-ui .comment-marker-3d.is-behind{min-width:17px;height:17px;border-radius:9px;font-size:10px}
 .comment-bubble-3d{pointer-events:none}
