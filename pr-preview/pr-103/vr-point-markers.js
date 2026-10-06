@@ -10,8 +10,8 @@
 //    Off the section: normal size and a thin line (the perpendicular) down to the section. No active section: neither.
 //  - laser on a point: a white halo; the selected point: a yellow halo (kept until it is deselected or deleted).
 // Spheres are drawn after the volume without a depth test, so a hidden point is still visible (as the small dot).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build467';
-import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build467';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build468';
+import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build468';
 
 export const VR_MARKER_COLOR=0x4dd8ff,VR_MARKER_FILL=0x0b6f8c,VR_RIM_COLOR=0xffffff,VR_HALO_HOVER=0xffffff,VR_HALO_SELECTED=0xffd23d;
 export const PICK_MIN_M=0.004;
@@ -32,7 +32,7 @@ export function markerStyle({hidden=false,section=null,selected=false,hover=fals
 export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersShown}){
  const geo=new THREE.SphereGeometry(1,16,12);
  const mk=(color,extra={})=>new THREE.MeshBasicMaterial({color,transparent:true,depthTest:false,toneMapped:false,...extra});
- const mats={dot:mk(VR_MARKER_COLOR),solid:mk(VR_MARKER_FILL),rim:mk(VR_RIM_COLOR,{side:THREE.BackSide}),hover:mk(VR_HALO_HOVER,{side:THREE.BackSide,opacity:0.9}),selected:mk(VR_HALO_SELECTED,{side:THREE.BackSide,opacity:0.95})};
+ const mats={dot:mk(VR_MARKER_COLOR),solid:mk(VR_MARKER_FILL),rim:mk(VR_RIM_COLOR,{side:THREE.BackSide}),hover:mk(VR_HALO_HOVER,{side:THREE.BackSide,opacity:0.9}),selected:mk(VR_HALO_SELECTED,{side:THREE.BackSide,opacity:0.95}),ghost:mk(VR_MARKER_FILL,{opacity:0.35})};
  const lineMat=new THREE.LineBasicMaterial({color:VR_MARKER_COLOR,transparent:true,opacity:0.6,depthTest:false,toneMapped:false});
  const chipGeo=new THREE.PlaneGeometry(1,1),items=new Map(); // comment id -> {sphere,rim,halo,line,chip,no}
  const v=new THREE.Vector3(),f=new THREE.Vector3(),s=new THREE.Vector3();
@@ -59,7 +59,8 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
   // every frame: positions follow the volume (mesh = the volume's box mesh) and the chips face the head.
   // hidden: Set of comment ids that are hidden behind tissue (vr-view.js, ~10 Hz); section: the active section's plane in object space
   // ({x,y,z,w}, unit normal) or null; selectedId; hover: Set of ids a laser points at.
-  update({fingerprint,dims,halfExt,mesh,head,hidden=null,section=null,selectedId=null,hover=null}){
+  // preview (build 468): {id, voxel} - the point is drawn at that voxel while it is being moved; voxel null = at its old place, faint (opacity 0.35)
+  update({fingerprint,dims,halfExt,mesh,head,hidden=null,section=null,selectedId=null,hover=null,preview=null}){
    const all=fingerprint&&dims&&halfExt&&mesh&&deps.getMarkersShown()?deps.getComments():[],keep=new Set();
    if(all.length){
     mesh.updateWorldMatrix(true,false);mesh.getWorldScale(s);const unit=s.x||1,r0=Math.max(MIN_RADIUS_M,RADIUS_UNITS*unit);
@@ -68,13 +69,13 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
      const t=commentTarget(c,dims);if(!t)return;
      keep.add(c.id);let it=items.get(c.id);if(!it){it=make();items.set(c.id,it)}
      if(it.no!==n+1)drawChip(it,n+1);
-     const l=voxelToLocal(t,halfExt,dims),rel=section?sectionRelation(l,section,halfExt,dims):null;
+     const pv=preview&&preview.id===c.id?preview:null,ghost=!!pv&&!pv.voxel,l=voxelToLocal(pv&&pv.voxel?pv.voxel:t,halfExt,dims),rel=section?sectionRelation(l,section,halfExt,dims):null;
      const st=markerStyle({hidden:!!hidden?.has(c.id),section:rel?(rel.onSection?'on':'off'):null,selected:c.id===selectedId,hover:!!hover?.has(c.id)});
      v.set(l.x,l.y,l.z);mesh.localToWorld(v);
      const r=r0*st.scale;it.radius=Math.max(PICK_MIN_M,r*1.3*1.2); // build 468: the drawn radius (rim included) +20 %, about 4.7 mm at the default size; the least is PICK_MIN_M
-     it.sphere.material=mats[st.fill];
+     it.sphere.material=ghost?mats.ghost:mats[st.fill];
      it.sphere.position.copy(v);it.sphere.scale.setScalar(r);
-     it.rim.visible=st.rim;it.rim.position.copy(v);it.rim.scale.setScalar(r*1.3);
+     it.rim.visible=st.rim&&!ghost;it.rim.position.copy(v);it.rim.scale.setScalar(r*1.3);
      it.halo.visible=!!st.halo;if(st.halo){it.halo.material=mats[st.halo];it.halo.position.copy(v);it.halo.scale.setScalar(r*1.9)}
      const showLine=st.perpendicular&&!!rel;it.line.visible=showLine;
      if(showLine){f.set(rel.foot.x,rel.foot.y,rel.foot.z);mesh.localToWorld(f);const a=it.line.geometry.attributes.position;a.setXYZ(0,v.x,v.y,v.z);a.setXYZ(1,f.x,f.y,f.z);a.needsUpdate=true}
