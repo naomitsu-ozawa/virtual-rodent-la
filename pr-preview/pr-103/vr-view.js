@@ -641,7 +641,7 @@ function makeBadge(text){
  ctx.fillStyle='rgba(45,108,223,.95)';ctx.beginPath();ctx.roundRect(0,0,512,120,28);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 34px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,256,62,490);
  const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.10,0.024),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
- mesh.position.set(0,0.05,0.02);mesh.rotation.x=-0.6;mesh.userData.dispose=()=>{tex.dispose();mesh.geometry.dispose();mesh.material.dispose()};
+ mesh.position.set(0,0.078,0.02);mesh.rotation.x=-0.6;mesh.userData.dispose=()=>{tex.dispose();mesh.geometry.dispose();mesh.material.dispose()};
  return mesh;
 }
 
@@ -950,9 +950,12 @@ export async function startVrView({language='ja',mode='vr'}={}){
  let wheelOwner=null,pw=null; // pw = {c,id}
  const ringHit=(c,ring)=>{if(!ring.mesh.visible)return null;setRay(c);const x=raycaster.intersectObject(ring.mesh,false)[0];if(!x||!x.uv)return null;const k=ring.slotFromUv(x.uv);return k===null?null:{distance:x.distance,slot:k}};
  // the nearest of the menu, the help board and the ring items along the ray wins; {menu,help,wheel,pwheel}
- const boardHits=c=>{const all=[['menu',menuHit(c)],['help',helpHit(c)],['wheel',ringHit(c,wheel)],['pwheel',ringHit(c,pointWheel)]];let best=null;
-  for(const [k,x] of all)if(x&&(!best||x.distance<best[1].distance))best=[k,x];
-  const o={menu:null,help:null,wheel:null,pwheel:null};if(best)o[best[0]]=best[1];return o};
+ const bhOut={menu:null,help:null,wheel:null,pwheel:null}; // reused (read at once by the caller, never kept)
+ const boardHits=c=>{
+  const o=bhOut;o.menu=menuHit(c);o.help=helpHit(c);o.wheel=ringHit(c,wheel);o.pwheel=ringHit(c,pointWheel);
+  let bd=Infinity,bk=null;for(const k of ['menu','help','wheel','pwheel']){const x=o[k];if(x&&x.distance<bd){bd=x.distance;bk=k}}
+  for(const k of ['menu','help','wheel','pwheel'])if(k!==bk)o[k]=null;
+  return o};
  help.onDraw(()=>{
   const w=[],lines=section.on?L.helpSec.slice():L.helpBasic.slice();
   if(ui.open)lines[lines.length-1]=L.helpMenu;
@@ -1031,7 +1034,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // build 468: grip never takes a section (it always moves the volume). A section is moved with the TRIGGER: press on its thin frame band or
  // number tag (or on empty space for the selected one), hold and move; it stays a child of the volume (holder), so it never jumps on release.
  const endDrag=c=>{if(!c.userData.drag)return;c.userData.drag=null;menu.refresh()};
- const endAllDrags=()=>{controllers.forEach(c=>{c.userData.drag=null;c.userData.press=null});menu.refresh()};
+ const endAllDrags=()=>{controllers.forEach(c=>{c.userData.drag=null;const pr=c.userData.press;if(pr&&(pr.res.kind==='section'||pr.res.kind==='empty'))pr.res={kind:'none',ref:null}});menu.refresh()}; // presses for record / label / point / move go on
  const draggedBy=(pl,except)=>controllers.some(x=>x!==except&&x.userData.drag?.pl===pl);
  // thin frame band of a plane (vr-point.js squareBandContains): {t (world m), pl, y, z} or null. b = 6 mm, or 0.8 degrees at a distance
  const tmpBo=new THREE.Vector3(),tmpBq=new THREE.Vector3(),tmpBs=new THREE.Vector3();
@@ -1043,7 +1046,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   return squareBandContains(r.y,r.z,pl.h,b)?{t:r.t,pl,y:r.y,z:r.z}:null;
  };
  // number tag (the handle square) the laser hits: {t,pl} or null
- const tabHit=(c,list)=>{if(!list.length)return null;setRay(c);const x=raycaster.intersectObjects(list.map(p=>p.handle),false)[0];if(!x)return null;const pl=list.find(p=>p.handle===x.object);return pl?{t:x.distance,pl}:null};
+ const tabList=[];
+ const tabHit=(c,list)=>{if(!list.length)return null;setRay(c);tabList.length=0;for(const p of list)tabList.push(p.handle);const x=raycaster.intersectObjects(tabList,false)[0];if(!x)return null;const pl=list.find(p=>p.handle===x.object);return pl?{t:x.distance,pl}:null};
  // the hand's pose in holder space (= the volume's object space): position and orientation, plain {x,y,z,w} for vr-point.js
  const tmpHq=new THREE.Quaternion(),tmpCq=new THREE.Quaternion(),tmpCp=new THREE.Vector3();
  const handInHolder=c=>{
@@ -1063,7 +1067,6 @@ export async function startVrView({language='ja',mode='vr'}={}){
   pl.obj.position.set(c0.x,c0.y,c0.z);
   const hand=c.userData.source?.handedness||null;if(hand!==pl.hand){pl.hand=hand;drawHandle(pl,planes.indexOf(pl))}
   c.userData.drag={pl,p0:hp.p,q0:hp.q,c0,Qp0};
-  if(pr.res.kind==='empty')pulse(c,HAPTIC.dragStart.amp,HAPTIC.dragStart.ms); // from a frame band / tag the press already pulsed (the selection)
   menu.refresh();
  };
  const updatePress=(c,now)=>{
@@ -1073,13 +1076,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(pr.res.kind==='point'){pr.consumed=true;openPointWheel(c,pr.res.ref.id);pulseTwice(c)}
    else if(pr.res.kind==='record'||pr.res.kind==='label')pr.consumed=true;
   }
-  if(!c.userData.drag&&(pr.res.kind==='section'||pr.res.kind==='empty')){
+  // while the volume is being held by this hand or by two hands (it moves / scales), the section is not moved: the reference is taken again each frame
+  const volMoves=!!twoHand||grabbing.has(c);
+  if(volMoves&&!c.userData.drag&&(pr.res.kind==='section'||pr.res.kind==='empty')){const hp=handInHolder(c);pr.p0=hp.p;pr.q0=hp.q}
+  else if(!c.userData.drag&&(pr.res.kind==='section'||pr.res.kind==='empty')){
    const hp=handInHolder(c);holder.getWorldScale(tmpHs);
    const dp=Math.hypot(hp.p.x-pr.p0.x,hp.p.y-pr.p0.y,hp.p.z-pr.p0.z)*tmpHs.x;
    if(dragShouldStart({dPosM:dp,dAngleDeg:qAngleDeg(qMul(hp.q,qInv(pr.q0))),heldMs:now-pr.t0}))startDrag(c,pr,hp);
   }
   const dg=c.userData.drag;
-  if(dg&&vrHalfExt){
+  if(dg&&vrHalfExt&&volMoves){const hp=handInHolder(c),o=dg.pl.obj;dg.p0=hp.p;dg.q0=hp.q;dg.c0={x:o.position.x,y:o.position.y,z:o.position.z};dg.Qp0={x:o.quaternion.x,y:o.quaternion.y,z:o.quaternion.z,w:o.quaternion.w}}
+  else if(dg&&vrHalfExt){
    const hp=handInHolder(c),r=sectionDragStep({p0:dg.p0,q0:dg.q0,c0:dg.c0,Qp0:dg.Qp0,p:hp.p,q:hp.q,halfExt:vrHalfExt});
    dg.pl.obj.position.set(r.c.x,r.c.y,r.c.z);dg.pl.obj.quaternion.set(r.Qp.x,r.Qp.y,r.Qp.z,r.Qp.w);
   }
@@ -1262,7 +1269,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
  let dragging=null,shotRequested=false;
  for(const c of controllers){
   c.addEventListener('connected',e=>{c.userData.source=e.data;if(c.userData.source?.handedness==='left')c.add(badge)});
-  c.addEventListener('disconnected',()=>{c.userData.drag=null;c.userData.press=null;c.userData.source=null});
+  c.addEventListener('disconnected',()=>{
+   c.userData.drag=null;c.userData.press=null;c.userData.moving=null;c.userData.axPress?.reset();c.userData.stickLock=false;
+   if(wheelOwner===c)closeWheel();if(pw?.c===c)closePointWheel();
+   c.userData.source=null;
+  });
   c.addEventListener('squeezestart',()=>{
    if(ui.open&&!menuHeld&&boardHits(c).menu){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
    if(!helpHeld&&c.userData.helpHit){c.attach(help.mesh);helpHeld=c;helpMoving=false;settings.help=2;saveSettings(settings);pulse(c);menu.refresh();return}
@@ -1277,6 +1288,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // from last frame's candidates) and kept until the release. Short press (< 0.5 s) = the action of the target (record / label / select a point);
   // holding it = long press (a point: the point menu, stage 3); on a frame band, a number tag or empty space, moving the hand drags the section.
   c.addEventListener('selectstart',()=>{
+   endDrag(c);
    const bd=boardHits(c),h=bd.menu;
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
    if(bd.wheel){confirmWheel(bd.wheel.slot,c);return}
@@ -1299,7 +1311,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const k=pr.res.kind;
    if(k==='record'){if(pr.gateOk)recordPoint(c,pr.hit0)}
    else if(k==='label')togglePin(c,pr.hit0)
-   else if(k==='point')selectPoint(c,pr.res.ref.id);
+   else if(k==='point'){if(getComments().some(x=>x.id===pr.res.ref.id))selectPoint(c,pr.res.ref.id)}
    else if(k==='move')placeMoved(c,pr.res.ref);
   });
  }
@@ -1365,6 +1377,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // a tap while moving a point: put it at the place under the laser at the press
  const placeMoved=(c,placement)=>{
   const mv=c.userData.moving;if(!mv||!placement?.voxel)return;
+  const f=mv.from,v=placement.voxel;if(f&&f.i===v.i&&f.j===v.j&&f.k===v.k){c.userData.moving=null;return} // the same place: nothing to undo, no pulse
   const r=updateCommentPosition(mv.id,placement.voxel);c.userData.moving=null;if(!r)return;
   undo.push({type:'move',id:mv.id,from:mv.from,to:{...placement.voxel}});vpSel=mv.id;pulse(c,HAPTIC.moveDrop.amp,HAPTIC.moveDrop.ms);flashMsg(L.ptMoved,3000);
  };
@@ -1596,7 +1609,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    btn(X+660,yo,280,L.wheelReset,false,()=>save([...DEFAULT_WHEEL]),{size:26});
    if(!items.includes('mode-section')&&!items.includes('mode-surface'))label(X,yo+100,L.wheelNoMode,{size:24,color:'#ffd27a'});
    WHEEL_ITEMS.forEach((it,i)=>btn(X+(i%2)*480,yo+120+Math.floor(i/2)*64,470,itemName(it.id)+(items.includes(it.id)?'  ✓':''),items[slot]===it.id,()=>save(setWheelItem(items,slot,it.id)),{size:24,h:58}));
-   btn(X,MENU_H-110,260,L.back,false,()=>{ui.tab=0;menu.refresh()},{size:28});
+   btn(X,MENU_H-100,260,L.back,false,()=>{ui.tab=0;menu.refresh()},{size:28});
   }else if(ui.tab===4){
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
@@ -1771,9 +1784,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }
   benchTick();
   {const nowH=performance.now();if(nowH-vpHiddenAt>=100)updateHidden(nowH);
+   let previewArg=null;for(const x of controllers)if(x.userData.moving){previewArg={id:x.userData.moving.id,voxel:x.userData.placement?.voxel||null};break}
    // the active section = the selected one while sections are on, as the shader's plane (object space, unit normal, same index as planes)
    let secPl=null;if(section.on&&section.selected&&material&&!bench.noSection){const i=planes.indexOf(section.selected);if(i>=0&&i<material.uniforms.planeCount.value){const q=material.uniforms.cutPlanes.value[i];secPl={x:q.x,y:q.y,z:q.z,w:q.w}}}
-   vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds,preview:(()=>{const mc=controllers.find(x=>x.userData.moving);return mc?{id:mc.userData.moving.id,voxel:mc.userData.placement?.voxel||null}:null})()})}
+   vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds,preview:previewArg})}
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];
   if(auto){

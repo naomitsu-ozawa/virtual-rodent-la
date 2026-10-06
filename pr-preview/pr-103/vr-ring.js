@@ -165,7 +165,16 @@ export function createRingMenu(THREE,{size=WHEEL_BOARD_M}={}){
   setItems(l,e,o){labels=l;enabled=e;on=o||[];draw()},
   setHighlight(k){if(k!==hl){hl=k;draw()}},
   // the slot under a uv of the board (the raycaster's), or null
-  slotFromUv(uv){return wheelSlotFromLocal((uv.x-0.5)*size,(uv.y-0.5)*size,labels.length,WHEEL_RADIUS_M/WHEEL_BOARD_M*size)},
+  // only inside the label rect of a filled, usable item (160 x 72 px of the 512 px canvas); empty / disabled slots and the gaps are null
+  slotFromUv(uv){
+   const px=uv.x*N,py=(1-uv.y)*N,ang=wheelAngles(labels.length);
+   for(let k=0;k<labels.length;k++){
+    if(labels[k]===null||labels[k]===undefined||!enabled[k])continue;
+    const a=ang[k]*Math.PI/180,cx=N/2+Math.sin(a)*Rpx,cy=N/2-Math.cos(a)*Rpx;
+    if(Math.abs(px-cx)<=80&&Math.abs(py-cy)<=36)return k;
+   }
+   return null;
+  },
   placeAt(center,head){mesh.position.set(center.x,center.y,center.z);if(head)mesh.lookAt(head.x,head.y,head.z)},
   dispose(){tex.dispose();mesh.geometry.dispose();mesh.material.dispose()},
  };
