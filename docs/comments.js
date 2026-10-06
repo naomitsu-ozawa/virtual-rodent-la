@@ -90,6 +90,12 @@ export function hasUnsavedComments(){
  return false;
 }
 export const resetCommentsSaved=()=>saved.clear();
+// "show the positions on the images": one switch for the 2D overlays and the 3D markers (a view setting, not saved in the project)
+let markersShown=true;
+const shownListeners=new Set();
+export const getMarkersShown=()=>markersShown;
+export function setMarkersShown(on){const v=!!on;if(v===markersShown)return;markersShown=v;for(const cb of [...shownListeners]){try{cb(v)}catch(e){console.warn('marker listener failed',e)}}}
+export const onMarkersShownChange=cb=>{shownListeners.add(cb);return()=>shownListeners.delete(cb)};
 export const onCommentsChange=cb=>{listeners.add(cb);return()=>listeners.delete(cb)};
 // for the project file: only what belongs to the series being saved
 export const commentsForProject=fingerprint=>getComments().filter(c=>commentMatchesSeries(c,fingerprint));

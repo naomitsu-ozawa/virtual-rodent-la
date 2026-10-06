@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   planeDims, sliceIndexFor, withSliceIndex, clampVoxel, clientToFraction, voxelFromPlanePoint, planePointFromVoxel,
-  voxelToMm, sampleHu, formatHu,
+  voxelToMm, sampleHu, formatHu, voxelToLocal3D,
 } from '../../docs/crosshair.js';
 import {
   setVolume, setSourceVolume, setCrosshair, getCrosshair, clearCrosshair, setCrosshairSlice, onCrosshairChange,
@@ -191,5 +191,32 @@ describe('drawing layer', () => {
     expect(ui).not.toMatch(/planes\[[^\]]+\]\.canvas\.getContext/); // never draws on the .mpr-canvas that theme-image-check compares
     expect(shell).toMatch(/class="mpr-crosshair-canvas"/);
     expect(shell.match(/class="mpr-canvas"/g)).toHaveLength(1); // the template's single slice canvas per plane
+  });
+});
+
+describe('voxelToLocal3D (3D scene coordinates, same mapping as the 3D MPR planes / section view)', () => {
+  // the formulas written out in updateMpr3DPlanePositions (mpr3d-overlay.js) and the cut tools (scene-view.js)
+  const ref = (v, dims, [sx, sy, sz]) => {
+    const px = dims.columns * sx, py = dims.rows * sy, pz = dims.slices * sz, scale = 3.3 / Math.max(px, py, pz, 1);
+    return { x: ((v.i + .5) * sx - px / 2) * scale, y: -((v.j + .5) * sy - py / 2) * scale, z: ((v.k + .5) * sz - pz / 2) * scale };
+  };
+  it('matches the existing plane-position formulas, including anisotropic spacing', () => {
+    for (const [dims, sp] of [[{ columns: 64, rows: 48, slices: 30 }, [0.1, 0.1, 0.5]], [{ columns: 10, rows: 200, slices: 7 }, [0.3, 0.07, 1.2]], [{ columns: 5, rows: 5, slices: 5 }, [1, 1, 1]]]) {
+      for (const v of [{ i: 0, j: 0, k: 0 }, { i: 3, j: 4, k: 2 }, { i: dims.columns - 1, j: dims.rows - 1, k: dims.slices - 1 }]) {
+        const a = voxelToLocal3D(v, dims, sp), b = ref(v, dims, sp);
+        expect(a.x).toBeCloseTo(b.x, 12); expect(a.y).toBeCloseTo(b.y, 12); expect(a.z).toBeCloseTo(b.z, 12);
+      }
+    }
+  });
+  it('the centre voxel of an odd grid is the origin; the longest side spans 3.3', () => {
+    const dims = { columns: 5, rows: 5, slices: 5 };
+    expect(voxelToLocal3D({ i: 2, j: 2, k: 2 }, dims, [1, 1, 1])).toEqual({ x: 0, y: -0, z: 0 });
+    const dz = { columns: 4, rows: 4, slices: 10 }, a = voxelToLocal3D({ i: 0, j: 0, k: 0 }, dz, [0.5, 0.5, 1]), b = voxelToLocal3D({ i: 0, j: 0, k: 9 }, dz, [0.5, 0.5, 1]);
+    expect(b.z - a.z).toBeCloseTo(3.3 * 9 / 10, 12);
+  });
+  it('i -> +x, j -> -y (down on screen), k -> +z', () => {
+    const dims = { columns: 8, rows: 8, slices: 8 }, o = voxelToLocal3D({ i: 3, j: 3, k: 3 }, dims, [1, 1, 1]);
+    const p = voxelToLocal3D({ i: 4, j: 4, k: 4 }, dims, [1, 1, 1]);
+    expect(p.x).toBeGreaterThan(o.x); expect(p.y).toBeLessThan(o.y); expect(p.z).toBeGreaterThan(o.z);
   });
 });
