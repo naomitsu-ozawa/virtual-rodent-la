@@ -88,6 +88,12 @@ describe('render shaders (docs/medical-volume.js)', () => {
     expect(r.entry.vertex.length).toBe(1);
     expect(r.entry.fragment.length).toBe(1);
   });
+  // build 460: the MPR planes drawn inside the 3D volume colour by the same membership as the volume itself (mask + edits)
+  it('volumeShader colours the in-volume MPR planes with segmentIndexFor, not a bare HU interval', () => {
+    const src = volumeShader();
+    expect(src).toMatch(/segmentIndexFor\(planeValue,/);
+    expect(src).not.toMatch(/planeValue>=a\.x/);
+  });
   it.each([['brickShader', brickShader], ['volumePickShader', volumePickShader], ['mprPlaneShader', mprPlaneShader]])(
     '%s parses and exposes a compute main()', (_name, fn) => {
       expect(parse(fn()).entry.compute.map(e => e.name)).toContain('main');

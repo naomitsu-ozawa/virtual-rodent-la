@@ -1,20 +1,20 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, sourceMemoryUsable, getProcessedSegmentMask, segmentEditState } from './segments.js?v=20261005-build458';
-import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20261005-build458';
-import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20261005-build458';
-import { gpuOpenRuns, gpuCounts, gpuStepTimes, gpuRunInfo, addGpuStepTime, ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported, beginGpuBufferRetention, endGpuBufferRetention } from './gpu-compute.js?v=20261005-build458';
-import { isNativeDicomTransferSyntax } from './dicom.js?v=20261005-build458';
-import { extractSourceThresholdRuns } from './medical-volume.js?v=20261005-build458';
-import { valuesToSegmentBits } from './mask-ops.js?v=20261005-build458';
-import { state } from './ui-shell.js?v=20261005-build458';
+import { segmentState, segmentNeedsGlobalMask, sourceMprMemoryView, sourceMemoryUsable, getProcessedSegmentMask, segmentEditState, segmentSourcesOf, segmentSourceSignature, segmentHasManualEditsUpstream, segmentEditGen, segmentKeyOf, segmentAddsVoxels } from './segments.js?v=20261006-build460';
+import { activeId, filterRebuildRevision, sourceVolume, current3DVolume, volume, currentLanguage } from './state.js?v=20261006-build460';
+import { sourceFilterRuntime, sourceFilterSignature, sourceFilterStages, sourceFilterHalo, readSourceRegion, runSourceFilterWorker, fitSourceTile, getCachedSourceSlice } from './source-filters.js?v=20261006-build460';
+import { gpuOpenRuns, gpuCounts, gpuStepTimes, gpuRunInfo, addGpuStepTime, ensureGpuFilterDevice, gpuValidationScope, setGpuComputeBackend, runGpuSourceFilters, gpuFilterRuntime, gpuStagesSupported, beginGpuBufferRetention, endGpuBufferRetention } from './gpu-compute.js?v=20261006-build460';
+import { isNativeDicomTransferSyntax } from './dicom.js?v=20261006-build460';
+import { extractSourceThresholdRuns } from './medical-volume.js?v=20261006-build460';
+import { valuesToSegmentBits } from './mask-ops.js?v=20261006-build460';
+import { state } from './ui-shell.js?v=20261006-build460';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, thinSuppressSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20261005-build458';
-import { frameYield } from './utils.js?v=20261005-build458';
-import { BODY_MIN_HU } from './thin-suppress.js?v=20261005-build458';
-import { setProcessingBusy } from './busy.js?v=20261005-build458';
-import { reportBusyProgress } from './progress-modal.js?v=20261005-build458';
-import { segmentRunsCacheKey, segmentRunsCacheInfo, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20261005-build458';
+import { analysisRunsVoxelCount, unionRunArrays, maskToAnalysisRuns, postprocessSourceRuns, thinSuppressSourceRuns, intersectRunArrays, subtractRunArrays } from './run-length.js?v=20261006-build460';
+import { frameYield } from './utils.js?v=20261006-build460';
+import { BODY_MIN_HU } from './thin-suppress.js?v=20261006-build460';
+import { setProcessingBusy } from './busy.js?v=20261006-build460';
+import { reportBusyProgress } from './progress-modal.js?v=20261006-build460';
+import { segmentRunsCacheKey, segmentRunsCacheInfo, loadCachedSegmentRuns, storeCachedSegmentRuns } from './run-cache.js?v=20261006-build460';
 export async function processSourceRegionMasks(series,target,stages,key,revision,segments){
  const halo=sourceFilterHalo(stages),x0=Math.max(0,target.x-halo),y0=Math.max(0,target.y-halo),z0=Math.max(0,target.z-halo),x1=Math.min(series.columns,target.x+target.width+halo),y1=Math.min(series.rows,target.y+target.height+halo),z1=Math.min(series.slices.length,target.z+target.depth+halo);
  const box={x:x0,y:y0,z:z0,width:x1-x0,height:y1-y0,depth:z1-z0},data=await readSourceRegion(series,box,revision,true);
@@ -109,19 +109,24 @@ export async function sourceSegmentRunBlockGpu(v,key,seg,zStart,depth,analysisRe
  }
 }
 export function segmentBaseSignature(key,v){
- const s=segmentState[key];return [activeId,key,s.min,s.max,s.opening,s.closing,s.minComponent,s.holeFill,s.surfaceMm,s.thicknessMm,filterRebuildRevision,sourceFilterRuntime.revision,v?.columns,v?.rows,v?.slices].join('|');
+ const s=segmentState[key];return [activeId,key,s.min,s.max,s.opening,s.closing,s.minComponent,s.holeFill,s.surfaceMm,s.thicknessMm,filterRebuildRevision,sourceFilterRuntime.revision,v?.columns,v?.rows,v?.slices,segmentSourceSignature(key)].join('|');
 }
-export function thresholdRunsFromMemory(v,seg){
+export function thresholdRunsFromMemory(v,seg,key=segmentKeyOf(seg)){
  const w=v.columns,h=v.rows,d=v.slices,out=new Array(d),plane=w*h;
- if(segmentNeedsGlobalMask(seg))return maskToAnalysisRuns(getProcessedSegmentMask(v,seg),w,h,d);
+ // build 459: with voxel takers above the runs are the mask minus their final voxels
+ if(segmentNeedsGlobalMask(seg)||(key&&segmentSourcesOf(key).length))return maskToAnalysisRuns(getProcessedSegmentMask(v,seg,key),w,h,d);
  for(let z=0;z<d;z++){const rec=[],base=z*plane;for(let y=0;y<h;y++){let x=0,row=base+y*w;while(x<w){while(x<w&&(v.data[row+x]<seg.min||v.data[row+x]>seg.max))x++;if(x>=w)break;const x0=x;while(x+1<w&&v.data[row+x+1]>=seg.min&&v.data[row+x+1]<=seg.max)x++;rec.push(y,x0,x);x++}}out[z]=new Uint32Array(rec)}
  return out;
 }
-export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>true){
- if(segmentNeedsGlobalMask(seg)&&sourceMemoryUsable(v)){
+// excludeRuns (build 459): the final voxels of the voxel takers above (run arrays); the segment's own range is not cut by
+// them, so they are subtracted here, after the air-boundary exclusion (a per-voxel test) and before the shape-dependent
+// processing, and once more after Closing / hole filling, which can add voxels the higher segment holds.
+export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>true,excludeRuns=null){
+ if((segmentNeedsGlobalMask(seg)||(key&&segmentSourcesOf(key).length))&&sourceMemoryUsable(v)){
   const memoryView=sourceMprMemoryView(v);
-  return thresholdRunsFromMemory(memoryView,seg);
+  return thresholdRunsFromMemory(memoryView,seg,key);
  }
+ const E=excludeRuns,addsVoxels=segmentAddsVoxels(seg),minusE=r=>E?subtractRunArrays(r,E,v.slices):r;
  const d=v.slices,w=v.columns,h=v.rows,revision=sourceFilterRuntime.revision,blockDepth=sourceAnalysisBlockDepth(w,h);
  // thresholded runs before post-processing, kept per segment so changing only
  // a post-processing setting (thin-region sliders, Opening, ...) skips this pass
@@ -159,7 +164,8 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>t
    tl=timeStep(key,ja0()?'層の合成':'layer union',tl);
    // layers are disjoint: the unprocessed count is the sum of the layer counts
    let before=0;for(const layer of layers)before+=analysisRunsVoxelCount(layer);
-   const rest={...seg,surfaceMm:0},processed=segmentNeedsGlobalMask(rest)?await postprocessWithGpuOpen(air,v,rest,null,alive,(a,b)=>onProgress?.(a,b,'thin')):air;
+   const airE=minusE(air),rest={...seg,surfaceMm:0};let processed=segmentNeedsGlobalMask(rest)?await postprocessWithGpuOpen(airE,v,rest,null,alive,(a,b)=>onProgress?.(a,b,'thin')):airE;
+   if(E&&addsVoxels)processed=minusE(processed);
    postprocessStats.set(key,{before,after:analysisRunsVoxelCount(processed),body:null,insideBody:null,total:w*h*d,dims:[w,h,d],spacing:v.spacing,surfaceApplied:true,gpuAir:true});
    timeStep(key,ja0()?'数える':'count',tl);
    return processed;
@@ -179,15 +185,17 @@ export async function sourceRunsForSegment(v,key,seg,onProgress=null,alive=()=>t
   if(withBody){seedBodyRuns(v,seg.min,sets[1]);void storeBodyRuns(v,bodySeg,sets[1])}
  }
  if(key!=='body')rawRunsMemo.set(key,{signature:rawSig,runs:out});
- if(!segmentNeedsGlobalMask(seg))return out;
+ const outE=minusE(out);
+ if(!segmentNeedsGlobalMask(seg))return outE;
  let bodyRuns=(+seg.surfaceMm||0)>0?await sourceBodyRuns(v,(a,b)=>onProgress?.(a,b,'body'),seg.min):null;
  // guard: an empty body mask would mark every voxel as air and remove the
  // whole segment; skip the air-boundary exclusion instead
- const bodyVoxels=bodyRuns?analysisRunsVoxelCount(bodyRuns):null,insideBody=bodyRuns?analysisRunsVoxelCount(intersectRunArrays(out,bodyRuns,d)):null;
+ const bodyVoxels=bodyRuns?analysisRunsVoxelCount(bodyRuns):null,insideBody=bodyRuns?analysisRunsVoxelCount(intersectRunArrays(outE,bodyRuns,d)):null;
  if(bodyRuns&&!bodyVoxels){console.warn('Body mask is empty; skipping air-boundary exclusion.');bodyRuns=null}
  if(!alive())throw new Error('__SUPERSEDED__');
- const processed=await postprocessWithGpuOpen(out,v,seg,bodyRuns,alive,(a,b)=>onProgress?.(a,b,'thin'));
- postprocessStats.set(key,{before:analysisRunsVoxelCount(out),after:analysisRunsVoxelCount(processed),body:bodyVoxels,insideBody,total:w*h*d,dims:[w,h,d],spacing:v.spacing,surfaceApplied:!!bodyRuns});
+ let processed=await postprocessWithGpuOpen(outE,v,seg,bodyRuns,alive,(a,b)=>onProgress?.(a,b,'thin'));
+ if(E&&addsVoxels)processed=minusE(processed);
+ postprocessStats.set(key,{before:analysisRunsVoxelCount(outE),after:analysisRunsVoxelCount(processed),body:bodyVoxels,insideBody,total:w*h*d,dims:[w,h,d],spacing:v.spacing,surfaceApplied:!!bodyRuns});
  return processed;
 }
 // voxels before/after post-processing of the last computation, per segment
@@ -326,13 +334,23 @@ export async function ensureSegmentBaseRuns(key,v=current3DVolume||volume,onProg
   try{
    // Source-backed volumes: reuse runs stored on the device by an earlier
    // session with the same data, filters and segment settings (run-cache.js).
-   const seg=segmentState[key],cacheKeyPromise=v.sourceBacked&&v.series?segmentRunsCacheKey(v.series,sourceFilterSignature(sourceFilterStages()),seg).catch(()=>null):null;
+   // build 459: the final voxels of the voxel takers above are subtracted (Ref = what they finally hold, as drawn)
+   const seg=segmentState[key],sources=segmentSourcesOf(key),needExclude=sources.length>0&&v.sourceBacked&&!sourceMemoryUsable(v);
+   // the device cache cannot hold a result that depends on manual edits (they are not part of its key)
+   const cacheable=!segmentHasManualEditsUpstream(key),extra=sources.length?{sources:segmentSourceSignature(key,false)}:null;
+   const cacheKeyPromise=cacheable&&v.sourceBacked&&v.series?segmentRunsCacheKey(v.series,sourceFilterSignature(sourceFilterStages()),seg,extra).catch(()=>null):null;
+
    let runs=null;postprocessStats.delete(key);airGpuFailure.delete(key);segmentTimings.set(key,[]);gpuStepTimes.clear();gpuCounts.clear();for(const k of Object.keys(gpuRunInfo))delete gpuRunInfo[k];let tt=performance.now();
    if(cacheKeyPromise){const k=await cacheKeyPromise;tt=timeStep(key,ja?'キー':'key',tt);if(k)try{runs=await loadCachedSegmentRuns(k,v.slices);if(runs)report(v.slices,v.slices,'thin')}catch{runs=null}tt=timeStep(key,ja?'キャッシュ読込':'cache read',tt)}
    if(!runs){
     // settings changed meanwhile: stop instead of finishing a stale pass
     const alive=()=>segmentBaseSignature(key,v)===sig;
-    runs=v.sourceBacked?await sourceRunsForSegment(v,key,seg,report,alive):thresholdRunsFromMemory(v,seg);
+    let excludeRuns=null;
+    if(needExclude){
+     for(const u of sources){const f=await getFinalSegmentRuns(u,v);if(!f)continue;excludeRuns=excludeRuns?unionRunArrays(excludeRuns,f,v.slices):f}
+     if(!alive())throw new Error('__SUPERSEDED__');
+    }
+    runs=v.sourceBacked?await sourceRunsForSegment(v,key,seg,report,alive,excludeRuns):thresholdRunsFromMemory(v,seg,key);
     tt=timeStep(key,ja?'計算':'compute',tt);
     if(cacheKeyPromise&&st.pendingBase===pending)void cacheKeyPromise.then(k=>k&&storeCachedSegmentRuns(k,runs,segmentRunsCacheInfo(v.series,sourceFilterSignature(sourceFilterStages()))));
    }
@@ -362,11 +380,15 @@ export async function ensureSegmentBaseRuns(key,v=current3DVolume||volume,onProg
  })();
  st.pendingBase=pending;return pending.promise;
 }
+// base (already without the voxels the higher takers hold) ∩ keep − exclude. A manual edit only ever removes voxels from
+// the base, so nothing a higher segment holds can come back through it. The result is stored only while its base is
+// still the segment's current one (a recompute that overtook this call must not be overwritten with stale runs).
 export async function getFinalSegmentRuns(key,v=current3DVolume||volume,onProgress=null){
- const st=segmentEditState[key],base=await ensureSegmentBaseRuns(key,v,onProgress);if(!base)return null;let runs=base,d=v.slices;
+ const st=segmentEditState[key],gen=segmentEditGen[key]|0,base=await ensureSegmentBaseRuns(key,v,onProgress);if(!base)return null;let runs=base,d=v.slices;
  if(st.keepRuns)runs=intersectRunArrays(runs,st.keepRuns,d);
  if(st.excludeRuns)runs=subtractRunArrays(runs,st.excludeRuns,d);
- st.finalRuns=runs;return runs;
+ if(st.baseRuns===base&&(segmentEditGen[key]|0)===gen)st.finalRuns=runs;
+ return runs;
 }
 export async function decodeSourceSegmentMasks(meta,segments){
  if(!isNativeDicomTransferSyntax(meta.ts)){
