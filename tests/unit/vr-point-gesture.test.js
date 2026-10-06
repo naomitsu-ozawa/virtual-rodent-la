@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  sectionRayHit, resolveTriggerTarget, createTriggerPress, dragShouldStart, sectionDragStep, planeFoot, planeReach, clampPlaneCenter,
+  sectionRayHit, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, planeFoot, planeReach, clampPlaneCenter,
   squareBandContains, rayLocalPlaneX, createHoverPulse, createUndoStack, applyUndo, qMul, qInv, qRot, qNorm, qAngleDeg, HAPTIC, HAPTIC_SILENT,
 } from '../../docs/vr-point.js';
 
@@ -92,47 +92,77 @@ describe('dragShouldStart', () => {
   it('hold', () => { expect(dragShouldStart({ heldMs: 499 })).toBe(false); expect(dragShouldStart({ heldMs: 500 })).toBe(true); });
 });
 
-describe('sectionDragStep', () => {
+describe('dragShouldStart with the record threshold (build 470)', () => {
+  it('2 cm / 5 deg; holding still never starts it', () => {
+    expect(DRAG_RECORD).toEqual({ posM: 0.02, angDeg: 5, holdMs: Infinity });
+    expect(dragShouldStart({ dPosM: 0.019 }, DRAG_RECORD)).toBe(false); expect(dragShouldStart({ dPosM: 0.021 }, DRAG_RECORD)).toBe(true);
+    expect(dragShouldStart({ dAngleDeg: 4.9 }, DRAG_RECORD)).toBe(false); expect(dragShouldStart({ dAngleDeg: 5.1 }, DRAG_RECORD)).toBe(true);
+    expect(dragShouldStart({ heldMs: 10000 }, DRAG_RECORD)).toBe(false);
+  });
+});
+
+describe('section follows the hand rigidly (build 470)', () => {
   const I = { x: 0, y: 0, z: 0, w: 1 };
   const axisAngle = (a, deg) => { const h = deg * Math.PI / 360, s = Math.sin(h), l = Math.hypot(...a); return { x: a[0] / l * s, y: a[1] / l * s, z: a[2] / l * s, w: Math.cos(h) }; };
-  const base = { p0: { x: 0.1, y: 0.2, z: 0.3 }, q0: I, c0: { x: 1, y: 0, z: 0 }, Qp0: I, halfExt: [5, 4, 6] };
-  const step = (o2 = {}) => sectionDragStep({ ...base, p: base.p0, q: base.q0, ...o2 });
-  it('no hand motion: unchanged', () => {
-    const r = step(); expect(r.c).toEqual({ x: 1, y: 0, z: 0 }); expect(qAngleDeg(r.Qp)).toBeCloseTo(0); expect(r.n.x).toBeCloseTo(1);
+  const base = { p0: { x: 0.1, y: 0.2, z: 0.3 }, q0: axisAngle([0, 1, 0], 40), c0: { x: 1, y: 0, z: 0 }, Qp0: axisAngle([1, 1, 0], 25) };
+  const run = (p, q, b = base) => sectionFollowStep({ ...sectionFollowStart(b), p, q });
+  it('no hand motion: the section does not jump at the start', () => {
+    const r = run(base.p0, base.q0);
+    expect(r.c.x).toBeCloseTo(1); expect(r.c.y).toBeCloseTo(0); expect(r.c.z).toBeCloseTo(0);
+    expect(qAngleDeg(qMul(r.Qp, qInv(qNorm(base.Qp0))))).toBeCloseTo(0);
   });
-  it('2 cm along the normal moves the centre 2 cm', () => {
-    const r = step({ p: { x: 0.12, y: 0.2, z: 0.3 } }); expect(r.c.x).toBeCloseTo(1.02); expect(r.c.y).toBeCloseTo(0);
+  it('a hand translation moves the section by the same vector (all three axes, no normal-only restriction)', () => {
+    const r = run({ x: 0.1, y: 3.2, z: -1.7 }, base.q0);
+    expect(r.c.x).toBeCloseTo(1); expect(r.c.y).toBeCloseTo(3); expect(r.c.z).toBeCloseTo(-2);
   });
-  it('motion along the plane is dropped', () => {
-    const r = step({ p: { x: 0.1, y: 3, z: -2 } }); expect(r.c).toEqual({ x: 1, y: 0, z: 0 });
+  it('the pivot is the hand: turning the hand 90 deg about its own position swings the section centre around it', () => {
+    const r = run(base.p0, qMul(axisAngle([0, 0, 1], 90), base.q0));
+    const d0 = { x: 1 - 0.1, y: -0.2, z: -0.3 }, want = qRot(axisAngle([0, 0, 1], 90), d0);
+    expect(r.c.x).toBeCloseTo(0.1 + want.x); expect(r.c.y).toBeCloseTo(0.2 + want.y); expect(r.c.z).toBeCloseTo(0.3 + want.z);
+    // and the orientation turned by the same rotation
+    expect(qAngleDeg(qMul(r.Qp, qInv(qNorm(base.Qp0))))).toBeCloseTo(90);
+    expect(Math.hypot(r.c.x - 0.1, r.c.y - 0.2, r.c.z - 0.3)).toBeCloseTo(Math.hypot(d0.x, d0.y, d0.z)); // the hand-section distance is kept
   });
-  it('30 deg about the normal: normal unchanged', () => {
-    const r = step({ q: axisAngle([1, 0, 0], 30) }); expect(r.n.x).toBeCloseTo(1); expect(r.n.y).toBeCloseTo(0); expect(r.c.x).toBeCloseTo(1);
+  it('no clamping while dragging (far outside the box)', () => {
+    const r = run({ x: 500, y: 0.2, z: 0.3 }, base.q0); expect(r.c.x).toBeGreaterThan(400);
   });
-  it('30 deg about an in-plane axis: normal turns 30 deg, centre stays', () => {
-    const r = step({ q: axisAngle([0, 0, 1], 30) });
-    expect(Math.acos(r.n.x) * 180 / Math.PI).toBeCloseTo(30);
-    expect(r.c).toEqual({ x: 1, y: 0, z: 0 });
-  });
-  it('holder rotation does not matter (inputs are in holder space)', () => {
-    // the same relative hand motion expressed in a rotated holder frame: hand and section both given in holder space -> identical result
-    const R = axisAngle([0, 1, 0], 70), Ri = qInv(R);
-    const toH = v => qRot(Ri, v);
-    const world = { p0: { x: 0.3, y: 0.1, z: -0.2 }, p: { x: 0.35, y: 0.1, z: -0.2 } };
-    const qw = axisAngle([0, 0, 1], 20);
-    const a = sectionDragStep({ ...base, p0: world.p0, p: world.p, q: qMul(Ri, qMul(R, qw)), q0: qMul(Ri, R) }); // holder-space q = inv(R)*world
-    const b = sectionDragStep({ ...base, p0: world.p0, p: world.p, q: qw, q0: I });
-    expect(a.c.x).toBeCloseTo(b.c.x); expect(a.n.y).toBeCloseTo(b.n.y);
-    expect(toH(qRot(R, { x: 1, y: 2, z: 3 })).y).toBeCloseTo(2);
-  });
-  it('clamps at R(n)', () => {
-    const r = step({ p: { x: 50, y: 0.2, z: 0.3 } });
-    expect(r.c.x).toBeCloseTo(5); expect(r.n.x * r.c.x + r.n.y * r.c.y + r.n.z * r.c.z).toBeCloseTo(planeReach(r.n, base.halfExt));
-    const s = step({ p: { x: -50, y: 0.2, z: 0.3 } }); expect(s.c.x).toBeCloseTo(-5);
+  it('the normal is the section local X', () => {
+    const r = run(base.p0, base.q0), n = qRot(r.Qp, { x: 1, y: 0, z: 0 }); expect(r.n.x).toBeCloseTo(n.x); expect(r.n.z).toBeCloseTo(n.z);
   });
   it('quaternion helpers', () => {
     const a = axisAngle([0, 0, 1], 90), v = qRot(a, { x: 1, y: 0, z: 0 });
     expect(v.y).toBeCloseTo(1); expect(qAngleDeg(qMul(a, qInv(a)))).toBeCloseTo(0); expect(qNorm({ x: 0, y: 0, z: 0, w: 2 }).w).toBeCloseTo(1);
+    void I;
+  });
+});
+
+describe('snapPlaneCenterIntoBox (release)', () => {
+  const he = [5, 4, 6], inside = c => Math.abs(c.x) <= he[0] + 1e-9 && Math.abs(c.y) <= he[1] + 1e-9 && Math.abs(c.z) <= he[2] + 1e-9;
+  it('a centre already inside stays', () => { expect(snapPlaneCenterIntoBox({ x: 1, y: 2, z: 3 }, { x: 1, y: 0, z: 0 }, he)).toEqual({ x: 1, y: 2, z: 3 }); });
+  it('a centre slid along the plane comes back in with the plane (offset) unchanged', () => {
+    const n = { x: 1, y: 0, z: 0 }, r = snapPlaneCenterIntoBox({ x: 2, y: 30, z: -40 }, n, he);
+    expect(r.x).toBeCloseTo(2); expect(inside(r)).toBe(true);
+  });
+  it('an oblique plane: the offset n.c is kept and the centre ends inside the box', () => {
+    const s = Math.SQRT1_2, n = { x: s, y: s, z: 0 }, c = { x: 2 * s * 3 + 40 * -s, y: 2 * s * 3 + 40 * s, z: 25 }; // n.c = 6 s... plus an in-plane slide
+    const r = snapPlaneCenterIntoBox(c, n, he);
+    expect(inside(r)).toBe(true); expect(r.x * n.x + r.y * n.y + r.z * n.z).toBeCloseTo(c.x * n.x + c.y * n.y + c.z * n.z);
+  });
+  it('a plane that left the box is pulled back to touch it, then the centre comes in', () => {
+    const r = snapPlaneCenterIntoBox({ x: 50, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, he);
+    expect(r.x).toBeCloseTo(5); expect(inside(r)).toBe(true);
+  });
+});
+
+describe('chooseSectionForRay (empty-space grab)', () => {
+  it('the nearest section the ray passes through wins', () => {
+    expect(chooseSectionForRay([{ id: 'a', t: 2, dist: 0 }, { id: 'b', t: 1, dist: 0.3 }, { id: 'c', t: null, dist: 0.01 }])).toBe('b');
+  });
+  it('none passed through: the one whose centre is nearest to the ray', () => {
+    expect(chooseSectionForRay([{ id: 'a', t: null, dist: 0.5 }, { id: 'b', t: null, dist: 0.2 }])).toBe('b');
+  });
+  it('no candidates: null (the caller uses the selected one)', () => {
+    expect(chooseSectionForRay([])).toBe(null); expect(chooseSectionForRay(undefined)).toBe(null);
   });
 });
 

@@ -23,7 +23,7 @@ describe('vr-view.js: sections are no longer grabbed (one-handed redesign, stage
     expect(grip).not.toMatch(/plane|Plane/);
   });
   it('the trigger uses the pure functions of vr-point.js', () => {
-    for (const w of ['resolveTriggerTarget(', 'createTriggerPress()', 'dragShouldStart(', 'sectionDragStep(', 'createHoverPulse(', 'only:idx']) expect(src.includes(w), w).toBe(true);
+    for (const w of ['resolveTriggerTarget(', 'createTriggerPress()', 'dragShouldStart(', 'sectionFollowStart(', 'sectionFollowStep(', 'snapPlaneCenterIntoBox(', 'chooseSectionForRay(', 'DRAG_RECORD', 'createHoverPulse(', 'only:idx']) expect(src.includes(w), w).toBe(true);
   });
 });
 
@@ -59,7 +59,8 @@ describe('vr-view.js: ring menus, undo and the removed left-hand panel (stage 3)
 describe('vr-view.js: review fixes (F1-F9)', () => {
   it('F2: endAllDrags keeps presses for record / label / point / move', () => {
     const a = src.indexOf('const endAllDrags='), line = src.slice(a, src.indexOf('\n', a));
-    expect(line).toContain("pr.res.kind==='section'||pr.res.kind==='empty'");
+    expect(line).toContain('pr.dragPl=null');
+    expect(line).toContain('snapSection(');
     expect(line).not.toContain('press=null');
   });
   it('F1: no vibration when a drag starts from empty space', () => { expect(src.includes('HAPTIC.dragStart')).toBe(false); });
@@ -71,5 +72,27 @@ describe('vr-view.js: review fixes (F1-F9)', () => {
   it('F7 / F8: the selected point is checked, a stale drag ends at the press', () => {
     expect(src).toContain("getComments().some(x=>x.id===pr.res.ref.id))selectPoint");
     expect(src).toMatch(/addEventListener\('selectstart',\(\)=>\{\s*endDrag\(c\);/);
+  });
+});
+
+describe('vr-view.js: section drag restored, one cursor (build 470)', () => {
+  it('the section is not clamped while dragging and snaps back into the box on release', () => {
+    const a = src.indexOf('const updatePress='), b = src.indexOf('const sectionForEmpty=');
+    expect(src.slice(a, b)).not.toContain('clampPlaneCenter');
+    const e = src.indexOf('const endDrag='), line = src.slice(e, src.indexOf('\n', e));
+    expect(line).toContain('snapSection(dg.pl)');
+  });
+  it('no jump to the perpendicular foot at the start of a drag', () => {
+    const a = src.indexOf('const startDrag='), blk = src.slice(a, src.indexOf('const updatePress='));
+    expect(blk).not.toContain('outside'); expect(blk).not.toContain('planeFoot'); expect(blk).toContain('sectionFollowStart(');
+  });
+  it('a section-mode tap point drags only after the higher threshold; empty space moves the section the laser passes through', () => {
+    expect(src).toContain('pr.dragRec?DRAG_RECORD:undefined');
+    expect(src).toContain('sectionForEmpty(c,');
+  });
+  it('the square cursor is gone: placeSecCursor uses the dot of the surface cursor', () => {
+    expect(src.includes('createSectionCursor')).toBe(false); expect(src.includes('secCursors')).toBe(false);
+    const a = src.indexOf('const placeSecCursor='), blk = src.slice(a, a + 300);
+    expect(blk).toContain('surfCursors[');
   });
 });

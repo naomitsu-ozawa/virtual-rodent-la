@@ -124,17 +124,15 @@ describe('thumbstick gate in surface mode (same rule as 断面: dead zone 0.15, 
   });
 });
 
-describe('surface cursor (small core + thin ring, no glow)', () => {
+describe('point cursor (a small dot only: no ring, no glow; both modes)', () => {
   it('is lime, different from the point markers and the halo', () => {
     for (const c of [VR_MARKER_COLOR, VR_MARKER_FILL, VR_HALO_SELECTED]) expect(SURFACE_CURSOR_COLOR).not.toBe(c);
   });
-  it('core = about one voxel wide but never below the minimum angular size; ring keeps a constant angular size', () => {
+  it('dot = about one voxel wide but never below the minimum angular size; no ring size any more', () => {
     expect(surfaceCursorSizes(0.5, 0.01).core).toBeCloseTo(0.005, 9); // 1 voxel wide = 0.5 voxel radius
-    const near = surfaceCursorSizes(0.5, 0.002), far = surfaceCursorSizes(2, 0.002); // small voxels: the ring is at its angular size
     expect(surfaceCursorSizes(2, 0.0001).core).toBeCloseTo(2 * SURFACE_CURSOR_MIN_CORE_RAD, 9); // tiny voxel: the minimum on-screen size wins
-    expect(far.ring / 2).toBeCloseTo(near.ring / 0.5, 6); // ring angular size equal at 0.5 m and 2 m
-    expect(near.ring).toBeGreaterThan(near.core * 2);
     expect(surfaceCursorSizes(0.5, 0.002).core).toBeLessThan(0.01); // small: well under a centimetre at arm's length
+    expect(surfaceCursorSizes(0.5, 0.002).ring).toBeUndefined();
   });
   it('the core sits exactly on the recorded voxel centre; no glow object', () => {
     const scene = new THREE.Scene(), cur = createSurfaceCursor(THREE, scene);
@@ -144,7 +142,7 @@ describe('surface cursor (small core + thin ring, no glow)', () => {
     expect(cur.group.visible).toBe(true);
     expect(cur.group.position.toArray().map(v => +v.toFixed(6))).toEqual([centre.x, centre.y, centre.z].map(v => +v.toFixed(6)));
     expect(cur.core.position.length()).toBe(0); // the core is at the group's origin = the voxel centre
-    expect(cur.group.children.length).toBe(2); // core + ring only
+    expect(cur.group.children.length).toBe(1); // the dot only (build 470: no ring)
     expect(cur.group.children.every(m => m.material.blending !== THREE.AdditiveBlending)).toBe(true);
     expect(localToVoxel(centre, halfExt, dims)).toEqual(h.voxel); // the shown centre is inside the recorded voxel
     cur.set(null);

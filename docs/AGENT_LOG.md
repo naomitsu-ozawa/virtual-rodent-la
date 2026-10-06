@@ -58,6 +58,20 @@ has enough context to continue without re-deriving decisions from scratch.
 - Hidden points seen obliquely through thin tissue can still be hard to pick (the hidden test is a march towards the head).
 - Frame band width (6 mm / 0.8 deg), the 0.5 s long press and the drag thresholds (10 mm / 1.5 deg) are constants to tune on the device.
 
+## 2026-10-06 — claude/vr-surface-point (section drag restored, one cursor, build 470)
+
+**Agent:** Claude (Sonnet worker, supervised)
+**Task:** Owner's Quest feedback on build 468: the section operation felt wrong (the original was more intuitive); the cursor should be the small round dot in both modes; in 断面 mode a section should move when the laser is not on the 3D object.
+
+### What changed
+- A section grabbed with the trigger (frame band, number tag, empty space) follows the hand rigidly in 6 DoF, pivot = the hand (`sectionFollowStart` / `sectionFollowStep` in docs/vr-point.js, stored in holder space; no jump at the start). Grip still always moves the volume; no board / proximity grab.
+- 断面 mode: where the laser meets the selected section (air included) a tap records, press-and-move drags the section (record cancelled) after 2 cm / 5 deg (`DRAG_RECORD`); holding still never starts a drag (a press over 0.5 s neither records nor drags). Where the laser is not on tissue, nor on a band/tag, the press grabs the section the laser passes through (else the nearest to the laser, else the selected) (`chooseSectionForRay`); on tissue it does nothing. Band/tag/empty grabs keep the 1 cm / 1.5 deg / 0.5 s start.
+- No clamping while dragging; on release the centre is brought back into the volume box without changing the cut where possible (`snapPlaneCenterIntoBox`). The jump to the perpendicular foot at drag start is removed.
+- Cursor: the square 断面 cursor and the outer ring are removed; both modes use the small dot (`createSurfaceCursor`), in 断面 mode at the voxel projected onto the plane.
+
+### Follow-up / open questions
+- Thresholds (2 cm / 5 deg, 1 cm / 1.5 deg) and the empty-space section choice need a check on the Quest.
+
 ## 2026-10-06 — claude/slice-spacing-check (slice-spacing check and warning, build 469)
 
 **Agent:** Claude
