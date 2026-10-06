@@ -155,8 +155,8 @@ export function spacingWarningText(check){
  }
  if(check.nonUniform){
   ja.push('間隔のばらつき '+r2(check.spreadPct)+'%');en.push('spacing spread '+r2(check.spreadPct)+'%');
-  jd.push('間隔が不均一なため、'+(check.basis==='fit'?'抜けを補正したフィット':'全体の平均')+' '+u+' mm による近似');
-  ed.push('Spacing is uneven, so the '+(check.basis==='fit'?'gap-corrected fit':'overall mean')+' '+u+' mm is an approximation');
+  jd.push('間隔が不均一なため、'+(check.basis==='fit'?'抜けを補正したフィット':'全体の平均')+' '+u+' mm による近似'+(check.basis==='span'?'。局所的な構造では近似です':''));
+  ed.push('Spacing is uneven, so the '+(check.basis==='fit'?'gap-corrected fit':'overall mean')+' '+u+' mm is an approximation'+(check.basis==='span'?'. It is only approximate for local structures':''));
  }
  if(check.spacingBetweenMismatch){
   ja.push('SpacingBetweenSlices（'+r3(check.tagSpacingBetween)+' mm）と不一致');en.push('differs from SpacingBetweenSlices ('+r3(check.tagSpacingBetween)+' mm)');

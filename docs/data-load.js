@@ -9,7 +9,7 @@ import { compareFingerprints, resolveProjectMatch, legacySpacingUpgrade, project
 import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsVoxelMask, segmentEditGen, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261006-build469';
 import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls, setFilterUnitControl, formatHU } from './filter-pipeline.js?v=20261006-build469';
 import { sourceRangeFromMetadata } from './dicom.js?v=20261006-build469';
-import { spacingCheckForProject, spacingWarningHtml as spacingHtml } from './slice-spacing.js?v=20261006-build469';
+import { spacingCheckForProject, spacingWarningText, spacingWarningHtml as spacingHtml } from './slice-spacing.js?v=20261006-build469';
 import { FILTER_UNITS, filterLegacyRange, resolveFilterParams } from './filter-units.js?v=20261006-build469';
 import { setControlValue, applyCtRangeMode, removeSegmentPreset, addSegmentPreset, segmentControl, setControlChecked, clearAnalysisHighlight, scheduleSegment3D, updateSegmentOutputs, renderSegmentPresets, THIN_SLIDERS, configureThinSliders } from './segment-ui.js?v=20261006-build469';
 import { syncGpuVolumeEdits, gpuVolumeApplied, gpuVolumeTarget, gpuVolumePlanOptions, updateVolumeCacheControl, gpuVolumeDataSignature } from './gpu-volume-data.js?v=20261006-build469';
@@ -215,6 +215,7 @@ export function requestIPadSettingsTab(tab){
 function spacingWarningHtml(s){return spacingHtml(s.spacingCheck,currentLanguage,esc)}
 // language switch: redraw the warning in the selected-series overlay
 export function refreshSpacingWarning(){
+ for(const s of detectedSeries.list){const w=spacingWarningText(s.spacingCheck),mark=[...list.children].find(n=>n.dataset.id===s.id)?.querySelector('.spacing-mark');if(w&&mark)mark.title=currentLanguage==='ja'?w.ja:w.en}
  if(!activeSeries||!selected)return;
  selected.querySelector('.spacing-warn')?.remove();
  const html=spacingWarningHtml(activeSeries);if(!html)return;
@@ -412,7 +413,8 @@ export async function applyPendingProject(){
   const match=detectedSeries.list.find(s=>s!==activeSeries&&compareFingerprints(ds,datasetFingerprint(s)).ok);
   if(match){await selectSeries(match);return}
   // build 469: a project saved with the old first-two-slices spacing may be opened with the new one after confirmation
-  const r=pending.legacyAccepted?{action:'apply'}:resolveProjectMatch(ds,datasetFingerprint(activeSeries),t=>window.confirm(t),currentLanguage);
+  const accepted=pending.legacyAccepted!=null&&pending.legacyAccepted===activeSeries.id&&!!legacySpacingUpgrade(ds,datasetFingerprint(activeSeries)),
+   r=accepted?{action:'apply'}:resolveProjectMatch(ds,datasetFingerprint(activeSeries),t=>window.confirm(t),currentLanguage);
   if(r.action==='cancel'){footer.textContent=ja?'プロジェクトの適用をキャンセルしました（スライス間隔が保存時と異なります）':'Project not applied (the slice spacing differs from the saved one)';return}
   if(r.action==='reject'){
    const issues=r.issues.join(', ');

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { groupSeries, expandParsedFrames, parseDicomHeader, parsedSliceMeta } from '../../docs/dicom.js';
 import { analyzeSliceSpacing, spacingWarningText, spacingCheckForProject, sliceNormal, SPACING_THRESHOLDS } from '../../docs/slice-spacing.js';
-import { packProject, unpackProject, compareFingerprints, datasetFingerprint, legacySpacingUpgrade, resolveProjectMatch } from '../../docs/project-file.js';
+import { packProject, unpackProject, compareFingerprints, datasetFingerprint, legacySpacingUpgrade, legacySpacingPrompt, resolveProjectMatch } from '../../docs/project-file.js';
 import { makeCtSlice, asFile } from '../helpers/synthetic-dicom.js';
 
 // synthetic slice metas (no real data); z positions in mm
@@ -221,8 +221,10 @@ describe('slice spacing check', () => {
     const d = spacingWarningText(series([0, 0.5, 0.5, 1]).spacingCheck);
     expect(d.ja).toContain('重複スライスはボリュームから除外しました');
     const n = spacingWarningText(series([0, 0.5, 1.02, 1.5, 2.0]).spacingCheck);
-    expect(n.jaDetail).toBe('間隔が不均一なため、全体の平均 0.5 mm による近似');
+    expect(n.jaDetail).toBe('間隔が不均一なため、全体の平均 0.5 mm による近似。局所的な構造では近似です');
     expect(n.jaSummary).not.toContain('近似');
+    expect(n.jaDetail).toContain('局所的な構造では近似です');
+    expect(n.enDetail).toContain('only approximate for local structures');
   });
 
   it('no positions: method none, tag value used with an info-level note', () => {
@@ -288,8 +290,32 @@ describe('old projects (spacing rule changed in build 469)', () => {
     const r = resolveProjectMatch(saved(), cur(), t => { asked = t; return true; }, 'ja');
     expect(r.action).toBe('apply');
     expect(asked).toContain('build 469 からスライス間隔の決め方が変わりました');
-    expect(asked).toContain('保存時 0.1 mm → 新しい間隔 0.42 mm');
-    expect(asked).toContain('新しい間隔で開きますか？体積がわずかに変わります');
+    expect(asked).toContain('保存時 0.1 mm → 新しい間隔 0.42 mm（+320%）');
+    expect(asked).toContain('新しい間隔で開きますか？');
+    expect(asked).toContain('体積が 320% 変わります。以前の結果は再計算が必要です');
+    expect(asked).not.toContain('わずかに');
+  });
+
+  it('prompt: small changes (<= 1%) stay mild, in both languages', () => {
+    const small = legacySpacingPrompt({ savedZ: 0.5, newZ: 0.5025 });
+    expect(small.ja).toContain('（+0.5%）');
+    expect(small.ja).toContain('体積がわずかに変わります');
+    expect(small.en).toContain('Volumes change slightly');
+    const big = legacySpacingPrompt({ savedZ: 0.5, newZ: 0.45 });
+    expect(big.ja).toContain('体積が 10% 変わります。以前の結果は再計算が必要です');
+    expect(big.en).toContain('Volumes change by 10%. Earlier results need to be recalculated');
+  });
+
+  it('acceptance applies only to the accepted series (id + legacy check), not to another series', () => {
+    const a = { ...cur(), seriesId: 'A' };
+    const other = datasetFingerprint(series([0, 1, 2, 3, 4, 5]));
+    const pending = { legacyAccepted: 'A' };
+    // the gate used by applyPendingProject
+    const gate = (activeId, fp) => pending.legacyAccepted != null && pending.legacyAccepted === activeId && !!legacySpacingUpgrade(saved(), fp);
+    expect(gate('A', a)).toBe(true);
+    expect(gate('B', other)).toBe(false); // another series: normal matching, which rejects it
+    expect(gate('A', other)).toBe(false); // same id but not a legacy match
+    expect(resolveProjectMatch(saved(), other, () => { throw new Error('must not ask'); }).action).toBe('reject');
   });
 
   it('cancel keeps the project unapplied', () => {
