@@ -82,3 +82,51 @@ describe('what the higher segment removes or adds moves the segments below it', 
     expect((await maskOf('bone', v))[at(2, 3)]).toBe(1);
   });
 });
+
+// The owner's case on the device: order bone (off) -> fat -> soft; fat removes a band next to air; that band must not be
+// left empty: the voxels of it inside soft's HU range belong to soft (soft's own air-boundary removal, if set, still applies).
+describe('air-boundary band removed from fat (bone off, fat above soft)', () => {
+  const W = 16, H = 16, D = 16, N = W * H * D, idx = (x, y, z) => (z * H + y) * W + x;
+  const body = (x, y, z) => x >= 3 && x < 13 && y >= 3 && y < 13 && z >= 3 && z < 13;
+  const run = async softSurface => {
+    const data = new Float32Array(N).fill(-1000);
+    for (let z = 0; z < D; z++) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (body(x, y, z)) data[idx(x, y, z)] = -80; // in fat's and soft's range
+    const order = ['bone', 'fat', 'soft', 'lung'];
+    S.segmentExclusive.mode = 'priority'; S.segmentExclusive.order = order;
+    const cfg = { fat: { min: -150, max: -50, surfaceMm: 2 }, soft: { min: -93, max: 248, surfaceMm: softSurface } };
+    for (const k of order) {
+      const g = S.segmentState[k], st = S.segmentEditState[k], p = cfg[k];
+      Object.assign(g, { active: !!p, enabled: k !== 'bone', opening: 0, closing: 0, holeFill: false, minComponent: 0, surfaceMm: 0, thicknessMm: 0, _maskCache: null, _maskCacheKey: '', exclusive: undefined, ...(p || {}), userMin: p?.min ?? 0, userMax: p?.max ?? 1 });
+      Object.assign(st, { baseRuns: null, baseSignature: '', pendingBase: null, finalRuns: null, keepRuns: null, excludeRuns: null, cutRuns: null, undo: [], redo: [] });
+      S.segmentEditGen[k]++;
+    }
+    S.applyExclusiveRanges(); S.segmentExclusive.pending.clear();
+    const v = { columns: W, rows: H, slices: D, data, spacing: [1, 1, 1], sourceBacked: false };
+    const fat = maskFromAnalysisRuns(v, await R.getFinalSegmentRuns('fat', v)), soft = maskFromAnalysisRuns(v, await R.getFinalSegmentRuns('soft', v));
+    const bd = (x, y, z) => Math.min(x - 3, 12 - x, y - 3, 12 - y, z - 3, 12 - z); // 0 = outermost body voxel
+    return { fat, soft, v, bd };
+  };
+  it('soft without its own air removal takes the whole band fat removed; nothing is in both', async () => {
+    const { fat, soft, bd } = await run(0);
+    expect(S.segmentSourcesOf('soft')).toEqual(['fat']);
+    let band = 0, bandInSoft = 0;
+    for (let z = 0; z < D; z++) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = idx(x, y, z);
+      expect(fat[i] + soft[i]).toBeLessThanOrEqual(1);
+      if (body(x, y, z)) { expect(fat[i] + soft[i]).toBe(1); if (fat[i] === 0) { band++; bandInSoft += soft[i]; } }
+    }
+    expect(band).toBeGreaterThan(0);
+    expect(bandInSoft).toBe(band);
+    expect(bd(3, 8, 8)).toBe(0);
+  });
+  it('soft with its own air removal keeps that removal: the band stays out of soft, the interior is fat\'s', async () => {
+    const { fat, soft } = await run(2);
+    let band = 0;
+    for (let z = 0; z < D; z++) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = idx(x, y, z);
+      expect(fat[i] + soft[i]).toBeLessThanOrEqual(1);
+      if (body(x, y, z) && fat[i] === 0) { band++; expect(soft[i]).toBe(0); }
+    }
+    expect(band).toBeGreaterThan(0);
+  });
+});
