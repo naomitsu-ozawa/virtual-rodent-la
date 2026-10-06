@@ -279,3 +279,59 @@ test('the toolbar "add comment" button next to the crosshair button makes a posi
   await expect(page.locator('[data-crosshair-toggle="axial"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(item).toHaveCount(1);
 });
+
+test('markers: shown on the slice of the comment, hidden elsewhere / by the toggle / after delete; the slice pixels never change', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openSeries(page, dicomFolder());
+  await showPlane(page, 'axial');
+  await setSlider(page, 'axial', 4); await setSlider(page, 'coronal', 5); await setSlider(page, 'sagittal', 3);
+  expect(await overlayPixels(page, 'axial')).toBe(0);
+  await openPanel(page);
+  await panel(page).locator('.comment-input').fill('marked spot');
+  await panel(page).locator('.comment-add').click();
+  await expect(panel(page).locator('.comment-no')).toHaveText('1');
+  await expect.poll(() => overlayPixels(page, 'axial')).toBeGreaterThan(50); // crosshair mode is off: markers show all the same
+  const before = await hash2d(page);
+
+  await setSlider(page, 'axial', 6); // 2 slices away: faint ring
+  const faint = await (async () => { await expect.poll(() => overlayPixels(page, 'axial')).toBeGreaterThan(0); return overlayPixels(page, 'axial'); })();
+  await setSlider(page, 'axial', 4);
+  await expect.poll(() => overlayPixels(page, 'axial')).toBeGreaterThan(faint);
+  await setSlider(page, 'axial', 9);
+  await expect.poll(() => overlayPixels(page, 'axial')).toBe(0);
+  await setSlider(page, 'axial', 4);
+  await expect.poll(() => overlayPixels(page, 'axial')).toBeGreaterThan(50);
+  expect(await hash2d(page)).toBe(before);
+
+  // tap on the marker: the text appears; a swipe elsewhere still moves the slice
+  const at = await pixelOf(page, 'axial', 3, 5);
+  await page.mouse.click(at.x, at.y);
+  await expect(page.locator('.comment-bubble:not([hidden])')).toContainText('marked spot');
+
+  const toggle = panel(page).locator('.comment-show-input');
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await expect.poll(() => overlayPixels(page, 'axial')).toBe(0);
+  await toggle.check();
+  await expect.poll(() => overlayPixels(page, 'axial')).toBeGreaterThan(50);
+
+  await panel(page).locator('.comment-delete').click();
+  await expect.poll(() => overlayPixels(page, 'axial')).toBe(0);
+  await panel(page).locator('.comment-undo-btn').click();
+  await expect.poll(() => overlayPixels(page, 'axial')).toBeGreaterThan(50);
+});
+
+test('markers: a tap on a marker in crosshair mode places the crosshair and opens no bubble', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openSeries(page, dicomFolder());
+  await showPlane(page, 'axial');
+  await setSlider(page, 'axial', 2); await setSlider(page, 'coronal', 4); await setSlider(page, 'sagittal', 10);
+  await openPanel(page);
+  await panel(page).locator('.comment-add').click();
+  await expect.poll(() => overlayPixels(page, 'axial')).toBeGreaterThan(50);
+  await page.locator('[data-crosshair-toggle="axial"]').click();
+  const q = await pixelOf(page, 'axial', 10, 4);
+  await page.mouse.click(q.x, q.y);
+  expect(await getCrosshair(page)).toEqual({ i: 10, j: 4, k: 2 });
+  await expect(page.locator('.comment-bubble:not([hidden])')).toHaveCount(0);
+});

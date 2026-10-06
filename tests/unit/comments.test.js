@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createComment, sanitizeComments, commentMatchesSeries, commentTarget, commentVoxel,
   addComment, removeComment, getComments, setComments, onCommentsChange, commentsForProject, COMMENT_MAX_TEXT,
-  mergeComments, loadProjectComments, markCommentsSaved, hasUnsavedComments, resetCommentsSaved, restoreComment,
+  mergeComments, loadProjectComments, commentMarkers, COMMENT_NEAR_SLICES, markCommentsSaved, hasUnsavedComments, resetCommentsSaved, restoreComment,
 } from '../../docs/comments.js';
 import { datasetFingerprint, packProject, unpackProject } from '../../docs/project-file.js';
 
@@ -117,5 +117,36 @@ describe('unsaved comment changes', () => {
     expect(restoreComment(b, 1)).toBe(true);
     expect(getComments().map(c => c.id)).toEqual(['a', 'b', 'c']);
     expect(restoreComment(b, 1)).toBe(false);
+  });
+});
+
+describe('markers on the planes', () => {
+  const dims = { columns: 16, rows: 16, slices: 12 };
+  const a = createComment({ text: 'a', position: { i: 3, j: 5, k: 4 }, series: fpA, id: 'a' });
+  const b = createComment({ text: 'b', position: { i: 8, j: 8, k: 9 }, series: fpB, id: 'b' });
+  const c = createComment({ text: 'c', position: { i: 3, j: 6, k: 6 }, series: fpA, id: 'c' });
+  const all = [a, b, c];
+  it('exact when the slice on show is the comment slice, numbered by the place in the whole list', () => {
+    const m = commentMarkers('axial', all, fpA, 4, dims);
+    expect(m.map(x => [x.id, x.number, x.exact])).toEqual([['a', 1, true], ['c', 3, false]]);
+    expect(m[0].fx).toBeCloseTo(3.5 / 16); expect(m[0].fy).toBeCloseTo(5.5 / 16);
+  });
+  it('uses each plane\'s own axis (coronal: j, sagittal: i)', () => {
+    expect(commentMarkers('coronal', all, fpA, 5, dims).map(x => [x.id, x.exact])).toEqual([['a', true], ['c', false]]);
+    expect(commentMarkers('sagittal', all, fpA, 3, dims).filter(x => x.exact).map(x => x.id)).toEqual(['a', 'c']);
+  });
+  it('nothing beyond the near range; the boundary is inclusive', () => {
+    expect(commentMarkers('axial', [a], fpA, 4 + COMMENT_NEAR_SLICES, dims)).toHaveLength(1);
+    expect(commentMarkers('axial', [a], fpA, 4 + COMMENT_NEAR_SLICES + 1, dims)).toHaveLength(0);
+    expect(commentMarkers('axial', [a], fpA, 4 - COMMENT_NEAR_SLICES - 1, dims)).toHaveLength(0);
+  });
+  it('another series, no open series or no volume: no markers', () => {
+    expect(commentMarkers('axial', [b], fpA, 9, dims)).toEqual([]);
+    expect(commentMarkers('axial', all, null, 4, dims)).toEqual([]);
+    expect(commentMarkers('axial', all, fpA, 4, null)).toEqual([]);
+  });
+  it('a position outside the volume is clamped, not dropped', () => {
+    const o = createComment({ text: 'o', position: { i: 99, j: 0, k: 50 }, series: fpA, id: 'o' });
+    expect(commentMarkers('axial', [o], fpA, 11, dims)[0]).toMatchObject({ exact: true });
   });
 });

@@ -935,3 +935,13 @@ html.vrl-ipad-ui .comment-panel .tool-chip{min-height:40px}
 .comment-popover .tool-chip{min-height:34px;touch-action:manipulation}
 html.vrl-ipad-ui .comment-popover .tool-chip{min-height:40px}
 html.vrl-ipad-ui .comment-popover .comment-input{font-size:16px}
+
+/* Comment markers (drawn on the overlay canvas in comment-ui.js) + the tap bubble and list number: theme tokens, dark outline on the canvas */
+.comment-show{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12px;color:rgb(var(--ui-t1));min-height:32px}
+.comment-show input{width:18px;height:18px;margin:0}
+.comment-no{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;margin-right:6px;border-radius:10px;background:rgb(var(--ui-blue-bg));color:rgb(var(--ui-blue-tx));border:1px solid rgb(var(--ui-blue-bd));font-size:11px;font-weight:800;vertical-align:middle}
+.comment-item.is-highlight{border-color:rgb(var(--ui-blue-bd));background:rgb(var(--ui-blue-bg))}
+.comment-bubble{position:absolute;z-index:5;display:flex;gap:6px;align-items:flex-start;padding:6px 9px;border:1px solid rgb(var(--ui-b2));border-radius:9px;background:rgb(var(--ui-s1));color:rgb(var(--ui-t1));box-shadow:0 3px 14px rgba(0,0,0,.35);font-size:12px;line-height:1.4;pointer-events:none}
+.comment-bubble[hidden]{display:none}
+.comment-bubble-no{flex:none;min-width:18px;height:18px;border-radius:9px;background:rgb(var(--ui-blue-bg));color:rgb(var(--ui-blue-tx));border:1px solid rgb(var(--ui-blue-bd));box-sizing:border-box;text-align:center;font-size:11px;line-height:18px}
+.comment-bubble-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:6.5em;overflow:hidden}

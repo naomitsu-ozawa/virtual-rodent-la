@@ -144,7 +144,7 @@ const SLIDE_PATH_DEBUG=()=>!!globalThis.__vrlSettings?.debugOn?.()||(typeof loca
 function reportSlidePath(p,path){if(SLIDE_PATH_DEBUG())footer.textContent='2D '+p+' while sliding: '+path}
 export function schedulePlaneRender(p,immediate=false){
  cancelSourceMprWarmup();updateMpr3DPlanePositions();clearTimeout(planeRenderTimers[p]);
- const idx=+planes[p].slider.value;planes[p].label.textContent=idx+1;syncMpr3DSliceSliders();
+ const idx=+planes[p].slider.value;planes[p].label.textContent=idx+1;syncMpr3DSliceSliders();document.dispatchEvent(new Event('vrl-slicechange'));
  setCrosshairSlice(p,idx,'slider-'+p); // linked crosshair: a moved slider changes that coordinate (no-op while hidden)
  if(p==='coronal'||p==='sagittal'){mpr3DOrthoSliding[p]=!immediate;if(!immediate){pushCachedMpr3DPlane(p,idx);prefetchOrthogonalHighRes(p,idx)}}
  if(sectionViewPlane===p){updateSectionClipPlaneWorld();rebindWebGpuSectionClipGroup();updateSectionViewUi();request3DRender()}
@@ -341,7 +341,7 @@ export function renderAll(){
 export function renderSectionPlaneLive(p){
  if(!volume||!planes[p])return;
  cancelSourceMprWarmup();clearTimeout(planeRenderTimers[p]);planeRenderTimers[p]=null;
- const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;
+ const idx=+planes[p].slider.value,revision=++planeRenderRevision[p];planes[p].label.textContent=idx+1;document.dispatchEvent(new Event('vrl-slicechange'));
  setCrosshairSlice(p,idx,'section-'+p); // the section-view slider / 3D drag set the slice directly, so link the crosshair here too (no-op while hidden)
  if(p==='coronal'||p==='sagittal')pushCachedMpr3DPlane(p,idx);
  if(paintFastOrthogonalPreview(p,idx))return;

@@ -10,6 +10,10 @@ import { sourceSliceCache } from './volume-io.js?v=20261005-build459';
 import { sourceFilterStages, sourceFilterSignature, sourceFilterCacheGet } from './source-filters.js?v=20261005-build459';
 import { CROSSHAIR_PLANES, clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, voxelToMm, sampleHu, formatHu, formatMm } from './crosshair.js?v=20261005-build459';
 
+let overlayPainter=null;
+// other overlays (the comment markers) paint on the same canvases: fn(ctx,plane,{x0,y0,w,h,dpr,cssW,cssH}) with the transform set to CSS px
+export const setOverlayPainter=fn=>{overlayPainter=fn};
+export const requestOverlayDraw=()=>scheduleDraw();
 let mode=false,drag=null,activePlane='axial',drawQueued=false,huRetries=0,huTimer=null;
 const COLOR='#ffe14d'; // drawn over a dark halo (same recipe as the cut stroke of PR #92), so it reads on light and dark themes
 const dimsOf=()=>volume?{columns:volume.columns,rows:volume.rows,slices:volume.slices}:null;
@@ -71,10 +75,15 @@ function drawPlane(p){
  const dpr=window.devicePixelRatio||1,W=Math.max(1,Math.round(cv.clientWidth*dpr)),H=Math.max(1,Math.round(cv.clientHeight*dpr));
  if(cv.width!==W)cv.width=W;if(cv.height!==H)cv.height=H;
  const ctx=cv.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);
- const c=getCrosshair(),dims=dimsOf();if(!c||!dims)return;
- const cr=cv.getBoundingClientRect(),ir=img.getBoundingClientRect();if(ir.width<2||ir.height<2)return;
- const{fx,fy}=planePointFromVoxel(p,c,dims),x0=ir.left-cr.left,y0=ir.top-cr.top,x=x0+fx*ir.width,y=y0+fy*ir.height;
- ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineCap='butt';
+ const c=getCrosshair(),dims=dimsOf();
+ const cr=cv.getBoundingClientRect(),ir=img.getBoundingClientRect();
+ if(!dims||ir.width<2||ir.height<2){overlayPainter?.(null,p);return}
+ const x0=ir.left-cr.left,y0=ir.top-cr.top;
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ if(overlayPainter)overlayPainter(ctx,p,{x0,y0,w:ir.width,h:ir.height,dpr}); // markers first: the crosshair stays on top
+ if(!c)return;
+ const{fx,fy}=planePointFromVoxel(p,c,dims),x=x0+fx*ir.width,y=y0+fy*ir.height;
+ ctx.lineCap='butt';
  const path=()=>{ctx.beginPath();ctx.moveTo(x,y0);ctx.lineTo(x,y0+ir.height);ctx.moveTo(x0,y);ctx.lineTo(x0+ir.width,y);ctx.stroke()};
  ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=7;path(); // dark outline: readable on a light background too
  ctx.strokeStyle=COLOR;ctx.lineWidth=3;path();
@@ -155,6 +164,6 @@ export function installCrosshair(){
  const mo=typeof MutationObserver!=='undefined'?new MutationObserver(updateButtons):null;
  for(const p of CROSSHAIR_PLANES){ro?.observe(planes[p].canvas);ro?.observe(document.getElementById(p+'-crosshair'));mo?.observe(planes[p].slider,{attributes:true,attributeFilter:['disabled']})}
  window.addEventListener('resize',scheduleDraw,{passive:true});
- for(const name of ['vrl-plane-selected','vrl-plane-chosen','vrl-themechange'])document.addEventListener(name,scheduleDraw);
+ for(const name of ['vrl-plane-selected','vrl-plane-chosen','vrl-themechange','vrl-slicechange'])document.addEventListener(name,scheduleDraw);
  updateButtons();
 }
