@@ -2,12 +2,12 @@
 // including the edit tools; kept apart from scene3d.js/three-status.js so
 // low-level modules never import edit-tools.js (no import cycles).
 // Depends only on the imports below; never imports from app.js.
-import { sceneState, threeRenderMode, volume, setThreeDDirty, setThreeDApplying, volumeAnalysisMode } from './state.js?v=20261006-build466';
-import { filter3DState, filterRebuild3D, volumeAnalysisToggle, sectionViewToggle, $ } from './ui-shell.js?v=20261006-build466';
-import { tr } from './i18n.js?v=20261006-build466';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261006-build466';
-import { updateAnalysisEditorControls } from './edit-tools.js?v=20261006-build466';
-import { updateVolumeFilterBadge } from './three-status.js?v=20261006-build466';
+import { sceneState, threeRenderMode, volume, setThreeDDirty, setThreeDApplying, volumeAnalysisMode } from './state.js?v=20261006-build467';
+import { filter3DState, filterRebuild3D, volumeAnalysisToggle, sectionViewToggle, $ } from './ui-shell.js?v=20261006-build467';
+import { tr } from './i18n.js?v=20261006-build467';
+import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261006-build467';
+import { updateAnalysisEditorControls } from './edit-tools.js?v=20261006-build467';
+import { updateVolumeFilterBadge } from './three-status.js?v=20261006-build467';
 export function set3DState(mode){
  setThreeDDirty(mode==='stale');setThreeDApplying(mode==='updating');
  updateVolumeFilterBadge();
