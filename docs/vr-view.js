@@ -8,20 +8,22 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build465';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build465';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build465';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build465';
-import { datasetFingerprint } from './project-file.js?v=20261006-build465';
-import { sectionRayHit, recordVrPoint, resolveTrigger, resolveTriggerMode, normalizePointMode, surfaceVoxelFromHit, createStickGate, deleteSelected, undoDelete, pointIsHidden } from './vr-point.js?v=20261006-build465';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261006-build465';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment } from './comments.js?v=20261006-build465';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build465';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build465';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build465';
-import { tr } from './i18n.js?v=20261006-build465';
-import { APP_BUILD } from './version.js?v=20261006-build465';
-import { wc, ww } from './ui-shell.js?v=20261006-build465';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build466';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build466';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build466';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build466';
+import { datasetFingerprint } from './project-file.js?v=20261006-build466';
+import { sectionRayHit, recordVrPoint, resolveTrigger, resolveTriggerMode, normalizePointMode, surfaceVoxelFromHit, createStickGate, deleteSelected, undoDelete, pointIsHidden } from './vr-point.js?v=20261006-build466';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261006-build466';
+import { buildClsData } from './point-cls.js?v=20261006-build466';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261006-build466';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment } from './comments.js?v=20261006-build466';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build466';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build466';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build466';
+import { tr } from './i18n.js?v=20261006-build466';
+import { APP_BUILD } from './version.js?v=20261006-build466';
+import { wc, ww } from './ui-shell.js?v=20261006-build466';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -514,7 +516,7 @@ function buildEditMask(dims){
 }
 // rg8-packed u16 texture of the current volume, built with the same plan,
 // area reduction and packing as the WebGPU upload, plus per-brick HU min/max
-async function buildVolumeData(maxDim,onProgress){
+async function buildVolumeData(maxDim,onProgress,{noBricks=false}={}){
  const v=gpuVolumeTarget(),s=v?.series;
  if(!v?.sourceBacked||!s)throw new Error('VR: open a DICOM series first');
  const plan=volumeTexturePlan(v,0,maxDim,VR_TARGET_SIDE),[tw,th,td]=plan.dims,first=s.slices[0],signed=!!first.signed;
@@ -537,7 +539,7 @@ async function buildVolumeData(maxDim,onProgress){
   if((z&15)===15||z===td-1){onProgress?.(z+1,td);await new Promise(r=>setTimeout(r,0))}
  }
  const slope=first.slope||1,intercept=first.intercept||0,bias=signed?32768:0,calibration=[slope,intercept,bias];
- const {bricks:mm,brickDims}=computeBricks(data,[tw,th,td],calibration);
+ const {bricks:mm,brickDims}=noBricks?{bricks:null,brickDims:null}:computeBricks(data,[tw,th,td],calibration);
  const px=s.columns*s.spacingX,py=s.rows*s.spacingY,pz=s.slices.length*s.spacingZ,maxP=Math.max(px,py,pz,1),scale=3.3/maxP;
  const halfExt=[px*scale*.5,py*scale*.5,pz*scale*.5],step=Math.max(1e-5,Math.min(px/tw,py/th,pz/td)*scale*.85);
  return{data,dims:[tw,th,td],bricks:mm,brickDims,halfExt,step,calibration,filtered,source:copied?'gpu':'files'};
@@ -708,24 +710,6 @@ function buildRegionIndex(dims){
  }
  return{data:colors.length?data:null,ids:colors.length?ids:null,colors,segs,list};
 }
-// classification bytes for a grid of at most 256 (see segmentIndexAt)
-function buildClsData(t,calibration,edit){
- const [w,h,d]=t.dims,n=w*h*d,src=t.data,[slope,intercept,bias]=calibration;
- const segs=SEGMENT_PRESET_ORDER.slice(0,4).map(k=>segmentState[k]);
- const chan=[-1,-1,-1,-1];let nc=0;segs.forEach((g,i)=>{if(g?.active&&g.enabled)chan[i]=nc++});
- if(!nc)return null;const C=nc===1?1:nc===2?2:4,out=new Uint8Array(n*C);
- const maskOk=edit.data&&edit.dims.join()===t.dims.join();
- for(let si=0;si<4;si++){
-  const seg=segs[si];if(chan[si]<0)continue;const lo=+seg.min,hi=+seg.max,masked=maskOk&&(edit.active>>si&1),maskOnly=maskOk&&(edit.maskOnly>>si&1),ch=chan[si];
-  for(let i=0;i<n;i++){
-   const hu=((src[i*2]|(src[i*2+1]<<8))-bias)*slope+intercept,dd=Math.min(hu-lo,hi-hu);
-   let f=Math.round((0.5+dd/2048)*255);f=f<0?0:f>255?255:f;
-   if(masked){if(edit.data[i*4+si]<128)f=0;else if(maskOnly&&f<191)f=191}
-   out[i*C+ch]=f;
-  }
- }
- return{data:out,C,chan};
-}
 let prepared=null,preparing=null;
 // volume + brick textures for one grid (full 512 or the 256 copy)
 const makeVolumeTextures=d=>{
@@ -814,7 +798,7 @@ export async function prepareVrData(onProgress=()=>{}){
   const editDims=half?half.dims:vd.dims;let m;try{m=buildEditMask(editDims)}catch(e){console.error(e);m={activeMask:0,data:null}}
   const edit={dims:editDims,data:m.activeMask?m.data:null,active:m.activeMask|0,maskOnly:m.maskOnly|0};times.mask=performance.now()-t0;
   onProgress({phase:'cls',done:0,total:1});await tick();t0=performance.now();
-  const small=half||vd,cls=buildClsData(small,vd.calibration,edit);times.cls=performance.now()-t0;
+  const small=half||vd,cls=buildClsData(small,vd.calibration,edit,segmentState);times.cls=performance.now()-t0;
   onProgress({phase:'dist',done:0,total:1});await tick();t0=performance.now();
   const dist=cls?await buildDistanceBytes(cls,small.dims,(a,b)=>onProgress({phase:'dist',done:a,total:b})):null;times.dist=performance.now()-t0;
   let region;try{region={dims:editDims,...buildRegionIndex(editDims)}}catch(e){console.error(e);region={dims:editDims,data:null,colors:[],list:[]}}
@@ -823,6 +807,29 @@ export async function prepareVrData(onProgress=()=>{}){
  preparing={key,promise};
  try{prepared=await promise;return prepared}finally{if(preparing?.promise===promise)preparing=null}
 }
+// build 465: classification bytes for the 3D position-comment markers of the PC / iPad view (comment-3d.js), the same data and rule as VR's
+// hidden test. Only vd (<= 256 grid, no bricks) -> edit mask -> cls (no distance field / regions); reuses the VR preparation when it is ready
+// for the same key. State handling (one build at a time, 250 ms debounce, volume cached per series + filter, failures retried, previous
+// result kept while rebuilding) is hidden-cls-state.js. hiddenClsFor(onReady) -> {cls,dims,halfExt} or null; onReady fires when it changed.
+const hiddenVolumeKey=()=>{const v=gpuVolumeTarget();return v?.series?v.series.id+'|'+(v.filterSignature||''):''};
+const hiddenClsKey=()=>{ // what the bytes depend on: the data, and per segment its range / shown state / edits
+ const segs=SEGMENT_PRESET_ORDER.map(k=>{const g=segmentState[k]||{},st=segmentEditState[k]||{};
+  return [g.active?1:0,g.enabled?1:0,g.min,g.max,st.revision|0,idOf(st.baseRuns),idOf(st.keepRuns),idOf(st.excludeRuns),segmentSourceSignature(k)].join(',')});
+ return [hiddenVolumeKey(),...segs].join('|');
+};
+const hiddenMgr=createHiddenClsManager({
+ volumeKey:hiddenVolumeKey,segKey:hiddenClsKey,
+ loadVolume:async()=>{const v=gpuVolumeTarget();if(!v?.sourceBacked||!v.series){const e=new Error('no source-backed volume');e.permanent=true;throw e}return buildVolumeData(256,null,{noBricks:true})},
+ buildCls:vd=>{
+  const m=buildEditMask(vd.dims),edit={dims:vd.dims,data:m.activeMask?m.data:null,active:m.activeMask|0,maskOnly:m.maskOnly|0};
+  return{cls:buildClsData(vd,vd.calibration,edit,segmentState),dims:vd.dims,halfExt:vd.halfExt};
+ },
+});
+export function hiddenClsFor(onReady=()=>{}){
+ if(prepared&&prepared.key===vrDataKey()){const P=prepared;return{cls:P.cls,dims:(P.half||P.vd).dims,halfExt:P.vd.halfExt}}
+ return hiddenMgr.get(onReady);
+}
+export function releaseHiddenCls(){hiddenMgr.release()}
 // page panel: progress while preparing, then the start button (a click, so
 // the session may start)
 export function showPreparePanel({language='ja',mode='vr',onStart}){

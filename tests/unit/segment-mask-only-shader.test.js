@@ -52,6 +52,8 @@ describe('shaders: membership tests honour the mask-only bit', () => {
     const vr = readFileSync(new URL('../../docs/vr-view.js', import.meta.url), 'utf8');
     expect(vr).toMatch(/uniform int editMaskOnly;/);
     expect(vr).toMatch(/\(\(editMaskOnly>>s\)&1\)==1\|\|\(v>=a\.x&&v<=a\.y\)/);
-    expect(vr).toMatch(/else if\(maskOnly&&f<191\)f=191/);
+    // the classification builder moved to point-cls.js (shared with the PC 3D point markers, build 465)
+    const cls = readFileSync(new URL('../../docs/point-cls.js', import.meta.url), 'utf8');
+    expect(cls).toMatch(/else if\(maskOnly&&f<191\)f=191/);
   });
 });
