@@ -109,3 +109,20 @@ describe('createButtonPress', () => {
     const b = createButtonPress(); expect(b.update(false, 0)).toBeNull(); b.update(true, 0); expect(b.update(false, 500)).toBeNull();
   });
 });
+
+describe('createRingMenu (drawing)', () => {
+  it('maps a uv to a slot and keeps its labels', async () => {
+    const { createRingMenu } = await import('../../docs/vr-ring.js');
+    const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true } });
+    const THREE = await import('three');
+    globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) };
+    try {
+      const r = createRingMenu(THREE); r.setItems(['a', 'b', null, 'd', 'e', 'f'], [true, true, false, true, true, true], []);
+      expect(r.n()).toBe(6); expect(r.mesh.visible).toBe(false);
+      const R = 0.055 / 0.16; // item radius as a fraction of the board side
+      expect(r.slotFromUv({ x: 0.5, y: 0.5 + R })).toBe(0); expect(r.slotFromUv({ x: 0.5 + R, y: 0.5 })).not.toBeNull(); expect(r.slotFromUv({ x: 0.5, y: 0.5 })).toBeNull();
+      r.placeAt({ x: 1, y: 2, z: 3 }, { x: 1, y: 2, z: 5 }); expect(r.mesh.position.toArray()).toEqual([1, 2, 3]);
+      r.dispose();
+    } finally { delete globalThis.document; }
+  });
+});

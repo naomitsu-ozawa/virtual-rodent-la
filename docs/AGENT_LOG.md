@@ -38,6 +38,28 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-06 — claude/vr-surface-point (one-handed VR redesign, build 468)
+
+**Agent:** Claude (Sonnet worker, supervised)
+**Task:** Owner's request: every VR operation must be possible with one hand (PR #103).
+
+### What changed
+- Grip always moves the volume (two hands: scale). Sections are no longer grabbed: the invisible 24 cm board, the 20 cm proximity grab, the guide lines and the 持ち方 setting are removed. A section is hit only on its thin frame band or its number tag.
+- Trigger (docs/vr-view.js, pure functions in docs/vr-point.js): the target is resolved once at the press (`resolveTriggerTarget`) and kept until the release. Short press (< 0.5 s) records / selects / pins a label; long press on a point opens the point ring (move / delete); moving the hand after a press on a band, a tag or empty space drags the selected section (`sectionDragStep`, holder space, normal-only translation, rotation about the centre, clamp to the box).
+- 断面 mode records on the selected section only (hollow parts too); 表面 mode records on the first tissue surface; the place is the one at the press. The cursor shape tells the mode (square frame on the section / small core + ring).
+- A/X: short = quick ring (docs/vr-ring.js: `createRingMenu`, `createWheelStick`, items saved in `vrl-vr-settings-5` -> `wheel`, editable in the 表示 tab), long (0.5 s) = the full menu. Undo stack (20 steps: record, delete, move). The left-hand section panel is gone (the 断面 tab has every function); a plain cue is on the left controller.
+- Point pick radius about 4.7 mm; hover pulse debounced; a point select is one pulse. `updateCommentPosition` in comments.js.
+
+### Why
+- The invisible board and the proximity grab took the laser from what was behind a section, so a single hand could not point; the grip/trigger split also needed both hands.
+
+### Follow-up / open questions
+- Comment on a point is behind the localStorage flag `vrl-vr-point-comment` (off): the system keyboard inside an immersive session is unverified on the Quest.
+- Hidden points seen obliquely through thin tissue can still be hard to pick (the hidden test is a march towards the head).
+- Frame band width (6 mm / 0.8 deg), the 0.5 s long press and the drag thresholds (10 mm / 1.5 deg) are constants to tune on the device.
+
+---
+
 ## 2026-10-05 — claude/viewer-color-themes (colour themes, builds 449-450)
 
 **Agent:** Claude

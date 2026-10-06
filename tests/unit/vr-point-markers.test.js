@@ -77,3 +77,21 @@ describe('createSectionCursor', () => {
     cur.dispose(); expect(scene.children.length).toBe(0);
   });
 });
+
+describe('preview of a point being moved (build 468)', () => {
+  it('drawn at the preview voxel; faint at its old place when the voxel is null', () => {
+    addComment(createComment({ text: 'a', position: { i: 1, j: 1, k: 1 }, series: fp, id: 'p1' }));
+    const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2));
+    scene.add(mesh); scene.updateMatrixWorld(true);
+    const m = createVrPointMarkers(THREE, scene, deps), base = { fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 0, 3) };
+    m.update(base); const home = m.centres()[0].world.clone(); const solid = scene.children.find(o => o.renderOrder === 4).material;
+    m.update({ ...base, preview: { id: 'p1', voxel: { i: 7, j: 5, k: 4 } } });
+    const l = voxelToLocal({ i: 7, j: 5, k: 4 }, halfExt, dims);
+    expect(m.centres()[0].world.distanceTo(new THREE.Vector3(l.x, l.y, l.z))).toBeLessThan(1e-9);
+    m.update({ ...base, preview: { id: 'p1', voxel: null } });
+    expect(m.centres()[0].world.distanceTo(home)).toBeLessThan(1e-9);
+    const ghost = scene.children.find(o => o.renderOrder === 4).material;
+    expect(ghost.opacity).toBeCloseTo(0.35); expect(ghost).not.toBe(solid);
+    m.dispose();
+  });
+});

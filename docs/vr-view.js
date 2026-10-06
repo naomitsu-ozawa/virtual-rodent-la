@@ -8,22 +8,23 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build467';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build467';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build467';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build467';
-import { datasetFingerprint } from './project-file.js?v=20261006-build467';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, sectionDragStep, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, undoDelete, pointIsHidden } from './vr-point.js?v=20261006-build467';
-import { createVrPointMarkers, createSurfaceCursor, createSectionCursor } from './vr-point-markers.js?v=20261006-build467';
-import { buildClsData } from './point-cls.js?v=20261006-build467';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261006-build467';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment } from './comments.js?v=20261006-build467';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build467';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build467';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build467';
-import { tr } from './i18n.js?v=20261006-build467';
-import { APP_BUILD } from './version.js?v=20261006-build467';
-import { wc, ww } from './ui-shell.js?v=20261006-build467';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build468';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build468';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build468';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build468';
+import { datasetFingerprint } from './project-file.js?v=20261006-build468';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, sectionDragStep, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261006-build468';
+import { createVrPointMarkers, createSurfaceCursor, createSectionCursor } from './vr-point-markers.js?v=20261006-build468';
+import { buildClsData } from './point-cls.js?v=20261006-build468';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261006-build468';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261006-build468';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText } from './comments.js?v=20261006-build468';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build468';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build468';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build468';
+import { tr } from './i18n.js?v=20261006-build468';
+import { APP_BUILD } from './version.js?v=20261006-build468';
+import { wc, ww } from './ui-shell.js?v=20261006-build468';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -548,9 +549,9 @@ async function buildVolumeData(maxDim,onProgress,{noBricks=false}={}){
 // VR settings kept per browser (resolution only applies when a session starts)
 const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is (build 468: no setting for how a section is held; sections are moved with the trigger)
-const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1,labelSize:0};
+const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,wheel:[...DEFAULT_WHEEL],cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1,labelSize:0};
 // an older key is migrated once, with the slice opacity reset to the new default
-function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);return{...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})}}catch{return{...DEFAULTS}}}
+function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);const v={...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})};v.wheel=normalizeWheelItems(v.wheel);return v}catch{return{...DEFAULTS,wheel:[...DEFAULT_WHEEL]}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
 // smaller per axis and scaled up where the volume box covers the view. Owner,
@@ -636,10 +637,10 @@ function makeMenu(W=MENU_W,H=MENU_H,widthM=0.5){
 // small tag on the left controller while the menu is closed (open it by
 // pointing at it); a plain textured plane
 function makeBadge(text){
- const canvas=document.createElement('canvas');canvas.width=256;canvas.height=96;const ctx=canvas.getContext('2d');
- ctx.fillStyle='rgba(45,108,223,.95)';ctx.beginPath();ctx.roundRect(0,0,256,96,24);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 40px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,128,50);
+ const canvas=document.createElement('canvas');canvas.width=512;canvas.height=120;const ctx=canvas.getContext('2d');
+ ctx.fillStyle='rgba(45,108,223,.95)';ctx.beginPath();ctx.roundRect(0,0,512,120,28);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 34px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,256,62,490);
  const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
- const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.08,0.03),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
+ const mesh=new THREE.Mesh(new THREE.PlaneGeometry(0.10,0.024),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));
  mesh.position.set(0,0.05,0.02);mesh.rotation.x=-0.6;mesh.userData.dispose=()=>{tex.dispose();mesh.geometry.dispose();mesh.material.dispose()};
  return mesh;
 }
@@ -867,6 +868,8 @@ let running=null;
 // build 465: where the trigger records a VR point: 'section' (the face of a section, default) or 'surface' (the first tissue surface); remembered
 // while the page lives, not saved
 let vrPointMode='section';
+// build 468: the point menu's 「コメント」 (a hidden text field; the Quest system keyboard in an immersive session is unverified): off unless localStorage vrl-vr-point-comment is '1'
+const VR_POINT_COMMENT=(()=>{try{return localStorage.getItem('vrl-vr-point-comment')==='1'}catch{return false}})();
 export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
  const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;settings.clsDiag=0;settings.distDiag=0;
@@ -886,13 +889,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
- const L=ja?{ptT:'位置コメント（VR ポイント）',ptMode:'記録する場所',ptModeV:['断面','表面'],ptHelpSurf:['トリガーを短く押す：レーザーが最初に当たる組織の表面に記録／点に当てて選択','表面＝表示中のセグメントの境界（不透明度は無視。断面で切った面も表面）','記録は押した瞬間の場所。0.5秒以上押すと記録しません','スティックを動かした直後0.3秒は記録しません（その手のみ）','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptDone:'記録しました：',ptHelp:['トリガーを短く押す：選んだ断面にレーザーを当てて記録（空気の所も可）／点に当てて選択','記録は押した瞬間の場所。0.5秒以上押すと記録しません','スティックを動かした直後0.3秒は記録しません（その手のみ）','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptDel:'この点を削除',ptUndo:'元に戻す',ptSel:'選択中の点：',ptNoSel:'点にレーザーを当ててトリガーで選択',ptDeleted:'点を削除しました（「元に戻す」で戻せます）',ptRestored:'点を元に戻しました',ptList:'位置コメント一覧',ptNone:'まだありません',title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細','解析','位置'],anT:'解析結果（体積）',anNone:'解析結果はありません（2D/3D画面の体積解析で作成し、表示中のものがVRに入ります）',anTotal:'合計',anPage:'ページ',lbSize:'ラベルの大きさ',lbSizeV:['小','中','大'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠の細い線・番号札：トリガーで選択／押したまま動かして移動・回転','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','トリガー（短く）：断面や組織に点を記録／点に当てて選択','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',close:'閉じる',badge:'メニュー',
+ const L=ja?{ptT:'位置コメント（VR ポイント）',ptMode:'記録する場所',ptModeV:['断面','表面'],ptHelpSurf:['トリガーを短く押す：レーザーが最初に当たる組織の表面に記録／点に当てて選択','表面＝表示中のセグメントの境界（不透明度は無視。断面で切った面も表面）','記録は押した瞬間の場所。0.5秒以上押すと記録しません','スティックを動かした直後0.3秒は記録しません（その手のみ）','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptDone:'記録しました：',ptHelp:['トリガーを短く押す：選んだ断面にレーザーを当てて記録（空気の所も可）／点に当てて選択（長押し：移動・削除）','記録は押した瞬間の場所。0.5秒以上押すと記録しません','スティックを動かした直後0.3秒は記録しません（その手のみ）','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptDel:'この点を削除',ptUndo:'元に戻す',ptSel:'選択中の点：',ptNoSel:'点にレーザーを当ててトリガーで選択',ptDeleted:'点を削除しました（「元に戻す」で戻せます）',ptRestored:'点を元に戻しました',ptList:'位置コメント一覧',ptNone:'まだありません',title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細','解析','位置'],anT:'解析結果（体積）',anNone:'解析結果はありません（2D/3D画面の体積解析で作成し、表示中のものがVRに入ります）',anTotal:'合計',anPage:'ページ',lbSize:'ラベルの大きさ',lbSizeV:['小','中','大'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/X：短く＝よく使う（リング）、長押し＝メニューの開閉',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす・向きを変える','両手でグリップ：拡大・縮小','トリガー（短く）：点を記録／点を選択（点を長押し：移動・削除）','A／X：短く＝よく使う（リング）、長押し＝メニュー','B／Y：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠の細い線・番号札：トリガーで選択／押したまま動かして移動・回転','スティック上下：選んだ断面をスクロール','点を長押し：移動・削除のリング','B／Y：断面の表示／非表示（長押しで追加）','トリガー（短く）：断面や組織に点を記録／点に当てて選択','A／X：短く＝よく使う（リング）、長押し＝メニュー'],helpMenu:'トリガー：メニューのボタン・スライダー',close:'閉じる',badge:'X：よく使う／長押し：メニュー',wheelEdit:'よく使う（リング）を設定',wheelT:'よく使う（リング）の項目',wheelHelp:'1＝上、時計回り。スロットを選んでから項目を押す',wheelEmpty:'空き',wheelPrev:'◀ 前へ',wheelNext:'次へ ▶',wheelClear:'空にする',wheelReset:'既定に戻す',back:'戻る',wheelNoMode:'断面モード／表面モードがありません（切り替えられません）',ptMove:'移動',ptDelete:'削除',ptComment:'コメント',modeNow:'記録する場所：',modeHint:'（A/X のリングで切り替え）',undoDone:'元に戻しました',undoFail:'元に戻せませんでした',undoNone:'戻す操作はありません',ptMoved:'点を移動しました（「元に戻す」で戻せます）',ptMoveHint:'移動中：置きたい所でトリガー（A/X で取り消し）',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',anBench:'解析の重さ（約 12 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（一覧で色付き）を法線方向に動かします','何もない所でトリガーを押したまま動かすと、選んだ断面が動きます（枠は手の色で光ります）'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    handR:'右',handL:'左',secHelp:'枠の細い線・番号札をトリガーで選択。押したまま動かすと移動・回転（番号の下＝最後に動かした手）',secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：動かしています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
-  :{ptT:'Position comments (VR points)',ptMode:'Record on',ptModeV:['Section','Surface'],ptHelpSurf:['Short trigger press: records on the first tissue surface the laser meets; laser on a point selects it','Surface = edge of a shown segment (opacity ignored; a face cut by a section counts)','The place is the one at the moment of the press; holding 0.5 s or more records nothing','No recording for 0.3 s after the thumbstick is moved (that hand only)','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptDone:'Recorded: ',ptHelp:['Short trigger press: laser on the selected section records (air included); laser on a point selects it','The place is the one at the moment of the press; holding 0.5 s or more records nothing','No recording for 0.3 s after the thumbstick is moved (that hand only)','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptDel:'Delete this point',ptUndo:'Undo',ptSel:'Selected point: ',ptNoSel:'Point the laser at a point and pull the trigger to select',ptDeleted:'Point deleted (Undo brings it back)',ptRestored:'Point restored',ptList:'Position comments',ptNone:'None yet',title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details','Analysis','Points'],anT:'Analysis results (volume)',anNone:'No analysis results (made with the volume analysis on the page; the visible ones come into VR)',anTotal:'Total',anPage:'Page',lbSize:'Label size',lbSizeV:['Small','Medium','Large'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Thin frame line / number tag: trigger selects, hold and move to slide / rotate','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','Trigger (short): records a point on a section or tissue; on a point selects it','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',close:'Close',badge:'Menu',
+  :{ptT:'Position comments (VR points)',ptMode:'Record on',ptModeV:['Section','Surface'],ptHelpSurf:['Short trigger press: records on the first tissue surface the laser meets; laser on a point selects it','Surface = edge of a shown segment (opacity ignored; a face cut by a section counts)','The place is the one at the moment of the press; holding 0.5 s or more records nothing','No recording for 0.3 s after the thumbstick is moved (that hand only)','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptDone:'Recorded: ',ptHelp:['Short trigger press: laser on the selected section records (air included); laser on a point selects it','The place is the one at the moment of the press; holding 0.5 s or more records nothing','No recording for 0.3 s after the thumbstick is moved (that hand only)','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptDel:'Delete this point',ptUndo:'Undo',ptSel:'Selected point: ',ptNoSel:'Point the laser at a point and pull the trigger to select',ptDeleted:'Point deleted (Undo brings it back)',ptRestored:'Point restored',ptList:'Position comments',ptNone:'None yet',title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details','Analysis','Points'],anT:'Analysis results (volume)',anNone:'No analysis results (made with the volume analysis on the page; the visible ones come into VR)',anTotal:'Total',anPage:'Page',lbSize:'Label size',lbSizeV:['Small','Medium','Large'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: short = quick ring, hold = open / close the menu',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and turn / move the volume','Grip with both hands: scale','Trigger (short): record / select a point (hold on a point: move, delete)','A / X: short = quick ring, hold = menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Thin frame line / number tag: trigger selects, hold and move to slide / rotate','Thumbstick up / down: scroll the selected plane','Hold on a point: ring with move / delete','B / Y: show / hide sections (long press: add)','Trigger (short): records a point on a section or tissue; on a point selects it','A / X: short = quick ring, hold = menu'],helpMenu:'Trigger: menu buttons and sliders',close:'Close',badge:'X: quick / hold: menu',wheelEdit:'Set quick ring items',wheelT:'Quick ring items',wheelHelp:'1 = top, clockwise. Pick a slot, then an item',wheelEmpty:'Empty',wheelPrev:'◀ Prev',wheelNext:'Next ▶',wheelClear:'Clear',wheelReset:'Defaults',back:'Back',wheelNoMode:'No section / surface mode item (the mode cannot be switched)',ptMove:'Move',ptDelete:'Delete',ptComment:'Comment',modeNow:'Record on: ',modeHint:' (switch in the A/X ring)',undoDone:'Undone',undoFail:'Could not undo',undoNone:'Nothing to undo',ptMoved:'Point moved (Undo brings it back)',ptMoveHint:'Moving: trigger where it goes (A/X cancels)',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',anBench:'Analysis cost (about 12 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (highlighted in the list) on its normal','Hold the trigger on empty space and move: the selected plane moves (its frame glows in the hand colour)'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    handR:'R',handL:'L',secHelp:'Trigger on a thin frame line or number tag selects it; hold and move to slide / rotate (under the number: last hand)',secOff:'Turn it on here or press B/Y',
@@ -911,7 +914,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // controllers: ray, input source (handedness, gamepad), haptics
  const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
  const controllers=[0,1].map(i=>{const c=renderer.xr.getController(i);scene.add(c);
-  const ray=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1)]),new THREE.LineBasicMaterial({color:0x88ccff}));ray.scale.z=0.08;c.add(ray);c.userData.ray=ray;c.userData.gate=createStickGate();return c});
+  const ray=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1)]),new THREE.LineBasicMaterial({color:0x88ccff}));ray.scale.z=0.08;c.add(ray);c.userData.ray=ray;c.userData.gate=createStickGate();c.userData.stick=createWheelStick();return c});
  // build 398 (owner: laser pointers in two colours): right hand red, left hand blue, used by the ray, its end dot,
  // the guide line and the glow of the frame that hand points at or holds
  const HAND_COLORS={right:0xff7a3d,left:0x7c6cff},handColor=c=>HAND_COLORS[c.userData.source?.handedness]??0xdddddd;
@@ -922,15 +925,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // build 468: no guide line any more (sections are not picked by nearness)
  }
  const pulse=(c,v=0.35,ms=18)=>{try{c.userData.source?.gamepad?.hapticActuators?.[0]?.pulse?.(v,ms)}catch{}};
- const badge=makeBadge(L.badge);badge.visible=false;
+ const badge=makeBadge(L.badge); // build 468: a plain cue on the left controller (not a laser target)
  const leftHand=()=>controllers.find(c=>c.userData.source?.handedness==='left')||controllers[0];
  const setRay=c=>{tmpM.identity().extractRotation(c.matrixWorld);raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);raycaster.ray.direction.set(0,0,-1).applyMatrix4(tmpM)};
  const menuHit=c=>{if(!ui.open)return null;setRay(c);return raycaster.intersectObject(menu.mesh,false)[0]||null};
- const badgeHit=c=>{if(ui.open||!badge.parent||badge.parent===c)return null;setRay(c);return raycaster.intersectObject(badge,false)[0]||null};
- // section panel (build 365): quick plane actions on the left hand (above the menu tag), shown while sections are on; the other hand's ray presses it
- // build 403 (owner): 10 cm to the left of the hand, so it no longer covers the volume while the left hand works on it
- const panel=makeMenu(640,232,0.17);panel.mesh.position.set(-0.10,0.10,0.03);panel.mesh.rotation.x=-0.6;panel.mesh.visible=false;leftHand().add(panel.mesh);
- const panelHit=c=>{if(!panel.mesh.visible||!panel.mesh.parent||panel.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(panel.mesh,false)[0]||null};
  // head pose (world) from the XR camera
  const head=new THREE.Vector3(),headFwd=new THREE.Vector3(),headLeft=new THREE.Vector3(),tmpQh=new THREE.Quaternion();
  const readHead=()=>{renderer.xr.updateCamera(camera);const cam=renderer.xr.getCamera();cam.getWorldPosition(head);cam.getWorldQuaternion(tmpQh);headFwd.set(0,0,-1).applyQuaternion(tmpQh);headFwd.y=0;if(headFwd.lengthSq()<1e-6)headFwd.set(0,0,-1);headFwd.normalize();headLeft.set(headFwd.z,0,-headFwd.x)};
@@ -947,11 +945,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const computeHelpTarget=()=>helpTarget.copy(head).addScaledVector(headFwd,0.62).addScaledVector(headLeft,-0.34).add(new THREE.Vector3(0,-0.16,0));
  const placeHelpNow=()=>{readHead();computeHelpTarget();help.mesh.position.copy(helpTarget);help.mesh.lookAt(head);helpPlaced=true;helpMoving=false};
  const helpHit=c=>{if(!help.mesh.visible||help.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(help.mesh,false)[0]||null};
- // build 404 (owner: the left-hand panel could not be pressed with the menu behind it): the nearest of the menu, the
- // menu tag, the section panel and the help board along the ray wins (was a fixed order, menu first); {menu,badge,panel,help}
- const boardHits=c=>{const all=[['menu',menuHit(c)],['badge',badgeHit(c)],['panel',panelHit(c)],['help',helpHit(c)]];let best=null;
+ // build 468: ring menus (vr-ring.js): the quick ring around the hand (A/X short) and the point ring (long press on a point)
+ const wheel=createRingMenu(THREE),pointWheel=createRingMenu(THREE);scene.add(wheel.mesh);scene.add(pointWheel.mesh);
+ let wheelOwner=null,pw=null; // pw = {c,id}
+ const ringHit=(c,ring)=>{if(!ring.mesh.visible)return null;setRay(c);const x=raycaster.intersectObject(ring.mesh,false)[0];if(!x||!x.uv)return null;const k=ring.slotFromUv(x.uv);return k===null?null:{distance:x.distance,slot:k}};
+ // the nearest of the menu, the help board and the ring items along the ray wins; {menu,help,wheel,pwheel}
+ const boardHits=c=>{const all=[['menu',menuHit(c)],['help',helpHit(c)],['wheel',ringHit(c,wheel)],['pwheel',ringHit(c,pointWheel)]];let best=null;
   for(const [k,x] of all)if(x&&(!best||x.distance<best[1].distance))best=[k,x];
-  const o={menu:null,badge:null,panel:null,help:null};if(best)o[best[0]]=best[1];return o};
+  const o={menu:null,help:null,wheel:null,pwheel:null};if(best)o[best[0]]=best[1];return o};
  help.onDraw(()=>{
   const w=[],lines=section.on?L.helpSec.slice():L.helpBasic.slice();
   if(ui.open)lines[lines.length-1]=L.helpMenu;
@@ -967,7 +968,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  let frameNo=0,poseAt=0,placePending=false;ui.placeLine='';
  // menu grab (build 366): grip while pointing at the menu moves it with the hand; released, it stays there (position becomes fixed)
  let menuHeld=null;
- const setMenuOpen=open=>{ui.open=open;menu.mesh.visible=open;if(open){badge.removeFromParent();placeMenuNow()}else leftHand().add(badge);badge.visible=!open;menu.refresh()};
+ const setMenuOpen=open=>{ui.open=open;menu.mesh.visible=open;if(open)placeMenuNow();menu.refresh()};
  const bringVolumeFront=()=>{readHead();scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(head).addScaledVector(headFwd,0.55).add(new THREE.Vector3(0,-0.12,0));holder.quaternion.identity();holder.scale.setScalar(baseScale)};
  // grab: one hand moves/rotates (holder follows the controller); two hands
  // scale by the change in hand distance
@@ -1068,8 +1069,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const updatePress=(c,now)=>{
   const pr=c.userData.press;if(!pr)return;
   if(pr.tp.update(now)==='long'){
-   // a long press on a point: the point menu comes in stage 3; for now only the state and the double pulse
-   if(pr.res.kind==='point'){pr.consumed=true;c.userData.longPoint={id:pr.res.ref.id};pulseTwice(c)}
+   // a long press on a point: the point ring (move / delete) around it, double pulse
+   if(pr.res.kind==='point'){pr.consumed=true;openPointWheel(c,pr.res.ref.id);pulseTwice(c)}
    else if(pr.res.kind==='record'||pr.res.kind==='label')pr.consumed=true;
   }
   if(!c.userData.drag&&(pr.res.kind==='section'||pr.res.kind==='empty')){
@@ -1127,21 +1128,28 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const flashMsg=(t,ms=2500)=>{ui.flash=t;ui.flashUntil=performance.now()+ms;menu.refresh()};
  const pulseTwice=c=>{pulse(c,0.35,18);setTimeout(()=>pulse(c,0.35,18),90)};
  // selected point (a comment id, or null) and the last deletion (for the undo), both only for this VR session
- let vpSel=null,vpDeleted=null;
+ let vpSel=null;const undo=createUndoStack(),undoStore={removeComment,restoreComment,updateCommentPosition};
  // build 468: records the place that was under the laser at the moment of the press (hit: {voxel}); a failure is silent (no vibration)
  const recordPoint=(c,hit)=>{
   if(!hit?.voxel||!vrFp)return null;
   const rec=recordVrPoint({voxel:hit.voxel,series:vrFp,language:ja?'ja':'en'});
   if(!rec)return null;
-  vpDeleted=null;pulse(c,HAPTIC.record.amp,HAPTIC.record.ms);flashMsg(L.ptDone+rec.text+' · i '+hit.voxel.i+' · j '+hit.voxel.j+' · k '+hit.voxel.k,4000);return rec;
+  undo.push({type:'add',id:rec.id});pulse(c,HAPTIC.record.amp,HAPTIC.record.ms);flashMsg(L.ptDone+rec.text+' · i '+hit.voxel.i+' · j '+hit.voxel.j+' · k '+hit.voxel.k,4000);return rec;
  };
  const selectPoint=(c,id)=>{vpSel=vpSel===id?null:id;pulse(c,HAPTIC.select.amp,HAPTIC.select.ms);menu.refresh()}; // build 468: one pulse (was two)
  const commentStore={getComments,removeComment,restoreComment};
- const deleteSelectedPoint=()=>{
-  const d=deleteSelected(vpSel,commentStore);if(!d)return false;
-  vpDeleted=d;vpSel=null;flashMsg(L.ptDeleted);return true;
+ // delete a point (the same store operation as the 2D list) and remember it for the undo
+ const deletePoint=id=>{
+  const d=deleteSelected(id,commentStore);if(!d)return false;
+  undo.push({type:'delete',c:d.c,index:d.index});if(vpSel===id)vpSel=null;flashMsg(L.ptDeleted);return true;
  };
- const undoDeletePoint=()=>{const d=vpDeleted;if(!d)return false;vpDeleted=null;if(undoDelete(d,commentStore)){vpSel=d.c.id;flashMsg(L.ptRestored);return true}menu.refresh();return false};
+ const deleteSelectedPoint=()=>deletePoint(vpSel);
+ // undo the last record / delete / move (20 steps); a failed op (the 2D side changed the list) is dropped
+ const undoLast=()=>{
+  const op=undo.pop();if(!op){flashMsg(L.undoNone);return false}
+  if(!applyUndo(op,undoStore)){flashMsg(L.undoFail);return false}
+  vpSel=op.type==='add'?null:op.type==='delete'?op.c.id:op.id;flashMsg(L.undoDone);return true;
+ };
  // hidden behind tissue: refreshed about 10 times a second (not every frame); the rule is vr-point.js pointIsHidden. The head is the middle of both eyes.
  let vpHidden=new Set(),vpHiddenAt=0;const tmpEyeL=new THREE.Vector3(),tmpEyeR=new THREE.Vector3(),tmpHp=new THREE.Vector3();
  const updateHidden=now=>{
@@ -1156,7 +1164,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   for(const p of pts){tmpHp.copy(p.world);mesh.worldToLocal(tmpHp);if(pointIsHidden(tmpHp,tmpEyeL,opt))next.add(p.id)}
   vpHidden=next;
  };
- const unsubComments=onCommentsChange(()=>{if(vpSel&&!getComments().some(c=>c.id===vpSel))vpSel=null;if(ui.tab===6)menu.refresh()});
+ const unsubComments=onCommentsChange(()=>{const ids=new Set(getComments().map(c=>c.id));if(vpSel&&!ids.has(vpSel))vpSel=null;for(const c of controllers)if(c.userData.moving&&!ids.has(c.userData.moving.id))c.userData.moving=null;if(pw&&!ids.has(pw.id))closePointWheel();if(ui.tab===6)menu.refresh()});
  const volumeHit=c=>{if(c)setRay(c);return volumeHitRay()};
  const volumeHitRay=()=>{
   const vp=volPick;if(!vp||!mesh?.parent||!material||diagAn.noLabels)return null; // diagnostic only: during the analysis bench the surface cursor and recording stop too
@@ -1253,7 +1261,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const ring=new THREE.Line(ringGeo,new THREE.LineBasicMaterial({color:0xffffff}));ring.position.set(0,0.035,0.02);ring.rotation.x=-0.6;ring.visible=false;
  let dragging=null,shotRequested=false;
  for(const c of controllers){
-  c.addEventListener('connected',e=>{c.userData.source=e.data;if(c.userData.source?.handedness==='left'){if(!ui.open)c.add(badge);c.add(panel.mesh)}});
+  c.addEventListener('connected',e=>{c.userData.source=e.data;if(c.userData.source?.handedness==='left')c.add(badge)});
   c.addEventListener('disconnected',()=>{c.userData.drag=null;c.userData.press=null;c.userData.source=null});
   c.addEventListener('squeezestart',()=>{
    if(ui.open&&!menuHeld&&boardHits(c).menu){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
@@ -1269,14 +1277,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // from last frame's candidates) and kept until the release. Short press (< 0.5 s) = the action of the target (record / label / select a point);
   // holding it = long press (a point: the point menu, stage 3); on a frame band, a number tag or empty space, moving the hand drags the section.
   c.addEventListener('selectstart',()=>{
-   const bd=boardHits(c),h=bd.menu,pi=bd.panel?panel.hit(bd.panel.uv):-1;
-   if(h||bd.badge||pi>=0){
-    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
-    if(bd.badge){setMenuOpen(true);pulse(c);return}
-    panel.press(pi);pulse(c);return;
-   }
+   const bd=boardHits(c),h=bd.menu;
+   if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
+   if(bd.wheel){confirmWheel(bd.wheel.slot,c);return}
+   if(bd.pwheel){confirmPoint(bd.pwheel.slot,c);return}
    if(bd.help)return;
    const r0=c.userData.res,res=r0&&r0.kind!=='board'?r0:{kind:'none',ref:null},now=performance.now(),hp=handInHolder(c);
+   // this hand's ring is open: the press confirms the lit item, or only closes the ring
+   if(res.kind==='ring-confirm'){if(wheelOwner===c)confirmWheel(res.ref,c);else confirmPoint(res.ref,c);return}
+   if(res.kind==='ring-close'){if(wheelOwner===c)closeWheel();if(pw?.c===c)closePointWheel();return}
    const pr={t0:now,res,hit0:res.kind==='record'||res.kind==='label'?res.ref:null,p0:hp.p,q0:hp.q,gateOk:c.userData.gate.canRecord(now),consumed:false,tp:createTriggerPress()};
    pr.tp.press(now);c.userData.press=pr;
    // a frame band or number tag selects its section at the press (the selection never moves it)
@@ -1291,8 +1300,108 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(k==='record'){if(pr.gateOk)recordPoint(c,pr.hit0)}
    else if(k==='label')togglePin(c,pr.hit0)
    else if(k==='point')selectPoint(c,pr.res.ref.id);
+   else if(k==='move')placeMoved(c,pr.res.ref);
   });
  }
+ // ===== build 468: ring menus =====
+ const itemOf=id=>WHEEL_ITEMS.find(i=>i.id===id),itemName=id=>id?(ja?itemOf(id).ja:itemOf(id).en):null;
+ const nextSection=()=>{if(planes.length<2)return;const i=planes.indexOf(section.selected);section.selected=planes[(i+1)%planes.length];menu.refresh()};
+ const wheelAvail=id=>{
+  switch(id){
+   case'undo':return undo.size>0;
+   case'section-add':return planes.length<MAX_PLANES;
+   case'point-delete':return!!vpSel;
+   case'section-next':return planes.length>=2;
+   case'snap-axial':case'snap-coronal':case'snap-sagittal':case'section-clip':return!!section.selected;
+   default:return true;
+  }
+ };
+ const wheelOn=id=>id==='mode-section'?vrPointMode==='section':id==='mode-surface'?vrPointMode==='surface':id==='section-toggle'?section.on:false;
+ let wheelKey='';
+ const wheelKeyNow=()=>settings.wheel.map(id=>id?id+(wheelAvail(id)?1:0)+(wheelOn(id)?1:0):'-').join(',');
+ const refreshWheel=()=>{const ids=settings.wheel;wheel.setItems(ids.map(itemName),ids.map(id=>!!id&&wheelAvail(id)),ids.map(id=>!!id&&wheelOn(id)));wheelKey=wheelKeyNow()};
+ const lockStick=c=>{c.userData.stickLock=true}; // the thumbstick does not scroll the section until it is back at the centre
+ const closeWheel=()=>{if(!wheelOwner)return;lockStick(wheelOwner);wheelOwner=null;wheel.mesh.visible=false};
+ const closePointWheel=()=>{if(!pw)return;lockStick(pw.c);pw=null;pointWheel.mesh.visible=false};
+ const openWheel=c=>{closeWheel();closePointWheel();wheelOwner=c;c.userData.stick.reset();refreshWheel();wheel.setHighlight(null);wheel.mesh.visible=true};
+ const pwIds=()=>VR_POINT_COMMENT?['move','delete','comment']:['move','delete'];
+ const openPointWheel=(c,id)=>{
+  closeWheel();closePointWheel();pw={c,id};c.userData.stick.reset();
+  const lab={move:L.ptMove,delete:L.ptDelete,comment:L.ptComment},ids=pwIds();
+  pointWheel.setItems(ids.map(k=>lab[k]),ids.map(()=>true),[]);pointWheel.setHighlight(null);pointWheel.mesh.visible=true;
+ };
+ const editComment=id=>{
+  if(!VR_POINT_COMMENT)return;const c0=getComments().find(x=>x.id===id);if(!c0)return;
+  const inp=document.createElement('input');inp.type='text';inp.value=c0.text;Object.assign(inp.style,{position:'fixed',left:'-9999px',top:'0'});document.body.appendChild(inp);
+  inp.addEventListener('change',()=>{updateCommentText(id,inp.value)});inp.addEventListener('blur',()=>inp.remove());inp.focus();
+ };
+ const wheelDo=(id,c)=>{
+  switch(id){
+   case'mode-section':vrPointMode='section';break;
+   case'mode-surface':vrPointMode='surface';break;
+   case'undo':undoLast();break;
+   case'section-toggle':setSection(!section.on);break;
+   case'section-add':if(planes.length<MAX_PLANES)addPlane(c);break;
+   case'point-delete':deletePoint(vpSel);break;
+   case'section-next':nextSection();break;
+   case'snap-axial':snapPlane(section.selected,0);break;
+   case'snap-coronal':snapPlane(section.selected,1);break;
+   case'snap-sagittal':snapPlane(section.selected,2);break;
+   case'section-clip':{const sp=section.selected;if(sp){sp.cut=!sp.cut;if(sp.cut&&settings.cut===2)chooseSide(sp);menu.refresh()}break}
+   case'home':bringVolumeFront();placeMenuNow();placeHelpNow();break;
+   case'screenshot':shotRequested=true;break;
+   case'menu':setMenuOpen(!ui.open);break;
+  }
+  menu.refresh();
+ };
+ const confirmWheel=(k,c)=>{const id=settings.wheel[k];if(!id||!wheelAvail(id))return false;closeWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);wheelDo(id,c);return true};
+ const confirmPoint=(k,c)=>{
+  const key=pwIds()[k],id=pw?.id;if(!key||!id)return false;closePointWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);
+  if(key==='move'){const c0=getComments().find(x=>x.id===id);if(c0){c.userData.moving={id,from:{...c0.position}};flashMsg(L.ptMoveHint,4000)}}
+  else if(key==='delete')deletePoint(id);
+  else if(key==='comment')editComment(id);
+  return true;
+ };
+ // a tap while moving a point: put it at the place under the laser at the press
+ const placeMoved=(c,placement)=>{
+  const mv=c.userData.moving;if(!mv||!placement?.voxel)return;
+  const r=updateCommentPosition(mv.id,placement.voxel);c.userData.moving=null;if(!r)return;
+  undo.push({type:'move',id:mv.id,from:mv.from,to:{...placement.voxel}});vpSel=mv.id;pulse(c,HAPTIC.moveDrop.amp,HAPTIC.moveDrop.ms);flashMsg(L.ptMoved,3000);
+ };
+ // A/X: short = (cancel a move) / close the point ring / close the quick ring / open the quick ring; long = open / close the menu
+ const onAxShort=c=>{
+  if(c.userData.moving){c.userData.moving=null;menu.refresh();return}
+  if(pw?.c===c){closePointWheel();return}
+  if(wheelOwner===c){closeWheel();return}
+  openWheel(c);
+ };
+ const onAxLong=c=>{
+  if(wheelOwner===c)closeWheel();if(pw?.c===c)closePointWheel();
+  if(!ui.open){setMenuOpen(true);pulseTwice(c)}else{setMenuOpen(false);pulse(c,HAPTIC.menuClose.amp,HAPTIC.menuClose.ms)}
+ };
+ const tmpRc=new THREE.Vector3(),tmpRd=new THREE.Vector3();
+ // every frame: the open ring follows its place (the hand / the point), the owner's thumbstick lights and confirms an item
+ const updateRings=(c,now)=>{
+  const bt=c.userData.source?.gamepad,ax=bt?.axes?.[2]||0,ay=bt?.axes?.[3]||0;
+  if(c.userData.stickLock&&Math.hypot(ax,ay)<0.15)c.userData.stickLock=false;
+  const isW=wheelOwner===c,isP=pw?.c===c;c.userData.ringHl=null;
+  if(isW){
+   const k=wheelKeyNow();if(k!==wheelKey)refreshWheel();
+   c.getWorldPosition(tmpRc);tmpRd.subVectors(head,tmpRc).normalize();tmpRc.addScaledVector(tmpRd,0.04);wheel.placeAt(tmpRc,head);
+   const r=c.userData.stick.update(ax,ay,settings.wheel.map(id=>!!id&&wheelAvail(id)));
+   wheel.setHighlight(r.highlight);c.userData.ringHl=r.highlight;
+   if(r.changed)pulse(c,HAPTIC.ringHighlight.amp,HAPTIC.ringHighlight.ms);
+   if(r.confirm!==null)confirmWheel(r.confirm,c);
+  }else if(isP){
+   const pt=vpMarkers.centres().find(x=>x.id===pw.id);if(!pt){closePointWheel();return}
+   const dist=Math.max(0.05,head.distanceTo(pt.world));tmpRd.subVectors(head,pt.world).normalize();tmpRc.copy(pt.world).addScaledVector(tmpRd,0.02);
+   pointWheel.mesh.scale.setScalar(Math.min(2,Math.max(0.6,dist/0.5)));pointWheel.placeAt(tmpRc,head);
+   const r=c.userData.stick.update(ax,ay,pwIds().map(()=>true));
+   pointWheel.setHighlight(r.highlight);c.userData.ringHl=r.highlight;
+   if(r.changed)pulse(c,HAPTIC.ringHighlight.amp,HAPTIC.ringHighlight.ms);
+   if(r.confirm!==null)confirmPoint(r.confirm,c);
+  }
+ };
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
  let autoF=1,autoFrames=0,autoAt=performance.now(); // build 395: starts at 100 % (72 fps there at the default size since build 387) and only drops when the frames say so
@@ -1393,6 +1502,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const yb=MENU_H-110;
    // build 365: 持ち方 moved here from the 断面 tab (room for the snap row)
    choice(yb-370,L.helpT,L.helpModes.map((t,i)=>({label:t,value:i})),settings.help|0,v=>{settings.help=v;saveSettings(settings);if(v===1)helpMoving=true});
+   btn(X,yb-280,520,L.wheelEdit,false,()=>{ui.tab=7;menu.refresh()},{size:28});
    choice(yb-190,L.menuPos,[{label:L.follow,value:0},{label:L.fixed,value:1}],settings.menuMode,v=>{settings.menuMode=v;saveSettings(settings)});
    label(X,yb-96,L.menuKey,{size:26,color:'#9fb3c3'});label(X,yb-60,L.menuGrab,{size:26,color:'#9fb3c3'});
    btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow();placeHelpNow()});btn(X+320,yb,320,L.shot,false,()=>{shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
@@ -1460,11 +1570,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }else if(ui.tab===6){
    // VR position points (stage 3): record button (off without a section), how it works, the position comments of this series
    const surf=surfaceActive();label(X,y0+10,L.ptT,{bold:true,size:30});
-   choice(y0+36,L.ptMode,L.ptModeV.map((t,i)=>({label:t,value:i})),vrPointMode==='surface'?1:0,v=>{vrPointMode=normalizePointMode(v?'surface':'section');menu.refresh()});
+   label(X,y0+60,L.modeNow+L.ptModeV[vrPointMode==='surface'?1:0]+L.modeHint,{size:28});
    // select with the trigger (laser on a point), then delete here; the undo puts it back where it was in the list (as the 2D list)
    const selNo=vpSel?getComments().findIndex(c=>c.id===vpSel)+1:0;
    btn(X,y0+200,460,L.ptDel,false,()=>{deleteSelectedPoint()},{size:30,disabled:!selNo});
-   btn(X+480,y0+200,300,L.ptUndo,false,()=>{undoDeletePoint()},{size:30,disabled:!vpDeleted});
+   btn(X+480,y0+200,300,L.ptUndo,false,()=>{undoLast()},{size:30,disabled:!undo.size});
    label(X,y0+302,selNo?L.ptSel+selNo:L.ptNoSel,{size:26,color:selNo?'#ffd23d':'#9fb3c3'});
    (surf?L.ptHelpSurf:L.ptHelp).forEach((t,i)=>label(X,y0+340+i*30,t,{size:22,color:'#9fb3c3'}));
    label(X,y0+500,L.ptList,{bold:true,size:28});
@@ -1474,6 +1584,19 @@ export async function startVrView({language='ja',mode='vr'}={}){
     w.push({type:'button',x:X,y,w:56,h:50,label:String(n+1),on:true,color:c.id===vpSel?'#ffd23d':'#4dd8ff',size:26,action:()=>{}});
     label(X+76,y+34,(c.text||'—').slice(0,14),{size:28,bold:true});label(X+520,y+34,'i '+c.position.i+' · j '+c.position.j+' · k '+c.position.k,{size:26,color:'#9fb3c3'})});
    if(mine.length>shown.length)label(X,y0+520+shown.length*60+30,'… '+(mine.length-shown.length),{size:24,color:'#9fb3c3'});
+  }else if(ui.tab===7){
+   // build 468: the items of the quick ring (A/X short): pick a slot (1 = top, clockwise), then an item; saved in the settings
+   const items=settings.wheel,slot=ui.wheelSlot|0,save=a=>{settings.wheel=a;saveSettings(settings);wheelKey='';menu.refresh()};
+   label(X,y0+10,L.wheelT,{bold:true,size:30});label(X,y0+48,L.wheelHelp,{size:22,color:'#9fb3c3'});
+   items.forEach((id,k)=>btn(X+(k%3)*310,y0+72+Math.floor(k/3)*76,300,(k+1)+'  '+(itemName(id)||L.wheelEmpty),slot===k,()=>{ui.wheelSlot=k;menu.refresh()},{size:24}));
+   const yo=y0+240;
+   btn(X,yo,200,L.wheelPrev,false,()=>{ui.wheelSlot=(slot+5)%6;save(moveWheelItem(items,slot,-1))},{size:26});
+   btn(X+210,yo,200,L.wheelNext,false,()=>{ui.wheelSlot=(slot+1)%6;save(moveWheelItem(items,slot,1))},{size:26});
+   btn(X+420,yo,230,L.wheelClear,false,()=>save(clearWheelItem(items,slot)),{size:26});
+   btn(X+660,yo,280,L.wheelReset,false,()=>save([...DEFAULT_WHEEL]),{size:26});
+   if(!items.includes('mode-section')&&!items.includes('mode-surface'))label(X,yo+100,L.wheelNoMode,{size:24,color:'#ffd27a'});
+   WHEEL_ITEMS.forEach((it,i)=>btn(X+(i%2)*480,yo+120+Math.floor(i/2)*64,470,itemName(it.id)+(items.includes(it.id)?'  ✓':''),items[slot]===it.id,()=>save(setWheelItem(items,slot,it.id)),{size:24,h:58}));
+   btn(X,MENU_H-110,260,L.back,false,()=>{ui.tab=0;menu.refresh()},{size:28});
   }else if(ui.tab===4){
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
@@ -1485,19 +1608,6 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }
   return w;
  });
- // section panel (build 365): name of the selected plane, snap, flip / clip / remove / add; font 28, buttons 72 high
- panel.onDraw(()=>{
-  const w=[],sp=section.selected;if(!sp)return w;
-  const col='#'+sp.color.toString(16).padStart(6,'0'),btn=(x,y,wd,label,on,action,extra={})=>w.push({type:'button',x,y,w:wd,h:72,label,on,action,size:28,...extra});
-  w.push({type:'label',x:20,y:52,text:L.planeN+(planes.indexOf(sp)+1),color:col,bold:true,size:28});
-  L.snapModes.forEach((t,i)=>btn(200+i*140,16,130,t,planeAxis(sp)===i,()=>snapPlane(sp,i)));
-  if(settings.cut===2&&sp.cut)btn(20,128,140,L.flip,false,()=>{sp.side=-sp.side;menu.refresh()},{size:24}); // 24: '向きを反転' is 141 px at 28
-  btn(180,128,160,sp.cut?L.clipOn:L.clipOff,sp.cut,()=>{sp.cut=!sp.cut;if(sp.cut&&settings.cut===2)chooseSide(sp);menu.refresh()},{color:col});
-  btn(360,128,120,L.remove,false,()=>removePlane(sp));
-  if(planes.length<MAX_PLANES)btn(500,128,120,L.addPlane,false,()=>{addPlane()});
-  return w;
- });
- let panelKey='';
  await renderer.xr.setSession(session);
  applyQuality();menu.refresh();
  let lastT=0;const tmpS=new THREE.Vector3(); // scroll: previous frame time, parent scale
@@ -1525,7 +1635,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const takeScreenshot=()=>{
   const sub=renderer.xr.getCamera().cameras[0];if(!sub||!mesh)return;
   const v=sub.viewport,W=1600,H=Math.max(1,Math.round(W*v.w/Math.max(1,v.z)));
-  const rt=new THREE.WebGLRenderTarget(W,H),prev=renderer.getRenderTarget(),hidden=[menu.mesh,badge,panel.mesh,help.mesh,...controllers.map(c=>c.userData.ray)].filter(o=>o.visible);
+  const rt=new THREE.WebGLRenderTarget(W,H),prev=renderer.getRenderTarget(),hidden=[menu.mesh,badge,help.mesh,wheel.mesh,pointWheel.mesh,...controllers.map(c=>c.userData.ray)].filter(o=>o.visible);
   hidden.forEach(o=>{o.visible=false});const matBefore=mesh.material;mesh.material=material;
   renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.setClearColor(ar?0x000000:BG,ar?0:1);renderer.clear();renderer.render(scene,sub);
   const px=new Uint8Array(W*H*4);renderer.readRenderTargetPixels(rt,0,0,W,H,px);
@@ -1572,12 +1682,12 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(help.mesh.visible&&!helpPlaced&&poseAt)placeHelpNow();
   if(help.mesh.visible&&settings.help===1&&!helpHeld){computeHelpTarget();helpMoving=lazyFollow(help.mesh,helpTarget,helpMoving,false)}
   if(twoHand){const s=Math.min(20,Math.max(0.025,twoHand.s0*handDist()/twoHand.d0));holder.scale.setScalar(s)}
-  let hover=-1,panelHover=-1,scroll=0;const hoverIds=new Set();
-  panel.mesh.visible=section.on&&planes.length>0;
+  let hover=-1,scroll=0;const hoverIds=new Set();
+  badge.visible=!(wheelOwner&&wheelOwner===leftHand()); // the cue hides while the left hand's ring is open
   for(const c of controllers){
    // build 468: this hand's candidates (the press uses the values of the previous frame: c.userData.res); a section's plane is not a candidate
    // (only its thin frame band and number tag), so it can no longer take the laser from what is behind it
-   const bd=boardHits(c),h=bd.menu,bh=bd.badge,ph=bd.panel,hh=bd.help,board=h||bh||ph||hh,ray=c.userData.ray,nowF=performance.now();
+   const bd=boardHits(c),h=bd.menu,hh=bd.help,board=h||hh||bd.wheel||bd.pwheel,ray=c.userData.ray,nowF=performance.now();
    let tab=null,pt=null,band=null,vh=null,sh=null;
    const selOk=!!(section.on&&section.selected&&!draggedBy(section.selected,c));
    if(!board){
@@ -1589,23 +1699,27 @@ export async function startVrView({language='ja',mode='vr'}={}){
     if(!surfaceActive()&&selOk)sh=sectionPointOf(c);
    }
    c.userData.volHit=vh;c.userData.helpHit=!!hh;
-   const res=resolveTriggerTarget({board:board?bd:null,tab,point:pt,band,tissue:vh,plane:sh,mode:vrPointMode,analysis:ui.open&&ui.tab===5,canDrag:selOk});
+   // where a moved point would land (the current mode's rule): the surface voxel or the selected section's voxel
+   const placement=surfaceActive()?(vh&&vh.voxel?vh:null):(sh&&sh.voxel?sh:null);c.userData.placement=placement;
+   const res=resolveTriggerTarget({board:board?bd:null,ringOwnOpen:wheelOwner===c||pw?.c===c,ringHighlight:c.userData.ringHl??null,moving:!!c.userData.moving,placement,tab,point:pt,band,tissue:vh,plane:sh,mode:vrPointMode,analysis:ui.open&&ui.tab===5,canDrag:selOk});
    c.userData.res=res;if(res.kind==='point')hoverIds.add(res.ref.id);
    if(!c.userData.press&&!c.userData.drag){const hpz=c.userData.hoverPulse||=createHoverPulse({debounceMs:HAPTIC.hover.debounceMs});if(hpz.update(res.kind==='point'?res.ref.id:null,nowF))pulse(c,HAPTIC.hover.amp,HAPTIC.hover.ms)}
    updatePress(c,nowF);
-   const ref=res.ref,dist=board?board.distance:(res.kind==='point'||res.kind==='section'||res.kind==='record'||res.kind==='label'?(ref.t??ref.distance):null);
-   const busy=!!c.userData.drag,curSurf=!busy&&res.kind==='record'&&surfaceActive()&&!!ref.voxel,curSec=!busy&&res.kind==='record'&&!surfaceActive()&&!!ref.voxel;
+   const ref=res.ref,dist=board?board.distance:(ref&&(res.kind==='point'||res.kind==='section'||res.kind==='record'||res.kind==='label'||res.kind==='move')?(ref.t??ref.distance):null);
+   const busy=!!c.userData.drag,rec=res.kind==='record'||res.kind==='move',curSurf=!busy&&rec&&surfaceActive()&&!!ref?.voxel,curSec=!busy&&rec&&!surfaceActive()&&!!ref?.voxel;
    const hc=handColor(c),dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=dist!=null&&!curSurf&&!curSec&&!busy;
-   if(dist!=null){ray.scale.z=dist;ray.material.opacity=1;setRay(c);raycaster.ray.at(dist,dot.position);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}if(ph){const i=panel.hit(ph.uv);if(i>=0)panelHover=i}}
+   if(dist!=null){ray.scale.z=dist;ray.material.opacity=1;setRay(c);raycaster.ray.at(dist,dot.position);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}}
    else{ray.scale.z=0.6;ray.material.opacity=0.35}
    if(curSurf)placeSurfCursor(c,ref);else surfCursors[controllers.indexOf(c)].set(null);
    if(curSec)placeSecCursor(c,ref);else secCursors[controllers.indexOf(c)].set(null);
    // thumbstick Y (xr-standard axes[3], up is negative), dead zone 0.15, squared response; both hands add up
-   const ay=c.userData.source?.gamepad?.axes?.[3]||0,am=Math.abs(ay);if(am>0.15)scroll+=Math.sign(ay)*((am-0.15)/0.85)**2;
+   const ay=c.userData.source?.gamepad?.axes?.[3]||0,am=Math.abs(ay);if(am>0.15&&!c.userData.stickLock&&wheelOwner!==c&&pw?.c!==c)scroll+=Math.sign(ay)*((am-0.15)/0.85)**2;
    if(dragging?.c===c){setRay(c);const hh=raycaster.intersectObject(menu.mesh,false)[0];if(hh)menu.drag(dragging.i,hh.uv)}
-   // xr-standard buttons: 4 = A/X toggles the menu, 5 = B/Y the section
+   // xr-standard buttons: 4 = A/X (build 468: short = quick ring, long = menu), 5 = B/Y the section
    const bt=c.userData.source?.gamepad?.buttons;
-   const a=!!bt?.[4]?.pressed;if(a&&!c.userData.aDown)setMenuOpen(!ui.open);c.userData.aDown=a;
+   const axEv=(c.userData.axPress||=createButtonPress()).update(!!bt?.[4]?.pressed,nowF);
+   if(axEv==='short')onAxShort(c);else if(axEv==='long')onAxLong(c);
+   updateRings(c,nowF);
    // build 464: the thumbstick (axes 2 / 3) only feeds the recording gate; its click (button 3) is unused again
    c.userData.gate.update(c.userData.source?.gamepad?.axes?.[2]||0,ay,performance.now());
    // B/Y: short press shows / hides the sections, long press adds one
@@ -1616,7 +1730,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(!b&&c.userData.bDown){if(ring.parent===c)ring.visible=false;if(!c.userData.bLong)setSection(!section.on)}
    c.userData.bDown=b;
   }
-  menu.setHover(hover);panel.setHover(panelHover);
+  menu.setHover(hover);
   // build 423: faint label of what each laser points at (not when that result is already pinned); pinned labels follow the volume
   {const on=labelMode()&&!diagAn.noLabels;if(on||pins.size)readHead();anBenchTick();
    for(const c of controllers){const hit=on?c.userData.volHit:null;if(hit&&!(hit.id&&pins.has(hit.id))){const lb=hoverLabelOf(c);drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}else hideLabel(c.userData.hoverLabel)}
@@ -1659,7 +1773,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   {const nowH=performance.now();if(nowH-vpHiddenAt>=100)updateHidden(nowH);
    // the active section = the selected one while sections are on, as the shader's plane (object space, unit normal, same index as planes)
    let secPl=null;if(section.on&&section.selected&&material&&!bench.noSection){const i=planes.indexOf(section.selected);if(i>=0&&i<material.uniforms.planeCount.value){const q=material.uniforms.cutPlanes.value[i];secPl={x:q.x,y:q.y,z:q.z,w:q.w}}}
-   vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds})}
+   vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds,preview:(()=>{const mc=controllers.find(x=>x.userData.moving);return mc?{id:mc.userData.moving.id,voxel:mc.userData.placement?.voxel||null}:null})()})}
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];
   if(auto){
@@ -1720,10 +1834,6 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(firstDrawMs<0)firstDrawMs=performance.now()-sessionAt;
   }
   menu.flush();
-  // section panel (build 365): redrawn when its state changes (no refresh at every call site); flush is a no-op when clean
-  const pk=[section.on,planes.length,planes.indexOf(sp),sp?.cut,sp?.side,settings.cut,planeAxis(sp)].join();
-  if(pk!==panelKey){panelKey=pk;panel.refresh();if(ui.tab===1)menu.refresh()} // the 断面 tab's snap buttons follow too
-  panel.flush();
   const hk=[section.on,ui.open].join();if(hk!==helpKey){helpKey=hk;help.refresh()}help.flush();
   sums.js+=performance.now()-js0;counts.js++;
   timed('main',()=>renderer.render(scene,camera));
@@ -1741,8 +1851,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();if(variants){variants.combined.dispose();variants.noEvents.dispose()}if(rayVariants)Object.values(rayVariants).forEach(m=>m.dispose());gpu?.warm.forEach(m=>m.dispose());compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
-  background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);unsubComments();vpMarkers.dispose();surfCursors.forEach(x=>x.dispose());ringGeo.dispose();ring.material.dispose();
+  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();if(variants){variants.combined.dispose();variants.noEvents.dispose()}if(rayVariants)Object.values(rayVariants).forEach(m=>m.dispose());gpu?.warm.forEach(m=>m.dispose());compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();help.dispose();badge.userData.dispose();
+  background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);unsubComments();vpMarkers.dispose();surfCursors.forEach(x=>x.dispose());secCursors.forEach(x=>x.dispose());wheel.dispose();pointWheel.dispose();ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);showBenchPanel(ja);
  };

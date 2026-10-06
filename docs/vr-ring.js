@@ -132,3 +132,41 @@ export function createButtonPress({longMs=500}={}){
   reset(){t0=null;fired=false},
  };
 }
+
+// ---- drawing (three.js): a square board with the items on a ring, facing the head ----
+// THREE is passed in (no import, no DOM at module level). size: board side in metres (0.16). Canvas 512 x 512; item centres at 0.055/0.16 of the side.
+export const WHEEL_BOARD_M=0.16,WHEEL_RADIUS_M=0.055;
+export function createRingMenu(THREE,{size=WHEEL_BOARD_M}={}){
+ const N=512,Rpx=WHEEL_RADIUS_M/WHEEL_BOARD_M*N,canvas=document.createElement('canvas');canvas.width=N;canvas.height=N;
+ const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
+ const mesh=new THREE.Mesh(new THREE.PlaneGeometry(size,size),new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
+ mesh.renderOrder=7;mesh.frustumCulled=false;mesh.visible=false;
+ let labels=[],enabled=[],on=[],hl=null;
+ const draw=()=>{
+  ctx.clearRect(0,0,N,N);
+  const n=labels.length,ang=wheelAngles(n);
+  ctx.fillStyle='rgba(14,20,27,.55)';ctx.beginPath();ctx.arc(N/2,N/2,Rpx+110,0,Math.PI*2);ctx.fill();
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  labels.forEach((t,k)=>{
+   const a=ang[k]*Math.PI/180,cx=N/2+Math.sin(a)*Rpx,cy=N/2-Math.cos(a)*Rpx,w=160,h=72,x=cx-w/2,y=cy-h/2;
+   ctx.beginPath();ctx.roundRect(x,y,w,h,16);
+   if(t===null||t===undefined){ctx.setLineDash([8,8]);ctx.strokeStyle='rgba(159,179,195,.6)';ctx.lineWidth=3;ctx.stroke();ctx.setLineDash([]);return}
+   const ok=!!enabled[k];ctx.fillStyle=k===hl?'#ffd23d':!ok?'#1a2129':on[k]?'#2d6cdf':'#26313b';ctx.fill();
+   ctx.strokeStyle=k===hl?'#fff':'rgba(255,255,255,.35)';ctx.lineWidth=k===hl?5:2;ctx.stroke();
+   ctx.fillStyle=k===hl?'#111':!ok?'#6b7885':'#fff';ctx.font='bold 28px system-ui,sans-serif';
+   // two lines when the name is long (split at the middle)
+   if(t.length>6){const m=Math.ceil(t.length/2);ctx.font='bold 25px system-ui,sans-serif';ctx.fillText(t.slice(0,m),cx,cy-14);ctx.fillText(t.slice(m),cx,cy+14)}else ctx.fillText(t,cx,cy+1);
+  });
+  tex.needsUpdate=true;
+ };
+ return{
+  mesh,n:()=>labels.length,
+  // labels: names (null = empty slot), enabled: usable, on: shown as "on" (e.g. the current mode)
+  setItems(l,e,o){labels=l;enabled=e;on=o||[];draw()},
+  setHighlight(k){if(k!==hl){hl=k;draw()}},
+  // the slot under a uv of the board (the raycaster's), or null
+  slotFromUv(uv){return wheelSlotFromLocal((uv.x-0.5)*size,(uv.y-0.5)*size,labels.length,WHEEL_RADIUS_M/WHEEL_BOARD_M*size)},
+  placeAt(center,head){mesh.position.set(center.x,center.y,center.z);if(head)mesh.lookAt(head.x,head.y,head.z)},
+  dispose(){tex.dispose();mesh.geometry.dispose();mesh.material.dispose()},
+ };
+}
