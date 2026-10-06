@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { canvasBackground3dUnit } from './canvas-theme.js?v=20261005-build458';
+import { canvasBackground3dUnit } from './canvas-theme.js?v=20261006-build460';
 
 const UNCOMPRESSED_TS=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
@@ -152,6 +152,13 @@ fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
  if(lo>start){inside=p.x<=(editIntervals[lo-1u]>>16u);}
  let keep=(keepMask&(1u<<seg))!=0u;return select(!inside,inside,keep);
 }
+// build 459: a segment whose mask can hold voxels outside its HU range (Closing / hole filling added them, and a higher
+// segment's added voxels are removed from it) is decided by the mask alone, as the 2D views do: bit 4+s of editRows[1]
+fn segMember(s:u32,v:f32,a:vec4<f32>,tc:vec3<f32>)->bool{
+ if(a.w<=0.5){return false;}
+ if((editRows[1]&(16u<<s))!=0u){return editAllows(s,tc);}
+ return v>=a.x&&v<=a.y&&editAllows(s,tc);
+}
 fn previewContains(seg:u32,tc0:vec3<f32>)->bool{
  let target=previewRows[0];if(target==0u||target!=seg+1u){return false;}
  let dims=vec3<u32>(u32(u.textureDims.x),u32(u.textureDims.y),u32(u.textureDims.z));
@@ -302,7 +309,7 @@ fn segmentIndexFor(v:f32,tc0:vec3<f32>)->i32{
  let excludeMode=editRows[0]&~editRows[1];
  for(var s:u32=0u;s<4u;s=s+1u){
   let a=u.segments[s*2u];
-  if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){
+  if(segMember(s,v,a,tc)){
    if((excludeMode&(1u<<s))!=0u&&!excludeMaskedInside(s,tc,a)){continue;}
    return i32(s);
   }
@@ -331,7 +338,7 @@ fn insideVoxelTc(tc0:vec3<f32>,dir:vec3<f32>,inward:vec3<f32>,seg:u32)->vec3<f32
  let di=objToTc(inward);let dr=objToTc(dir);
  var cand=array<vec3<f32>,6>(tc0,tc0+di*0.5,tc0+di*1.0,tc0+dr*0.5,tc0+dr*1.0,tc0+di*1.5);
  // build 417: the candidate must be a member of the segment, its own edit / processing mask entry included
- for(var k:u32=0u;k<6u;k=k+1u){let v=huVoxel(cand[k]);if(v>=a.x&&v<=a.y&&editAllows(seg,cand[k])){return cand[k];}}
+ for(var k:u32=0u;k<6u;k=k+1u){let v=huVoxel(cand[k]);if(segMember(seg,v,a,cand[k])){return cand[k];}}
  return tc0;
 }
 fn segmentIndexAt(tc0:vec3<f32>)->i32{return segmentIndexFor(huAt(tc0),tc0);}
@@ -344,7 +351,7 @@ fn capSegmentIndex(tc0:vec3<f32>)->i32{
  let v=huVoxel(tc);
  // the voxel's own edit / processing mask entry (editAllows looks up that voxel; the interpolated exclusion test of
  // the ray march, excludeMaskedInside, is not used here)
- for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){return i32(s);}}
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(segMember(s,v,a,tc)){return i32(s);}}
  return -1;
 }
 fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}
@@ -357,7 +364,7 @@ fn brickClass(p:vec3<f32>)->i32{
  let voxel=vec3<u32>(tc*dims);let bx=voxel.x/u32(bs);let by=voxel.y/u32(bs);let bz=voxel.z/u32(bs);let bcx=u32(u.calibration.z);let bcy=u32(u.calibration.w);
  let mm=brickMinMax[bz*bcx*bcy+by*bcx+bx];
  let masks=editRows[0]|appliedCutRows[0];
- for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&((editRows[1]&(16u<<s))!=0u||(a.y>=mm.x&&a.x<=mm.y))){
   if(mm.x>=a.x&&mm.y<=a.y&&(masks&(1u<<s))==0u){return 2+i32(s);}
   return 1;}}
  return 0;
@@ -551,12 +558,12 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
    var planeColor=vec3<f32>(g);
    let isSectionPlane=u.section.x>0.5&&i32(round(u.section.x))-1==which;
    if(!isSectionPlane){
-    for(var s:u32=0u;s<4u;s=s+1u){
-     let a=u.segments[s*2u];
-     if(a.w>0.5&&planeValue>=a.x&&planeValue<=a.y){
-      let tint=u.segments[s*2u+1u].rgb;let ta=min(0.75,clamp(a.z,0.0,1.0)*0.65);
-      planeColor=mix(planeColor,tint,ta);
-     }
+    // build 460: the same membership as the 2D and 3D views (processed mask and manual edits included), one segment per voxel
+    let planeSeg=segmentIndexFor(planeValue,texCoord(planePoint));
+    if(planeSeg>=0){
+     let a=u.segments[u32(planeSeg)*2u];
+     let tint=u.segments[u32(planeSeg)*2u+1u].rgb;let ta=min(0.75,clamp(a.z,0.0,1.0)*0.65);
+     planeColor=mix(planeColor,tint,ta);
     }
    }
    let pa=clamp(u.mprIndices.w,0.0,1.0);let contribution=(1.0-acc.a)*pa;
@@ -650,16 +657,23 @@ fn editAllows(seg:u32,tc0:vec3<f32>)->bool{
  if(lo>start){inside=p.x<=(editIntervals[lo-1u]>>16u);}
  let keep=(keepMask&(1u<<seg))!=0u;return select(!inside,inside,keep);
 }
+// build 459: a segment whose mask can hold voxels outside its HU range (Closing / hole filling added them, and a higher
+// segment's added voxels are removed from it) is decided by the mask alone, as the 2D views do: bit 4+s of editRows[1]
+fn segMember(s:u32,v:f32,a:vec4<f32>,tc:vec3<f32>)->bool{
+ if(a.w<=0.5){return false;}
+ if((editRows[1]&(16u<<s))!=0u){return editAllows(s,tc);}
+ return v>=a.x&&v<=a.y&&editAllows(s,tc);
+}
 fn segmentIndexAt(tc0:vec3<f32>,preferred:i32)->i32{
  let tc=clamp(tc0,vec3<f32>(0.0),vec3<f32>(0.999999));
  let v=huAt(tc);
  if(preferred>=0){
   let s=u32(preferred);
   let a=u.segments[s*2u];
-  if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){return preferred;}
+  if(segMember(s,v,a,tc)){return preferred;}
   return -1;
  }
- for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc)){return i32(s);}}
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(segMember(s,v,a,tc)){return i32(s);}}
  return -1;
 }
 @compute @workgroup_size(64)
@@ -1164,11 +1178,11 @@ export class MedicalVolumeRenderer{
   const sourceDescs=segmentOrder.slice(0,4).map(key=>edits?.[key]||null);
   const descs=sourceDescs.map(desc=>{
    if(!desc?.runs)return null;
-   return{mode:desc.mode,runs:gpuRunsForTexture(desc.runs,sourceDims,gridDims,{dilate:this.reducedVolume&&desc.mode==='exclude'?1:0})};
+   return{mode:desc.mode,maskOnly:!!desc.maskOnly,runs:gpuRunsForTexture(desc.runs,sourceDims,gridDims,{dilate:this.reducedVolume&&desc.mode==='exclude'?1:0})};
   });
   const rowCount=h*d;let activeMask=0,keepMask=0,total=0;
   for(let si=0;si<descs.length;si++){
-   const desc=descs[si];if(!desc)continue;activeMask|=(1<<si);if(desc.mode==='keep')keepMask|=(1<<si);
+   const desc=descs[si];if(!desc)continue;activeMask|=(1<<si);if(desc.mode==='keep')keepMask|=(1<<si);if(desc.maskOnly)keepMask|=(16<<si);
    for(let z=0;z<d;z++)total+=(desc.runs?.[z]?.length||0)/3;
   }
   if(!activeMask){this.clearEditRuns();return}
