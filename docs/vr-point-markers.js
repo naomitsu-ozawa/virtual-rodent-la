@@ -10,8 +10,8 @@
 //    Off the section: normal size and a thin line (the perpendicular) down to the section. No active section: neither.
 //  - laser on a point: a white halo; the selected point: a yellow halo (kept until it is deselected or deleted).
 // Spheres are drawn after the volume without a depth test, so a hidden point is still visible (as the small dot).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build464';
-import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build464';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build465';
+import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build465';
 
 export const VR_MARKER_COLOR=0x4dd8ff,VR_MARKER_FILL=0x0b6f8c,VR_RIM_COLOR=0xffffff,VR_HALO_HOVER=0xffffff,VR_HALO_SELECTED=0xffd23d;
 const RADIUS_UNITS=0.045,MIN_RADIUS_M=0.003,PICK_MIN_M=0.012; // radius in volume units (the longest side is 3.3) and the least radius in metres
@@ -87,5 +87,26 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
   // world centres of the points shown: [{id,world:Vector3}] (for the hidden test)
   centres(){return[...items].map(([id,it])=>({id,world:it.sphere.position}))},
   dispose(){for(const [id,it] of [...items])drop(id,it);geo.dispose();for(const m of Object.values(mats))m.dispose();lineMat.dispose();chipGeo.dispose()},
+ };
+}
+
+// ---- surface-mode cursor (build 465) ----
+// A glowing lime dot where the laser first meets visible tissue (the place a trigger press would record). Clearly different from the point
+// markers (cyan sphere with a white rim / yellow halo) and from the section-mode tip (a small dot in the hand colour, bigger on a section).
+export const SURFACE_CURSOR_COLOR=0x8dff4a,SURFACE_CURSOR_CORE_M=0.0055,SURFACE_CURSOR_GLOW_M=0.0150;
+export function createSurfaceCursor(THREE,scene){
+ const core=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,depthTest:false,toneMapped:false}));
+ const glow=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,opacity:0.32,depthTest:false,depthWrite:false,toneMapped:false,blending:THREE.AdditiveBlending}));
+ core.renderOrder=6;glow.renderOrder=6;core.frustumCulled=false;glow.frustumCulled=false;
+ const group=new THREE.Group();group.add(glow);group.add(core);group.visible=false;scene.add(group);
+ return{
+  group,
+  // world: a Vector3-like {x,y,z} or null (hidden); now: ms, for a slow pulse of the glow
+  set(world,now=0){
+   group.visible=!!world;if(!world)return;
+   group.position.set(world.x,world.y,world.z);
+   core.scale.setScalar(SURFACE_CURSOR_CORE_M);glow.scale.setScalar(SURFACE_CURSOR_GLOW_M*(1+0.18*Math.sin(now/180)));
+  },
+  dispose(){scene.remove(group);for(const m of [core,glow]){m.geometry.dispose();m.material.dispose()}},
  };
 }

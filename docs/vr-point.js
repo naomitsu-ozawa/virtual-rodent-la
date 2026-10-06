@@ -9,8 +9,8 @@
 // that another clipping section has cut away. A section whose intersection is outside the volume is skipped, never clamped.
 // Voxel rule: voxel i covers the fraction [i/n, (i+1)/n) of the box along its axis, so the index is floor(fraction * n); a point
 // outside [0,1) on any axis (the far face itself included) is NOT recorded: it is never moved into the volume.
-import { createComment, addComment, getComments, removeComment, restoreComment, commentMatchesSeries } from './comments.js?v=20261006-build464';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build464';
+import { createComment, addComment, getComments, removeComment, restoreComment, commentMatchesSeries } from './comments.js?v=20261006-build465';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build465';
 
 const T_MIN=1e-6,EDGE_EPS=1e-4;
 
@@ -154,4 +154,41 @@ export function pointIsHidden(pLocal,headLocal,{cls,dims,halfExt,chs,planes=[],c
  const sz=voxel||[2*halfExt[0]/dims[0],2*halfExt[1]/dims[1],2*halfExt[2]/dims[2]],skip=0.5*Math.hypot(sz[0],sz[1],sz[2])/L;
  if(skip>=1)return false;
  return marchClassificationHitInfo(pLocal,q,halfExt,dims,cls,chs,planes,count,cut,skip,1)!==null;
+}
+
+// ---- surface mode (build 465) ----
+// The 位置 tab can switch the trigger's 4th step from the face of a section (断面, default) to the first tissue surface the laser meets (表面).
+// "Surface" = the first voxel of a SHOWN segment (classification channel >= 128) on the side every clipping section keeps, found by the same
+// march as the analysis label pointer (vr-pick.js marchClassificationHitInfo); a face cut by a clipping section is therefore a surface too.
+// Segment opacity is ignored. The recorded place is that voxel, stored as the usual {i,j,k} position comment.
+export const POINT_MODES=['section','surface'];
+export const normalizePointMode=m=>m==='surface'?'surface':'section';
+// The hit voxel of a classification march (info {t,x,y,z}, indices of the classification grid clsDims [w,h,d], which can be coarser than the
+// data) -> the data's voxel {i,j,k}. The point on the ray at t is used (exact when the grids are equal); the centre of the classification
+// voxel is the fallback when that point rounds outside the box.
+export function surfaceVoxelFromHit(info,o,q,{halfExt,dims,clsDims}){
+ if(!info||!halfExt||!dims)return null;
+ const p={x:o.x+q.x*info.t,y:o.y+q.y*info.t,z:o.z+q.z*info.t},v=localToVoxel(p,halfExt,dims);
+ if(v)return v;
+ if(!clsDims)return null;
+ const n=[dims.columns,dims.rows,dims.slices],c=[info.x,info.y,info.z],r=[];
+ for(let a=0;a<3;a++){if(!(n[a]>0)||!(clsDims[a]>0))return null;r.push(Math.min(n[a]-1,Math.max(0,Math.floor((c[a]+0.5)/clsDims[a]*n[a]))))}
+ return{i:r[0],j:r[1],k:r[2]};
+}
+// Pure surface hit of a ray (object space, o + t*q): {t,point,voxel,ch} or null. cls: {data,C}; clsDims [w,h,d]; chs: the shown channels;
+// planes / count / cut: the shader's cutPlanes, planeCount, planeCut. dims: the data's {columns,rows,slices}.
+export function surfaceRayHit(o,q,{halfExt,dims,cls,clsDims,chs,planes=[],count=0,cut=0}){
+ if(!cls||!chs||!chs.length||!clsDims)return null;
+ const info=marchClassificationHitInfo(o,q,halfExt,clsDims,cls,chs,planes,count,cut);
+ if(!info)return null;
+ const voxel=surfaceVoxelFromHit(info,o,q,{halfExt,dims,clsDims});
+ return voxel?{t:info.t,point:{x:o.x+q.x*info.t,y:o.y+q.y*info.t,z:o.z+q.z*info.t},voxel,ch:info.ch}:null;
+}
+// Trigger priority per mode: steps 1-3 are resolveTrigger's (menu -> section handle / selected target -> existing point); only the 4th step
+// depends on the mode: 'section' = the face of a section (as before), 'surface' = the first tissue surface. Returns
+// 'ui' | 'handle' | 'point' | 'section' | 'surface' | null.
+export function resolveTriggerMode({ui=false,handle=false,point=null,section=false,surface=false,mode='section'}={}){
+ const surf=normalizePointMode(mode)==='surface';
+ const k=resolveTrigger({ui,handle,point,section:surf?false:section});
+ return k===null&&surf&&surface?'surface':k;
 }

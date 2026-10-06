@@ -8,20 +8,20 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build464';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build464';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build464';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build464';
-import { datasetFingerprint } from './project-file.js?v=20261006-build464';
-import { sectionRayHit, recordVrPoint, resolveTrigger, createStickGate, deleteSelected, undoDelete, pointIsHidden } from './vr-point.js?v=20261006-build464';
-import { createVrPointMarkers } from './vr-point-markers.js?v=20261006-build464';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment } from './comments.js?v=20261006-build464';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build464';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build464';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build464';
-import { tr } from './i18n.js?v=20261006-build464';
-import { APP_BUILD } from './version.js?v=20261006-build464';
-import { wc, ww } from './ui-shell.js?v=20261006-build464';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build465';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build465';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build465';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build465';
+import { datasetFingerprint } from './project-file.js?v=20261006-build465';
+import { sectionRayHit, recordVrPoint, resolveTrigger, resolveTriggerMode, normalizePointMode, surfaceVoxelFromHit, createStickGate, deleteSelected, undoDelete, pointIsHidden } from './vr-point.js?v=20261006-build465';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261006-build465';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment } from './comments.js?v=20261006-build465';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build465';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build465';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build465';
+import { tr } from './i18n.js?v=20261006-build465';
+import { APP_BUILD } from './version.js?v=20261006-build465';
+import { wc, ww } from './ui-shell.js?v=20261006-build465';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -858,6 +858,9 @@ export function showPreparePanel({language='ja',mode='vr',onStart}){
 let running=null;
 // mode 'vr': own background; 'ar' (build 343): immersive-ar passthrough on
 // Quest, no background drawn and the clear is transparent
+// build 465: where the trigger records a VR point: 'section' (the face of a section, default) or 'surface' (the first tissue surface); remembered
+// while the page lives, not saved
+let vrPointMode='section';
 export async function startVrView({language='ja',mode='vr'}={}){
  if(running)return;
  const ja=language==='ja',settings=loadSettings();settings.diag=0;settings.editDiag=0;settings.clsDiag=0;settings.distDiag=0;
@@ -877,13 +880,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
- const L=ja?{ptT:'位置コメント（VR ポイント）',ptRec:'この位置を記録',ptNeed:'断面を有効にすると記録できます',ptAim:'レーザーを断面に当ててください（ボリュームの内側）',ptDone:'記録しました：',ptHelp:['トリガー：断面にレーザーを当てて記録／点に当てて選択','記録はスティックを離して0.3秒後から（その手のみ）','このボタン：もう一方の手のレーザーが断面にあるとき','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptDel:'この点を削除',ptUndo:'元に戻す',ptSel:'選択中の点：',ptNoSel:'点にレーザーを当ててトリガーで選択',ptDeleted:'点を削除しました（「元に戻す」で戻せます）',ptRestored:'点を元に戻しました',ptList:'位置コメント一覧',ptNone:'まだありません',title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細','解析','位置'],anT:'解析結果（体積）',anNone:'解析結果はありません（2D/3D画面の体積解析で作成し、表示中のものがVRに入ります）',anTotal:'合計',anPage:'ページ',lbSize:'ラベルの大きさ',lbSizeV:['小','中','大'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','トリガー：断面にレーザーを当てて記録／点に当てて選択','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
+ const L=ja?{ptT:'位置コメント（VR ポイント）',ptRec:'この位置を記録',ptMode:'記録する場所',ptModeV:['断面','表面'],ptAimSurf:'レーザーを組織の表面に当ててください',ptHelpSurf:['トリガー：レーザーが最初に当たる組織の表面に記録／点に当てて選択','表面＝表示中のセグメントの境界（不透明度は無視。断面で切った面も表面）','記録はスティックを離して0.3秒後から（その手のみ）','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptNeed:'断面を有効にすると記録できます',ptAim:'レーザーを断面に当ててください（ボリュームの内側）',ptDone:'記録しました：',ptHelp:['トリガー：断面にレーザーを当てて記録／点に当てて選択','記録はスティックを離して0.3秒後から（その手のみ）','このボタン：もう一方の手のレーザーが断面にあるとき','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptDel:'この点を削除',ptUndo:'元に戻す',ptSel:'選択中の点：',ptNoSel:'点にレーザーを当ててトリガーで選択',ptDeleted:'点を削除しました（「元に戻す」で戻せます）',ptRestored:'点を元に戻しました',ptList:'位置コメント一覧',ptNone:'まだありません',title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細','解析','位置'],anT:'解析結果（体積）',anNone:'解析結果はありません（2D/3D画面の体積解析で作成し、表示中のものがVRに入ります）',anTotal:'合計',anPage:'ページ',lbSize:'ラベルの大きさ',lbSizeV:['小','中','大'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/Xボタン：メニューを閉じる／開く（閉じると左手に「メニュー」の札）',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす','両手でグリップ：拡大・縮小','A／X ボタン：メニューを開く／閉じる','B／Y ボタン：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠を指す・近づけて{h}：断面を動かす','スティック上下：選んだ断面をスクロール','左手の板：軸に合わせる・反転・切る・消す','B／Y：断面の表示／非表示（長押しで追加）','トリガー：断面にレーザーを当てて記録／点に当てて選択','A／X ボタン：メニューを開く／閉じる'],helpMenu:'トリガー：メニューのボタン・スライダー',helpHold:['グリップ','トリガー'],close:'閉じる',badge:'メニュー',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',anBench:'解析の重さ（約 12 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：最後に持った断面（一覧で色付き）を法線方向に動かします','つかむ枠は手の色で光ります（右＝オレンジ・左＝紫、レーザーの枠が優先）'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],hold:'持ち方',holdModes:['グリップ','トリガー'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    handR:'右',handL:'左',secHelp:['光った枠をグリップを押す間だけ持てます（番号の下＝最後に持った手）','光った枠をトリガーを押す間だけ持てます（番号の下＝最後に持った手）'],secOff:'「オン」かB/Yボタンで断面を出します',
    r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：手で持っています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
-  :{ptT:'Position comments (VR points)',ptRec:'Record this place',ptNeed:'Turn a section on to record',ptAim:'Point the laser at a section (inside the volume)',ptDone:'Recorded: ',ptHelp:['Trigger: laser on a section records; laser on a point selects it','Recording works 0.3 s after the thumbstick is released (that hand only)','This button: while the other hand’s laser is on a section','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptDel:'Delete this point',ptUndo:'Undo',ptSel:'Selected point: ',ptNoSel:'Point the laser at a point and pull the trigger to select',ptDeleted:'Point deleted (Undo brings it back)',ptRestored:'Point restored',ptList:'Position comments',ptNone:'None yet',title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details','Analysis','Points'],anT:'Analysis results (volume)',anNone:'No analysis results (made with the volume analysis on the page; the visible ones come into VR)',anTotal:'Total',anPage:'Page',lbSize:'Label size',lbSizeV:['Small','Medium','Large'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','Trigger: laser on a section records a point; on a point selects it','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
+  :{ptT:'Position comments (VR points)',ptRec:'Record this place',ptMode:'Record on',ptModeV:['Section','Surface'],ptAimSurf:'Point the laser at the tissue surface',ptHelpSurf:['Trigger: records on the first tissue surface the laser meets; laser on a point selects it','Surface = edge of a shown segment (opacity ignored; a face cut by a section counts)','Recording works 0.3 s after the thumbstick is released (that hand only)','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptNeed:'Turn a section on to record',ptAim:'Point the laser at a section (inside the volume)',ptDone:'Recorded: ',ptHelp:['Trigger: laser on a section records; laser on a point selects it','Recording works 0.3 s after the thumbstick is released (that hand only)','This button: while the other hand’s laser is on a section','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptDel:'Delete this point',ptUndo:'Undo',ptSel:'Selected point: ',ptNoSel:'Point the laser at a point and pull the trigger to select',ptDeleted:'Point deleted (Undo brings it back)',ptRestored:'Point restored',ptList:'Position comments',ptNone:'None yet',title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details','Analysis','Points'],anT:'Analysis results (volume)',anNone:'No analysis results (made with the volume analysis on the page; the visible ones come into VR)',anTotal:'Total',anPage:'Page',lbSize:'Label size',lbSizeV:['Small','Medium','Large'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: close / open the menu (closed: a Menu tag on the left hand)',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and move the volume','Grip with both hands: scale','A / X: open / close the menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Point at / approach a frame, {h}: move it','Thumbstick up / down: scroll the selected plane','Left-hand board: axis, flip, clip, remove','B / Y: show / hide sections (long press: add)','Trigger: laser on a section records a point; on a point selects it','A / X: open / close the menu'],helpMenu:'Trigger: menu buttons and sliders',helpHold:['grip','trigger'],close:'Close',badge:'Menu',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',anBench:'Analysis cost (about 12 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the plane held last (highlighted in the list) on its normal','The frame you will grab glows in the hand colour (right orange, left violet; laser wins)'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],hold:'Hold with',holdModes:['Grip','Trigger'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    handR:'R',handL:'L',secHelp:['Hold grip while the frame glows (under the number: last hand)','Hold the trigger while the frame glows (under the number: last hand)'],secOff:'Turn it on here or press B/Y',
@@ -1037,6 +1040,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const diagAn={noRegion:false,noLabels:false};
  // VR position points (Issue #88, stage 3; vr-point.js): vrHalfExt / vrDims / vrFp are set when the data is ready (null before)
  let vrHalfExt=null,vrDims=null,vrFp=null;const vpMarkers=createVrPointMarkers(THREE,scene);
+ // build 465: surface mode (vrPointMode, kept while the page lives, default 断面). It is in force except while the 解析 tab is open (the trigger pins labels there)
+ const surfaceActive=()=>vrPointMode==='surface'&&!(ui.open&&ui.tab===5),surfCursors=controllers.map(()=>createSurfaceCursor(THREE,scene));
  // where this controller's laser meets a section (the first one it meets inside the volume): {distance (world m), voxel, plane} or null;
  // the section planes are the shader's uniforms (volume object space, all sections shown; cutBits: the clipping ones)
  const sectionPointOf=c=>{
@@ -1054,11 +1059,12 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // selected point (a comment id, or null) and the last deletion (for the undo), both only for this VR session
  let vpSel=null,vpDeleted=null;
  const recordPoint=own=>{
-  if(!section.on){flashMsg(L.ptNeed);if(own)pulse(own,0.15,30);return null}
-  const src=own?(own.userData.secHit?own:null):controllers.find(x=>x.userData.secHit),hit=src?.userData.secHit;
-  if(!hit||!vrFp){flashMsg(L.ptAim);if(own)pulse(own,0.15,30);return null}
+  const surf=surfaceActive(),key=surf?'surfHit':'secHit',aim=surf?L.ptAimSurf:L.ptAim;
+  if(!surf&&!section.on){flashMsg(L.ptNeed);if(own)pulse(own,0.15,30);return null}
+  const src=own?(own.userData[key]?own:null):controllers.find(x=>x.userData[key]),hit=src?.userData[key];
+  if(!hit||!vrFp){flashMsg(aim);if(own)pulse(own,0.15,30);return null}
   const rec=recordVrPoint({voxel:hit.voxel,series:vrFp,language:ja?'ja':'en'});
-  if(!rec){flashMsg(L.ptAim);return null}
+  if(!rec){flashMsg(aim);return null}
   vpDeleted=null;pulse(src,0.5,20);flashMsg(L.ptDone+rec.text+' · i '+hit.voxel.i+' · j '+hit.voxel.j+' · k '+hit.voxel.k,4000);return rec;
  };
  const selectPoint=(c,id)=>{vpSel=vpSel===id?null:id;pulseTwice(c);menu.refresh()};
@@ -1092,7 +1098,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(!hi)return null;
   // build 423: what was hit — the segment (channel → segment) and the result at that voxel (list position, 0 = none)
   const si=vp.cls.chan.indexOf(hi.ch),[w,h]=vp.dims,id=vp.ids?vp.ids[hi.x+w*(hi.y+h*hi.z)]:0;
-  return{distance:hi.t,key:SEGMENT_PRESET_ORDER[si]||'',id,local:new THREE.Vector3(o.x+q.x*hi.t,o.y+q.y*hi.t,o.z+q.z*hi.t)};
+  // build 465: the hit voxel in the data's grid (surface mode records it; the same march, nothing is marched twice)
+  const voxel=vrHalfExt&&vrDims&&surfaceActive()?surfaceVoxelFromHit(hi,o,q,{halfExt:vrHalfExt,dims:vrDims,clsDims:vp.dims}):null;
+  return{distance:hi.t,key:SEGMENT_PRESET_ORDER[si]||'',id,voxel,local:new THREE.Vector3(o.x+q.x*hi.t,o.y+q.y*hi.t,o.z+q.z*hi.t)};
  };
  // result labels (build 423, owner): while the 解析 tab is open or no section is shown, the laser on the volume shows a
  // faint label of what it points at (result: colour, number as in the 解析 tab, segment, mm³; else the segment name and
@@ -1107,7 +1115,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // ray origin and under the ray (target-ray space: −z along the ray), below the menu badge (y 0.05) and the section panel
  const HAND_CHIP={left:[0,-0.03,-0.03],right:[0,-0.03,-0.03]};
  const hoverLabelOf=c=>c.userData.hoverLabel||=Object.assign(makeLabel(),{hand:c});
- const labelMode=()=>(ui.open&&ui.tab===5)||!section.on;
+ const labelMode=()=>(ui.open&&ui.tab===5)||(!section.on&&!surfaceActive()); // build 465: in surface mode sections-off records instead of pinning
  const makeLabel=()=>{
   const canvas=document.createElement('canvas');canvas.width=512;canvas.height=154;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
   const m=new THREE.Mesh(new THREE.PlaneGeometry(LABEL_W,LABEL_H),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,depthTest:false}));m.renderOrder=5;m.visible=false;
@@ -1198,7 +1206,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // point (select it), then the face of a section (record; only while this hand's thumbstick is at rest, see createStickGate).
   c.addEventListener('selectstart',()=>{
    const bd=boardHits(c),h=bd.menu,pi=bd.panel?panel.hit(bd.panel.uv):-1;
-   const kind=resolveTrigger({ui:!!h||!!bd.badge||pi>=0,handle:!!(c.userData.heldPlane||c.userData.target),point:c.userData.ptHit?.id??null,section:!!c.userData.secHit&&section.on&&!labelMode()});
+   const kind=resolveTriggerMode({ui:!!h||!!bd.badge||pi>=0,handle:!!(c.userData.heldPlane||c.userData.target),point:c.userData.ptHit?.id??null,section:!!c.userData.secHit&&section.on&&!labelMode(),surface:!!c.userData.surfHit,mode:surfaceActive()?'surface':'section'});
    if(kind==='ui'){
     if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
     if(bd.badge){setMenuOpen(true);pulse(c);return}
@@ -1206,7 +1214,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
    if(kind==='handle'){if(settings.secHold===1&&!c.userData.heldPlane&&section.on){const pl=c.userData.target;if(pl)takePlane(pl,c)}return}
    if(kind==='point'){selectPoint(c,c.userData.ptHit.id);return}
-   if(kind==='section'){if(c.userData.gate.canRecord(performance.now()))recordPoint(c);return}
+   if(kind==='section'||kind==='surface'){if(c.userData.gate.canRecord(performance.now()))recordPoint(c);return}
    // build 423: a result label is pinned / unpinned where the laser meets the volume
    if(labelMode()&&c.userData.volHit&&togglePin(c,c.userData.volHit))return;
   });
@@ -1379,22 +1387,23 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0+770,L.lbSize,L.lbSizeV.map((t,i)=>({label:t,value:i})),settings.labelSize??1,v=>{settings.labelSize=v;saveSettings(settings)});
   }else if(ui.tab===6){
    // VR position points (stage 3): record button (off without a section), how it works, the position comments of this series
-   label(X,y0+10,L.ptT,{bold:true,size:30});
-   btn(X,y0+40,460,L.ptRec,false,()=>{recordPoint(null)},{size:30,disabled:!section.on});
-   label(X+480,y0+76,section.on?'':L.ptNeed,{size:26,color:'#ffd27a'});
+   const surf=surfaceActive();label(X,y0+10,L.ptT,{bold:true,size:30});
+   choice(y0+36,L.ptMode,L.ptModeV.map((t,i)=>({label:t,value:i})),vrPointMode==='surface'?1:0,v=>{vrPointMode=normalizePointMode(v?'surface':'section');menu.refresh()});
+   btn(X,y0+120,460,L.ptRec,false,()=>{recordPoint(null)},{size:30,disabled:!surf&&!section.on});
+   label(X+480,y0+156,surf||section.on?'':L.ptNeed,{size:26,color:'#ffd27a'});
    // select with the trigger (laser on a point), then delete here; the undo puts it back where it was in the list (as the 2D list)
    const selNo=vpSel?getComments().findIndex(c=>c.id===vpSel)+1:0;
-   btn(X,y0+120,460,L.ptDel,false,()=>{deleteSelectedPoint()},{size:30,disabled:!selNo});
-   btn(X+480,y0+120,300,L.ptUndo,false,()=>{undoDeletePoint()},{size:30,disabled:!vpDeleted});
-   label(X,y0+222,selNo?L.ptSel+selNo:L.ptNoSel,{size:26,color:selNo?'#ffd23d':'#9fb3c3'});
-   L.ptHelp.forEach((t,i)=>label(X,y0+262+i*32,t,{size:22,color:'#9fb3c3'}));
-   label(X,y0+420,L.ptList,{bold:true,size:28});
-   const mine=getComments().map((c,n)=>({c,n})).filter(x=>vrFp&&commentMatchesSeries(x.c,vrFp)),shown=mine.slice(-6);
-   if(!shown.length)label(X,y0+470,L.ptNone,{size:26,color:'#9fb3c3'});
-   shown.forEach(({c,n},k)=>{const y=y0+440+k*60;
+   btn(X,y0+200,460,L.ptDel,false,()=>{deleteSelectedPoint()},{size:30,disabled:!selNo});
+   btn(X+480,y0+200,300,L.ptUndo,false,()=>{undoDeletePoint()},{size:30,disabled:!vpDeleted});
+   label(X,y0+302,selNo?L.ptSel+selNo:L.ptNoSel,{size:26,color:selNo?'#ffd23d':'#9fb3c3'});
+   (surf?L.ptHelpSurf:L.ptHelp).forEach((t,i)=>label(X,y0+342+i*32,t,{size:22,color:'#9fb3c3'}));
+   label(X,y0+500,L.ptList,{bold:true,size:28});
+   const mine=getComments().map((c,n)=>({c,n})).filter(x=>vrFp&&commentMatchesSeries(x.c,vrFp)),shown=mine.slice(-5);
+   if(!shown.length)label(X,y0+550,L.ptNone,{size:26,color:'#9fb3c3'});
+   shown.forEach(({c,n},k)=>{const y=y0+520+k*60;
     w.push({type:'button',x:X,y,w:56,h:50,label:String(n+1),on:true,color:c.id===vpSel?'#ffd23d':'#4dd8ff',size:26,action:()=>{}});
     label(X+76,y+34,(c.text||'—').slice(0,14),{size:28,bold:true});label(X+520,y+34,'i '+c.position.i+' · j '+c.position.j+' · k '+c.position.k,{size:26,color:'#9fb3c3'})});
-   if(mine.length>shown.length)label(X,y0+440+shown.length*60+30,'… '+(mine.length-shown.length),{size:24,color:'#9fb3c3'});
+   if(mine.length>shown.length)label(X,y0+520+shown.length*60+30,'… '+(mine.length-shown.length),{size:24,color:'#9fb3c3'});
   }else if(ui.tab===4){
    label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
@@ -1497,17 +1506,19 @@ export async function startVrView({language='ja',mode='vr'}={}){
   panel.mesh.visible=section.on&&planes.length>0;
   for(const c of controllers){
    // ray priority: the nearest board (menu, menu tag, section panel, help; build 404), then a section frame, then the volume
-   const bd=boardHits(c),h=bd.menu,bh=bd.badge,ph=bd.panel,hh=bd.help,rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray,sh=h||bh||ph||hh?null:sectionPointOf(c);c.userData.secHit=sh;
+   const bd=boardHits(c),h=bd.menu,bh=bd.badge,ph=bd.panel,hh=bd.help,rp=h||bh||ph||hh?null:rayPlane(c),vh=h||bh||ph||hh||rp?null:volumeHit(c),ray=c.userData.ray,sh=h||bh||ph||hh||surfaceActive()?null:sectionPointOf(c);c.userData.secHit=sh;
    // build 464: an existing point under the laser (drawn spheres, world space); boards and section frames come first, as for the trigger
    const pt=h||bh||ph||hh||rp?null:(setRay(c),vpMarkers.pick(raycaster.ray.origin,raycaster.ray.direction));c.userData.ptHit=pt;if(pt)hoverIds.add(pt.id);c.userData.rayPlane=rp?.pl||null;c.userData.helpHit=!!hh;c.userData.volHit=vh;
+   const sf=surfaceActive()&&vh&&vh.voxel&&!pt?vh:null;c.userData.surfHit=sf; // build 465: where a trigger press would record in surface mode
    // build 397: the one frame this hand's button would take, the same rule the press uses;
    // build 399: the frame the laser points at wins, the nearest frame (guide line) only when the ray hits none
    const np=h||bh||ph||hh||rp||c.userData.heldPlane?null:nearestPlane(c);c.userData.target=h||bh||ph||hh||c.userData.heldPlane?null:c.userData.rayPlane||np;
    const gd=c.userData.guide;gd.visible=!!np;gd.material.color.setHex(handColor(c));if(np){const a=gd.geometry.attributes.position;c.getWorldPosition(tmpA);np.handle.getWorldPosition(tmpB);a.setXYZ(0,tmpA.x,tmpA.y,tmpA.z);a.setXYZ(1,tmpB.x,tmpB.y,tmpB.z);a.needsUpdate=true}
-   const hc=handColor(c),hit=h||bh||ph||hh||pt||sh||rp||vh,dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=!!hit;dot.scale.setScalar(sh&&!pt?1.8:1); // the tip of a laser on a section is the place that would be recorded (bigger dot)
+   const hc=handColor(c),hit=h||bh||ph||hh||pt||sh||rp||vh,dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=!!hit&&!sf;dot.scale.setScalar(sh&&!pt?1.8:1); // the tip of a laser on a section is the place that would be recorded (bigger dot)
    
-   if(hit){ray.scale.z=hit.distance;ray.material.opacity=1;setRay(c);raycaster.ray.at(hit.distance,dot.position);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}if(ph){const i=panel.hit(ph.uv);if(i>=0)panelHover=i}}
+   if(hit){ray.scale.z=hit.distance;ray.material.opacity=1;setRay(c);raycaster.ray.at(hit.distance,dot.position);if(sf)surfCursors[controllers.indexOf(c)].set(dot.position,performance.now());if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}if(ph){const i=panel.hit(ph.uv);if(i>=0)panelHover=i}}
    else{ray.scale.z=0.6;ray.material.opacity=0.35}
+   if(!sf)surfCursors[controllers.indexOf(c)].set(null);
    // thumbstick Y (xr-standard axes[3], up is negative), dead zone 0.15, squared response; both hands add up
    const ay=c.userData.source?.gamepad?.axes?.[3]||0,am=Math.abs(ay);if(am>0.15)scroll+=Math.sign(ay)*((am-0.15)/0.85)**2;
    if(dragging?.c===c){setRay(c);const hh=raycaster.intersectObject(menu.mesh,false)[0];if(hh)menu.drag(dragging.i,hh.uv)}
@@ -1647,7 +1658,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
   probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();if(variants){variants.combined.dispose();variants.noEvents.dispose()}if(rayVariants)Object.values(rayVariants).forEach(m=>m.dispose());gpu?.warm.forEach(m=>m.dispose());compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();menu.dispose();panel.dispose();help.dispose();badge.userData.dispose();
-  background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);unsubComments();vpMarkers.dispose();ringGeo.dispose();ring.material.dispose();
+  background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);unsubComments();vpMarkers.dispose();surfCursors.forEach(x=>x.dispose());ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);showBenchPanel(ja);
  };
