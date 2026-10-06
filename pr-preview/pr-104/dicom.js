@@ -2,7 +2,7 @@
 // Depends only on the imports below; never imports from app.js (no cycles).
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
 import { multi, safePair, num, safeTriple, numberOr, frameYield } from './utils.js?v=20261006-build469';
-import { analyzeSliceSpacing, seriesNormal, slicePosition } from './slice-spacing.js?v=20261006-build469';
+import { analyzeSliceSpacing, excludeDuplicateSlices, seriesNormal, slicePosition } from './slice-spacing.js?v=20261006-build469';
 export async function parseDicomHeader(file){
  const attempts=[Math.min(file.size,256*1024),Math.min(file.size,1024*1024)];
  let lastError=null;
@@ -54,12 +54,19 @@ export function sourceRangeFromMetadata(slices){
 export function groupSeries(slices){
  const m=new Map();
  for(const s of slices){const k=s.studyUid+'::'+s.seriesUid;(m.get(k)||m.set(k,[]).get(k)).push(s)}
- return[...m.entries()].map(([id,g])=>{
-  const normal=seriesNormal(g),synthetic=g.some(s=>s.syntheticPos),key=s=>synthetic?(s.sortIndex??s.instance??0):(slicePosition(s,normal)??s.sortIndex??s.instance??0);
-  g.sort((a,b)=>key(a)-key(b));
+ return[...m.entries()].map(([id,all])=>{
+  const readIndex=new Map(all.map((x,i)=>[x,i])),g0=[...all],normal=seriesNormal(g0),synthetic=g0.some(s=>s.syntheticPos),key=s=>synthetic?(s.sortIndex??s.instance??0):(slicePosition(s,normal)??s.sortIndex??s.instance??0);
+  g0.sort((a,b)=>key(a)-key(b));
+  // build 469: every gap along the slice normal is checked; duplicate slices are excluded (smaller InstanceNumber stays);
+  // the z spacing is the whole span / (N-1), or a gap-corrected fit when slices are missing
+  const tagZ=g0[0].spacingBetween||g0[0].thickness||1;
+  let g=g0,spacingCheck=analyzeSliceSpacing(g0,tagZ,normal);
+  if(spacingCheck.duplicateIndices.length&&!spacingCheck.allDuplicates){
+   const r=excludeDuplicateSlices(g0,spacingCheck.duplicateIndices,readIndex);g=r.slices;
+   spacingCheck={...analyzeSliceSpacing(g,tagZ,normal),duplicates:r.excluded,duplicatesExcluded:r.excluded,warn:true,legacyZ:spacingCheck.legacyZ};
+  }
+  const z=spacingCheck.used;
   const f=g[0],rows=Math.max(...g.map(x=>x.rows)),columns=Math.max(...g.map(x=>x.columns)),bits=Math.max(...g.map(x=>x.bits)),compact=canDecodeToInt16(g),count=rows*columns*g.length,decodedBytes=count*(compact?2:4),sourceBacked=decodedBytes>256*1024*1024,range=sourceRangeFromMetadata(g);
-  // build 469: every gap along the slice normal is checked; uniform data keeps the first-gap spacing, irregular data uses the median
-  const spacingCheck=analyzeSliceSpacing(g,f.spacingBetween||f.thickness||1,normal),z=spacingCheck.used;
   const windowCenter=g.find(x=>Number.isFinite(x.windowCenter))?.windowCenter,windowWidth=g.find(x=>Number.isFinite(x.windowWidth)&&x.windowWidth>0)?.windowWidth;
   return{id,description:f.description,modality:f.modality,slices:g,rows,columns,bits,bytes:decodedBytes,decodedBytes,compact,sourceBacked,min:range.min,max:range.max,windowCenter,windowWidth,spacingX:f.pixelSpacing?.[1]??1,spacingY:f.pixelSpacing?.[0]??1,spacingZ:z,spacingCheck};
  }).sort((a,b)=>b.slices.length-a.slices.length)

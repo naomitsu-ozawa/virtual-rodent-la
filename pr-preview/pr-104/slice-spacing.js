@@ -8,6 +8,12 @@
 //  - non-uniform:  (max - min) of the regular gaps (neither duplicate nor missing) > max(1% of the median, 2e-3 mm).
 //                  The absolute floor stops positions printed to 3 decimals (rounding = 1e-3 mm per gap) from
 //                  being flagged on very thin slices (e.g. 0.0187 mm).
+//  - duplicates are EXCLUDED from the volume (the slice with the smaller InstanceNumber, else read order, is kept),
+//    unless every gap is a duplicate (positions carry no information then; nothing is dropped).
+//  - spacing used: (last - first) / (N - 1) over the slices that remain. With missing slices that formula is wrong, so a
+//    least-squares line of position vs corrected index (index + cumulative missing count) is used: it uses every slice,
+//    so rounding of the printed positions averages out and one odd gap cannot dominate (the mean of the regular gaps
+//    ignores the information of the slices around each gap).
 //  - tag mismatch: |median - SpacingBetweenSlices| > 2% of the median (SliceThickness is only recorded:
 //                  thickness legitimately differs from spacing for overlapping / gapped reconstructions)
 export const SPACING_THRESHOLDS={dupAbsMm:1e-3,dupRel:0.05,missingRel:1.5,uniformRel:0.01,uniformAbsMm:2e-3,tagRel:0.02,mixedOrientationDot:0.9999};
@@ -52,6 +58,11 @@ export function slicePosition(meta,normal){
 }
 const median=a=>{const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
 
+// the spacing the app used before build 469 (first two slices by Z, else the tag value); kept to recognise old projects
+function legacyZOf(slices,tagZ){
+ const a=slices[0],b=slices[1];
+ return a?.pos&&b?.pos?(Math.abs(b.pos[2]-a.pos[2])||tagZ):tagZ;
+}
 // slices: slice metas ALREADY sorted (groupSeries). normal: the oriented normal used for the sort
 // (undefined = derive it from the slices).
 export function analyzeSliceSpacing(slices,fallbackMm=1,normal=undefined){
@@ -59,7 +70,7 @@ export function analyzeSliceSpacing(slices,fallbackMm=1,normal=undefined){
  const tagZ=tagBetween||tagThickness||fallbackMm;
  if(normal===undefined)normal=seriesNormal(slices);
  const orientationMixed=mixedOrientation(slices);
- const base={method:normal?'normal':'z',slices:slices.length,gaps:0,used:tagZ,basis:'tag',medianGap:null,minGap:null,maxGap:null,spreadPct:0,duplicates:0,missing:0,missingGaps:[],nonUniform:false,tagSpacingBetween:tagBetween,tagThickness,spacingBetweenMismatch:false,thicknessDiffers:false,orientationMixed,positionsIncomplete:false,info:false,warn:orientationMixed};
+ const base={method:normal?'normal':'z',slices:slices.length,gaps:0,used:tagZ,basis:'tag',medianGap:null,minGap:null,maxGap:null,spreadPct:0,duplicates:0,missing:0,missingGaps:[],nonUniform:false,tagSpacingBetween:tagBetween,tagThickness,spacingBetweenMismatch:false,thicknessDiffers:false,orientationMixed,positionsIncomplete:false,info:false,duplicateIndices:[],allDuplicates:false,duplicatesExcluded:0,legacyZ:legacyZOf(slices,tagZ),warn:orientationMixed};
  if(slices.length<2)return base;
  // multi-frame: positions are synthesised from the tag spacing, so there is nothing to verify
  if(slices.some(s=>s.syntheticPos))return{...base,method:'frames',basis:'frames',warn:orientationMixed};
@@ -72,10 +83,10 @@ export function analyzeSliceSpacing(slices,fallbackMm=1,normal=undefined){
  const gaps=[];for(let i=1;i<pos.length;i++)gaps.push(Math.abs(pos[i]-pos[i-1]));
  // reference gap: median of the non-duplicate gaps (a majority of duplicates must not drag it to 0)
  const pos0=gaps.filter(g=>g>T.dupAbsMm),ref=median(pos0.length?pos0:gaps);
- if(!(ref>T.dupAbsMm))return{...base,gaps:gaps.length,duplicates:gaps.length,warn:true,medianGap:ref};
- let duplicates=0,missing=0;const missingGaps=[],regular=[];
+ if(!(ref>T.dupAbsMm))return{...base,gaps:gaps.length,duplicates:gaps.length,allDuplicates:true,warn:true,medianGap:ref};
+ let duplicates=0,missing=0;const missingGaps=[],regular=[],duplicateIndices=[];
  gaps.forEach((g,i)=>{
-  if(g<=Math.max(T.dupAbsMm,T.dupRel*ref))duplicates++;
+  if(g<=Math.max(T.dupAbsMm,T.dupRel*ref)){duplicates++;duplicateIndices.push(i+1)}
   else if(g>T.missingRel*ref){const n=Math.max(1,Math.round(g/ref)-1);missing+=n;missingGaps.push({index:i,gap:g,missing:n})}
   else regular.push(g);
  });
@@ -84,9 +95,34 @@ export function analyzeSliceSpacing(slices,fallbackMm=1,normal=undefined){
  const spacingBetweenMismatch=tagBetween!=null&&Math.abs(med-tagBetween)>T.tagRel*med;
  const thicknessDiffers=tagThickness!=null&&Math.abs(med-tagThickness)>T.tagRel*med;
  const clean=!duplicates&&!missing&&!nonUniform;
- // uniform data keeps the previous behaviour (first gap); anything irregular uses the median
- const first=gaps[0],used=clean&&first>T.dupAbsMm?first:med;
- return{...base,method:normal?'normal':'z',gaps:gaps.length,used,basis:clean?'first-gap':'median',medianGap:med,minGap:Math.min(...gaps),maxGap:Math.max(...gaps),spreadPct:spread*100,duplicates,missing,missingGaps,nonUniform,spacingBetweenMismatch,thicknessDiffers,warn:!clean||spacingBetweenMismatch||orientationMixed};
+ // spacing: whole span / (N-1); with missing slices a least-squares fit against the corrected index (see header)
+ const n=pos.length,shift=new Array(n).fill(0);
+ for(const m of missingGaps)for(let k=m.index+1;k<n;k++)shift[k]+=m.missing;
+ let used,basis;
+ if(missing){
+  const c=pos.map((_,k)=>k+shift[k]),mc=c.reduce((a,b)=>a+b,0)/n,mp=pos.reduce((a,b)=>a+b,0)/n;
+  let sxy=0,sxx=0;for(let k=0;k<n;k++){sxy+=(c[k]-mc)*(pos[k]-mp);sxx+=(c[k]-mc)**2}
+  used=Math.abs(sxy/sxx);basis='fit';
+ }else{used=Math.abs(pos[n-1]-pos[0])/(n-1);basis='span'}
+ return{...base,method:normal?'normal':'z',gaps:gaps.length,used,basis,medianGap:med,minGap:Math.min(...gaps),maxGap:Math.max(...gaps),spreadPct:spread*100,duplicates,duplicateIndices,missing,missingGaps,nonUniform,spacingBetweenMismatch,thicknessDiffers,warn:!clean||spacingBetweenMismatch||orientationMixed};
+}
+// Drop duplicate slices (indices from analyzeSliceSpacing().duplicateIndices, a slice that repeats its predecessor).
+// Of each run of equal-position slices the one with the smaller InstanceNumber (else the earlier read order) stays.
+// readIndex: Map slice -> position in read order.
+export function excludeDuplicateSlices(sorted,duplicateIndices,readIndex){
+ const dup=new Set(duplicateIndices),drop=new Set();
+ for(let i=0;i<sorted.length;i++){
+  if(dup.has(i))continue;
+  let j=i;while(dup.has(j+1))j++;
+  if(j===i)continue;
+  let best=i;
+  for(let k=i+1;k<=j;k++){
+   const a=sorted[best],b=sorted[k],ia=Number.isFinite(a.instance)?a.instance:Infinity,ib=Number.isFinite(b.instance)?b.instance:Infinity;
+   if(ib<ia||(ib===ia&&(readIndex?.get(b)??k)<(readIndex?.get(a)??best)))best=k;
+  }
+  for(let k=i;k<=j;k++)if(k!==best)drop.add(k);
+ }
+ return{slices:sorted.filter((_,k)=>!drop.has(k)),excluded:drop.size};
 }
 
 const r2=n=>(Math.round(n*100)/100).toString(),r3=n=>(Math.round(n*1000)/1000).toString();
@@ -107,21 +143,28 @@ export function spacingWarningText(check){
   ed.push('The missing part is not included in the volume (underestimate). Slices after a gap are displayed about '+shift+' mm off');
  }
  if(check.duplicates){
-  ja.push('重複 '+check.duplicates+' 枚');en.push(check.duplicates+' duplicate');
-  jd.push('重複スライスが二重に数えられ、体積は過大評価で信頼できません');
-  ed.push('Duplicate slices are counted twice, so the volume is overestimated and not reliable');
+  if(check.duplicatesExcluded){
+   ja.push('重複 '+check.duplicatesExcluded+' 枚を除外しました');en.push('Excluded '+check.duplicatesExcluded+' duplicate slice(s)');
+   jd.push('重複スライスはボリュームから除外しました（InstanceNumber の小さい方を残しています）');
+   ed.push('Duplicate slices were removed from the volume (the one with the smaller InstanceNumber is kept)');
+  }else{
+   ja.push('重複 '+check.duplicates+' 枚');en.push(check.duplicates+' duplicate');
+   jd.push('すべてのスライスの位置が同じため除外できず、体積は信頼できません');
+   ed.push('All slices share one position, so none could be excluded and the volume is not reliable');
+  }
  }
  if(check.nonUniform){
   ja.push('間隔のばらつき '+r2(check.spreadPct)+'%');en.push('spacing spread '+r2(check.spreadPct)+'%');
-  jd.push('中央値 '+u+' mm による近似');ed.push('Approximation with the median '+u+' mm');
+  jd.push('間隔が不均一なため、'+(check.basis==='fit'?'抜けを補正したフィット':'全体の平均')+' '+u+' mm による近似');
+  ed.push('Spacing is uneven, so the '+(check.basis==='fit'?'gap-corrected fit':'overall mean')+' '+u+' mm is an approximation');
  }
  if(check.spacingBetweenMismatch){
   ja.push('SpacingBetweenSlices（'+r3(check.tagSpacingBetween)+' mm）と不一致');en.push('differs from SpacingBetweenSlices ('+r3(check.tagSpacingBetween)+' mm)');
  }
  if(check.orientationMixed){ja.push('シリーズ内で向き（ImageOrientationPatient）が不揃い');en.push('orientation tags differ within the series')}
- const how=check.basis==='median';
- const jaS='スライス間隔に不整合があります：'+ja.join('、')+'。体積は'+(how?'中央値 ':'')+u+' mm で計算しています',
-  enS='Slice spacing is inconsistent: '+en.join(', ')+'. Volumes are computed with '+(how?'the median ':'')+u+' mm';
+ const howJa=check.basis==='fit'?'抜けを補正したフィット間隔 ':check.basis==='span'?'全体の平均間隔 ':'',howEn=check.basis==='fit'?'the gap-corrected fit spacing ':check.basis==='span'?'the overall mean spacing ':'';
+ const jaS='スライス間隔に不整合があります：'+ja.join('、')+'。体積は'+howJa+u+' mm で計算しています',
+  enS='Slice spacing is inconsistent: '+en.join(', ')+'. Volumes are computed with '+howEn+u+' mm';
  return{level:'warn',ja:jaS+(jd.length?'。'+jd.join('。'):''),en:enS+(ed.length?'. '+ed.join('. '):''),jaSummary:jaS,enSummary:enS,jaDetail:jd.join('。'),enDetail:ed.join('. ')};
 }
 // Compact record saved in the .vrlab project (optional field `spacingCheck`; informational, never applied on load).

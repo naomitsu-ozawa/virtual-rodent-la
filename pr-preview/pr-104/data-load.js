@@ -5,7 +5,7 @@ import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-st
 import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20261006-build469';
 import { footer, resetFilterBtn, wc, ww, surfaceSmoothEnabled, surfaceSmoothStrength, planes, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, projectSaveBtn, list, selected, prog, volumeAnalysisToggle, threeLabel, state, renderModeToggle, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, filterAddSelect, filterAddButton, ctRangeAuto, ctRangeFull, $, folderBtn, demoBtn, progLabel, bar, anisotropicKappa, tvEps } from './ui-shell.js?v=20261006-build469';
 import { commentsForProject, loadProjectComments, markCommentsSaved } from './comments.js?v=20261006-build469';
-import { compareFingerprints, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20261006-build469';
+import { compareFingerprints, resolveProjectMatch, legacySpacingUpgrade, projectMismatchReason, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20261006-build469';
 import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsVoxelMask, segmentEditGen, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261006-build469';
 import { FILTER_CATALOG_ORDER, addFilter, applyVolumeAfterFilterRebuild, invalidateSourceFilters, syncFilterControls, setFilterUnitControl, formatHU } from './filter-pipeline.js?v=20261006-build469';
 import { sourceRangeFromMetadata } from './dicom.js?v=20261006-build469';
@@ -411,9 +411,14 @@ export async function applyPendingProject(){
  if(!compareFingerprints(ds,datasetFingerprint(activeSeries)).ok){
   const match=detectedSeries.list.find(s=>s!==activeSeries&&compareFingerprints(ds,datasetFingerprint(s)).ok);
   if(match){await selectSeries(match);return}
-  const issues=compareFingerprints(ds,datasetFingerprint(activeSeries)).issues.join(', ');
-  footer.textContent=ja?'このプロジェクトは別のデータ用です（'+label+'、不一致: '+issues+'）。対応するDICOMを開くと適用します':'This project belongs to other data ('+label+'; mismatch: '+issues+'). Open the matching DICOM to apply it';
-  return;
+  // build 469: a project saved with the old first-two-slices spacing may be opened with the new one after confirmation
+  const r=pending.legacyAccepted?{action:'apply'}:resolveProjectMatch(ds,datasetFingerprint(activeSeries),t=>window.confirm(t),currentLanguage);
+  if(r.action==='cancel'){footer.textContent=ja?'プロジェクトの適用をキャンセルしました（スライス間隔が保存時と異なります）':'Project not applied (the slice spacing differs from the saved one)';return}
+  if(r.action==='reject'){
+   const issues=r.issues.join(', ');
+   footer.textContent=r.reason?(ja?r.reason.ja:r.reason.en):ja?'このプロジェクトは別のデータ用です（'+label+'、不一致: '+issues+'）。対応するDICOMを開くと適用します':'This project belongs to other data ('+label+'; mismatch: '+issues+'). Open the matching DICOM to apply it';
+   return;
+  }
  }
  pendingProject.value=null;
  try{await applyProject(pending);const ns=filterLegacyNotes.value,list=ns.map(n=>n.label+' '+formatHU(n.value)+' HU'+(n.fallback?(ja?'（範囲不明のため既定値）':' (range unknown: default)'):'')).join(', ');footer.textContent=(ja?'プロジェクトを適用しました':'Project applied')+(ns.length?(ja?' · 互換値: '+list+'（古いプロジェクト）':' · Compatibility values: '+list+' (old project)'):'')}

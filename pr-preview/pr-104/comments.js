@@ -26,7 +26,7 @@ export function sanitizeComments(list){
  return out;
 }
 // a comment can be shown only on the series it was written on (same fingerprint: seriesUid if both have one, size, spacing)
-export const commentMatchesSeries=(comment,fingerprint)=>!!comment?.series&&!!fingerprint&&compareFingerprints(comment.series,fingerprint).ok;
+export const commentMatchesSeries=(comment,fingerprint)=>!!comment?.series&&!!fingerprint&&compareFingerprints(comment.series,fingerprint,{legacyZ:true}).ok;
 // the voxel to move to: inside the volume (a position outside, e.g. from a coarser grid, is clamped, never rejected)
 export const commentTarget=(comment,dims)=>{const p=commentVoxel(comment?.position);return p&&dims?clampVoxel(p,dims):null};
 
