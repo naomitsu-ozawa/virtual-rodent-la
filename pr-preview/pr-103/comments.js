@@ -2,8 +2,8 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build468';
-import { compareFingerprints } from './project-file.js?v=20261006-build468';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build470';
+import { compareFingerprints } from './project-file.js?v=20261006-build470';
 
 export const COMMENT_MAX_TEXT=2000;
 const isIdx=n=>Number.isFinite(+n)&&n!==null&&n!==''&&n!==true&&n!==false;
@@ -26,7 +26,7 @@ export function sanitizeComments(list){
  return out;
 }
 // a comment can be shown only on the series it was written on (same fingerprint: seriesUid if both have one, size, spacing)
-export const commentMatchesSeries=(comment,fingerprint)=>!!comment?.series&&!!fingerprint&&compareFingerprints(comment.series,fingerprint).ok;
+export const commentMatchesSeries=(comment,fingerprint)=>!!comment?.series&&!!fingerprint&&compareFingerprints(comment.series,fingerprint,{legacyZ:true}).ok;
 // the voxel to move to: inside the volume (a position outside, e.g. from a coarser grid, is clamped, never rejected)
 export const commentTarget=(comment,dims)=>{const p=commentVoxel(comment?.position);return p&&dims?clampVoxel(p,dims):null};
 

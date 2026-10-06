@@ -58,6 +58,44 @@ has enough context to continue without re-deriving decisions from scratch.
 - Hidden points seen obliquely through thin tissue can still be hard to pick (the hidden test is a march towards the head).
 - Frame band width (6 mm / 0.8 deg), the 0.5 s long press and the drag thresholds (10 mm / 1.5 deg) are constants to tune on the device.
 
+## 2026-10-06 — claude/vr-surface-point (section drag restored, one cursor, build 470)
+
+**Agent:** Claude (Sonnet worker, supervised)
+**Task:** Owner's Quest feedback on build 468: the section operation felt wrong (the original was more intuitive); the cursor should be the small round dot in both modes; in 断面 mode a section should move when the laser is not on the 3D object.
+
+### What changed
+- A section grabbed with the trigger (frame band, number tag, empty space) follows the hand rigidly in 6 DoF, pivot = the hand (`sectionFollowStart` / `sectionFollowStep` in docs/vr-point.js, stored in holder space; no jump at the start). Grip still always moves the volume; no board / proximity grab.
+- 断面 mode: where the laser meets the selected section (air included) a tap records, press-and-move drags the section (record cancelled) after 2 cm / 5 deg (`DRAG_RECORD`); holding still never starts a drag (a press over 0.5 s neither records nor drags). Where the laser is not on tissue, nor on a band/tag, the press grabs the section the laser passes through (else the nearest to the laser, else the selected) (`chooseSectionForRay`); on tissue it does nothing. Band/tag/empty grabs keep the 1 cm / 1.5 deg / 0.5 s start.
+- No clamping while dragging; on release the centre is brought back into the volume box without changing the cut where possible (`snapPlaneCenterIntoBox`). The jump to the perpendicular foot at drag start is removed.
+- Cursor: the square 断面 cursor and the outer ring are removed; both modes use the small dot (`createSurfaceCursor`), in 断面 mode at the voxel projected onto the plane.
+
+### Follow-up / open questions
+- Thresholds (2 cm / 5 deg, 1 cm / 1.5 deg) and the empty-space section choice need a check on the Quest.
+
+## 2026-10-06 — claude/slice-spacing-check (slice-spacing check and warning, build 469)
+
+**Agent:** Claude
+**Task:** Check every slice gap on load, warn about missing / duplicate / uneven slices, and make the volume spacing reliable.
+
+### What changed
+- New `docs/slice-spacing.js` (pure): gaps along the slice normal (ImageOrientationPatient cross product; Z when absent), classification and the spacing to use. Thresholds: duplicate gap <= max(1e-3 mm, 5% of median); missing gap > 1.5x median (count = round(gap/median)-1); non-uniform when (max-min) of regular gaps > 1% of median; SpacingBetweenSlices mismatch > 2% (SliceThickness difference is recorded only, since overlapping recon is legitimate).
+- `dicom.js`: parses ImageOrientationPatient (`orientation`), sorts by position along the normal, `groupSeries` sets `spacingZ` and `spacingCheck`. Uniform data keeps the old first-gap value (identical volumes); irregular data uses the median gap. Series with no positions or a single slice keep the tag fallback.
+- UI: amber `.spacing-warn` (ja/en) under the selected-series overlay and inside the analysis result card, plus the voxel spacing x/y/z used. Non-blocking.
+- Project: optional `spacingCheck` field in project.json (informational, never applied on load). PROJECT_VERSION stays 1 (unknown fields are ignored by older readers).
+- Tests: `tests/unit/slice-spacing.test.js` (synthetic data only).
+
+- Review fixes (same build 469): normal sign oriented so axial keeps main's z-ascending order (coronal/sagittal follow InstanceNumber, else read order); multi-frame frames carry `syntheticPos` and are sorted by sortIndex with `basis:'frames'` (tag spacing, no warning); non-uniform needs range > max(1% median, 2e-3 mm) (position rounding on thin slices); case-specific warning texts (missing / duplicate / non-uniform); info-level note when positions are missing or partial (method `none` / `partial`, previous behaviour kept); warning on mixed orientation tags; series-card marker; `role="status"`; warning redrawn on language switch; summary line with expandable details (iPad).
+- Owner decisions (same build 469): (A) duplicate slices are EXCLUDED (smaller InstanceNumber, else read order, stays; nothing dropped when every slice has one position); the warning says "重複 N 枚を除外しました"; a project whose slice count differs only because of this is rejected with an explicit reason. (B) z spacing = (last - first) / (N - 1) after exclusion; with missing slices a least-squares fit of position vs corrected index (index + cumulative missing) is used (uses every slice, so printed-position rounding averages out; the mean of regular gaps was rejected as it ignores the slices around each gap). `spacingCheck.basis` = span / fit / frames / tag / first-gap. Old projects (only z differs, same slice count, saved z = the old first-two value, kept as `legacyZ` / fingerprint `legacySpacingZ`) get a confirm dialog (`resolveProjectMatch` in project-file.js); position comments saved with the old z still match (`compareFingerprints(..., {legacyZ:true})`); voxel indices are untouched.
+
+- Re-review fixes: `legacyAccepted` is the accepted series id and applies only to that series while `legacySpacingUpgrade` still holds (otherwise normal matching); the legacy prompt shows the change in % and, above 1%, says the volume changes by that much and earlier results need recalculation; the series-card tooltip follows the language; the span + non-uniform detail notes it is approximate for local structures.
+
+### Why
+- Volume = voxel count x spacings, and Z used only the first two slices, so a missing or duplicated slice silently skewed volumes.
+
+### Follow-up / open questions
+- VR volume labels (`vr-view.js`) do not show the warning yet (kept out to avoid conflict with PR #103). Duplicate slices stay in the volume (not removed); only the spacing is corrected.
+- Oblique series now use the normal-projected gap instead of the Z difference (axial series are unchanged).
+
 ---
 
 ## 2026-10-05 — claude/viewer-color-themes (colour themes, builds 449-450)

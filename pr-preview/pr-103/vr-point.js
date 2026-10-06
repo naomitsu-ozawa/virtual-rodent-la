@@ -9,8 +9,8 @@
 // that another clipping section has cut away. A section whose intersection is outside the volume is skipped, never clamped.
 // Voxel rule: voxel i covers the fraction [i/n, (i+1)/n) of the box along its axis, so the index is floor(fraction * n); a point
 // outside [0,1) on any axis (the far face itself included) is NOT recorded: it is never moved into the volume.
-import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, commentMatchesSeries } from './comments.js?v=20261006-build468';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build468';
+import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, commentMatchesSeries } from './comments.js?v=20261006-build470';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build470';
 
 const T_MIN=1e-6,EDGE_EPS=1e-4;
 
@@ -246,12 +246,16 @@ export function createTriggerPress({longMs=LONG_PRESS_MS}={}){
   get pressed(){return t0!==null},
  };
 }
-// when a press on a section turns into a drag: hand moved > posM (m) or turned > angDeg or held >= holdMs
+// when a press on a section turns into a drag: hand moved > posM (m) or turned > angDeg or held >= holdMs.
+// DRAG_RECORD: the press began where a tap would record a point (section mode, the laser on the selected plane); there the threshold is higher
+// (2 cm / 5 deg) so hand jitter in a tap does not drag, and holding still never starts a drag (holdMs Infinity: a long press just records nothing).
+export const DRAG_RECORD={posM:0.02,angDeg:5,holdMs:Infinity};
 export function dragShouldStart({dPosM=0,dAngleDeg=0,heldMs=0}={},{posM=0.01,angDeg=1.5,holdMs=LONG_PRESS_MS}={}){
  return dPosM>posM||dAngleDeg>angDeg||heldMs>=holdMs;
 }
 
-// ---- section drag (spec 4.3), holder space ----
+// ---- section drag (build 470), holder space ----
+// the section follows the hand rigidly in all 6 degrees of freedom (as when it was held in the hand before build 468): the rotation pivot is the hand.
 // reach of a plane with unit normal n over the box +-halfExt: R(n) = |nx|hx+|ny|hy+|nz|hz
 export const planeReach=(n,halfExt)=>Math.abs(n.x)*halfExt[0]+Math.abs(n.y)*halfExt[1]+Math.abs(n.z)*halfExt[2];
 // the foot of the perpendicular from the origin: n*w
@@ -261,13 +265,41 @@ export function clampPlaneCenter(c,n,halfExt){
  const R=planeReach(n,halfExt),d=n.x*c.x+n.y*c.y+n.z*c.z,e=d-Math.max(-R,Math.min(R,d));
  return e===0?{x:c.x,y:c.y,z:c.z}:{x:c.x-n.x*e,y:c.y-n.y*e,z:c.z-n.z*e};
 }
-// p0,q0: hand position / orientation (holder space) at the start of the drag; c0: the section's centre then; Qp0: its orientation then;
-// p,q: the hand now (holder space). The section's local X is its normal. -> {c, Qp, n}
-export function sectionDragStep({p0,q0,c0,Qp0,p,q,halfExt}){
- const dR=qMul(qNorm(q),qInv(qNorm(q0))),Qp=qNorm(qMul(dR,qNorm(Qp0))),n=qRot(Qp,{x:1,y:0,z:0});
- const s=(p.x-p0.x)*n.x+(p.y-p0.y)*n.y+(p.z-p0.z)*n.z;
- const c=clampPlaneCenter({x:c0.x+n.x*s,y:c0.y+n.y*s,z:c0.z+n.z*s},n,halfExt);
- return{c,Qp,n};
+const inBox=(c,h)=>Math.abs(c.x)<=h[0]&&Math.abs(c.y)<=h[1]&&Math.abs(c.z)<=h[2];
+// On release: bring the section centre back inside the volume box. The plane itself is kept (so the cut is the same) whenever it still meets the
+// box: the centre slides along the plane to the point of the box it meets (alternating projections onto the box and onto the plane); a plane
+// that no longer meets the box is first pulled back (clampPlaneCenter) so that it touches it. n: unit normal.
+export function snapPlaneCenterIntoBox(c,n,halfExt){
+ const k=clampPlaneCenter(c,n,halfExt);
+ if(inBox(k,halfExt))return k;
+ const d=n.x*k.x+n.y*k.y+n.z*k.z;
+ let p={x:k.x,y:k.y,z:k.z};
+ for(let i=0;i<200;i++){
+  const b={x:Math.max(-halfExt[0],Math.min(halfExt[0],p.x)),y:Math.max(-halfExt[1],Math.min(halfExt[1],p.y)),z:Math.max(-halfExt[2],Math.min(halfExt[2],p.z))},e=n.x*b.x+n.y*b.y+n.z*b.z-d;
+  p={x:b.x-n.x*e,y:b.y-n.y*e,z:b.z-n.z*e};
+  if(Math.abs(e)<1e-9)break;
+ }
+ return p;
+}
+// at the start of the drag: p0,q0 the hand (holder space), c0,Qp0 the section's centre / orientation then -> {rel,Qrel} = hand^-1 * section
+export function sectionFollowStart({p0,q0,c0,Qp0}){
+ const qi=qInv(qNorm(q0));
+ return{rel:qRot(qi,{x:c0.x-p0.x,y:c0.y-p0.y,z:c0.z-p0.z}),Qrel:qNorm(qMul(qi,qNorm(Qp0)))};
+}
+// each frame: p,q the hand now -> the section {c,Qp,n} = hand * rel (no clamping while dragging; the section's local X is its normal)
+export function sectionFollowStep({rel,Qrel,p,q}){
+ const qn=qNorm(q),r=qRot(qn,rel),Qp=qNorm(qMul(qn,Qrel));
+ return{c:{x:p.x+r.x,y:p.y+r.y,z:p.z+r.z},Qp,n:qRot(Qp,{x:1,y:0,z:0})};
+}
+// which section an empty-space grab moves: cands [{id,t,dist}] one per visible section; t = distance along the ray to where the ray passes
+// through the section's square (null if it does not), dist = distance from the ray to the section's centre. The nearest pass-through wins;
+// without any, the section whose centre is nearest to the ray; null for no candidates (the caller falls back to the selected one).
+export function chooseSectionForRay(cands){
+ let best=null;
+ for(const c of cands||[])if(c&&Number.isFinite(c.t)&&(!best||c.t<best.t))best=c;
+ if(best)return best.id;
+ for(const c of cands||[])if(c&&Number.isFinite(c.dist)&&(!best||c.dist<best.dist))best=c;
+ return best?best.id:null;
 }
 
 // ---- frame band of a section (spec 4.1), pure parts ----

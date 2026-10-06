@@ -971,3 +971,7 @@ html.vrl-ipad-ui .comment-popover .comment-input{font-size:16px}
 .vrl-ipad-ui .comment-marker-3d-no{font-size:12px;line-height:14px;min-width:16px;border-radius:8px}
 .vrl-ipad-ui .comment-marker-3d.is-behind .comment-marker-3d-no{font-size:10px;line-height:12px;min-width:14px}
 .comment-bubble-3d{pointer-events:none}
+
+/* build 469: slice-spacing warning (non-blocking; wraps on narrow / iPad layouts) */
+.spacing-warn{display:block;padding:5px 7px;border:1px solid rgb(var(--ui-amber-bd));border-radius:7px;background:rgb(var(--ui-amber-bg));color:rgb(var(--ui-amber-tx))!important;font-size:11px;line-height:1.35;overflow-wrap:anywhere;white-space:normal}
+.spacing-warn{pointer-events:auto}.spacing-warn summary{cursor:pointer;list-style-position:inside}.spacing-info{background:rgb(var(--ui-s2));border-color:rgb(var(--ui-b2));color:rgb(var(--ui-t3))!important}.spacing-mark{color:rgb(var(--ui-amber-tx));font-weight:700}
