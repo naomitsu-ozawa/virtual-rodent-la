@@ -10,7 +10,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
 import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build460';
 import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build460';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState } from './segments.js?v=20261006-build460';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build460';
 import { sceneState, analysisRegions } from './state.js?v=20261006-build460';
 import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build460';
 import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build460';
@@ -64,6 +64,8 @@ uniform vec4 segC[4]; // rgb, w=1: simple display (no refinement, no gradient)
 // filtering + 0.5 gives a smooth boundary instead of voxel steps (diagnostic
 // switch in 詳細: smooth / nearest / off)
 uniform int editMask;
+// build 459: segments decided by their mask alone (Closing / hole filling can add voxels outside the HU range)
+uniform int editMaskOnly;
 uniform sampler3D editTex;
 // up to 4 sections (build 360): planeCount planes, bit i of planeCut = plane
 // i clips (its removed half is dot(n,p) < w); every plane shows its slice,
@@ -155,7 +157,7 @@ int segmentIndexAt(vec3 tc){
   return segmentIndexFromQ(texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999))));
  }
  float v=huAt(tc);gHu=v;
- for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&v>=a.x&&v<=a.y&&editAllows(s,tc))return s;}
+ for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&(((editMaskOnly>>s)&1)==1||(v>=a.x&&v<=a.y))&&editAllows(s,tc))return s;}
  return -1;
 }
 // signed distance-like value of segment s at the last sample: >= 0 inside
@@ -169,7 +171,7 @@ float segValue(int s){if(useCls>0){int c=clsChan[s];return c>=0?gQ[c]-0.5:-1.0;}
 // inside s crosses it without sampling. Bricks carry one voxel of overlap.
 int brickClass(vec3 tc){
  vec2 mm=texture(bricks,clamp(tc,vec3(0.0),vec3(0.999999))).rg;
- for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&a.y>=mm.x&&a.x<=mm.y){if(mm.x>=a.x&&mm.y<=a.y&&((editMask>>s)&1)==0)return 2+s;return 1;}}
+ for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&(((editMaskOnly>>s)&1)==1||(a.y>=mm.x&&a.x<=mm.y))){if(mm.x>=a.x&&mm.y<=a.y&&((editMask>>s)&1)==0)return 2+s;return 1;}}
  return 0;
 }
 bool brickMayContain(vec3 tc){return brickClass(tc)>0;}
@@ -493,18 +495,18 @@ function halveVolume(vd){
 function buildEditMask(dims){
  const v=gpuVolumeTarget();if(!v)return{activeMask:0,data:null};
  const descs=gpuVolumeEditDescriptors(),[w,h,d]=dims,sourceDims=[v.columns,v.rows,v.slices],reduced=w!==v.columns||h!==v.rows||d!==v.slices;
- let activeMask=0,data=null;
+ let activeMask=0,maskOnly=0,data=null;
  SEGMENT_PRESET_ORDER.slice(0,4).forEach((key,si)=>{
   const desc=descs[key];if(!desc?.runs)return;
   const runs=gpuRunsForTexture(desc.runs,sourceDims,dims,{dilate:reduced&&desc.mode==='exclude'?1:0});
-  data||=new Uint8Array(w*h*d*4);activeMask|=1<<si;
+  data||=new Uint8Array(w*h*d*4);activeMask|=1<<si;if(desc.maskOnly)maskOnly|=1<<si;
   const on=desc.mode==='exclude'?0:255;
   if(desc.mode==='exclude')for(let i=si;i<data.length;i+=4)data[i]=255;
   for(let z=0;z<d;z++){const rec=runs?.[z];if(!rec?.length)continue;
    for(let i=0;i<rec.length;i+=3){const o=(z*h+rec[i])*w;for(let x=rec[i+1];x<=rec[i+2];x++)data[(o+x)*4+si]=on}
   }
  });
- return{activeMask,data};
+ return{activeMask,maskOnly,data};
 }
 // rg8-packed u16 texture of the current volume, built with the same plan,
 // area reduction and packing as the WebGPU upload, plus per-brick HU min/max
@@ -679,7 +681,7 @@ const idOf=o=>{if(!o)return 0;let i=editIds.get(o);if(!i){i=editIdNext++;editIds
 export function vrDataKey(){
  const v=gpuVolumeTarget();if(!v?.series)return '';
  const segs=SEGMENT_PRESET_ORDER.map(k=>{const g=segmentState[k]||{},st=segmentEditState[k]||{};
-  return [g.active?1:0,g.enabled?1:0,g.min,g.max,g.opening,g.closing,g.holeFill?1:0,g.minComponent,g.surfaceMm,g.thicknessMm,st.revision|0,idOf(st.baseRuns),idOf(st.keepRuns),idOf(st.excludeRuns)].join(',')});
+  return [g.active?1:0,g.enabled?1:0,g.min,g.max,g.opening,g.closing,g.holeFill?1:0,g.minComponent,g.surfaceMm,g.thicknessMm,st.revision|0,idOf(st.baseRuns),idOf(st.keepRuns),idOf(st.excludeRuns),segmentSourceSignature(k)].join(',')});
  // build 409: the shown analysis results (colour, voxels) are part of the prepared data
  const regions=shownRegions().map(r=>r.id+':'+r.color+':'+r.voxels).join(',');
  return [v.series.id,v.filterSignature||'',...segs,regions].join('|');
@@ -710,11 +712,11 @@ function buildClsData(t,calibration,edit){
  if(!nc)return null;const C=nc===1?1:nc===2?2:4,out=new Uint8Array(n*C);
  const maskOk=edit.data&&edit.dims.join()===t.dims.join();
  for(let si=0;si<4;si++){
-  const seg=segs[si];if(chan[si]<0)continue;const lo=+seg.min,hi=+seg.max,masked=maskOk&&(edit.active>>si&1),ch=chan[si];
+  const seg=segs[si];if(chan[si]<0)continue;const lo=+seg.min,hi=+seg.max,masked=maskOk&&(edit.active>>si&1),maskOnly=maskOk&&(edit.maskOnly>>si&1),ch=chan[si];
   for(let i=0;i<n;i++){
    const hu=((src[i*2]|(src[i*2+1]<<8))-bias)*slope+intercept,dd=Math.min(hu-lo,hi-hu);
    let f=Math.round((0.5+dd/2048)*255);f=f<0?0:f>255?255:f;
-   if(masked&&edit.data[i*4+si]<128)f=0;
+   if(masked){if(edit.data[i*4+si]<128)f=0;else if(maskOnly&&f<191)f=191}
    out[i*C+ch]=f;
   }
  }
@@ -740,7 +742,7 @@ const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=ba
 const rayMaterialOf=m=>{const r=m.clone();r.uniforms=m.uniforms;r.defines={...m.defines};r.blending=THREE.NoBlending;r.transparent=false;return r};
 const volumeUniforms=(vd,full,settings)=>({vol:{value:full.v},bricks:{value:full.b},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
  stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
- cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionSeg:{value:new Array(14).fill(0)},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
+ cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionSeg:{value:new Array(14).fill(0)},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editMaskOnly:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
 // ---- GPU preparation before the session (build 393, after the Codex branch's idea) ----
 // The renderer (an XR-compatible context), the textures of the grid in use, the
 // combined classification + field texture for the shown segments, the edit mask
@@ -806,7 +808,7 @@ export async function prepareVrData(onProgress=()=>{}){
   const half=Math.max(...vd.dims)>256?halveVolume(vd):null;times.half=performance.now()-t0;
   onProgress({phase:'mask',done:0,total:1});await tick();t0=performance.now();
   const editDims=half?half.dims:vd.dims;let m;try{m=buildEditMask(editDims)}catch(e){console.error(e);m={activeMask:0,data:null}}
-  const edit={dims:editDims,data:m.activeMask?m.data:null,active:m.activeMask|0};times.mask=performance.now()-t0;
+  const edit={dims:editDims,data:m.activeMask?m.data:null,active:m.activeMask|0,maskOnly:m.maskOnly|0};times.mask=performance.now()-t0;
   onProgress({phase:'cls',done:0,total:1});await tick();t0=performance.now();
   const small=half||vd,cls=buildClsData(small,vd.calibration,edit);times.cls=performance.now()-t0;
   onProgress({phase:'dist',done:0,total:1});await tick();t0=performance.now();
@@ -1631,7 +1633,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   refreshEdits=()=>{
    if(!material)return;const mode=settings.editDiag|0;
    if(editTex){const f=mode===1?THREE.NearestFilter:THREE.LinearFilter;if(editTex.minFilter!==f||!editTex.userData.up){editTex.minFilter=editTex.magFilter=f;editTex.needsUpdate=true;editTex.userData.up=true}}
-   material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editTex.value=editTex||dummyEdit;
+   material.uniforms.editMask.value=mode===2?0:editActive;material.uniforms.editMaskOnly.value=mode===2?0:(P.edit.maskOnly|0);material.uniforms.editTex.value=editTex||dummyEdit;
    // build 409: analysis result colours
    material.uniforms.regionTex.value=regionTex||dummyEdit;regionColors.forEach((c,i)=>{color.setHex(c);material.uniforms.regionC.value[i].set(color.r,color.g,color.b);material.uniforms.regionSeg.value[i]=regionSegs[i]|0});
   };

@@ -39,7 +39,7 @@ import { request3DRender } from './scene3d.js?v=20261006-build460';
 import { makeAxisWidget, create3DRenderer, makeViewOverlays, makeViewRotation, makeCutTools } from './scene-view.js?v=20261006-build460';
 import { cpuAnisotropicDiffusion, cpuBilateral3D, cpuGaussian3D, cpuMedian3D, cpuNlm3D, cpuSigmoid, cpuSpikeHole, cpuTvDenoising3D, cpuUnsharpMask3D } from './cpu-filters.js?v=20261006-build460';
 import { disposeMprPlaneGroup, ensureMpr3DPlanes, ensureMpr3DPreviewCache, makeMprPlaneLabel, mpr3DCacheImage, mpr3DOpacitySource, mpr3DOrthoSliding, mpr3DPreviewCache, mpr3DPreviewMap, mpr3DPreviewPlan, mpr3DPreviewSignature, mpr3DVisibility, mpr3DWindowLut, paintMpr3DCacheSliceFast, pushCachedMpr3DPlane, refreshMpr3DPlaneTexture, restoreSectionAutoPlane, setMpr3DOverlayVisible, showSectionPlaneOverlay, syncMpr3DOverlayPresentation, syncMpr3DSliceSliders, updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261006-build460';
-import { SEGMENT_PRESET_ORDER, activeMprSegments, getProcessedSegmentMask, segmentEditActive, segmentEditState, segmentMaskVolumeId, segmentMaskVolumeIds, segmentNeedsGlobalMask, segmentState, sourceMprMemoryView, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261006-build460';
+import { SEGMENT_PRESET_ORDER, activeMprSegments, getProcessedSegmentMask, segmentEditActive, segmentEditState, segmentMaskVolumeId, segmentMaskVolumeIds, segmentNeedsGlobalMask, segmentNeedsVoxelMask, segmentHasProcessedMask, segmentState, sourceMprMemoryView, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261006-build460';
 import { rebindWebGpuSectionClipGroup, sectionLocalNormal, sectionLocalPlane, sectionLocalPoint, sectionLocalStep, sectionPlaneLabel, updateSectionClipPlaneWorld, updateSectionViewUi } from './section-view.js?v=20261006-build460';
 import { analysisColorCss, buildSourceOrthogonalNeighborhood, cancelSourceMprWarmup, drawAnalysisOverlay, filteredPlaneDims, filteredPlaneRunners, gpuVolumeShowsCurrentFilters, mprPaintCache, orthogonalHighResPrefetch, paintFastOrthogonalPreview, paintInstantPlaneWhileSliding, paintResidentCachedMprPreview, paintSourcePlane, perSliceFilteredActive, planeRenderTimers, prefetchOrthogonalHighRes, renderAll, renderPlane, renderPlaneMemoryFiltered, renderPlaneSourceBacked, renderSectionPlaneLive, reusableMprImage, safeRenderPlane, schedulePlaneRender, scheduleSourceMprWarmup, updateMprCanvasPhysicalAspect } from './mpr-render.js?v=20261006-build460';
 import { setProcessingBusy } from './busy.js?v=20261006-build460';
@@ -422,12 +422,12 @@ async function loadSampleProject(){
 window.addEventListener('vrl-settings',e=>{if(e.detail?.key==='mpr2dAlpha'&&volume)renderAll()});
 document.addEventListener('vrl-filters-changed',async()=>{
  const v=current3DVolume||volume;if(!v)return;
- const keys=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active&&segmentState[k]?.enabled&&(segmentNeedsGlobalMask(segmentState[k])||segmentEditActive(k)));
+ const keys=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active&&segmentState[k]?.enabled&&segmentNeedsVoxelMask(k));
  // build 428: only when the filters differ from those of the results (a project load replays its own filters, and the
  // rebuild it starts ends after the results were restored: they were cleared — owner: 復旧途中で色がつくが消える)
  const sig=currentFilterSignature();if(analysisRegions.length&&sig!==memState.analysisFilterSignature)clearAnalysisHighlight();memState.setAnalysisFilterSignature(sig);if(!keys.length)return;
  for(const key of keys){
-  try{if(segmentNeedsGlobalMask(segmentState[key])&&(v.sourceBacked||threeRenderMode==='volume'))await prepareSourceSegmentPostprocess(key);else{await getFinalSegmentRuns(key,v);if(threeRenderMode==='volume')syncGpuVolumeEdits(sourceVolume||volume)}}
+  try{if(segmentHasProcessedMask(key)&&(v.sourceBacked||threeRenderMode==='volume'))await prepareSourceSegmentPostprocess(key);else{await getFinalSegmentRuns(key,v);if(threeRenderMode==='volume')syncGpuVolumeEdits(sourceVolume||volume)}}
   catch(e){if(String(e?.message||e)!=='__SUPERSEDED__')console.warn('Segment update after the filter change failed for '+key,e)}
  }
  renderAll();
@@ -448,7 +448,10 @@ for(const btn of document.querySelectorAll('[data-seg-collapse]')){
 }
 // build 438: per-segment invalidation, used when the card priority changes several segments' ranges at once
 const segmentInvalidators={};
-segmentExclusive.invalidate=keys=>{for(const k of keys)segmentInvalidators[k]?.(true)};
+// build 459: invalidate(keys, dependents): the dependents are segments below that follow a higher segment's voxels; only
+// their own analysis results are dropped, the other results stay
+segmentExclusive.invalidate=(keys,dependents=[])=>{for(const k of keys)segmentInvalidators[k]?.(true);for(const k of dependents)segmentInvalidators[k]?.(true,true);for(const k of SEGMENT_PRESET_ORDER)updateSegmentOutputs(k)};
+function clearAnalysisResultsFor(key){for(const r of [...analysisRegions])if(r.segmentKeys?.includes(key))removeAnalysisRegion(r.id)}
 installSegmentReorder(()=>{renderSegmentPresets();commitExclusiveRanges();for(const k of SEGMENT_PRESET_ORDER)updateSegmentOutputs(k);renderAll();scheduleSegment3D()});
 {const sel=document.getElementById('segment-exclusive-mode');if(sel)sel.onchange=()=>{segmentExclusive.mode=sel.value==='off'?'off':'priority';commitExclusiveRanges();for(const k of SEGMENT_PRESET_ORDER)updateSegmentOutputs(k);renderAll();scheduleSegment3D()}}
 for(const key of Object.keys(segmentState)){
@@ -473,29 +476,32 @@ for(const key of Object.keys(segmentState)){
   if(threeRenderMode==='volume'&&sceneState?.medicalVolume?.active){request3DRender();reportDrawTimes();return}
   const t2=performance.now();renderMainMprPreview();reportDrawTimes(performance.now()-t2);scheduleSegment3D()};
  opacity.onchange=()=>renderAll();
- const invalidateSegment=(full=false)=>{segmentState[key]._maskCache=null;segmentState[key]._maskCacheKey='';clearSegmentEditCache(key,false);clearAnalysisHighlight();if(full)renderAll();else renderMainMprPreview();scheduleSegment3D();if(full&&threeRenderMode==='volume')syncGpuVolumeEdits(sourceVolume||volume);if(full&&(volume?.sourceBacked||threeRenderMode==='volume')&&segmentNeedsGlobalMask(segmentState[key]))void prepareSourceSegmentPostprocess(key);
+ const invalidateSegment=(full=false,dependent=false)=>{segmentState[key]._maskCache=null;segmentState[key]._maskCacheKey='';clearSegmentEditCache(key,false);if(dependent)clearAnalysisResultsFor(key);else clearAnalysisHighlight();if(full)renderAll();else renderMainMprPreview();scheduleSegment3D();if(full&&threeRenderMode==='volume')syncGpuVolumeEdits(sourceVolume||volume);if(full&&(volume?.sourceBacked||threeRenderMode==='volume')&&segmentHasProcessedMask(key))void prepareSourceSegmentPostprocess(key);
   // build 415: an edited plain segment draws its edits in 2D from finalRuns: rebuild them for the new settings
-  else if(full&&segmentEditActive(key))void getFinalSegmentRuns(key,current3DVolume||volume).then(()=>renderAll(),e=>{if(String(e?.message||e)!=='__SUPERSEDED__')console.warn(e)})};
+  else if(full&&segmentNeedsVoxelMask(key))void getFinalSegmentRuns(key,current3DVolume||volume).then(()=>renderAll(),e=>{if(String(e?.message||e)!=='__SUPERSEDED__')console.warn(e)})};
  segmentInvalidators[key]=invalidateSegment;
- opening.oninput=()=>{segmentState[key].opening=+opening.value;$('[data-seg-opening-out="'+key+'"]').value=opening.value;invalidateSegment(false)};
- opening.onchange=()=>invalidateSegment(true);
- closing.oninput=()=>{segmentState[key].closing=+closing.value;$('[data-seg-closing-out="'+key+'"]').value=closing.value;invalidateSegment(false)};
- closing.onchange=()=>invalidateSegment(true);
- minComponent.oninput=()=>{segmentState[key].minComponent=+minComponent.value;$('[data-seg-min-component-out="'+key+'"]').value=minComponent.value;invalidateSegment(false)};
- minComponent.onchange=()=>invalidateSegment(true);
- holeFill.onchange=()=>{segmentState[key].holeFill=holeFill.checked;invalidateSegment(true)};
+ // build 459: a processing setting changes what the segment holds (and whether it is a voxel taker), so the segments
+ // below follow: commit recomputes the exclusion and invalidates this segment and the ones that depend on it
+ const processingInput=()=>{invalidateSegment(false);for(const k of applyExclusiveRanges()){segmentState[k]._maskCache=null;clearSegmentEditCache(k,false);updateSegmentOutputs(k)}};
+ opening.oninput=()=>{segmentState[key].opening=+opening.value;$('[data-seg-opening-out="'+key+'"]').value=opening.value;processingInput()};
+ opening.onchange=()=>commitExclusiveRanges(key);
+ closing.oninput=()=>{segmentState[key].closing=+closing.value;$('[data-seg-closing-out="'+key+'"]').value=closing.value;processingInput()};
+ closing.onchange=()=>commitExclusiveRanges(key);
+ minComponent.oninput=()=>{segmentState[key].minComponent=+minComponent.value;$('[data-seg-min-component-out="'+key+'"]').value=minComponent.value;processingInput()};
+ minComponent.onchange=()=>commitExclusiveRanges(key);
+ holeFill.onchange=()=>{segmentState[key].holeFill=holeFill.checked;commitExclusiveRanges(key)};
  // thin-region sliders: whole-volume distance fields, so recompute on release only
  for(const [attr,field] of THIN_SLIDERS){
   const el=$('[data-seg-'+attr+'="'+key+'"]'),out=$('[data-seg-'+attr+'-out="'+key+'"]');if(!el)continue;
   el.oninput=()=>{out.value=formatMmVoxels(thinSliderValue(el))};
-  el.onchange=()=>{const mm=thinSliderValue(el);if(mm===segmentState[key][field])return;segmentState[key][field]=mm;out.value=formatMmVoxels(mm);if(!segmentNeedsGlobalMask(segmentState[key]))setSegmentStatus(key,'');invalidateSegment(true)};
+  el.onchange=()=>{const mm=thinSliderValue(el);if(mm===segmentState[key][field])return;segmentState[key][field]=mm;out.value=formatMmVoxels(mm);if(!segmentNeedsGlobalMask(segmentState[key]))setSegmentStatus(key,'');commitExclusiveRanges(key)};
  }
  // build 405: STL export in the progress modal
  exportBtn.onclick=async()=>{setBusySlot('export',true,{label:currentLanguage==='ja'?'STL を書き出し中…':'Exporting STL…',counted:true});try{await exportSegmentStl(key)}finally{setBusySlot('export',false,{counted:true})}};
  removeBtn.onclick=()=>removeSegmentPreset(key);
 }
 async function prepareSourceSegmentPostprocess(key){
- const v=current3DVolume||volume;if(!(v?.sourceBacked||threeRenderMode==='volume')||!segmentState[key]?.active||!segmentState[key]?.enabled||!segmentNeedsGlobalMask(segmentState[key]))return;
+ const v=current3DVolume||volume;if(!(v?.sourceBacked||threeRenderMode==='volume')||!segmentState[key]?.active||!segmentState[key]?.enabled||!segmentHasProcessedMask(key))return;
  try{
   await ensureSegmentBaseRuns(key,v);
   // build 414: with edits, the 2D views draw finalRuns (base ∩ keep − exclude); rebuild it from the new base, in every view

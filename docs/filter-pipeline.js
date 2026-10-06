@@ -12,7 +12,7 @@ import { tr } from './i18n.js?v=20261006-build460';
 import { FILTER_UNITS, isValidUnitValue } from './filter-units.js?v=20261006-build460';
 import { refreshGpuVolumeData } from './gpu-volume-data.js?v=20261006-build460';
 import { render3D } from './surface-build.js?v=20261006-build460';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentNeedsGlobalMask } from './segments.js?v=20261006-build460';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentHasProcessedMask } from './segments.js?v=20261006-build460';
 export const FILTER_CATALOG_ORDER=['spikeHole','nlm','anisotropic','gaussian','sigmoid','bilateral','tv','unsharp'];
 export const liveFilterState={timer:null,base:null,key:null};
 export function beginLiveFilter(key){
@@ -193,7 +193,7 @@ export function invalidateSourceFilters(){
  sourceFilterRuntime.cache.clear();sourceFilterRuntime.cacheBytes=0;disposeSourceFilterWorkers();
 }
 export function hasGlobalSegmentProcessing(){
- return SEGMENT_PRESET_ORDER.some(key=>{const s=segmentState[key];return s.active&&s.enabled&&segmentNeedsGlobalMask(s)});
+ return SEGMENT_PRESET_ORDER.some(key=>{const s=segmentState[key];return s.active&&s.enabled&&segmentHasProcessedMask(key)});
 }
 export function currentMainViewKey(){return mainViewSlot?.querySelector('.view-card')?.dataset.viewKey||'3d'}
 export const applyVolumeAfterFilterRebuild={value:false};
