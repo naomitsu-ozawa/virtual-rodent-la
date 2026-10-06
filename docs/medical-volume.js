@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { canvasBackground3dUnit } from './canvas-theme.js?v=20261005-build458';
+import { canvasBackground3dUnit } from './canvas-theme.js?v=20261006-build460';
 
 const UNCOMPRESSED_TS=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
@@ -558,12 +558,12 @@ fn gradientAt(tc:vec3<f32>)->vec3<f32>{
    var planeColor=vec3<f32>(g);
    let isSectionPlane=u.section.x>0.5&&i32(round(u.section.x))-1==which;
    if(!isSectionPlane){
-    for(var s:u32=0u;s<4u;s=s+1u){
-     let a=u.segments[s*2u];
-     if(a.w>0.5&&planeValue>=a.x&&planeValue<=a.y){
-      let tint=u.segments[s*2u+1u].rgb;let ta=min(0.75,clamp(a.z,0.0,1.0)*0.65);
-      planeColor=mix(planeColor,tint,ta);
-     }
+    // build 460: the same membership as the 2D and 3D views (processed mask and manual edits included), one segment per voxel
+    let planeSeg=segmentIndexFor(planeValue,texCoord(planePoint));
+    if(planeSeg>=0){
+     let a=u.segments[u32(planeSeg)*2u];
+     let tint=u.segments[u32(planeSeg)*2u+1u].rgb;let ta=min(0.75,clamp(a.z,0.0,1.0)*0.65);
+     planeColor=mix(planeColor,tint,ta);
     }
    }
    let pa=clamp(u.mprIndices.w,0.0,1.0);let contribution=(1.0-acc.a)*pa;

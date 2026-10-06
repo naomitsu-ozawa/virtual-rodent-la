@@ -16,7 +16,7 @@ const srv=http.createServer((q,r)=>{const p=path.join(root,decodeURIComponent(q.
  // build 437: the practice data's bundled project (docs/demo/sample1/project.vrlab) is applied on load; the checks start
  // from the bare data unless SAMPLE_PROJECT=1
  if(p.endsWith('project.vrlab')&&!process.env.SAMPLE_PROJECT){r.writeHead(404);r.end();return}
- fs.readFile(p.endsWith('/')?p+'index.html':p,(e,b)=>{if(e){r.writeHead(404);r.end();return}r.writeHead(200,{'content-type':p.endsWith('.js')?'text/javascript':p.endsWith('.css')?'text/css':'text/html'});r.end(b)})}).listen(8765);
+ fs.readFile(p.endsWith('/')?p+'index.html':p,(e,b)=>{if(e){r.writeHead(404);r.end();return}r.writeHead(200,{'content-type':p.endsWith('.js')?'text/javascript':p.endsWith('.css')?'text/css':'text/html'});r.end(b)})}).listen(Number(process.env.PORT||8765));
 const map=u=>{
  if(u.includes('three@0.186.0/build/three.module.js'))return nm+'/three/build/three.module.js';
  if(u.includes('three@0.186.0/build/three.webgpu.js'))return nm+'/three/build/three.webgpu.js';
@@ -32,7 +32,7 @@ await pg.route(/^https:\/\//,async rt=>{const u=rt.request().url(),f=map(u);
   return rt.fulfill({status:200,contentType:'text/javascript',body})}
  if(u.includes('three-mesh-bvh')||u.includes('cornerstone'))return rt.fulfill({status:200,contentType:'text/javascript',body:'export const MeshBVH=class{};export const acceleratedRaycast=()=>{};export const computeBoundsTree=()=>{};export const disposeBoundsTree=()=>{};export default {};'});
  return rt.abort()});
-await pg.goto('http://localhost:8765/index.html');await pg.waitForTimeout(3000);
+await pg.goto('http://localhost:'+(process.env.PORT||8765)+'/index.html');await pg.waitForTimeout(3000);
 await pg.click('#sample-demo-button');
 const idle=async()=>{const t0=Date.now();while(Date.now()-t0<300000){const s=await pg.evaluate(()=>window.__vrlBusyModal?.()||{});if(!s.active&&Date.now()-t0>1500)break;await pg.waitForTimeout(250)}};
 await idle();
@@ -80,11 +80,17 @@ await pg.mouse.up();await idle();
 r.drag=await pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,sg=await import('./segments.js'+v);const S=sg.segmentState;
  return{order:[...sg.segmentExclusive.order],cards:[...document.querySelectorAll('#segment-controls [data-segment]')].filter(c=>!c.classList.contains('is-hidden')).map(c=>c.dataset.segment),soft:[S.soft.min,S.soft.max],fat:[S.fat.min,S.fat.max],fatUser:[S.fat.userMin,S.fat.userMax],softUser:[S.soft.userMin,S.soft.userMax],fatNote:document.querySelector('[data-seg-effective="fat"]').textContent}});
 // ---- build 459 part 2: what a higher segment removes or adds moves the segments below it, in every view ----
-const r2=await pg.evaluate(async()=>{
+const runPart2=withFilter=>pg.evaluate(async withFilter=>{
  const v=new URL(document.querySelector('script[src*="app.js"]').src).search,im=f=>import('./'+f+v);
  const [st,seg,sr,rl,sg,gv,ops,mr,ui,sf]=await Promise.all([im('state.js'),im('segment-ui.js'),im('segment-runs.js'),im('run-length.js'),im('segments.js'),im('gpu-volume-data.js'),im('analysis-ops.js'),im('mpr-render.js'),im('ui-shell.js'),im('source-filters.js')]);
  const wait=ms=>new Promise(r=>setTimeout(r,ms)),idle=async()=>{await wait(1200);for(let t=Date.now();Date.now()-t<600000;){await wait(300);if(!window.__vrlBusyModal?.().active&&!['bone','fat','soft'].some(k=>sg.segmentEditState[k].pendingBase))break}await wait(500)};
  const S=sg.segmentState,vol=st.current3DVolume||st.volume,d=vol.slices,w=vol.columns,h=vol.rows,out={};
+ // part 3 (build 460): the same checks with a filter on, i.e. the run path (the in-memory CT copy cannot stand in for the filtered data)
+ for(const k of ['bone','fat','soft']){await (await im('analysis-ops.js')).resetFocusedSegmentEdit?.(k)}
+ if(st.analysisRegions)st.analysisRegions.length=0;
+ {const ex=sg.segmentEditState;for(const k of ['bone','fat','soft']){ex[k].keepRuns=null;ex[k].excludeRuns=null;ex[k].undo=[];ex[k].redo=[];sg.segmentEditGen[k]++}}
+ if(withFilter){const fa=document.getElementById('filter-add-select');fa.value='gaussian';fa.dispatchEvent(new Event('change'));document.getElementById('filter-add-button').click();await idle()}
+ out.filters=(await im('source-filters.js')).sourceFilterStages().length;
  const cnt=rl.analysisRunsVoxelCount,inter=(a,b)=>cnt(rl.intersectRunArrays(a,b,d)),sub=(a,b)=>rl.subtractRunArrays(a,b,d);
  const setCtl=(attr,k,val)=>seg.setControlValue(seg.segmentControl(attr,k),val);
  const mode=m=>{const sel=document.getElementById('segment-exclusive-mode');sel.value=m;sel.dispatchEvent(new Event('change'))};
@@ -155,12 +161,16 @@ const r2=await pg.evaluate(async()=>{
  setCtl('surface-mm','soft',+ssurf.step*3);await idle();
  const g7=await all();await phase('fatAir_softAir',g7);out.fatAir_softAir.band=cnt(band);out.fatAir_softAir.bandInSoft=inter(band,g7.soft);out.fatAir_softAir.softNotInPlain=cnt(sub(g7.soft,g6.soft));
  setCtl('surface-mm','soft',0);setCtl('surface-mm','fat',0);await idle();S.bone.enabled=true;
+ // (7) thin-part removal in soft (it runs after the higher voxels are taken out, on both paths)
+ setCtl('thickness-mm','soft',+seg.segmentControl('thickness-mm','soft').step*3);await idle();
+ const g8=await all();await phase('thinSoft',g8);out.thinSoft.soft=cnt(g8.soft);setCtl('thickness-mm','soft',0);await idle();
  return out;
-});
+},withFilter);
+const r2=await runPart2(false);
 r.part2=r2;
 console.log(JSON.stringify(r));
-const p2=r.part2,pixOk=x=>Object.values(x.pix).every(pl=>Object.values(pl).every(e=>e.extra===0&&e.missing===0))&&['bone','fat','soft'].every(k=>Object.values(x.pix).some(pl=>pl[k].exp>0)),noOverlap=o=>o.bf===0&&o.bs===0&&o.fs===0,descOk=x=>!x.desc||Object.values(x.desc).every(e=>!e||(e.onlyDesc===0&&e.onlyFinal===0));
-const ok2=noOverlap(p2.base.overlap)
+const pixOk=x=>Object.values(x.pix).every(pl=>Object.values(pl).every(e=>e.extra===0&&e.missing===0))&&['bone','fat','soft'].every(k=>Object.values(x.pix).some(pl=>pl[k].exp>0)),noOverlap=o=>o.bf===0&&o.bs===0&&o.fs===0,descOk=x=>!x.desc||Object.values(x.desc).every(e=>!e||(e.onlyDesc===0&&e.onlyFinal===0));
+const check2=p2=>noOverlap(p2.base.overlap)
  &&p2.minComponent.removed>0&&p2.minComponent.removedInSoft===p2.minComponent.removed&&p2.minComponent.softLost===0&&p2.minComponent.softGain===p2.minComponent.removed&&noOverlap(p2.minComponent.overlap)&&pixOk(p2.minComponent)&&descOk(p2.minComponent)
  &&p2.airBoundary.removed>0&&p2.airBoundary.removedInSoft>=0.999*p2.airBoundary.removed&&p2.airBoundary.softGain===p2.airBoundary.removedInSoft&&noOverlap(p2.airBoundary.overlap)&&pixOk(p2.airBoundary)&&descOk(p2.airBoundary)
  &&p2.holeFill.added>0&&p2.holeFill.addedInSoft===0&&p2.holeFill.addedInFat===0&&p2.holeFill.boneMaskOnly&&noOverlap(p2.holeFill.overlap)&&pixOk(p2.holeFill)&&descOk(p2.holeFill)
@@ -168,7 +178,14 @@ const ok2=noOverlap(p2.base.overlap)
  &&p2.manualExclude.removed>0&&p2.manualExclude.compInSoft>0&&p2.manualExclude.softGain>0&&noOverlap(p2.manualExclude.overlap)&&pixOk(p2.manualExclude)&&descOk(p2.manualExclude)
  &&p2.fatAir_softPlain.band>0&&p2.fatAir_softPlain.bandInSoft>0&&noOverlap(p2.fatAir_softPlain.overlap)&&pixOk(p2.fatAir_softPlain)&&descOk(p2.fatAir_softPlain)&&p2.fatAir_softPlain.softSources.includes('fat')
  &&noOverlap(p2.fatAir_softAir.overlap)&&p2.fatAir_softAir.bandInSoft<p2.fatAir_softPlain.bandInSoft&&p2.fatAir_softAir.softNotInPlain===0&&pixOk(p2.fatAir_softAir)&&descOk(p2.fatAir_softAir)
- &&p2.regionsAfterEdit.includes('fat')&&!p2.regionsAfterEdit.includes('soft')&&p2.undo.bone===0&&p2.undo.soft===0&&noOverlap(p2.undo.overlap)&&p2.redo.bone===0&&p2.redo.soft===0&&noOverlap(p2.redo.overlap);
+ &&p2.regionsAfterEdit.includes('fat')&&!p2.regionsAfterEdit.includes('soft')&&p2.undo.bone===0&&p2.undo.soft===0&&noOverlap(p2.undo.overlap)&&p2.redo.bone===0&&p2.redo.soft===0&&noOverlap(p2.redo.overlap)
+ &&noOverlap(p2.thinSoft.overlap)&&p2.thinSoft.soft>0&&pixOk(p2.thinSoft)&&descOk(p2.thinSoft);
+// the run path: a filter is on (the in-memory CT copy is then not the data), the same invariants
+r.part3=await runPart2(true);
+const ok2=check2(r.part2)&&r.part2.filters===0&&check2(r.part3)&&r.part3.filters>0;
+console.log('part3',JSON.stringify(r.part3));
+if(!check2(r.part3))console.error('part 3 (filter on, run path) failed');
+
 const ok=r.drag.cards.join()==='bone,soft,fat'&&r.drag.order.slice(0,3).join()==='bone,soft,fat'&&r.drag.soft[0]===r.drag.softUser[0]&&r.drag.fat[1]<r.drag.softUser[0]&&r.drag.fatNote.length>0&&r.off.both>0&&r.priority.both===0&&r.priority.union===r.priority.fat+r.priority.soft&&r.hidden.soft===r.priority.soft&&r.nested.dropped?.length===1&&r.nested.note.length>0&&JSON.stringify(r.roundTrip.before)===JSON.stringify(r.roundTrip.after)&&r.cards.join()==='bone,fat,soft'&&r.closingBoth===0&&ok2;
 if(!ok2)console.error('part 2 failed');
 await b.close();srv.close();

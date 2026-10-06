@@ -104,3 +104,25 @@ describe('hybrid exclusion equals the full voxel model (in-memory path)', () => 
     expect(r.ok).toBeGreaterThan(120); expect(r.sourcesSeen).toBeGreaterThan(20);
   });
 });
+
+// build 460: the thin-part removal runs AFTER the higher segments' voxels are taken out (as on the run path), so a thin
+// shell that only looked thick together with the bone voxels it wraps is not kept
+describe('thin-part removal comes after the higher voxels are taken out (in-memory path)', () => {
+  it('a soft shell of thickness 2 around a bone core is empty once the bone is removed from it', async () => {
+    const N = 20, m = N ** 3, data = new Float32Array(m).fill(-1000), v = { columns: N, rows: N, slices: N, data, spacing: [1, 1, 1], sourceBacked: false, min: -1000, max: 100 };
+    const core = (x, y, z) => x >= 8 && x < 12 && y >= 8 && y < 12 && z >= 8 && z < 12, shell = (x, y, z) => x >= 6 && x < 14 && y >= 6 && y < 14 && z >= 6 && z < 14;
+    for (let z = 0; z < N; z++) for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) data[(z * N + y) * N + x] = core(x, y, z) ? 80 : shell(x, y, z) ? 10 : -1000;
+    S.segmentExclusive.mode = 'priority'; S.segmentExclusive.order = ['bone', 'soft', 'fat', 'lung'];
+    for (const k of KEYS) {
+      const g = S.segmentState[k], st = S.segmentEditState[k];
+      Object.assign(g, { active: k === 'bone' || k === 'soft', enabled: true, opening: 0, closing: 0, holeFill: false, minComponent: 0, surfaceMm: 0, thicknessMm: 0, _maskCache: null, _maskCacheKey: '', exclusive: undefined });
+      Object.assign(st, { baseRuns: null, baseSignature: '', pendingBase: null, finalRuns: null, keepRuns: null, excludeRuns: null, cutRuns: null, undo: [], redo: [] });
+      S.segmentEditGen[k]++;
+    }
+    Object.assign(S.segmentState.bone, { userMin: 60, userMax: 100, min: 60, max: 100, minComponent: 1 });
+    Object.assign(S.segmentState.soft, { userMin: 0, userMax: 100, min: 0, max: 100, thicknessMm: 4 });
+    S.applyExclusiveRanges(); S.segmentExclusive.pending.clear();
+    const runs = await R.getFinalSegmentRuns('soft', v), soft = maskFromAnalysisRuns(v, runs);
+    expect(soft.reduce((a, b) => a + b, 0)).toBe(0);
+  });
+});

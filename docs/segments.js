@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261005-build458';
-import { hexRgb } from './utils.js?v=20261005-build458';
-import { settings } from './app-settings.js?v=20261005-build458';
-import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261005-build458';
-import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261005-build458';
-import { effectiveRanges } from './segment-exclusive.js?v=20261005-build458';
-import { maskFromAnalysisRuns } from './run-length.js?v=20261005-build458';
-import { sourceFilterStages } from './source-filters.js?v=20261005-build458';
+import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261006-build460';
+import { hexRgb } from './utils.js?v=20261006-build460';
+import { settings } from './app-settings.js?v=20261006-build460';
+import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261006-build460';
+import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261006-build460';
+import { effectiveRanges } from './segment-exclusive.js?v=20261006-build460';
+import { maskFromAnalysisRuns } from './run-length.js?v=20261006-build460';
+import { sourceFilterStages } from './source-filters.js?v=20261006-build460';
 export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
 export const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
 // build 407 (owner): every segment starts at 100 % opacity (translucent segments are heavy to render)
@@ -110,9 +110,10 @@ function clearMask(mask,E){for(let i=0;i<mask.length;i++)if(E[i])mask[i]=0}
 export function getProcessedSegmentMask(v,seg,key=segmentKeyOf(seg)){
  const srcSig=key?segmentSourceSignature(key):'',ck=[segmentMaskVolumeId(v),seg.min,seg.max,seg.opening,seg.closing,seg.minComponent,seg.holeFill,seg.surfaceMm,seg.thicknessMm,srcSig].join('|');if(seg._maskCache&&seg._maskCacheKey===ck)return seg._maskCache;
  const w=v.columns,h=v.rows,d=v.slices;let mask=buildThresholdMask(v,seg);
- if(thinSuppressActive(seg))mask=suppressThinMask(mask,v.data,w,h,d,v.spacing||[1,1,1],seg);
- // the voxels the higher voxel takers hold are not available (their added and removed voxels both count)
+ // the voxels the higher voxel takers hold are not available (their added and removed voxels both count);
+ // taken out before the thin-part removal, as on the run path
  const E=key?sourceExclusionMask(v,key):null;if(E)clearMask(mask,E);
+ if(thinSuppressActive(seg))mask=suppressThinMask(mask,v.data,w,h,d,v.spacing||[1,1,1],seg);
  if(seg.opening>0){mask=morphMask(mask,w,h,d,seg.opening,false);mask=morphMask(mask,w,h,d,seg.opening,true)}
  if(seg.closing>0){mask=morphMask(mask,w,h,d,seg.closing,true);mask=morphMask(mask,w,h,d,seg.closing,false)}
  if(seg.holeFill)mask=fillMaskHoles(mask,w,h,d);
