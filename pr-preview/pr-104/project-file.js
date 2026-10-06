@@ -52,10 +52,13 @@ export function projectMismatchReason(saved,current){
 
 const mm=n=>(Math.round(n*10000)/10000).toString();
 // The confirm text for a legacy-spacing project ({ja,en}).
+// Relative change of the z spacing in percent (volumes scale by the same factor).
+export const spacingChangePct=up=>(up.newZ/up.savedZ-1)*100;
 export function legacySpacingPrompt(up){
+ const pct=spacingChangePct(up),big=Math.abs(pct)>1,p=(pct>=0?'+':'')+(Math.round(pct*100)/100)+'%',a=Math.abs(Math.round(pct*100)/100)+'%';
  return{
-  ja:'build 469 からスライス間隔の決め方が変わりました（先頭 2 枚の差 → 全体から計算）。保存時 '+mm(up.savedZ)+' mm → 新しい間隔 '+mm(up.newZ)+' mm。新しい間隔で開きますか？体積がわずかに変わります',
-  en:'Since build 469 the slice spacing is computed differently (first two slices -> whole series). Saved: '+mm(up.savedZ)+' mm -> new: '+mm(up.newZ)+' mm. Open with the new spacing? Volumes change slightly',
+  ja:'build 469 からスライス間隔の決め方が変わりました（先頭 2 枚の差 → 全体から計算）。保存時 '+mm(up.savedZ)+' mm → 新しい間隔 '+mm(up.newZ)+' mm（'+p+'）。新しい間隔で開きますか？'+(big?'体積が '+a+' 変わります。以前の結果は再計算が必要です':'体積がわずかに変わります'),
+  en:'Since build 469 the slice spacing is computed differently (first two slices -> whole series). Saved: '+mm(up.savedZ)+' mm -> new: '+mm(up.newZ)+' mm ('+p+'). Open with the new spacing? '+(big?'Volumes change by '+a+'. Earlier results need to be recalculated':'Volumes change slightly'),
  };
 }
 // Decide what to do with a project for a series. confirmFn(text) -> boolean (window.confirm on the page).
