@@ -2,8 +2,8 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build460';
-import { compareFingerprints } from './project-file.js?v=20261006-build460';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build461';
+import { compareFingerprints } from './project-file.js?v=20261006-build461';
 
 export const COMMENT_MAX_TEXT=2000;
 const isIdx=n=>Number.isFinite(+n)&&n!==null&&n!==''&&n!==true&&n!==false;
