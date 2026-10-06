@@ -923,6 +923,8 @@ html.vrl-ipad-ui .crosshair-readout{font-size:12px}
 .comment-actions{display:flex;gap:14px;margin-top:6px;flex-wrap:wrap}
 .comment-panel .tool-chip{min-height:34px;touch-action:manipulation}
 .comment-panel .tool-chip:disabled{opacity:.45}
+.comment-item .comment-edit-input{margin:4px 0}
+html.vrl-ipad-ui .comment-item .comment-edit-input{font-size:16px}
 html.vrl-ipad-ui .comment-panel .tool-chip{min-height:40px}
 
 /* Comment popover opened from the toolbar button of an MPR card: sits inside the card above the slider, theme tokens only */
