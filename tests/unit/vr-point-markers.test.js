@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
-import { createVrPointMarkers } from '../../docs/vr-point-markers.js';
+import { createVrPointMarkers, PICK_MIN_M } from '../../docs/vr-point-markers.js';
 import { setComments, getComments, getMarkersShown, setMarkersShown, createComment, addComment } from '../../docs/comments.js';
 import { voxelToLocal } from '../../docs/vr-point.js';
 import { datasetFingerprint } from '../../docs/project-file.js';
@@ -45,9 +45,35 @@ describe('VR position markers', () => {
   });
 });
 
-import { sectionCursorSize } from '../../docs/vr-point-markers.js';
+import { sectionCursorSize, createSectionCursor } from '../../docs/vr-point-markers.js';
 describe('sectionCursorSize', () => {
   it('2.2 percent of the distance, never below two voxels', () => {
     expect(sectionCursorSize(1, 0.001)).toBeCloseTo(0.022); expect(sectionCursorSize(0.1, 0.005)).toBeCloseTo(0.01); expect(sectionCursorSize(0, 0)).toBe(0);
+  });
+});
+
+describe('pick radius (build 468)', () => {
+  it('about 4.7 mm at the default size: a ray 3 mm off hits, 6 mm off does not; the least is PICK_MIN_M', () => {
+    addComment(createComment({ text: 'a', position: { i: 5, j: 4, k: 3 }, series: fp }));
+    const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2)), holder = new THREE.Group();
+    holder.scale.setScalar(0.05); holder.add(mesh); scene.add(holder); scene.updateMatrixWorld(true);
+    const m = createVrPointMarkers(THREE, scene, deps);
+    m.update({ fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 0, 3) });
+    const c = m.centres()[0].world, d = new THREE.Vector3(0, 0, -1), at = off => new THREE.Vector3(c.x + off, c.y, c.z + 1);
+    expect(m.pick(at(0.003), d)).not.toBeNull();
+    expect(m.pick(at(0.006), d)).toBeNull();
+    expect(PICK_MIN_M).toBe(0.004);
+    m.dispose();
+  });
+});
+
+describe('createSectionCursor', () => {
+  it('hidden without a centre; a flat frame at the centre, turned like the section, sized by the distance', () => {
+    const scene = new THREE.Scene(), cur = createSectionCursor(THREE, scene);
+    expect(cur.group.visible).toBe(false);
+    cur.set({ x: 1, y: 2, z: 3 }, { x: 0, y: 0, z: 0, w: 1 }, { x: 1, y: 2, z: 4 }, 0.001);
+    expect(cur.group.visible).toBe(true); expect(cur.group.position.toArray()).toEqual([1, 2, 3]); expect(cur.group.scale.x).toBeCloseTo(0.022);
+    cur.set(null); expect(cur.group.visible).toBe(false);
+    cur.dispose(); expect(scene.children.length).toBe(0);
   });
 });

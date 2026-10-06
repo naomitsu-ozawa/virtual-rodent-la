@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
-import { resolveTrigger, createStickGate, deleteSelected, undoDelete, raySphereT, pickPoint, sectionRelation, halfVoxelAlong, voxelSize, pointIsHidden, voxelToLocal, recordVrPoint } from '../../docs/vr-point.js';
+import { createStickGate, deleteSelected, undoDelete, raySphereT, pickPoint, sectionRelation, halfVoxelAlong, voxelSize, pointIsHidden, voxelToLocal, recordVrPoint } from '../../docs/vr-point.js';
 import { markerStyle, createVrPointMarkers } from '../../docs/vr-point-markers.js';
 import { marchClassificationHitInfo } from '../../docs/vr-pick.js';
 import { setComments, getComments, addComment, createComment, removeComment, restoreComment, getMarkersShown } from '../../docs/comments.js';
@@ -12,25 +12,7 @@ const fp = datasetFingerprint(mk('1'));
 const store = { getComments, addComment, removeComment, restoreComment };
 beforeEach(() => setComments([]));
 
-describe('trigger priority: menu / UI panel > section handle or selected target > existing point > section face', () => {
-  it('each level wins over every level below it', () => {
-    expect(resolveTrigger({ ui: true, handle: true, point: 'a', section: true })).toBe('ui');
-    expect(resolveTrigger({ handle: true, point: 'a', section: true })).toBe('handle');
-    expect(resolveTrigger({ point: 'a', section: true })).toBe('point');
-    expect(resolveTrigger({ section: true })).toBe('section');
-    expect(resolveTrigger({})).toBe(null);
-    expect(resolveTrigger()).toBe(null);
-  });
-  it('a point id of 0 or "c1" counts, an empty / null id does not', () => {
-    expect(resolveTrigger({ point: 0, section: true })).toBe('point');
-    expect(resolveTrigger({ point: null, section: true })).toBe('section');
-    expect(resolveTrigger({ point: '', section: true })).toBe('section');
-  });
-  it('the two hands are independent (a handle on one hand does not stop the other from recording)', () => {
-    expect(resolveTrigger({ handle: true, section: true })).toBe('handle');
-    expect(resolveTrigger({ handle: false, section: true })).toBe('section');
-  });
-});
+// the trigger priority (resolveTriggerTarget) is tested in vr-point-gesture.test.js
 
 describe('thumbstick gate: no recording while the stick is outside the dead zone nor for 0.3 s after it is back in the centre', () => {
   it('a stick that never moved records', () => {

@@ -73,17 +73,6 @@ export function recordVrPoint({voxel,series,language='ja',now=Date.now(),store={
  return store.addComment(createComment({text,position:voxel,series,now}));
 }
 
-// ---- trigger priority (build 464) ----
-// What a hand's trigger acts on, first match wins: the menu / UI panels, then a section's handle or the hand's selected target, then an
-// existing point (select it), then the face of a section (record a new point). Returns 'ui' | 'handle' | 'point' | 'section' | null.
-export function resolveTrigger({ui=false,handle=false,point=null,section=false}={}){
- if(ui)return'ui';
- if(handle)return'handle';
- if(point!==null&&point!==undefined&&point!=='')return'point';
- if(section)return'section';
- return null;
-}
-
 // ---- thumbstick gate (build 464) ----
 // The trigger of a hand must not record while that hand's thumbstick is being used (it scrolls the selected section; a stray trigger
 // would add a point), nor for HOLDOFF_MS after the stick came back to the centre (the stick passes the dead zone on its way back).
@@ -186,15 +175,6 @@ export function surfaceRayHit(o,q,{halfExt,dims,cls,clsDims,chs,planes=[],count=
  const voxel=surfaceVoxelFromHit(info,o,q,{halfExt,dims,clsDims});
  return voxel?{t:info.t,point:{x:o.x+q.x*info.t,y:o.y+q.y*info.t,z:o.z+q.z*info.t},voxel,ch:info.ch}:null;
 }
-// Trigger priority per mode: steps 1-3 are resolveTrigger's (menu -> section handle / selected target -> existing point); only the 4th step
-// depends on the mode: 'section' = the face of a section (as before), 'surface' = the first tissue surface. Returns
-// 'ui' | 'handle' | 'point' | 'section' | 'surface' | null.
-export function resolveTriggerMode({ui=false,handle=false,point=null,section=false,surface=false,mode='section'}={}){
- const surf=normalizePointMode(mode)==='surface';
- const k=resolveTrigger({ui,handle,point,section:surf?false:section});
- return k===null&&surf&&surface?'surface':k;
-}
-
 // ======================================================================================================================
 // One-handed redesign, stage 1 (build 468): pure functions only, not yet called by vr-view.js. See the one-hand spec.
 // ======================================================================================================================

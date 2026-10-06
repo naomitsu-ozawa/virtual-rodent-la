@@ -14,7 +14,8 @@ import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } fro
 import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build467';
 
 export const VR_MARKER_COLOR=0x4dd8ff,VR_MARKER_FILL=0x0b6f8c,VR_RIM_COLOR=0xffffff,VR_HALO_HOVER=0xffffff,VR_HALO_SELECTED=0xffd23d;
-const RADIUS_UNITS=0.045,MIN_RADIUS_M=0.003,PICK_MIN_M=0.012; // radius in volume units (the longest side is 3.3) and the least radius in metres
+export const PICK_MIN_M=0.004;
+const RADIUS_UNITS=0.045,MIN_RADIUS_M=0.003; // radius in volume units (the longest side is 3.3) and the least radius in metres
 
 // pure: how a point looks. Factors of the base radius. section: 'on' (the active section passes through the point's voxel), 'off', or null
 // (no active section: no emphasis and no line).
@@ -70,7 +71,7 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
      const l=voxelToLocal(t,halfExt,dims),rel=section?sectionRelation(l,section,halfExt,dims):null;
      const st=markerStyle({hidden:!!hidden?.has(c.id),section:rel?(rel.onSection?'on':'off'):null,selected:c.id===selectedId,hover:!!hover?.has(c.id)});
      v.set(l.x,l.y,l.z);mesh.localToWorld(v);
-     const r=r0*st.scale;it.radius=Math.max(PICK_MIN_M,r0*1.8);
+     const r=r0*st.scale;it.radius=Math.max(PICK_MIN_M,r*1.3*1.2); // build 468: the drawn radius (rim included) +20 %, about 4.7 mm at the default size; the least is PICK_MIN_M
      it.sphere.material=mats[st.fill];
      it.sphere.position.copy(v);it.sphere.scale.setScalar(r);
      it.rim.visible=st.rim;it.rim.position.copy(v);it.rim.scale.setScalar(r*1.3);
@@ -104,6 +105,26 @@ export function surfaceCursorSizes(dist,voxelM){
 }
 // pure: side (world metres) of the section-mode cursor, a flat square lying on the section (about the surface ring's diameter, 0.022 of the distance)
 export const sectionCursorSize=(dist,voxelM)=>Math.max((+dist||0)*0.022,2*(+voxelM||0));
+// build 468: the section-mode cursor: a thin square frame lying on the section (same lime colour as the surface cursor; the mode is told by the shape only)
+export function createSectionCursor(THREE,scene){
+ const o=0.5,i=0.38,shape=new THREE.Shape([new THREE.Vector2(-o,-o),new THREE.Vector2(o,-o),new THREE.Vector2(o,o),new THREE.Vector2(-o,o)]);
+ shape.holes.push(new THREE.Path([new THREE.Vector2(-i,-i),new THREE.Vector2(-i,i),new THREE.Vector2(i,i),new THREE.Vector2(i,-i)]));
+ const frame=new THREE.Mesh(new THREE.ShapeGeometry(shape),new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
+ frame.rotation.y=Math.PI/2; // the shape's plane = the section's local YZ plane (its normal is local X)
+ const group=new THREE.Group();group.add(frame);frame.renderOrder=6;frame.frustumCulled=false;group.visible=false;scene.add(group);
+ const d=new THREE.Vector3();
+ return{
+  group,
+  // centre: where on the section (world); quat: the section's world orientation; head: the head's world position; voxelM: the voxel's world size. null = hidden
+  set(centre,quat,head,voxelM=0){
+   group.visible=!!centre;if(!centre)return;
+   group.position.set(centre.x,centre.y,centre.z);group.quaternion.set(quat.x,quat.y,quat.z,quat.w);
+   const dist=head?d.set(head.x-centre.x,head.y-centre.y,head.z-centre.z).length():1;
+   group.scale.setScalar(sectionCursorSize(dist,voxelM));
+  },
+  dispose(){scene.remove(group);frame.geometry.dispose();frame.material.dispose()},
+ };
+}
 export function createSurfaceCursor(THREE,scene){
  const mat=()=>new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide});
  const core=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),mat()),ring=new THREE.Mesh(new THREE.RingGeometry(1-SURFACE_CURSOR_RING_WIDTH,1,40),mat());

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
-import { POINT_MODES, normalizePointMode, resolveTriggerMode, resolveTrigger, surfaceRayHit, surfaceVoxelFromHit, createStickGate, recordVrPoint, localToVoxel, voxelToLocal } from '../../docs/vr-point.js';
+import { POINT_MODES, normalizePointMode, resolveTriggerTarget, surfaceRayHit, surfaceVoxelFromHit, createStickGate, recordVrPoint, localToVoxel, voxelToLocal } from '../../docs/vr-point.js';
 import { createSurfaceCursor, surfaceCursorSizes, SURFACE_CURSOR_MIN_CORE_RAD, SURFACE_CURSOR_COLOR, VR_MARKER_COLOR, VR_MARKER_FILL, VR_HALO_SELECTED } from '../../docs/vr-point-markers.js';
 import { setComments, getComments, addComment, commentTarget } from '../../docs/comments.js';
 import { datasetFingerprint } from '../../docs/project-file.js';
@@ -26,36 +26,23 @@ describe('surface mode: the mode value', () => {
     expect(normalizePointMode(null)).toBe('section');
     expect(normalizePointMode(1)).toBe('section');
   });
-  it('switching the mode only changes what the 4th step means (the same input, two answers)', () => {
-    const input = { section: true, surface: true };
-    expect(resolveTriggerMode({ ...input, mode: 'section' })).toBe('section');
-    expect(resolveTriggerMode({ ...input, mode: 'surface' })).toBe('surface');
-    expect(resolveTriggerMode(input)).toBe('section'); // no mode given = 断面
+  it('switching the mode only changes what the nearest target means (the same input, two answers)', () => {
+    const input = { plane: { t: 1 }, tissue: { t: 2 } };
+    expect(resolveTriggerTarget({ ...input, mode: 'section' })).toMatchObject({ kind: 'record', ref: { t: 1 } });
+    expect(resolveTriggerTarget({ ...input, mode: 'surface' })).toMatchObject({ kind: 'record', ref: { t: 2 } });
+    expect(resolveTriggerTarget({ ...input })).toMatchObject({ ref: { t: 1 } }); // no mode given = 断面
   });
 });
 
-describe('trigger resolution per mode (menu > handle > existing point > mode-specific hit)', () => {
-  for (const mode of ['section', 'surface']) {
-    it(`${mode}: ui, handle and point keep their order and win over the hit`, () => {
-      const all = { section: true, surface: true, mode };
-      expect(resolveTriggerMode({ ui: true, handle: true, point: 'a', ...all })).toBe('ui');
-      expect(resolveTriggerMode({ handle: true, point: 'a', ...all })).toBe('handle');
-      expect(resolveTriggerMode({ point: 'a', ...all })).toBe('point');
-      expect(resolveTriggerMode({ point: 0, ...all })).toBe('point');
-    });
-  }
-  it('断面: a surface hit alone does not record, a section hit does', () => {
-    expect(resolveTriggerMode({ surface: true, mode: 'section' })).toBe(null);
-    expect(resolveTriggerMode({ section: true, mode: 'section' })).toBe('section');
+describe('trigger resolution per mode (board > ring > move > tag > nearest of point / band / target)', () => {
+  it('断面: only a plane hit records; a tissue hit alone does nothing', () => {
+    expect(resolveTriggerTarget({ tissue: { t: 1 }, mode: 'section' }).kind).toBe('none');
+    expect(resolveTriggerTarget({ plane: { t: 1 }, mode: 'section' }).kind).toBe('record');
   });
-  it('表面: a section hit alone does not record, a surface hit does; nothing hit = nothing', () => {
-    expect(resolveTriggerMode({ section: true, mode: 'surface' })).toBe(null);
-    expect(resolveTriggerMode({ surface: true, mode: 'surface' })).toBe('surface');
-    expect(resolveTriggerMode({ mode: 'surface' })).toBe(null);
-  });
-  it('the 断面 result is exactly resolveTrigger (unchanged)', () => {
-    for (const ui of [false, true]) for (const handle of [false, true]) for (const point of [null, 'p']) for (const section of [false, true])
-      expect(resolveTriggerMode({ ui, handle, point, section, surface: true, mode: 'section' }) ?? null).toBe(resolveTrigger({ ui, handle, point, section }) ?? (null));
+  it('表面: only a tissue hit records; a plane hit alone does nothing (the plane never steals the ray)', () => {
+    expect(resolveTriggerTarget({ plane: { t: 1 }, mode: 'surface' }).kind).toBe('none');
+    expect(resolveTriggerTarget({ plane: { t: 1 }, tissue: { t: 2 }, mode: 'surface' })).toMatchObject({ kind: 'record', ref: { t: 2 } });
+    expect(resolveTriggerTarget({ mode: 'surface' }).kind).toBe('none');
   });
 });
 
@@ -121,7 +108,7 @@ describe('a face cut by a clipping section is a surface too', () => {
 describe('thumbstick gate in surface mode (same rule as 断面: dead zone 0.15, 0.3 s hold-off)', () => {
   it('no recording while the stick is out, nor for 0.3 s after; the surface decision itself is not gated', () => {
     const g = createStickGate();
-    expect(resolveTriggerMode({ surface: true, mode: 'surface' })).toBe('surface');
+    expect(resolveTriggerTarget({ tissue: { t: 1 }, mode: 'surface' }).kind).toBe('record');
     expect(g.update(0, 0.5, 0)).toBe(false);
     expect(g.canRecord(10)).toBe(false);
     g.update(0, 0.1, 100); // back inside the dead zone
