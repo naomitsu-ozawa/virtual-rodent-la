@@ -218,6 +218,7 @@ export function resolveTriggerTarget(c={}){
  let target=null;
  if(c.analysis){if(c.tissue)target={kind:'label',ref:c.tissue}}
  else if(normalizePointMode(c.mode)==='surface'){if(c.tissue)target={kind:'record',ref:c.tissue,plane:false}}
+ else if(c.tissue&&(!c.plane||hitT(c.tissue)<hitT(c.plane)-(Number.isFinite(c.occludeEps)?c.occludeEps:TIE_EPS)))target={kind:'tissue',ref:c.tissue}; // build 484: section mode: an object surface in front of the plane (or no plane) stops the laser; the plane is recorded on only where it is in front of the surface or the object is cut away
  else if(c.plane)target={kind:'record',ref:c.plane,plane:true};
  const cands=[];
  if(c.point&&hitT(c.point)!==null)cands.push({kind:'point',ref:c.point,t:hitT(c.point),rank:0});
