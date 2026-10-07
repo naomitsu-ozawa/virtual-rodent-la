@@ -59,6 +59,13 @@ export function pinchScale(s0, d0, d, longMm) {
   return clampScale(s0 * d / Math.max(d0, 1e-3), longMm);
 }
 
+// build 490: the section frame (outline, grab band, number tag, glow) is UI, not volume: it is a child of the holder, so it used to grow with the zoom
+// (24 cm square at 16.5 cm display -> 44 cm at 30 cm). Its world size is capped at the size it has at the default 16.5 cm display (holder scale 0.05):
+// above that scale the frame's local scale is shrunk by the same factor, so its world size is constant; below it, it follows the volume as before.
+export const FRAME_REF_SCALE = 0.05;
+export const frameWorldScale = holderScale => Math.min(1, holderScale / FRAME_REF_SCALE); // 1 = the frame's design size (half side 0.12 m, tag 3.4 cm, glow 3 mm)
+export const planeFrameLocalScale = holderScale => 1 / Math.max(holderScale, FRAME_REF_SCALE); // obj.scale inside the holder; world scale = holderScale x this
+
 // warning shown at load (normal UI) and on entering VR / AR for oversize data; null when none
 export function oversizeNote(longMm, lang) {
   if (!isOversize(longMm)) return null;

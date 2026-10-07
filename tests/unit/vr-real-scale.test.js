@@ -94,3 +94,40 @@ describe('vr-real-scale', () => {
   });
 });
 const displayed = s => s * NORM_LONG;
+
+// build 490: the section frame (a child of the holder) keeps its world size above the default 16.5 cm display
+import { FRAME_REF_SCALE, frameWorldScale, planeFrameLocalScale } from '../../docs/vr-real-scale.js';
+describe('section frame size cap', () => {
+  const HALF = 0.12, HANDLE = 0.034, GLOW = 0.0015; // design sizes in vr-view.js (frame half side, number tag, glow half width), metres at the default display
+  const worldOf = (holderScale, v) => v * holderScale * planeFrameLocalScale(holderScale); // local size x holder scale x frame local scale
+  it('the reference is the default 16.5 cm display', () => {
+    expect(FRAME_REF_SCALE).toBeCloseTo(0.165 / NORM_LONG, 12);
+    expect(frameWorldScale(DEFAULT_SCALE)).toBeCloseTo(1, 12);
+  });
+  it('frame, tag and glow world sizes never exceed the default size, from 1x to 30 cm', () => {
+    for (let longCm = 3; longCm <= 30; longCm += 0.5) {
+      const s = longCm / 100 / NORM_LONG;
+      expect(worldOf(s, HALF)).toBeLessThanOrEqual(HALF + 1e-12);
+      expect(worldOf(s, HANDLE)).toBeLessThanOrEqual(HANDLE + 1e-12);
+      expect(worldOf(s, GLOW)).toBeLessThanOrEqual(GLOW + 1e-12);
+    }
+  });
+  it('at 30 cm the frame is the same size as at 16.5 cm (before: 1.82x larger)', () => {
+    const s30 = 0.30 / NORM_LONG;
+    expect(worldOf(s30, HALF)).toBeCloseTo(HALF, 12);
+    expect(worldOf(s30, HANDLE)).toBeCloseTo(HANDLE, 12);
+    expect(worldOf(s30, HALF)).toBeCloseTo(worldOf(DEFAULT_SCALE, HALF), 12);
+    expect(s30 / DEFAULT_SCALE).toBeGreaterThan(1.8); // the old growth factor
+  });
+  it('below the default display it still follows the volume (a small mouse at 1x)', () => {
+    const s = realHolderScale(mouse.dims ? longestMm(physicalExtentsMm(mouse.dims, mouse.sp)) : 0);
+    expect(s).toBeLessThan(DEFAULT_SCALE);
+    expect(worldOf(s, HALF)).toBeCloseTo(HALF * s / DEFAULT_SCALE, 12);
+    expect(frameWorldScale(s)).toBeCloseTo(s / DEFAULT_SCALE, 12);
+  });
+  it('is monotone and continuous at the reference', () => {
+    let prev = 0;
+    for (let s = 0.005; s <= 0.0909; s += 0.001) { const w = s * planeFrameLocalScale(s); expect(w).toBeGreaterThanOrEqual(prev - 1e-12); prev = w; }
+    expect(planeFrameLocalScale(FRAME_REF_SCALE * 0.999999) * FRAME_REF_SCALE).toBeCloseTo(planeFrameLocalScale(FRAME_REF_SCALE * 1.000001) * FRAME_REF_SCALE, 5);
+  });
+});

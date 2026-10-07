@@ -1,5 +1,5 @@
 // Kept for the build 445 / 446 names; the generalised code is in filter-units.js (build 447).
-import { FILTER_UNITS, filterLegacyRange, legacyFilterValueHU, resolveFilterParams, sourceFilterSignature } from './filter-units.js?v=20261007-build489';
+import { FILTER_UNITS, filterLegacyRange, legacyFilterValueHU, resolveFilterParams, sourceFilterSignature } from './filter-units.js?v=20261007-build490';
 
 export { sourceFilterSignature };
 export const BILATERAL_ALGO = FILTER_UNITS.bilateral.algo;
