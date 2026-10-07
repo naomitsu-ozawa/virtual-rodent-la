@@ -11,17 +11,17 @@
 // view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
 // (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261006-build469';
-import { tr } from './i18n.js?v=20261006-build469';
-import { datasetFingerprint } from './project-file.js?v=20261006-build469';
-import { voxelToLocal3D } from './crosshair.js?v=20261006-build469';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build469';
-import { request3DRender } from './scene3d.js?v=20261006-build469';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261006-build469';
-import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261006-build469';
-import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261006-build469';
-import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261006-build469';
-import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261006-build469';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261006-build471';
+import { tr } from './i18n.js?v=20261006-build471';
+import { datasetFingerprint } from './project-file.js?v=20261006-build471';
+import { voxelToLocal3D } from './crosshair.js?v=20261006-build471';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build471';
+import { request3DRender } from './scene3d.js?v=20261006-build471';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261006-build471';
+import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261006-build471';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261006-build471';
+import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261006-build471';
+import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261006-build471';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
 let rels=new Map(),relSig='',svg=null,cuesOn=false;
@@ -62,7 +62,7 @@ function refreshHidden(obj,camera,pts,plane){
  if(!anyShown||!pts.length){const had=hiddenIds.size>0;hiddenIds=new Set();return had}
  if(vrModFailed)return false; // the builder could not be loaded: every point stays exposed
  if(!vrMod){ // the classification builder lives in vr-view.js: loaded once, on the first need; until then the previous judgement stays
-  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261006-build469').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
+  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261006-build471').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
   return false;
  }
  const prep=vrMod.hiddenClsFor(()=>{throttle.reset();refreshSoon()});

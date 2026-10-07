@@ -38,6 +38,42 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-06 — claude/vr-surface-point (one-handed VR redesign, build 468)
+
+**Agent:** Claude (Sonnet worker, supervised)
+**Task:** Owner's request: every VR operation must be possible with one hand (PR #103).
+
+### What changed
+- Grip always moves the volume (two hands: scale). Sections are no longer grabbed: the invisible 24 cm board, the 20 cm proximity grab, the guide lines and the 持ち方 setting are removed. A section is hit only on its thin frame band or its number tag.
+- Trigger (docs/vr-view.js, pure functions in docs/vr-point.js): the target is resolved once at the press (`resolveTriggerTarget`) and kept until the release. Short press (< 0.5 s) records / selects / pins a label; long press on a point opens the point ring (move / delete); moving the hand after a press on a band, a tag or empty space drags the selected section (`sectionDragStep`, holder space, normal-only translation, rotation about the centre, clamp to the box).
+- 断面 mode records on the selected section only (hollow parts too); 表面 mode records on the first tissue surface; the place is the one at the press. The cursor shape tells the mode (square frame on the section / small core + ring).
+- A/X: short = quick ring (docs/vr-ring.js: `createRingMenu`, `createWheelStick`, items saved in `vrl-vr-settings-5` -> `wheel`, editable in the 表示 tab), long (0.5 s) = the full menu. Undo stack (20 steps: record, delete, move). The left-hand section panel is gone (the 断面 tab has every function); a plain cue is on the left controller.
+- Point pick radius about 4.7 mm; hover pulse debounced; a point select is one pulse. `updateCommentPosition` in comments.js.
+
+### Why
+- The invisible board and the proximity grab took the laser from what was behind a section, so a single hand could not point; the grip/trigger split also needed both hands.
+
+### Follow-up / open questions
+- Comment on a point is behind the localStorage flag `vrl-vr-point-comment` (off): the system keyboard inside an immersive session is unverified on the Quest.
+- Hidden points seen obliquely through thin tissue can still be hard to pick (the hidden test is a march towards the head).
+- Frame band width (6 mm / 0.8 deg), the 0.5 s long press and the drag thresholds (10 mm / 1.5 deg) are constants to tune on the device.
+
+## 2026-10-06 — claude/vr-surface-point (section drag restored, one cursor, build 470)
+
+**Agent:** Claude (Sonnet worker, supervised)
+**Task:** Owner's Quest feedback on build 468: the section operation felt wrong (the original was more intuitive); the cursor should be the small round dot in both modes; in 断面 mode a section should move when the laser is not on the 3D object.
+
+### What changed
+- A section grabbed with the trigger (frame band, number tag, empty space) follows the hand rigidly in 6 DoF, pivot = the hand (`sectionFollowStart` / `sectionFollowStep` in docs/vr-point.js, stored in holder space; no jump at the start). Grip still always moves the volume; no board / proximity grab.
+- 断面 mode: where the laser meets the selected section (air included) a tap records, press-and-move drags the section (record cancelled) after 2 cm / 5 deg (`DRAG_RECORD`); holding still never starts a drag (a press over 0.5 s neither records nor drags). Where the laser is not on tissue, nor on a band/tag, the press grabs the section the laser passes through (else the nearest to the laser, else the selected) (`chooseSectionForRay`); on tissue it does nothing. Band/tag/empty grabs keep the 1 cm / 1.5 deg / 0.5 s start.
+- No clamping while dragging; on release the centre is brought back into the volume box without changing the cut where possible (`snapPlaneCenterIntoBox`). The jump to the perpendicular foot at drag start is removed.
+- Cursor: the square 断面 cursor and the outer ring are removed; both modes use the small dot (`createSurfaceCursor`), in 断面 mode at the voxel projected onto the plane.
+
+- Build 471: every recorded VR marker is drawn small (0.4 x the base radius) in all states (no 1.4x on a section, no normal-size disc); hidden / visible differ by look only (rim or not). The laser hit radius is unchanged (base radius x 1.56, min 4 mm); the number chip sits above the smaller marker. PC/iPad markers are untouched.
+
+### Follow-up / open questions
+- Thresholds (2 cm / 5 deg, 1 cm / 1.5 deg) and the empty-space section choice need a check on the Quest.
+
 ## 2026-10-06 — claude/slice-spacing-check (slice-spacing check and warning, build 469)
 
 **Agent:** Claude
@@ -4834,3 +4870,5 @@ entries above (shader tests via tools/boot-check.mjs with page.evaluate).
 - Build 465 (review fixes of the 3D point markers): vr-view.js hiddenClsFor now goes through hidden-cls-state.js (pure, unit-tested): own key (series + filter, per segment active / enabled / range / edit revision and run ids / source signature; not the post-processing settings or regions), one build at a time, 250 ms debounce, the <= 256 volume (no bricks, buildVolumeData noBricks option) cached per series + filter so a segment / edit change only reruns the edit mask + cls, the previous result is kept while rebuilding, a failure is retried after 5 s (only "no source data" is cached), releaseHiddenCls() on series change / markers hidden. comment-3d.js keeps the previous hidden set while the bytes are being built, stops retrying a failed vr-view.js import (all exposed), and the signature includes the series and filter.
 - Build 465 (owner decision, look of the PC / iPad 3D points): same colours and shapes as VR. Exposed = solid dot in VR_MARKER_FILL (#0b6f8c) with a white rim; hidden = a smaller dot in VR_MARKER_COLOR (#4dd8ff), not faint, no rim; the number is a small chip (VR chip colours) beside the dot, so the element's centre is the point (e2e reads the element centre and textContent). Colours are CSS custom properties in style.css; tests/unit/comment-3d-hidden.test.js keeps them equal to the vr-point-markers.js constants. Not verified in a browser here (none installed).
 - Build 465 (owner decision, position cues of the PC / iPad 3D points): the same as VR's active-section cues. Active section = the PC section view that is shown (sectionViewOpen && sectionViewPlane, the same plane as the cut plane of the hidden judgement). Points on it (vr-point.js sectionRelation reused, comment-3d-section.js planeRelations: the plane passes through the point's voxel) get .is-on-section (x1.4); the other points get a thin line (SVG layer .comment-lines-3d inside .comment-layer-3d, VR_MARKER_COLOR at 0.6 opacity, hidden points too, as in VR) to their foot on the plane. Both ends go through the camera: clipSegmentNear cuts the part behind the camera before projecting. No active section: no emphasis, no lines (the classes and lines are removed). The relation is recomputed only when the plane or the points change; the lines follow the camera every frame. Checked in headless Chromium (software WebGL) with synthetic points.
+- Build 466 (Issue #88, owner-approved follow-up: VR / AR "surface mode"): 位置 tab got a 断面 / 表面 toggle (default 断面 = build 464 behaviour; remembered while the page lives, not saved). In 表面 the trigger's 4th step (after menu -> section handle -> existing point) records the FIRST TISSUE SURFACE the laser meets instead of a section face: vr-pick.js marchClassificationHitInfo (the analysis label pointer's march, reused from volumeHitRay, nothing is marched twice) = first voxel of a shown segment (>= 128) on the side every clipping section keeps, so a face cut by a clipping section counts; segment opacity is ignored. vr-point.js (additive only): POINT_MODES, normalizePointMode, surfaceVoxelFromHit (the hit point -> data voxel; classification-grid centre as fallback), surfaceRayHit, resolveTriggerMode (resolveTrigger + the 'surface' 4th step). Recorded as the usual voxel comment "VR ポイント N". vr-point-markers.js: createSurfaceCursor (lime core + additive glow at the hit; replaces the hand-colour tip dot there). Stick gate, haptics (record 1 pulse, select 2), AR: unchanged / same. 解析 tab: the trigger keeps pinning labels (mode ignored). Sections off in 表面: records on the surface (hover labels are shown but not pinned: the trigger records). Known limitation: a point recorded on the surface sits inside the first tissue voxel, so viewed obliquely (about 60° or more from the surface normal) it may be shown as hidden (small dot); a separate task. The 位置 tab layout shifted down 80 px for the toggle (list shows the last 5). Tests: tests/unit/vr-point-surface.test.js. Not verifiable headless: the WebXR session and the look of the cursor (check on a Quest, VR and AR). e2e not run locally.
+- Build 467 (surface cursor, owner decision after Quest testing: too big): docs/vr-point-markers.js createSurfaceCursor is now a small lime core (about one voxel wide, centred exactly on the centre of the voxel that will be recorded, never below 0.0022 rad as seen from the head) plus a thin ring (constant angular size 0.011 rad, faces the head), no glow / additive blur; depthTest off like the markers. vr-view.js placeSurfCursor puts it on the voxel centre (not the ray tip). Pure surfaceCursorSizes is unit-tested. Check the size on a Quest.

@@ -2,8 +2,8 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build469';
-import { compareFingerprints } from './project-file.js?v=20261006-build469';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build471';
+import { compareFingerprints } from './project-file.js?v=20261006-build471';
 
 export const COMMENT_MAX_TEXT=2000;
 const isIdx=n=>Number.isFinite(+n)&&n!==null&&n!==''&&n!==true&&n!==false;
@@ -56,6 +56,14 @@ export function updateCommentText(id,text){
  const t=String(text??'').slice(0,COMMENT_MAX_TEXT);if(!t.trim())return null;
  const i=list.findIndex(c=>c.id===id);if(i<0)return null;
  if(list[i].text!==t){list=list.map((c,n)=>n===i?{...c,text:t}:c);emit()}
+ return getComments()[i];
+}
+// move a point: the position only (id, text, createdAt and series stay). An invalid voxel or unknown id gives null, an unchanged position is not a change.
+export function updateCommentPosition(id,position){
+ const pos=commentVoxel(position);if(!pos)return null;
+ const i=list.findIndex(c=>c.id===id);if(i<0)return null;
+ const o=list[i].position;
+ if(o.i!==pos.i||o.j!==pos.j||o.k!==pos.k){list=list.map((c,n)=>n===i?{...c,position:pos}:c);emit()}
  return getComments()[i];
 }
 export function removeComment(id){const n=list.length;list=list.filter(c=>c.id!==id);if(list.length!==n)emit();return list.length!==n}

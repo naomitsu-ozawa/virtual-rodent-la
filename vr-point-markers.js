@@ -6,22 +6,23 @@
 // Look (build 464):
 //  - EXPOSED point (nothing of a shown segment between it and the head): a dark filled sphere with a white rim.
 //  - HIDDEN point (behind tissue; the rule is vr-point.js pointIsHidden, refreshed about 10 times a second by vr-view.js): a small dot.
-//  - ON the section (the active section passes through the point's voxel, vr-point.js sectionRelation): bigger, full strength.
-//    Off the section: normal size and a thin line (the perpendicular) down to the section. No active section: neither.
+//  - build 471: every marker has the same small size (0.4 x the base radius) in all states. A point off the active section also gets a thin line
+//    (the perpendicular) down to the section; no active section: no line.
 //  - laser on a point: a white halo; the selected point: a yellow halo (kept until it is deselected or deleted).
 // Spheres are drawn after the volume without a depth test, so a hidden point is still visible (as the small dot).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build469';
-import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build469';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261006-build471';
+import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261006-build471';
 
 export const VR_MARKER_COLOR=0x4dd8ff,VR_MARKER_FILL=0x0b6f8c,VR_RIM_COLOR=0xffffff,VR_HALO_HOVER=0xffffff,VR_HALO_SELECTED=0xffd23d;
-const RADIUS_UNITS=0.045,MIN_RADIUS_M=0.003,PICK_MIN_M=0.012; // radius in volume units (the longest side is 3.3) and the least radius in metres
+export const PICK_MIN_M=0.004,MARKER_SCALE=0.4; // MARKER_SCALE: the drawn radius as a factor of the base radius, the same in every state (build 471)
+const RADIUS_UNITS=0.045,MIN_RADIUS_M=0.003; // radius in volume units (the longest side is 3.3) and the least radius in metres
 
 // pure: how a point looks. Factors of the base radius. section: 'on' (the active section passes through the point's voxel), 'off', or null
 // (no active section: no emphasis and no line).
 export function markerStyle({hidden=false,section=null,selected=false,hover=false}={}){
  const on=section==='on';
  return{
-  scale:(hidden?0.4:1)*(on?1.4:1),rim:!hidden,fill:hidden?'dot':'solid',chipScale:(hidden?2:3)*(on?1.2:1),
+  scale:MARKER_SCALE,rim:!hidden,fill:hidden?'dot':'solid',chipScale:2, // build 471: every state is drawn small; hidden / visible differ by look only
   halo:selected?'selected':hover?'hover':null,
   perpendicular:section==='off',
  };
@@ -31,7 +32,7 @@ export function markerStyle({hidden=false,section=null,selected=false,hover=fals
 export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersShown}){
  const geo=new THREE.SphereGeometry(1,16,12);
  const mk=(color,extra={})=>new THREE.MeshBasicMaterial({color,transparent:true,depthTest:false,toneMapped:false,...extra});
- const mats={dot:mk(VR_MARKER_COLOR),solid:mk(VR_MARKER_FILL),rim:mk(VR_RIM_COLOR,{side:THREE.BackSide}),hover:mk(VR_HALO_HOVER,{side:THREE.BackSide,opacity:0.9}),selected:mk(VR_HALO_SELECTED,{side:THREE.BackSide,opacity:0.95})};
+ const mats={dot:mk(VR_MARKER_COLOR),solid:mk(VR_MARKER_FILL),rim:mk(VR_RIM_COLOR,{side:THREE.BackSide}),hover:mk(VR_HALO_HOVER,{side:THREE.BackSide,opacity:0.9}),selected:mk(VR_HALO_SELECTED,{side:THREE.BackSide,opacity:0.95}),ghost:mk(VR_MARKER_FILL,{opacity:0.35})};
  const lineMat=new THREE.LineBasicMaterial({color:VR_MARKER_COLOR,transparent:true,opacity:0.6,depthTest:false,toneMapped:false});
  const chipGeo=new THREE.PlaneGeometry(1,1),items=new Map(); // comment id -> {sphere,rim,halo,line,chip,no}
  const v=new THREE.Vector3(),f=new THREE.Vector3(),s=new THREE.Vector3();
@@ -58,7 +59,8 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
   // every frame: positions follow the volume (mesh = the volume's box mesh) and the chips face the head.
   // hidden: Set of comment ids that are hidden behind tissue (vr-view.js, ~10 Hz); section: the active section's plane in object space
   // ({x,y,z,w}, unit normal) or null; selectedId; hover: Set of ids a laser points at.
-  update({fingerprint,dims,halfExt,mesh,head,hidden=null,section=null,selectedId=null,hover=null}){
+  // preview (build 468): {id, voxel} - the point is drawn at that voxel while it is being moved; voxel null = at its old place, faint (opacity 0.35)
+  update({fingerprint,dims,halfExt,mesh,head,hidden=null,section=null,selectedId=null,hover=null,preview=null}){
    const all=fingerprint&&dims&&halfExt&&mesh&&deps.getMarkersShown()?deps.getComments():[],keep=new Set();
    if(all.length){
     mesh.updateWorldMatrix(true,false);mesh.getWorldScale(s);const unit=s.x||1,r0=Math.max(MIN_RADIUS_M,RADIUS_UNITS*unit);
@@ -67,17 +69,17 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
      const t=commentTarget(c,dims);if(!t)return;
      keep.add(c.id);let it=items.get(c.id);if(!it){it=make();items.set(c.id,it)}
      if(it.no!==n+1)drawChip(it,n+1);
-     const l=voxelToLocal(t,halfExt,dims),rel=section?sectionRelation(l,section,halfExt,dims):null;
+     const pv=preview&&preview.id===c.id?preview:null,ghost=!!pv&&!pv.voxel,l=voxelToLocal(pv&&pv.voxel?pv.voxel:t,halfExt,dims),rel=section?sectionRelation(l,section,halfExt,dims):null;
      const st=markerStyle({hidden:!!hidden?.has(c.id),section:rel?(rel.onSection?'on':'off'):null,selected:c.id===selectedId,hover:!!hover?.has(c.id)});
      v.set(l.x,l.y,l.z);mesh.localToWorld(v);
-     const r=r0*st.scale;it.radius=Math.max(PICK_MIN_M,r0*1.8);
-     it.sphere.material=mats[st.fill];
+     const r=r0*st.scale;it.radius=Math.max(PICK_MIN_M,r0*1.3*1.2); // build 471: the hit radius stays what the normal-size disc had (base radius, rim included, +20 %), independent of the smaller drawn size; the least is PICK_MIN_M
+     it.sphere.material=ghost?mats.ghost:mats[st.fill];
      it.sphere.position.copy(v);it.sphere.scale.setScalar(r);
-     it.rim.visible=st.rim;it.rim.position.copy(v);it.rim.scale.setScalar(r*1.3);
+     it.rim.visible=st.rim&&!ghost;it.rim.position.copy(v);it.rim.scale.setScalar(r*1.3);
      it.halo.visible=!!st.halo;if(st.halo){it.halo.material=mats[st.halo];it.halo.position.copy(v);it.halo.scale.setScalar(r*1.9)}
      const showLine=st.perpendicular&&!!rel;it.line.visible=showLine;
      if(showLine){f.set(rel.foot.x,rel.foot.y,rel.foot.z);mesh.localToWorld(f);const a=it.line.geometry.attributes.position;a.setXYZ(0,v.x,v.y,v.z);a.setXYZ(1,f.x,f.y,f.z);a.needsUpdate=true}
-     it.chip.position.set(v.x,v.y+r*2.6,v.z);it.chip.scale.setScalar(r0*st.chipScale);if(head)it.chip.lookAt(head);
+     it.chip.position.set(v.x,v.y+r*1.6+r0*st.chipScale*0.6,v.z);it.chip.scale.setScalar(r0*st.chipScale);if(head)it.chip.lookAt(head);
     });
    }
    for(const [id,it] of [...items])if(!keep.has(id))drop(id,it);
@@ -87,5 +89,35 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
   // world centres of the points shown: [{id,world:Vector3}] (for the hidden test)
   centres(){return[...items].map(([id,it])=>({id,world:it.sphere.position}))},
   dispose(){for(const [id,it] of [...items])drop(id,it);geo.dispose();for(const m of Object.values(mats))m.dispose();lineMat.dispose();chipGeo.dispose()},
+ };
+}
+
+// ---- point cursor (build 467; build 470: the one cursor of both modes) ----
+// Where a trigger press would record: a small lime dot (about one voxel, centred EXACTLY on the voxel that will be recorded). No ring, no
+// glow. Used by 表面 mode (on the tissue surface) and by 断面 mode (the voxel projected onto the selected section) alike, so both look the
+// same. Clearly different from the point markers (cyan sphere with a white rim / yellow halo) and from the laser tip (a small dot in the
+// hand colour). Drawn without a depth test, like the markers.
+// Size: one voxel wide in the world but never smaller than MIN_CORE_RAD angular radius seen from the head.
+export const SURFACE_CURSOR_COLOR=0x8dff4a,SURFACE_CURSOR_MIN_CORE_RAD=0.0022;
+// pure: dot radius (world metres). dist: head -> cursor distance (m); voxelM: the voxel's world size (m).
+export function surfaceCursorSizes(dist,voxelM){
+ const d=Math.max(1e-3,+dist||0);
+ return{core:Math.max(0.5*(+voxelM||0),d*SURFACE_CURSOR_MIN_CORE_RAD)};
+}
+export function createSurfaceCursor(THREE,scene){
+ const core=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),new THREE.MeshBasicMaterial({color:SURFACE_CURSOR_COLOR,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
+ core.renderOrder=6;core.frustumCulled=false;
+ const group=new THREE.Group();group.add(core);group.visible=false;scene.add(group);
+ const d=new THREE.Vector3();
+ return{
+  group,core,
+  // centre: the centre of the voxel that will be recorded (world); head: the head's world position; voxelM: the voxel's world size. null = hidden
+  set(centre,head,voxelM=0){
+   group.visible=!!centre;if(!centre)return;
+   group.position.set(centre.x,centre.y,centre.z);
+   const dist=head?d.set(head.x-centre.x,head.y-centre.y,head.z-centre.z).length():1;
+   core.scale.setScalar(surfaceCursorSizes(dist,voxelM).core);
+  },
+  dispose(){scene.remove(group);core.geometry.dispose();core.material.dispose()},
  };
 }
