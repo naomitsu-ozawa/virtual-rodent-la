@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
-import { createVrPointMarkers } from '../../docs/vr-point-markers.js';
+import { createVrPointMarkers, PICK_MIN_M } from '../../docs/vr-point-markers.js';
 import { setComments, getComments, getMarkersShown, setMarkersShown, createComment, addComment } from '../../docs/comments.js';
 import { voxelToLocal } from '../../docs/vr-point.js';
 import { datasetFingerprint } from '../../docs/project-file.js';
@@ -42,5 +42,45 @@ describe('VR position markers', () => {
     m.update({ ...args, fingerprint: other }); expect(scene.children.length).toBe(1);
     m.update(args); setComments([]); m.update(args); expect(scene.children.length).toBe(1);
     void c; m.dispose();
+  });
+});
+
+describe('pick radius (build 468)', () => {
+  it('about 4.7 mm at the default size: a ray 3 mm off hits, 6 mm off does not; the least is PICK_MIN_M', () => {
+    addComment(createComment({ text: 'a', position: { i: 5, j: 4, k: 3 }, series: fp }));
+    const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2)), holder = new THREE.Group();
+    holder.scale.setScalar(0.05); holder.add(mesh); scene.add(holder); scene.updateMatrixWorld(true);
+    const m = createVrPointMarkers(THREE, scene, deps);
+    m.update({ fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 0, 3) });
+    const c = m.centres()[0].world, d = new THREE.Vector3(0, 0, -1), at = off => new THREE.Vector3(c.x + off, c.y, c.z + 1);
+    expect(m.pick(at(0.003), d)).not.toBeNull();
+    expect(m.pick(at(0.006), d)).toBeNull();
+    expect(PICK_MIN_M).toBe(0.004);
+    m.dispose();
+  });
+});
+
+describe('preview of a point being moved (build 468)', () => {
+  it('drawn at the preview voxel; faint at its old place when the voxel is null', () => {
+    addComment(createComment({ text: 'a', position: { i: 1, j: 1, k: 1 }, series: fp, id: 'p1' }));
+    const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2));
+    scene.add(mesh); scene.updateMatrixWorld(true);
+    const m = createVrPointMarkers(THREE, scene, deps), base = { fingerprint: fp, dims, halfExt, mesh, head: new THREE.Vector3(0, 0, 3) };
+    m.update(base); const home = m.centres()[0].world.clone(); const solid = scene.children.find(o => o.renderOrder === 4).material;
+    m.update({ ...base, preview: { id: 'p1', voxel: { i: 7, j: 5, k: 4 } } });
+    const l = voxelToLocal({ i: 7, j: 5, k: 4 }, halfExt, dims);
+    expect(m.centres()[0].world.distanceTo(new THREE.Vector3(l.x, l.y, l.z))).toBeLessThan(1e-9);
+    m.update({ ...base, preview: { id: 'p1', voxel: null } });
+    expect(m.centres()[0].world.distanceTo(home)).toBeLessThan(1e-9);
+    const ghost = scene.children.find(o => o.renderOrder === 4).material;
+    expect(ghost.opacity).toBeCloseTo(0.35); expect(ghost).not.toBe(solid);
+    m.dispose();
+  });
+});
+
+import * as markers from '../../docs/vr-point-markers.js';
+describe('one cursor for both modes (build 470)', () => {
+  it('the square section cursor is gone', () => {
+    expect(markers.createSectionCursor).toBeUndefined(); expect(markers.sectionCursorSize).toBeUndefined();
   });
 });
