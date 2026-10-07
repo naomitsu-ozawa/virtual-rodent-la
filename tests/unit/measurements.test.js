@@ -7,13 +7,13 @@ const ver = JSON.parse(readFileSync(new URL('../../docs/version.json', import.me
 const load = f => import(/* @vite-ignore */ '../../docs/' + f + '.js' + tag);
 const {
   distanceMm, formatMm, measureLabel, seriesSpacing, spacingWarns, measurementMm, sanitizeMeasurements,
-  getMeasurements, addMeasurement, removeMeasurement, restoreMeasurements, measurementsOfPoint, measurementsForProject, loadProjectMeasurements,
+  getMeasurements, setLabelOffset, normalizeLabelOffset, addMeasurement, removeMeasurement, restoreMeasurements, measurementsOfPoint, measurementsForProject, loadProjectMeasurements,
   markMeasurementsSaved, hasUnsavedMeasurements, resetMeasurements, getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange,
   createLongPress, POINT_MENU_ITEMS, MEASURE_MAX,
 } = await load('measurements');
 const { setComments, addComment, removeComment, restoreComment, createComment, getComments, updateCommentPosition, updateCommentColor, setMarkersShown, loadProjectComments } = await load('comments');
 const { datasetFingerprint, packProject, unpackProject } = await load('project-file');
-const { createVrMeasure, labelPlacement, labelScaleFor, MEASURE_LABEL_W_M } = await load('vr-measure');
+const { createVrMeasure, labelScaleFor, MEASURE_LABEL_W_M } = await load('vr-measure');
 const { createUndoStack, applyUndo, voxelToLocal, HAPTIC } = await load('vr-point');
 
 // synthetic data only: a 16 x 16 x 12 grid, anisotropic spacing 0.1 x 0.2 x 0.5 mm
@@ -222,9 +222,9 @@ describe('VR display (vr-measure.js)', () => {
     expect(new THREE.Vector3(pos.getX(0), pos.getY(0), pos.getZ(0)).distanceTo(w1)).toBeLessThan(1e-6); expect(new THREE.Vector3(pos.getX(1), pos.getY(1), pos.getZ(1)).distanceTo(w2)).toBeLessThan(1e-6);
     const label = scene.children.find(o => o.isMesh && o.renderOrder === 6);
     expect(label.visible).toBe(true);
-    // the label is OUTSIDE the volume box (local space), within reach of the midpoint, and a leader line joins them
-    const loc = mesh.worldToLocal(label.position.clone()), outside = Math.abs(loc.x) > halfExt[0] || Math.abs(loc.y) > halfExt[1] || Math.abs(loc.z) > halfExt[2];
-    expect(outside).toBe(true); expect(label.position.distanceTo(w1.clone().add(w2).multiplyScalar(0.5))).toBeLessThan(0.5);
+    // the label starts NEAR the line (a small offset from the midpoint, beside it), 60 % size, and a leader joins them
+    const mid = w1.clone().add(w2).multiplyScalar(0.5);
+    expect(label.position.distanceTo(mid)).toBeLessThan(0.06); expect(label.position.distanceTo(mid)).toBeGreaterThan(0.005);
     expect(label.scale.x).toBeLessThan(0.075); // smaller than build 478 (0.075 m wide) at arm's length
     expect(scene.children.length).toBe(n0 + 3);
     v.update({ ...base, startId: 'p1' }); expect(scene.children.length).toBe(n0 + 5); // + ring + hint
@@ -267,26 +267,62 @@ describe('review fixes: series, id renames, per-series saved state', () => {
   });
 });
 
-describe('VR label placement (build 479)', () => {
-  const half = [8, 8, 6];
-  const outside = p => Math.abs(p.x) > half[0] || Math.abs(p.y) > half[1] || Math.abs(p.z) > half[2];
-  it('goes outward from the midpoint, perpendicular to the line, and out of the box', () => {
-    const a = { x: -3, y: 2, z: 0 }, b = { x: 3, y: 2, z: 0 }, p = labelPlacement(a, b, half, 0.5);
-    expect(p.x).toBeCloseTo(0, 9); expect(p.z).toBeCloseTo(0, 9); expect(p.y).toBeGreaterThan(half[1]); expect(p.y).toBeCloseTo(8.5, 9); // straight up from (0,2,0), 0.5 past the box
-    const q = labelPlacement({ x: 1, y: -1, z: -2 }, { x: 5, y: -3, z: -4 }, half, 0.2);
-    expect(outside(q)).toBe(true);
-    // perpendicular to the line: (q - mid) . (b - a) = 0
-    const mid = { x: 3, y: -2, z: -3 }, dv = { x: q.x - mid.x, y: q.y - mid.y, z: q.z - mid.z }, u = { x: 4, y: -2, z: -2 };
-    expect(dv.x * u.x + dv.y * u.y + dv.z * u.z).toBeCloseTo(0, 9);
-  });
-  it('a line through the centre still gets an outside spot (fallback direction); a midpoint already outside stays near it', () => {
-    expect(outside(labelPlacement({ x: -2, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, half, 0.1, { x: 0, y: 1, z: 0 }))).toBe(true);
-    expect(outside(labelPlacement({ x: -2, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, half, 0.1))).toBe(true);
-    const far = labelPlacement({ x: 10, y: 0, z: 0 }, { x: 12, y: 0, z: 0 }, half, 0.3);
-    expect(Math.hypot(far.x - 11, far.y, far.z)).toBeCloseTo(0.3, 9);
-  });
+describe('the label: size, default placement near the line, offset (move) persistence', () => {
   it('about 60 % of build 478 in size, growing with the head distance', () => {
     expect(MEASURE_LABEL_W_M).toBeCloseTo(0.075 * 0.6, 6);
     expect(labelScaleFor(0.6)).toBeCloseTo(1, 9); expect(labelScaleFor(1.2)).toBeCloseTo(2, 9); expect(labelScaleFor(0.1)).toBe(0.7); expect(labelScaleFor(5)).toBe(2.2);
+  });
+  it('normalizeLabelOffset: finite numbers only, rounded to 3 decimals; anything else = no offset (default placement)', () => {
+    expect(normalizeLabelOffset({ i: 1.23456, j: -2, k: 0 })).toEqual({ i: 1.235, j: -2, k: 0 });
+    for (const bad of [null, undefined, 5, 'x', {}, { i: 1, j: 2 }, { i: '1', j: 2, k: 3 }, { i: NaN, j: 0, k: 0 }, { i: Infinity, j: 0, k: 0 }, { i: 1e9, j: 0, k: 0 }]) expect(normalizeLabelOffset(bad)).toBeNull();
+  });
+  it('setLabelOffset: stored, unchanged is a no-op, null = back to default, invalid refused', () => {
+    pt('p1', 1, 1, 1); pt('p2', 5, 5, 5); const m = addMeasurement('p1', 'p2');
+    expect(getMeasurements()[0].labelOffset).toBeUndefined(); expect('labelOffset' in m).toBe(false);
+    expect(setLabelOffset(m.id, { i: 2, j: -1, k: 0.5 })).toBe(true); expect(getMeasurements()[0].labelOffset).toEqual({ i: 2, j: -1, k: 0.5 });
+    expect(setLabelOffset(m.id, { i: 'x', j: 0, k: 0 })).toBe(false); expect(getMeasurements()[0].labelOffset).toEqual({ i: 2, j: -1, k: 0.5 });
+    expect(setLabelOffset('nope', { i: 1, j: 1, k: 1 })).toBe(false);
+    expect(setLabelOffset(m.id, null)).toBe(true); expect(getMeasurements()[0]).toEqual({ id: m.id, a: 'p1', b: 'p2' });
+  });
+  it('persistence: sanitize keeps a valid offset and drops an invalid one; the project file round-trips it; an old entry without it loads with the default', () => {
+    const ok = new Set(['p1', 'p2', 'p3']);
+    const out = sanitizeMeasurements([{ id: 'm1', a: 'p1', b: 'p2', labelOffset: { i: 3, j: 4, k: 5 } }, { id: 'm2', a: 'p2', b: 'p3', labelOffset: { i: 'bad' } }, { id: 'm3', a: 'p1', b: 'p3' }], ok);
+    expect(out).toEqual([{ id: 'm1', a: 'p1', b: 'p2', labelOffset: { i: 3, j: 4, k: 5 } }, { id: 'm2', a: 'p2', b: 'p3' }, { id: 'm3', a: 'p1', b: 'p3' }]);
+    pt('p1', 1, 1, 1); pt('p2', 5, 5, 5); const m = addMeasurement('p1', 'p2'); setLabelOffset(m.id, { i: -3.5, j: 2, k: 1 });
+    const ids = new Set(getComments().map(c => c.id)), project = { dataset: fp, comments: getComments(), measurements: measurementsForProject(ids) };
+    const back = unpackProject(packProject(project, {})).project;
+    expect(back.measurements).toEqual([{ id: m.id, a: 'p1', b: 'p2', labelOffset: { i: -3.5, j: 2, k: 1 } }]);
+    resetMeasurements(); loadProjectMeasurements(back.measurements);
+    expect(getMeasurements()).toEqual([{ id: m.id, a: 'p1', b: 'p2', labelOffset: { i: -3.5, j: 2, k: 1 } }]);
+    // the offset is a restorable part of the measurement (undo of a point deletion)
+    const ms = measurementsOfPoint('p1'), c = getComments()[0]; removeComment('p1'); restoreComment(c, 0); restoreMeasurements(ms);
+    expect(getMeasurements()[0].labelOffset).toEqual({ i: -3.5, j: 2, k: 1 });
+  });
+  it('moving a label is an unsaved change', () => {
+    pt('p1', 1, 1, 1); pt('p2', 5, 5, 5); const m = addMeasurement('p1', 'p2'); markMeasurementsSaved(fp); expect(hasUnsavedMeasurements()).toBe(false);
+    setLabelOffset(m.id, { i: 1, j: 1, k: 1 }); expect(hasUnsavedMeasurements()).toBe(true); markMeasurementsSaved(fp); expect(hasUnsavedMeasurements()).toBe(false);
+  });
+});
+
+describe('VR label: default near the line, grab and drag (vr-measure.js)', () => {
+  const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true } });
+  beforeEach(() => vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) }));
+  afterEach(() => vi.unstubAllGlobals());
+  it('pickLabel finds the label on the ray; dragLabel stores an offset that puts the label where it was dragged to; it survives a rebuild', () => {
+    pt('p1', 2, 3, 1); pt('p2', 12, 9, 8); const m = addMeasurement('p1', 'p2');
+    const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2)), holder = new THREE.Group();
+    holder.position.set(0, 1.3, -0.6); holder.scale.setScalar(0.05); holder.add(mesh); scene.add(holder); scene.updateMatrixWorld(true);
+    const base = { fingerprint: fp, dims: { columns: 16, rows: 16, slices: 12 }, halfExt: [8, 8, 6], mesh, head: new THREE.Vector3(0, 1.6, 0), spacing: [0.1, 0.2, 0.5], hint: '' };
+    const v = createVrMeasure(THREE, scene); v.update(base);
+    const label = scene.children.find(o => o.isMesh && o.renderOrder === 6), from = label.position.clone();
+    const o = new THREE.Vector3(from.x, from.y, from.z + 0.5), d = new THREE.Vector3(0, 0, -1);
+    const hit = v.pickLabel(o, d); expect(hit.id).toBe(m.id); expect(hit.distance).toBeCloseTo(0.5, 3);
+    expect(v.pickLabel(new THREE.Vector3(from.x + 0.3, from.y, from.z + 0.5), d)).toBeNull(); // a ray beside it
+    const target = new THREE.Vector3(from.x + 0.04, from.y + 0.05, from.z - 0.03);
+    expect(v.dragLabel(m.id, target)).toBe(true); expect(getMeasurements()[0].labelOffset).toBeTruthy();
+    v.update(base); expect(label.position.distanceTo(target)).toBeLessThan(1e-4);
+    // a new view (as after a reload: the offset comes from the project) puts it at the same place
+    v.dispose(); const v2 = createVrMeasure(THREE, scene); v2.update(base);
+    expect(scene.children.find(o => o.isMesh && o.renderOrder === 6).position.distanceTo(target)).toBeLessThan(1e-4); v2.dispose();
   });
 });
