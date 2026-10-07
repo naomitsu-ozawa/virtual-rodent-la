@@ -161,3 +161,20 @@ describe('ring laser hit (build 474)', () => {
     } finally { delete globalThis.document; }
   });
 });
+
+describe('ring disc for every hand (build 474)', () => {
+  it('the disc covers blank gaps between items and the hole, and slots stay null there', async () => {
+    const { createRingMenu } = await import('../../docs/vr-ring.js');
+    const THREE = await import('three');
+    const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true } });
+    globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) };
+    try {
+      const r = createRingMenu(THREE); r.setItems(['a', 'b', null, 'd', 'e', 'f'], [true, true, false, true, true, true], []);
+      const R = 0.055 / 0.16, at = (deg, f = R) => ({ x: 0.5 + f * Math.sin(deg * Math.PI / 180), y: 0.5 + f * Math.cos(deg * Math.PI / 180) });
+      for (const uv of [{ x: 0.5, y: 0.5 }, at(120), at(30), at(0, 0.3)]) { expect(r.inDisk(uv)).toBe(true); }
+      expect(r.slotFromUv(at(30))).toBeNull(); expect(r.slotFromUv(at(120))).toBeNull();
+      expect(r.inDisk(at(0, 0.6))).toBe(false);
+      r.dispose();
+    } finally { delete globalThis.document; }
+  });
+});
