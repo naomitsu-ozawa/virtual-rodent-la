@@ -2,9 +2,9 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261007-build476';
-import { compareFingerprints } from './project-file.js?v=20261007-build476';
-import { normalizeColor, pointColor, pointKey, normalizeAutoKey, textPointNumber } from './point-colors.js?v=20261007-build476';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261007-build478';
+import { compareFingerprints } from './project-file.js?v=20261007-build478';
+import { normalizeColor, pointColor, pointKey, normalizeAutoKey, textPointNumber } from './point-colors.js?v=20261007-build478';
 
 export const COMMENT_MAX_TEXT=2000;
 const isIdx=n=>Number.isFinite(+n)&&n!==null&&n!==''&&n!==true&&n!==false;
@@ -87,22 +87,25 @@ export function restoreComment(c,index=list.length){if(!c||list.some(x=>x.id===c
 // Loading a project must not throw away what is in memory and not in that file (a comment added after the last save, or one written on
 // another series): other series stay as they are; for the project's own series the two sets are united by id (a comment deleted in
 // memory since the save comes back: the side that loses no data). An id already used by a comment of another series gets a new one.
-export function mergeComments(current,incoming,fingerprint){
+// idMap (optional object): filled with {fileId: newId} for every incoming comment that had to be renamed, so things that refer to a point by id (distances) can follow
+export function mergeComments(current,incoming,fingerprint,idMap=null){
  const keep=current.filter(c=>!commentMatchesSeries(c,fingerprint)),same=current.filter(c=>commentMatchesSeries(c,fingerprint));
  const ids=new Set(current.map(c=>c.id)),add=[];
  for(const c of sanitizeComments(incoming)){
   if(same.some(x=>x.id===c.id))continue;
-  let id=c.id;while(ids.has(id))id+='_';ids.add(id);add.push({...c,id});
+  let id=c.id;while(ids.has(id))id+='_';ids.add(id);if(idMap&&id!==c.id)idMap[c.id]=id;add.push({...c,id});
  }
  return[...keep,...same,...add];
 }
+// returns the id map of renamed comments ({fileId: newId}, usually empty)
 export function loadProjectComments(incoming,fingerprint){
- const inc=sanitizeComments(incoming);
- list=mergeComments(list,inc,fingerprint);
+ const inc=sanitizeComments(incoming),idMap={};
+ list=mergeComments(list,inc,fingerprint,idMap);
  // what the file now holds for this series (other files' comments stay as they were)
  for(const [id,e] of [...saved])if(commentMatchesSeries({series:e.series},fingerprint))saved.delete(id);
  for(const c of inc)saved.set(c.id,{sig:sigOf(c),series:c.series});
  emit();
+ return idMap;
 }
 // ---- unsaved changes: what was last written to / read from a project file, against what is in memory now ----
 const sigOf=c=>[c.id,c.text,c.position.i,c.position.j,c.position.k,c.color||'',pointKey(c)].join('|');

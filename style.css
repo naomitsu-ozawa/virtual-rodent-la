@@ -978,6 +978,32 @@ html.vrl-ipad-ui .comment-popover .comment-input{font-size:16px}
 .vrl-ipad-ui .comment-marker-3d.is-behind .comment-marker-3d-no{font-size:10px;line-height:12px;min-width:14px}
 .comment-bubble-3d{pointer-events:none}
 
+/* build 477: point menu (long press / right-click on a point), distances (line + label in 3D, list in the panel), the start of a distance */
+.point-menu{position:fixed;z-index:60;display:grid;gap:6px;min-width:190px;max-width:calc(100vw - 12px);padding:8px;border:1px solid rgb(var(--ui-b2));border-radius:10px;background:rgb(var(--ui-s1));color:rgb(var(--ui-t1));box-shadow:0 6px 22px rgba(0,0,0,.4);touch-action:manipulation}
+.point-menu[hidden]{display:none}
+.point-menu-head{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700}
+.point-menu-row{display:flex;gap:6px;flex-wrap:wrap}
+.point-menu-btn{min-height:36px;min-width:56px}
+html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
+.point-menu-palette{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.measure-pill{position:fixed;z-index:59;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;max-width:calc(100vw - 24px);padding:7px 10px;border:1px solid #ffd23d;border-radius:999px;background:rgb(var(--ui-s1));color:rgb(var(--ui-t1));box-shadow:0 4px 18px rgba(0,0,0,.4);font-size:13px}
+.measure-pill[hidden]{display:none}
+.measure-pill .tool-chip{min-height:30px}
+.measure-title{margin:10px 0 4px;font-size:12px}
+.measure-title[hidden],.measure-list[hidden]{display:none}
+.measure-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.measure-item{display:flex;align-items:center;gap:4px;border:1px solid rgb(var(--ui-b2));border-radius:7px;padding:5px 8px}
+.measure-item .comment-no{margin-right:0}
+.measure-note{font-size:11px;color:rgb(var(--ui-amber-tx));margin-right:6px}
+.measure-item .measure-value{margin-left:8px;flex:1;font-variant-numeric:tabular-nums}
+.measure-line-3d{stroke:#ffd23d;stroke-width:2;stroke-opacity:.95;stroke-dasharray:6 4;filter:drop-shadow(0 0 1.5px rgba(0,0,0,.9))}
+.measure-label-3d,.measure-hint-3d{position:absolute;left:0;top:0;padding:2px 7px;border-radius:999px;border:1px solid #ffd23d;background:rgba(17,23,27,.88);color:#fff;font:700 12px/16px sans-serif;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;will-change:transform}
+.measure-label-3d[hidden],.measure-hint-3d[hidden]{display:none}
+.vrl-ipad-ui .measure-label-3d,.vrl-ipad-ui .measure-hint-3d{font-size:14px;line-height:18px}
+.comment-marker-3d.is-measure-start{box-shadow:0 0 0 3px #ffd23d,0 0 0 4px rgba(0,0,0,.6);animation:vrl-measure-pulse 1.2s ease-in-out infinite}
+@keyframes vrl-measure-pulse{0%,100%{box-shadow:0 0 0 2px #ffd23d,0 0 0 3px rgba(0,0,0,.6)}50%{box-shadow:0 0 0 7px rgba(255,210,61,.7),0 0 0 8px rgba(0,0,0,.5)}}
+@media (prefers-reduced-motion:reduce){.comment-marker-3d.is-measure-start{animation:none}}
+
 /* build 469: slice-spacing warning (non-blocking; wraps on narrow / iPad layouts) */
 .spacing-warn{display:block;padding:5px 7px;border:1px solid rgb(var(--ui-amber-bd));border-radius:7px;background:rgb(var(--ui-amber-bg));color:rgb(var(--ui-amber-tx))!important;font-size:11px;line-height:1.35;overflow-wrap:anywhere;white-space:normal}
 .spacing-warn{pointer-events:auto}.spacing-warn summary{cursor:pointer;list-style-position:inside}.spacing-info{background:rgb(var(--ui-s2));border-color:rgb(var(--ui-b2));color:rgb(var(--ui-t3))!important}.spacing-mark{color:rgb(var(--ui-amber-tx));font-weight:700}
