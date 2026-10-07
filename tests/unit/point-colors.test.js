@@ -125,7 +125,7 @@ describe('colour in the store, the project and the undo', () => {
 
 describe('colour ring', () => {
   const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true } });
-  it('a swatch ring of auto + the palette is drawn and hit-tested by its own narrower boxes', async () => {
+  it('a swatch ring of auto + the palette is drawn and hit-tested as nine annular sectors', async () => {
     const THREE = await import('three');
     const doc = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) };
     globalThis.document = doc;
@@ -138,7 +138,9 @@ describe('colour ring', () => {
       // the top item's centre is at uv (0.5, 0.5 + radius): hit; a point between two items is not
       const R = 0.055 / 0.16;
       expect(ring.slotFromUv({ x: 0.5, y: 0.5 + R })).toBe(0);
-      expect(ring.slotFromUv({ x: 0.5 + 0.2, y: 0.5 + R })).toBe(null);
+      const at = (deg, px) => ({ x: 0.5 + px / 512 * Math.sin(deg * Math.PI / 180), y: 0.5 + px / 512 * Math.cos(deg * Math.PI / 180) });
+      expect(ring.slotFromUv(at(30, 170))).toBe(1);   // nine sectors of 40 deg: 30 deg is inside the second one
+      expect(ring.slotFromUv(at(20, 170))).toBe(null); // the gap between the first and the second
       expect(wheelSlotFromAngle(0, 9, items.map(() => true))).toBe(0);
       expect(wheelSlotFromAngle(80, 9, items.map(() => true))).toBe(2);
     } finally { delete globalThis.document }

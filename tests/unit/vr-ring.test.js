@@ -122,8 +122,12 @@ describe('createRingMenu (drawing)', () => {
       const R = 0.055 / 0.16, at = (deg, f = R) => ({ x: 0.5 + f * Math.sin(deg * Math.PI / 180), y: 0.5 + f * Math.cos(deg * Math.PI / 180) });
       expect(r.slotFromUv(at(0))).toBe(0); expect(r.slotFromUv(at(60))).toBe(1);
       expect(r.slotFromUv(at(120))).toBeNull(); // empty slot
+      expect(r.slotFromUv(at(30))).toBeNull(); // the gap between two sectors (60 deg sectors, 4 deg gap: 28..32 is gap)
+      expect(r.slotFromUv(at(26))).toBe(0); expect(r.slotFromUv(at(34))).toBe(1);
+      expect(r.slotFromUv(at(0, 0.45))).toBe(0); // the outer part of the ring (an annular sector, not a box)
+      expect(r.slotFromUv(at(0, 0.5))).toBeNull(); // beyond the ring
       expect(r.slotFromUv(at(180))).toBe(3);
-      expect(r.slotFromUv({ x: 0.5, y: 0.5 })).toBeNull(); expect(r.slotFromUv(at(0, 0.45))).toBeNull(); // the hole and the margin
+      expect(r.slotFromUv({ x: 0.5, y: 0.5 })).toBeNull(); expect(r.slotFromUv(at(0, 0.49))).toBeNull(); expect(r.slotFromUv(at(0, 0.1))).toBeNull(); // the hole and the margin
       r.setItems(['a', 'b', 'c', 'd', 'e', 'f'], [true, false, true, true, true, true], []);
       expect(r.slotFromUv(at(60))).toBeNull(); // disabled slot
       r.placeAt({ x: 1, y: 2, z: 3 }, { x: 1, y: 2, z: 5 }); expect(r.mesh.position.toArray()).toEqual([1, 2, 3]);
@@ -175,6 +179,29 @@ describe('ring disc for every hand (build 474)', () => {
       expect(r.slotFromUv(at(30))).toBeNull(); expect(r.slotFromUv(at(120))).toBeNull();
       expect(r.inDisk(at(0, 0.6))).toBe(false);
       r.dispose();
+    } finally { delete globalThis.document; }
+  });
+});
+
+describe('the laser stops on the whole drawn ring (build 474)', () => {
+  it('every point of the sectors, their gaps, the hole and the lit sector growth is inside inDisk; every slot hit is too', async () => {
+    const { createRingMenu } = await import('../../docs/vr-ring.js');
+    const THREE = await import('three');
+    const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true } });
+    globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) };
+    try {
+      for (const n of [2, 3, 6, 9]) {
+        const r = createRingMenu(THREE); r.setItems(Array.from({ length: n }, (_, i) => 'x' + i), Array(n).fill(true), []);
+        const seen = new Set();
+        for (let deg = 0; deg < 360; deg += 1) for (let px = 0; px <= 256; px += 4) {
+          const uv = { x: 0.5 + px / 512 * Math.sin(deg * Math.PI / 180), y: 0.5 + px / 512 * Math.cos(deg * Math.PI / 180) };
+          const k = r.slotFromUv(uv);
+          if (k !== null) { expect(r.inDisk(uv)).toBe(true); seen.add(k) }
+          if (px <= 244) expect(r.inDisk(uv)).toBe(true); // up to the outer edge of the sectors (236 + the lit growth)
+        }
+        expect(seen.size).toBe(n); // every sector can be hit
+        r.dispose();
+      }
     } finally { delete globalThis.document; }
   });
 });
