@@ -36,7 +36,7 @@ describe('surface mode: the mode value', () => {
 
 describe('trigger resolution per mode (board > ring > move > tag > nearest of point / band / target)', () => {
   it('断面: only a plane hit records; a tissue hit alone does nothing', () => {
-    expect(resolveTriggerTarget({ tissue: { t: 1 }, mode: 'section' }).kind).toBe('none');
+    expect(resolveTriggerTarget({ tissue: { t: 1 }, mode: 'section' }).kind).toBe('tissue'); // build 484: stops the laser, records nothing
     expect(resolveTriggerTarget({ plane: { t: 1 }, mode: 'section' }).kind).toBe('record');
   });
   it('表面: only a tissue hit records; a plane hit alone does nothing (the plane never steals the ray)', () => {

@@ -59,10 +59,29 @@ describe('resolveTriggerTarget', () => {
   it('surface mode: a section face in front never steals (planes are not candidates)', () => {
     expect(resolveTriggerTarget({ mode: 'surface', plane: { t: 0.2 }, tissue: tis(1) })).toMatchObject({ kind: 'record', ref: { t: 1 } });
   });
-  it('section mode: the plane wins even with tissue in front', () => {
+  // build 484 (owner: in 断面 mode the laser went through the 3D object): the object surface occludes a plane behind it
+  it('section mode: tissue in front of the plane stops the laser (nothing is recorded)', () => {
     const r = resolveTriggerTarget({ mode: 'section', plane: { t: 2 }, tissue: tis(1) });
-    expect(r).toMatchObject({ kind: 'record', ref: { t: 2 } });
-    expect(resolveTriggerTarget({ mode: 'section', tissue: tis(1) }).kind).toBe('none');
+    expect(r).toMatchObject({ kind: 'tissue', ref: { t: 1 } });
+    expect(resolveTriggerTarget({ mode: 'section', tissue: tis(1) })).toMatchObject({ kind: 'tissue', ref: { t: 1 } }); // no plane: still stops at the surface
+  });
+  it('section mode: a plane in front of the surface, or where the object is cut away, is recorded on', () => {
+    expect(resolveTriggerTarget({ mode: 'section', plane: { t: 0.5 }, tissue: tis(1) })).toMatchObject({ kind: 'record', ref: { t: 0.5 } });
+    expect(resolveTriggerTarget({ mode: 'section', plane: { t: 2 } })).toMatchObject({ kind: 'record', ref: { t: 2 } }); // object cut away: no surface hit
+    // the cut face: the surface march starts on the plane, so the two meet (within the tolerance the view passes) and the plane wins
+    expect(resolveTriggerTarget({ mode: 'section', plane: { t: 1 }, tissue: tis(1.0004), occludeEps: 0.001 }).kind).toBe('record');
+    expect(resolveTriggerTarget({ mode: 'section', plane: { t: 1.0004 }, tissue: tis(1), occludeEps: 0.001 }).kind).toBe('record');
+    expect(resolveTriggerTarget({ mode: 'section', plane: { t: 1.002 }, tissue: tis(1), occludeEps: 0.001 }).kind).toBe('tissue');
+  });
+  it('section mode: a point or the frame band nearer than the surface still wins; one behind it does not', () => {
+    expect(resolveTriggerTarget({ mode: 'section', plane: { t: 2 }, tissue: tis(1), point: pt(0.5) }).kind).toBe('point');
+    expect(resolveTriggerTarget({ mode: 'section', plane: { t: 2 }, tissue: tis(1), band: band(0.9) }).kind).toBe('section');
+    expect(resolveTriggerTarget({ mode: 'section', plane: { t: 2 }, tissue: tis(1), point: pt(1.5) }).kind).toBe('tissue');
+  });
+  it('the laser length follows the nearest hit: the surface when it occludes, the plane otherwise', () => {
+    const len = o => { const r = resolveTriggerTarget({ mode: 'section', ...o }); return r.ref.t ?? r.ref.distance };
+    expect(len({ plane: { t: 2 }, tissue: { distance: 1 } })).toBe(1);
+    expect(len({ plane: { t: 0.5 }, tissue: { distance: 1 } })).toBe(0.5);
   });
   it('analysis tab: tissue is a label in either mode', () => {
     for (const mode of ['section', 'surface']) expect(resolveTriggerTarget({ mode, analysis: true, tissue: tis(1), plane: { t: 0.5 } }).kind).toBe('label');
