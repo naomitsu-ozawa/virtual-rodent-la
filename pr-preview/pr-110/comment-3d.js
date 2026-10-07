@@ -11,20 +11,20 @@
 // view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
 // (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build477';
-import { tr } from './i18n.js?v=20261007-build477';
-import { datasetFingerprint } from './project-file.js?v=20261007-build477';
-import { voxelToLocal3D } from './crosshair.js?v=20261007-build477';
-import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build477';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build477';
-import { getMeasurements, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingWarns, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261007-build477';
-import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build477';
-import { request3DRender } from './scene3d.js?v=20261007-build477';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build477';
-import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build477';
-import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build477';
-import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build477';
-import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build477';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build478';
+import { tr } from './i18n.js?v=20261007-build478';
+import { datasetFingerprint } from './project-file.js?v=20261007-build478';
+import { voxelToLocal3D } from './crosshair.js?v=20261007-build478';
+import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build478';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build478';
+import { getMeasurements, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261007-build478';
+import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build478';
+import { request3DRender } from './scene3d.js?v=20261007-build478';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build478';
+import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build478';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build478';
+import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build478';
+import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build478';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
 let rels=new Map(),relSig='',svg=null,cuesOn=false;
@@ -65,7 +65,7 @@ function refreshHidden(obj,camera,pts,plane){
  if(!anyShown||!pts.length){const had=hiddenIds.size>0;hiddenIds=new Set();return had}
  if(vrModFailed)return false; // the builder could not be loaded: every point stays exposed
  if(!vrMod){ // the classification builder lives in vr-view.js: loaded once, on the first need; until then the previous judgement stays
-  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build477').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
+  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build478').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
   return false;
  }
  const prep=vrMod.hiddenClsFor(()=>{throttle.reset();refreshSoon()});
@@ -103,7 +103,7 @@ function drawMeasures(obj,camera,W,H,pts,keep){
  const byId=new Map(pts.map(p=>[p.id,p])),ms=getMeasurements().filter(m=>byId.has(m.a)&&byId.has(m.b));
  if(!ms.length)return;
  ensureSvg();svg.setAttribute('width',W);svg.setAttribute('height',H);
- const cs=getComments(),sp=seriesSpacing(activeSeries),warn=spacingWarns(activeSeries);
+ const cs=getComments(),sp=seriesSpacing(activeSeries),warn=spacingLevel(activeSeries)==='warn';
  for(const m of ms){
   keep.add(m.id);let e=measEls.get(m.id);
   if(!e){

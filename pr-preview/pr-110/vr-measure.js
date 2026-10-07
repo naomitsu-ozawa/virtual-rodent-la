@@ -2,9 +2,9 @@
 // distance is being made, the START point with a pulsing ring and the hint 「終点のポイントを選んでください」 next to it.
 // vr-view.js calls createVrMeasure(THREE, scene) -> { update, dispose } every frame and does everything else (the flow, haptics, undo) itself; the state is
 // measurements.js (the same for the PC / iPad). The value follows the points: it is recomputed from their voxels each frame (a point being moved included, preview).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build477';
-import { getMeasurements, distanceMm, measureLabel } from './measurements.js?v=20261007-build477';
-import { voxelToLocal } from './vr-point.js?v=20261007-build477';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build478';
+import { getMeasurements, distanceMm, measureLabel } from './measurements.js?v=20261007-build478';
+import { voxelToLocal } from './vr-point.js?v=20261007-build478';
 
 export const VR_MEASURE_COLOR=0xffd23d,MEASURE_LABEL_W_M=0.075,MEASURE_LABEL_H_M=0.022,MEASURE_HINT_W_M=0.2,MEASURE_HINT_H_M=0.026;
 // pure: the pulse of the start ring, 0..1, a period of 1.2 s

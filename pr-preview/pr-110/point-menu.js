@@ -3,11 +3,11 @@
 // 距離 makes the point the START (a pulsing mark + 「終点のポイントを選んでください」), the next point picked is the END, a tap on empty space / Esc / 取消 cancels.
 // This module is the shared DOM part (the menu + a small hint pill that is always visible while a start is armed); the views (comment-ui.js 2D, comment-3d.js 3D)
 // detect the long press (measurements.js createLongPress) and call openPointMenu.
-import { tr } from './i18n.js?v=20261007-build477';
-import { getComments, updateCommentColor, onCommentsChange } from './comments.js?v=20261007-build477';
-import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build477';
-import { currentLanguage } from './state.js?v=20261007-build477';
-import { POINT_MENU_ITEMS, startMeasure, cancelMeasure, getMeasureStart, onMeasureStartChange, pickMeasureEnd } from './measurements.js?v=20261007-build477';
+import { tr } from './i18n.js?v=20261007-build478';
+import { getComments, updateCommentColor, onCommentsChange } from './comments.js?v=20261007-build478';
+import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build478';
+import { currentLanguage } from './state.js?v=20261007-build478';
+import { POINT_MENU_ITEMS, startMeasure, cancelMeasure, getMeasureStart, onMeasureStartChange, pickMeasureEnd } from './measurements.js?v=20261007-build478';
 
 let menu=null,openId=null,pill=null,pillText=null,installed=false;
 const handlers={delete:null};
@@ -53,31 +53,37 @@ export function openPointMenu({id,x,y}){
  menu.querySelector('.point-menu-distance')?.focus({preventScroll:true});
  return true;
 }
-let flashTimer=0;
+let flashTimer=0,undoBtn=null,undoFn=null;
 // a short message in the pill (no start armed): the result of picking the END
-function flash(text){
- clearTimeout(flashTimer);pillText.textContent=text;pill.hidden=false;pill.querySelector('button').hidden=true;
- flashTimer=setTimeout(renderPill,2200);
+function flash(text,ms=2200){
+ clearTimeout(flashTimer);pillText.textContent=text;pill.hidden=false;pill.querySelector('.measure-pill-cancel').hidden=true;undoBtn.hidden=true;
+ flashTimer=setTimeout(renderPill,ms);
+}
+// a message with an undo button (the delete from the point menu: the undo button of the panel sits in a closed <details>)
+export function flashUndo(text,label,fn,ms=9000){
+ if(!installed)installPointMenu();
+ flash(text,ms);undoBtn.textContent=label;undoBtn.hidden=false;undoFn=fn;
 }
 // the END of a distance was picked on a 2D mark or a 3D dot (the same call for both): the result is shown in the pill
 export function endMeasureAt(id){
  if(!installed)installPointMenu();
  const r=pickMeasureEnd(id);
  if(r.kind==='created')flash(tr('measureCreated'));else if(r.kind==='existed')flash(tr('measureExisted'));
+ else if(r.kind==='other-series')flash(tr('measureOtherSeries'),2800);else if(r.kind==='refused')flash(tr('measureRefused'),2800);else if(r.kind==='same')flash(tr('measureSame'),2000);
  return r;
 }
 export function cancelMeasureUi(){if(cancelMeasure()){flash(tr('measureCancelled'));return true}return false}
 function renderPill(){
- clearTimeout(flashTimer);pill.querySelector('button').hidden=false;
+ clearTimeout(flashTimer);pill.querySelector('.measure-pill-cancel').hidden=false;undoBtn.hidden=true;
  const id=getMeasureStart();pill.hidden=!id;if(!id)return;
  pillText.textContent=tr('measureStartedAt')+' '+numberOf(id)+' — '+tr('pmHint');
- pill.querySelector('button').textContent=tr('pmCancel');
+ pill.querySelector('.measure-pill-cancel').textContent=tr('pmCancel');
 }
 export function installPointMenu(){
  if(installed||typeof document==='undefined')return;installed=true;
  menu=document.createElement('div');menu.className='point-menu';menu.setAttribute('role','menu');menu.hidden=true;document.body.appendChild(menu);
  pill=document.createElement('div');pill.className='measure-pill';pill.setAttribute('role','status');pill.hidden=true;
- pillText=document.createElement('span');const cb=btn('measure-pill-cancel','',()=>cancelMeasureUi());pill.append(pillText,cb);document.body.appendChild(pill);
+ pillText=document.createElement('span');const cb=btn('measure-pill-cancel','',()=>cancelMeasureUi());undoBtn=btn('measure-pill-undo','',()=>{const f=undoFn;undoFn=null;renderPill();f?.()});undoBtn.hidden=true;pill.append(pillText,cb,undoBtn);document.body.appendChild(pill);
  // a tap / click outside the menu closes it (captured, so the press still reaches the canvas: the next long press / tap behaves as usual)
  document.addEventListener('pointerdown',e=>{if(openId&&!menu.contains(e.target))closePointMenu()},true);
  document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(openId)closePointMenu();else if(getMeasureStart())cancelMeasureUi()});

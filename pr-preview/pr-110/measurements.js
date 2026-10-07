@@ -2,8 +2,9 @@
 // The distance is NOT stored: it is computed from the two voxel positions and the volume's voxel spacing (the adopted spacing, series.spacingX/Y/Z),
 // so moving a point changes the value by itself. Pure data + a small in-memory store, no DOM / three.js (the VR and PC / iPad views share it).
 // Saved in the project as `measurements` (an unknown field for older apps: they ignore it, so the project version is not bumped).
-import { getComments, onCommentsChange, commentVoxel } from './comments.js?v=20261007-build477';
-import { spacingWarningText } from './slice-spacing.js?v=20261007-build477';
+import { getComments, onCommentsChange, commentVoxel, commentMatchesSeries } from './comments.js?v=20261007-build478';
+import { compareFingerprints } from './project-file.js?v=20261007-build478';
+import { spacingWarningText } from './slice-spacing.js?v=20261007-build478';
 
 export const MEASURE_MAX=500;
 
@@ -27,6 +28,11 @@ export function measurementMm(m,comments,spacing){
  const a=(comments||[]).find(c=>c.id===m?.a),b=(comments||[]).find(c=>c.id===m?.b);
  return a&&b?distanceMm(a.position,b.position,spacing):null;
 }
+
+// two points belong to the same series (a distance between series makes no sense: different voxel grids, never saved)
+export const pointsShareSeries=(a,b)=>!!a?.series&&!!b?.series&&compareFingerprints(a.series,b.series,{legacyZ:true}).ok;
+// the note for a series' spacing check: 'warn' (z approximate: ⚠), 'info' (the tag spacing is unverified) or null
+export const spacingLevel=s=>spacingWarningText(s?.spacingCheck)?.level||null;
 
 // ---- sanitize ----
 // from a project file / anything untrusted: keep {id,a,b} entries whose two points exist (validIds: a Set / array of point ids) and differ, drop the rest, no duplicate id or pair
@@ -54,7 +60,7 @@ export const measurementsOfPoint=id=>list.filter(m=>m.a===id||m.b===id).map(m=>(
 // a new measurement between two existing, different points; the same pair again returns the existing one (no duplicates). null = refused.
 export function addMeasurement(a,b,{now=Date.now(),id}={}){
  if(!a||!b||a===b||list.length>=MEASURE_MAX)return null;
- const ids=new Set(getComments().map(c=>c.id));if(!ids.has(a)||!ids.has(b))return null;
+ const cs=getComments(),ca=cs.find(c=>c.id===a),cb=cs.find(c=>c.id===b);if(!ca||!cb||!pointsShareSeries(ca,cb))return null;
  const same=list.find(m=>pairKey(m.a,m.b)===pairKey(a,b));if(same)return{...same,existed:true};
  const m={id:id||('m'+now.toString(36)+'-'+(++counter)),a,b};
  list=[...list,m];emit();return{...m};
@@ -62,9 +68,10 @@ export function addMeasurement(a,b,{now=Date.now(),id}={}){
 export function removeMeasurement(id){const n=list.length;list=list.filter(m=>m.id!==id);if(list.length!==n)emit();return list.length!==n}
 // put measurements back (the undo of a delete / of a point's deletion): only those whose points exist, not duplicating an id or pair
 export function restoreMeasurements(ms){
- const ids=new Set(getComments().map(c=>c.id)),have=new Set(list.map(m=>m.id)),pairs=new Set(list.map(m=>pairKey(m.a,m.b)));let n=0;
+ const cs=getComments(),ids=new Set(cs.map(c=>c.id)),have=new Set(list.map(m=>m.id)),pairs=new Set(list.map(m=>pairKey(m.a,m.b)));let n=0;
  for(const m of ms||[]){
   if(!m||!ids.has(m.a)||!ids.has(m.b)||m.a===m.b||have.has(m.id)||pairs.has(pairKey(m.a,m.b)))continue;
+  if(!pointsShareSeries(cs.find(c=>c.id===m.a),cs.find(c=>c.id===m.b)))continue;
   list=[...list,{id:m.id,a:m.a,b:m.b}];have.add(m.id);pairs.add(pairKey(m.a,m.b));n++;
  }
  if(n)emit();return n>0;
@@ -84,22 +91,32 @@ onCommentsChange(cs=>{
 // the measurements whose two points are both in `ids` (the points saved with the file: the open series' comments)
 export const measurementsForProject=ids=>{const s=ids instanceof Set?ids:new Set(ids||[]);return list.filter(m=>s.has(m.a)&&s.has(m.b)).map(m=>({id:m.id,a:m.a,b:m.b}))};
 // merged with what is in memory (by id and by pair), never replacing: entries of other series stay. Call it AFTER the comments are loaded (it checks the point ids).
-export function loadProjectMeasurements(incoming){
- const inc=sanitizeMeasurements(incoming,new Set(getComments().map(c=>c.id)));
+// idMap: {fileId: newId} of the points loadProjectComments had to rename, so an entry follows its points.
+export function loadProjectMeasurements(incoming,idMap=null){
+ const remap=id=>idMap&&typeof id==='string'&&Object.prototype.hasOwnProperty.call(idMap,id)?idMap[id]:id;
+ const cs=getComments(),ok=new Set(cs.map(c=>c.id));
+ const inc=sanitizeMeasurements((Array.isArray(incoming)?incoming:[]).map(m=>m&&typeof m==='object'?{...m,a:remap(m.a),b:remap(m.b)}:m),ok)
+  .filter(m=>pointsShareSeries(cs.find(c=>c.id===m.a),cs.find(c=>c.id===m.b)));
  const have=new Set(list.map(m=>m.id)),pairs=new Set(list.map(m=>pairKey(m.a,m.b))),add=[];
  for(const m of inc){
-  if(pairs.has(pairKey(m.a,m.b)))continue;
+  const exist=list.find(x=>pairKey(x.a,x.b)===pairKey(m.a,m.b));
+  if(exist){markSaved(exist);continue} // the pair is already in memory (maybe under another id): that one counts as saved
   let id=m.id;while(have.has(id))id+='_';have.add(id);pairs.add(pairKey(m.a,m.b));add.push({...m,id});
  }
  if(add.length)list=[...list,...add].slice(0,MEASURE_MAX);
- for(const m of inc)saved.set(m.id,pairKey(m.a,m.b));
+ for(const m of add)markSaved(m);
  if(add.length)emit();
 }
-// unsaved changes (the same idea as comments.js hasUnsavedComments)
+// unsaved changes, per series like comments.js: what the file last held {pair, series} against what is in memory
 const saved=new Map();
-export function markMeasurementsSaved(written=list){saved.clear();for(const m of written)saved.set(m.id,pairKey(m.a,m.b))}
+const seriesOf=m=>getComments().find(c=>c.id===m.a)?.series||null;
+const markSaved=m=>saved.set(m.id,{pair:pairKey(m.a,m.b),series:seriesOf(m)});
+export function markMeasurementsSaved(fingerprint,written=measurementsForProject(new Set(getComments().filter(c=>commentMatchesSeries(c,fingerprint)).map(c=>c.id)))){
+ for(const [id,e] of [...saved])if(commentMatchesSeries({series:e.series},fingerprint))saved.delete(id);
+ for(const m of written)markSaved(m);
+}
 export function hasUnsavedMeasurements(){
- if(list.some(m=>saved.get(m.id)!==pairKey(m.a,m.b)))return true;
+ if(list.some(m=>saved.get(m.id)?.pair!==pairKey(m.a,m.b)))return true;
  const ids=new Set(list.map(m=>m.id));
  for(const id of saved.keys())if(!ids.has(id))return true;
  return false;
@@ -123,6 +140,7 @@ export function cancelMeasure(){if(measureStart===null)return false;measureStart
 export function pickMeasureEnd(id){
  const a=measureStart;if(!a)return{kind:'none'};
  if(id===a)return{kind:'same',a};
+ {const cs=getComments(),ca=cs.find(c=>c.id===a),cb=cs.find(c=>c.id===id);if(ca&&cb&&!pointsShareSeries(ca,cb))return{kind:'other-series',a};} // another series: refused, still armed
  const m=addMeasurement(a,id);if(!m)return{kind:'refused',a};
  measureStart=null;emitStart();
  return m.existed?{kind:'existed',a,b:id,m}:{kind:'created',a,b:id,m};

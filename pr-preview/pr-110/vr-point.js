@@ -9,8 +9,8 @@
 // that another clipping section has cut away. A section whose intersection is outside the volume is skipped, never clamped.
 // Voxel rule: voxel i covers the fraction [i/n, (i+1)/n) of the box along its axis, so the index is floor(fraction * n); a point
 // outside [0,1) on any axis (the far face itself included) is NOT recorded: it is never moved into the volume.
-import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, updateCommentColor, commentMatchesSeries } from './comments.js?v=20261007-build477';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build477';
+import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, updateCommentColor, commentMatchesSeries } from './comments.js?v=20261007-build478';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build478';
 
 const T_MIN=1e-6,EDGE_EPS=1e-4;
 
@@ -345,7 +345,7 @@ export const HAPTIC={
 export const HAPTIC_SILENT=['emptyTap','gateBlocked','undoFailed','moveCancel','dragEnd'];
 
 // ---- undo stack (spec 7) ----
-// ops: {type:'add',id} | {type:'delete',c,index,ms?} (ms: the distances the point had) | {type:'measure-add',id} | {type:'measure-delete',m} | {type:'move',id,from,to} | {type:'color',id,from,to} (colours: hex or null = auto); the oldest is dropped beyond max
+// ops: {type:'add',id} | {type:'delete',c,index,ms?} (ms: the distances the point had) | {type:'measure-add',id} | {type:'move',id,from,to} | {type:'color',id,from,to} (colours: hex or null = auto); the oldest is dropped beyond max
 export function createUndoStack({max=20}={}){
  let ops=[];
  return{
@@ -362,7 +362,6 @@ export function applyUndo(op,store={removeComment,restoreComment,updateCommentPo
   if(op.type==='add')return!!store.removeComment(op.id);
   if(op.type==='delete'){const ok=!!store.restoreComment(op.c,op.index);if(ok&&op.ms?.length)store.restoreMeasurements?.(op.ms);return ok}
   if(op.type==='measure-add')return!!store.removeMeasurement?.(op.id);
-  if(op.type==='measure-delete')return!!store.restoreMeasurements?.([op.m]);
   if(op.type==='move')return!!store.updateCommentPosition(op.id,op.from);
   if(op.type==='color')return!!store.updateCommentColor(op.id,op.from);
  }catch(e){console.warn('undo failed',e)}
