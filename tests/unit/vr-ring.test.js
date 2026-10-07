@@ -205,3 +205,35 @@ describe('the laser stops on the whole drawn ring (build 474)', () => {
     } finally { delete globalThis.document; }
   });
 });
+
+describe('focus highlight is redrawn (build 476)', () => {
+  it('setHighlight redraws the texture only when the lit slot changes, for names and for swatches', async () => {
+    const { createRingMenu } = await import('../../docs/vr-ring.js');
+    const THREE = await import('three');
+    let clears = 0, fills = [];
+    const ctx = new Proxy({}, { get: (t, k) => (k === 'clearRect' ? () => { clears++ } : k in t ? t[k] : () => {}), set: (t, k, v) => { if (k === 'fillStyle') fills.push(v); t[k] = v; return true } });
+    globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) };
+    try {
+      const r = createRingMenu(THREE); r.setItems(['a', 'b', 'c', 'd', 'e', 'f'], Array(6).fill(true), []);
+      const c0 = clears; fills = [];
+      r.setHighlight(2); expect(clears).toBe(c0 + 1); expect(fills).toContain('#ffe27a'); // the lit sector is drawn bright yellow
+      r.setHighlight(2); expect(clears).toBe(c0 + 1); // unchanged: no redraw
+      r.setHighlight(null); expect(clears).toBe(c0 + 2);
+      r.setItems([{ color: '#cc3333', name: 'red' }, { color: '#33cc33', name: 'green' }], [true, true], []);
+      fills = []; r.setHighlight(1); expect(fills).toContain('rgba(255,255,255,.28)'); // the lit swatch is brightened
+      r.dispose();
+    } finally { delete globalThis.document; }
+  });
+});
+
+describe('the quick / point ring are world-fixed and focus follows the laser (static check of vr-view.js)', () => {
+  it('the ring is placed once on opening, and the owner laser sector sets the highlight', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../../docs/vr-view.js', import.meta.url), 'utf8');
+    expect(src).toContain('const WHEEL_FRONT_M=0.28');
+    const upd = src.slice(src.indexOf('const updateRings='), src.indexOf('const rates='));
+    expect(upd).not.toContain('placeAt'); // nothing moves the rings every frame any more
+    expect(src.slice(src.indexOf('const openWheel='), src.indexOf('const openWheel=') + 500)).toContain('wheel.placeAt');
+    expect(upd).toContain('laserLit(c,bd?.wheel)'); expect(upd).toContain('laserLit(c,bd?.pwheel)');
+  });
+});
