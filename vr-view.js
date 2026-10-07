@@ -8,25 +8,25 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build473';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build473';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build473';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build473';
-import { datasetFingerprint } from './project-file.js?v=20261007-build473';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build473';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build473';
-import { buildClsData } from './point-cls.js?v=20261007-build473';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build473';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build473';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build473';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build473';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build473';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build473';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build473';
-import { tr } from './i18n.js?v=20261007-build473';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build473';
-import { APP_BUILD } from './version.js?v=20261007-build473';
-import { wc, ww } from './ui-shell.js?v=20261007-build473';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build475';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build475';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build475';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build475';
+import { datasetFingerprint } from './project-file.js?v=20261007-build475';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build475';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build475';
+import { buildClsData } from './point-cls.js?v=20261007-build475';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build475';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build475';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build475';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build475';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build475';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build475';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build475';
+import { tr } from './i18n.js?v=20261007-build475';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build475';
+import { APP_BUILD } from './version.js?v=20261007-build475';
+import { wc, ww } from './ui-shell.js?v=20261007-build475';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -924,7 +924,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const dotGeo=new THREE.SphereGeometry(0.004,12,8);
  for(const c of controllers){
   c.userData.ray.material.transparent=true;
-  const dot=new THREE.Mesh(dotGeo,new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false}));dot.visible=false;scene.add(dot);c.userData.dot=dot;
+  const dot=new THREE.Mesh(dotGeo,new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,transparent:true}));dot.visible=false;scene.add(dot);c.userData.dot=dot; // transparent: drawn in the same pass as the rings, so renderOrder can put it over them
   // build 468: no guide line any more (sections are not picked by nearness)
  }
  const pulse=(c,v=0.35,ms=18)=>{try{c.userData.source?.gamepad?.hapticActuators?.[0]?.pulse?.(v,ms)}catch{}};
@@ -951,7 +951,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // build 468: ring menus (vr-ring.js): the quick ring around the hand (A/X short) and the point ring (long press on a point)
  const wheel=createRingMenu(THREE),pointWheel=createRingMenu(THREE);scene.add(wheel.mesh);scene.add(pointWheel.mesh);
  let wheelOwner=null,pw=null; // pw = {c,id,mode}: mode 'main' (move / delete / colour) or 'color' (the palette ring, build 472)
- const ringHit=(c,ring)=>{if(!ring.mesh.visible)return null;setRay(c);const x=raycaster.intersectObject(ring.mesh,false)[0];if(!x||!x.uv)return null;const k=ring.slotFromUv(x.uv);return k===null?null:{distance:x.distance,slot:k}};
+ // build 474: EVERY hand's laser stops on the whole dark disc of an open ring (items and blank space alike); slot = the item under the ray or null (blank).
+ // Nothing behind the disc is hit while the ray is inside it (menu / help / points / planes / volume).
+ const ringHit=(c,ring)=>{if(!ring.mesh.visible)return null;setRay(c);const x=raycaster.intersectObject(ring.mesh,false)[0];if(!x||!x.uv)return null;const k=ring.slotFromUv(x.uv);return k===null&&!ring.inDisk(x.uv)?null:{distance:x.distance,slot:k}};
  // the nearest of the menu, the help board and the ring items along the ray wins; {menu,help,wheel,pwheel}
  const bhOut={menu:null,help:null,wheel:null,pwheel:null}; // reused (read at once by the caller, never kept)
  const boardHits=c=>{
@@ -1316,9 +1318,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
    endDrag(c);
    const bd=boardHits(c),h=bd.menu;
    if(h){const i=menu.hit(h.uv);if(i<0)return;const w=menu.widget(i);if(w.set){dragging={c,i};menu.drag(i,h.uv)}else menu.press(i);pulse(c);return}
-   if(bd.wheel){confirmWheel(bd.wheel.slot,c);return}
-   if(bd.pwheel){confirmPoint(bd.pwheel.slot,c);return}
+   if(bd.wheel&&bd.wheel.slot!==null){confirmWheel(bd.wheel.slot,c);return}
+   if(bd.pwheel&&bd.pwheel.slot!==null){confirmPoint(bd.pwheel.slot,c);return}
    if(bd.help)return;
+   if((bd.wheel||bd.pwheel)&&wheelOwner!==c&&pw?.c!==c)return; // blank part of a ring disc, not this hand's ring: nothing, and it does not pass through
    const r0=c.userData.res,res=r0&&r0.kind!=='board'?r0:{kind:'none',ref:null},now=performance.now(),hp=handInHolder(c);
    // this hand's ring is open: the press confirms the lit item, or only closes the ring
    if(res.kind==='ring-confirm'){if(wheelOwner===c)confirmWheel(res.ref,c);else confirmPoint(res.ref,c);return}
@@ -1447,13 +1450,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  };
  const tmpRc=new THREE.Vector3(),tmpRd=new THREE.Vector3();
  // every frame: the open ring follows its place (the hand / the point), the owner's thumbstick lights and confirms an item
+ const WHEEL_FRONT_M=0.1; // build 474: the quick ring floats this far in front of the hand, ON the laser (it used to sit behind the laser's root, so the laser never met it)
  const updateRings=(c,now)=>{
   const bt=c.userData.source?.gamepad,ax=bt?.axes?.[2]||0,ay=bt?.axes?.[3]||0;
   if(c.userData.stickLock&&Math.hypot(ax,ay)<0.15)c.userData.stickLock=false;
   const isW=wheelOwner===c,isP=pw?.c===c;c.userData.ringHl=null;
   if(isW){
    const k=wheelKeyNow();if(k!==wheelKey)refreshWheel();
-   c.getWorldPosition(tmpRc);tmpRd.subVectors(head,tmpRc).normalize();tmpRc.addScaledVector(tmpRd,0.04);wheel.placeAt(tmpRc,head);
+   setRay(c);tmpRc.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction,WHEEL_FRONT_M);wheel.placeAt(tmpRc,head);
    const r=c.userData.stick.update(ax,ay,settings.wheel.map(id=>!!id&&wheelAvail(id)));
    wheel.setHighlight(r.highlight);c.userData.ringHl=r.highlight;
    if(r.changed)pulse(c,HAPTIC.ringHighlight.amp,HAPTIC.ringHighlight.ms);
@@ -1754,10 +1758,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
   for(const c of controllers){
    // build 468: this hand's candidates (the press uses the values of the previous frame: c.userData.res); a section's plane is not a candidate
    // (only its thin frame band and number tag), so it can no longer take the laser from what is behind it
-   const bd=boardHits(c),h=bd.menu,hh=bd.help,board=h||hh||bd.wheel||bd.pwheel,ray=c.userData.ray,nowF=performance.now();
+   const bd=boardHits(c),h=bd.menu,hh=bd.help,rh=bd.wheel||bd.pwheel,board=h||hh||(rh&&rh.slot!==null?rh:null),ray=c.userData.ray,nowF=performance.now();
    let tab=null,pt=null,band=null,vh=null,sh=null;
    const selOk=!!(section.on&&section.selected&&!draggedBy(section.selected,c)),anyOk=section.on&&planes.some(p=>!draggedBy(p,c));
-   if(!board){
+   if(!board&&!rh){
     const vis=section.on?planes.filter(p=>!draggedBy(p,c)):[];
     tab=tabHit(c,vis);
     setRay(c);pt=vpMarkers.pick(raycaster.ray.origin,raycaster.ray.direction);
@@ -1768,13 +1772,16 @@ export async function startVrView({language='ja',mode='vr'}={}){
    c.userData.volHit=vh;c.userData.helpHit=!!hh;
    // where a moved point would land (the current mode's rule): the surface voxel or the selected section's voxel
    const placement=surfaceActive()?(vh&&vh.voxel?vh:null):(sh&&sh.voxel?sh:null);c.userData.placement=placement;
-   const res=resolveTriggerTarget({board:board?bd:null,ringOwnOpen:wheelOwner===c||pw?.c===c,ringHighlight:c.userData.ringHl??null,moving:!!c.userData.moving,placement,tab,point:pt,band,tissue:vh,plane:sh,mode:vrPointMode,analysis:ui.open&&ui.tab===5,canDrag:anyOk&&(surfaceActive()||labelMode()||!vh)});
+   const res=rh&&!board&&wheelOwner!==c&&pw?.c!==c?{kind:'none',ref:null}:resolveTriggerTarget({board:board?bd:null,ringOwnOpen:wheelOwner===c||pw?.c===c,ringHighlight:c.userData.ringHl??null,moving:!!c.userData.moving,placement,tab,point:pt,band,tissue:vh,plane:sh,mode:vrPointMode,analysis:ui.open&&ui.tab===5,canDrag:anyOk&&(surfaceActive()||labelMode()||!vh)});
    c.userData.res=res;if(res.kind==='point')hoverIds.add(res.ref.id);
    if(!c.userData.press&&!c.userData.drag){const hpz=c.userData.hoverPulse||=createHoverPulse({debounceMs:HAPTIC.hover.debounceMs});if(hpz.update(res.kind==='point'?res.ref.id:null,nowF))pulse(c,HAPTIC.hover.amp,HAPTIC.hover.ms)}
    updatePress(c,nowF);
-   const ref=res.ref,dist=board?board.distance:(ref&&(res.kind==='point'||res.kind==='section'||res.kind==='record'||res.kind==='label'||res.kind==='move')?(ref.t??ref.distance):null);
+   const ref=res.ref,dist=board?board.distance:rh?rh.distance:(ref&&(res.kind==='point'||res.kind==='section'||res.kind==='record'||res.kind==='label'||res.kind==='move')?(ref.t??ref.distance):null);
    const busy=!!c.userData.drag,rec=res.kind==='record'||res.kind==='move',cur=!busy&&rec&&!!ref?.voxel,curSurf=cur&&surfaceActive(),curSec=cur&&!surfaceActive();
    const hc=handColor(c),dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=dist!=null&&!cur&&!busy;
+   // build 474: a ring is drawn without depth (depthTest:false, renderOrder 7) after the laser, so it covered the laser's last part and its end dot:
+   // the laser looked as if it went on behind the ring. While this laser ends on a ring, the laser and the dot are drawn after it, on top.
+   {const top=!!rh;ray.renderOrder=dot.renderOrder=top?8:0;ray.material.depthTest=dot.material.depthTest=!top}
    if(dist!=null){ray.scale.z=dist;ray.material.opacity=1;setRay(c);raycaster.ray.at(dist,dot.position);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}}
    else{ray.scale.z=0.6;ray.material.opacity=0.35}
    if(curSurf)placeSurfCursor(c,ref);else if(curSec)placeSecCursor(c,ref);else surfCursors[controllers.indexOf(c)].set(null);
