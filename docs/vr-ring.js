@@ -184,6 +184,8 @@ export function createRingMenu(THREE,{size=WHEEL_BOARD_M}={}){
    }
    return null;
   },
+  // build 474: a uv inside the dark disc behind the items (the ring owner's own laser stops there too; blank space is not an item)
+  inDisk(uv){return Math.hypot(uv.x*N-N/2,(1-uv.y)*N-N/2)<=Rpx+110},
   placeAt(center,head){mesh.position.set(center.x,center.y,center.z);if(head)mesh.lookAt(head.x,head.y,head.z)},
   dispose(){tex.dispose();mesh.geometry.dispose();mesh.material.dispose()},
  };

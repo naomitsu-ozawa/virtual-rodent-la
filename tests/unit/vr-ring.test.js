@@ -131,3 +131,33 @@ describe('createRingMenu (drawing)', () => {
     } finally { delete globalThis.document; }
   });
 });
+
+describe('ring laser hit (build 474)', () => {
+  it('inDisk covers the dark disc, not the margin; a ring in front of the hand is hit by its laser, nearer than a board behind it', async () => {
+    const { createRingMenu } = await import('../../docs/vr-ring.js');
+    const THREE = await import('three');
+    const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true } });
+    globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) };
+    try {
+      const r = createRingMenu(THREE); r.setItems(['a', 'b', 'c', 'd', 'e', 'f'], [true, true, true, true, true, true], []);
+      expect(r.inDisk({ x: 0.5, y: 0.5 })).toBe(true);        // the blank centre is in the disc, but is not an item
+      expect(r.slotFromUv({ x: 0.5, y: 0.5 })).toBeNull();
+      expect(r.inDisk({ x: 0.5, y: 0.5 + 0.55 * 0.5 })).toBe(true);
+      expect(r.inDisk({ x: 0.02, y: 0.02 })).toBe(false);     // the corner of the board
+      // hand at the origin looking down -z, ring 0.1 m in front facing the head (at the origin), a board 0.6 m behind the ring
+      r.placeAt({ x: 0, y: 0, z: -0.1 }, { x: 0, y: 0, z: 0 }); r.mesh.visible = true; r.mesh.updateMatrixWorld(true);
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial()); board.position.set(0, 0, -0.7); board.updateMatrixWorld(true);
+      const rc = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, 0, -1));
+      const xr = rc.intersectObject(r.mesh, false)[0], xb = rc.intersectObject(board, false)[0];
+      expect(xr.distance).toBeCloseTo(0.1, 5); expect(xr.distance).toBeLessThan(xb.distance);
+      expect(r.inDisk(xr.uv)).toBe(true);
+      // pointing at the top item hits that slot at the ring plane
+      const top = new THREE.Vector3(0, 0.055, -0.1).normalize(), x2 = new THREE.Raycaster(new THREE.Vector3(), top).intersectObject(r.mesh, false)[0];
+      expect(r.slotFromUv(x2.uv)).toBe(0);
+      // a ray from the hand pointing away from the head can never meet a ring placed 4 cm toward the head (the old placement)
+      r.placeAt({ x: 0, y: 0, z: 0.04 }, { x: 0, y: 0, z: 1 }); r.mesh.updateMatrixWorld(true);
+      expect(rc.intersectObject(r.mesh, false)).toHaveLength(0);
+      r.dispose();
+    } finally { delete globalThis.document; }
+  });
+});
