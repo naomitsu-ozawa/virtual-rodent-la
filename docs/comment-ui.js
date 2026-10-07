@@ -1,17 +1,17 @@
 // Position comments UI (Issue #88, stage 2): a small panel in the display drawer. "Add" records the current position (the linked
 // crosshair, or the three slices on show) with the text; "View this place" moves the crosshair and the three sliders there. Nothing
 // here runs by itself on load, and no pointer handler is added to the image canvases (the click / swipe on them is untouched).
-import { planes } from './ui-shell.js?v=20261007-build485';
-import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build485';
-import { tr } from './i18n.js?v=20261007-build485';
-import { datasetFingerprint } from './project-file.js?v=20261007-build485';
-import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build485';
-import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build485';
-import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build485';
-import { getMeasurements, setLabelOffset, onMeasurementsChange, removeMeasurement, measurementsOfPoint, restoreMeasurements, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, cancelMeasure, createLongPress, hasUnsavedMeasurements } from './measurements.js?v=20261007-build485';
-import { planeLabelPlacement, planeVoxelDelta, clampLabelCenter, createFocusTracker } from './measure-label.js?v=20261007-build485';
-import { planePointFromVoxel } from './crosshair.js?v=20261007-build485';
-import { openPointMenu, setPointMenuHandlers, installPointMenu, endMeasureAt, cancelMeasureUi, flashUndo } from './point-menu.js?v=20261007-build485';
+import { planes } from './ui-shell.js?v=20261007-build486';
+import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build486';
+import { tr } from './i18n.js?v=20261007-build486';
+import { datasetFingerprint } from './project-file.js?v=20261007-build486';
+import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build486';
+import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build486';
+import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build486';
+import { getMeasurements, setLabelOffset, onMeasurementsChange, removeMeasurement, measurementsOfPoint, restoreMeasurements, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, cancelMeasure, createLongPress, hasUnsavedMeasurements } from './measurements.js?v=20261007-build486';
+import { planeLabelPlacement, planeVoxelDelta, clampLabelCenter, createFocusTracker } from './measure-label.js?v=20261007-build486';
+import { planePointFromVoxel } from './crosshair.js?v=20261007-build486';
+import { openPointMenu, setPointMenuHandlers, installPointMenu, endMeasureAt, cancelMeasureUi, flashUndo } from './point-menu.js?v=20261007-build486';
 
 let pop=null,popText=null,popPos=null,popStatus=null,popTimer=0,popFrom=null;
 let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
@@ -354,7 +354,8 @@ export function installComments(){
  addBtn.addEventListener('click',()=>{if(addCommentHere(textEl.value)){textEl.value='';clearUndo()}});
  // unsaved comments (added / deleted / edited since the last project save or load) are lost on reload: ask the browser to confirm
  window.addEventListener('beforeunload',e=>{if(hasUnsavedComments()||hasUnsavedMeasurements()){e.preventDefault();e.returnValue=''}});
- onCommentsChange(render);onMeasurementsChange((_,info)=>{if(!info?.labelOnly)renderMeasures();requestOverlayDraw()}); // a label drag changes no list row: no DOM rebuild per moveonMeasureStartChange(()=>{syncPulse();renderMeasures()});
+ onCommentsChange(render);onMeasurementsChange((_,info)=>{if(!info?.labelOnly)renderMeasures();requestOverlayDraw()}); // a label drag changes no list row: no DOM rebuild per move
+ onMeasureStartChange(()=>{syncPulse();renderMeasures()});
  installPointMenu();setPointMenuHandlers({delete:id=>{deleteWithUndo(id);flashUndo(tr('commentDeleted'),tr('commentUndo'),undoDelete)}}); // the panel's own undo button is inside a closed <details>: the pill carries one too
   // (render() rebuilds the buttons: never on pointerdown, it would swallow the click that follows)
  root.addEventListener('toggle',render);

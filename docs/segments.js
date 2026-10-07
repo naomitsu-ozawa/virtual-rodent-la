@@ -1,13 +1,13 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261007-build485';
-import { hexRgb } from './utils.js?v=20261007-build485';
-import { settings } from './app-settings.js?v=20261007-build485';
-import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261007-build485';
-import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261007-build485';
-import { effectiveRanges } from './segment-exclusive.js?v=20261007-build485';
-import { maskFromAnalysisRuns } from './run-length.js?v=20261007-build485';
-import { sourceFilterStages } from './source-filters.js?v=20261007-build485';
+import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261007-build486';
+import { hexRgb } from './utils.js?v=20261007-build486';
+import { settings } from './app-settings.js?v=20261007-build486';
+import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261007-build486';
+import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261007-build486';
+import { effectiveRanges } from './segment-exclusive.js?v=20261007-build486';
+import { maskFromAnalysisRuns } from './run-length.js?v=20261007-build486';
+import { sourceFilterStages } from './source-filters.js?v=20261007-build486';
 export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
 export const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
 // build 407 (owner): every segment starts at 100 % opacity (translucent segments are heavy to render)
