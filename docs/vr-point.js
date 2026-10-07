@@ -9,8 +9,8 @@
 // that another clipping section has cut away. A section whose intersection is outside the volume is skipped, never clamped.
 // Voxel rule: voxel i covers the fraction [i/n, (i+1)/n) of the box along its axis, so the index is floor(fraction * n); a point
 // outside [0,1) on any axis (the far face itself included) is NOT recorded: it is never moved into the volume.
-import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, updateCommentColor, commentMatchesSeries } from './comments.js?v=20261007-build478';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build478';
+import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, updateCommentColor, commentMatchesSeries } from './comments.js?v=20261007-build481';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build481';
 
 const T_MIN=1e-6,EDGE_EPS=1e-4;
 
@@ -203,7 +203,7 @@ export const qAngleDeg=q=>2*Math.atan2(Math.hypot(q.x,q.y,q.z),Math.abs(q.w))*18
 //  tab: a section number tag hit {t,...}; point: {t|distance,id,...}; band: {t,...}; tissue / plane: {t,...} (tissue = first shown surface,
 //  plane = the selected section's plane hit); mode 'section'|'surface'; analysis: the analysis tab is open; canDrag: a selected section exists
 //  and the other hand is not dragging it.
-// Returns {kind,ref}; kind: 'board'|'ring-confirm'|'ring-close'|'move'|'section'|'point'|'record'|'label'|'empty'|'none'.
+// Returns {kind,ref}; kind: 'board'|'ring-confirm'|'ring-close'|'move'|'section'|'point'|'mlabel'|'record'|'label'|'empty'|'none'.
 // A hit's distance is t (or distance, as pickPoint returns); all in world metres. Ties within 1e-6 m: point > band > target.
 export const TIE_EPS=1e-6;
 const hitT=h=>h?(Number.isFinite(h.t)?h.t:(Number.isFinite(h.distance)?h.distance:null)):null;
@@ -221,6 +221,7 @@ export function resolveTriggerTarget(c={}){
  else if(c.plane)target={kind:'record',ref:c.plane,plane:true};
  const cands=[];
  if(c.point&&hitT(c.point)!==null)cands.push({kind:'point',ref:c.point,t:hitT(c.point),rank:0});
+ if(c.mlabel&&hitT(c.mlabel)!==null)cands.push({kind:'mlabel',ref:c.mlabel,t:hitT(c.mlabel),rank:0}); // build 480: a distance label (it can be moved)
  if(c.band&&hitT(c.band)!==null)cands.push({kind:'section',ref:c.band,t:hitT(c.band),rank:1});
  if(target&&hitT(target.ref)!==null)cands.push({kind:target.kind,ref:target.ref,t:hitT(target.ref),rank:2});
  let best=null;

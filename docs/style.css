@@ -960,22 +960,22 @@ html.vrl-ipad-ui .comment-popover .comment-input{font-size:16px}
    The element IS the dot, so its centre is the point's position; the number is a small chip beside it. exposed = solid dot + white rim;
    hidden behind tissue (.is-behind, the VR rule) = a smaller dot in the VR "hidden" colour, no rim. */
 :root{--vr-point-fill:#0b6f8c;--vr-point-dot:#4dd8ff;--vr-point-rim:#fff}
-.comment-marker-3d{position:absolute;left:0;top:0;width:14px;height:14px;box-sizing:border-box;border-radius:50%;background:var(--vr-point-fill);border:2px solid var(--vr-point-rim);box-shadow:0 0 0 1px rgba(0,0,0,.55);will-change:transform}
+.comment-marker-3d{position:absolute;left:0;top:0;width:9px;height:9px;box-sizing:border-box;border-radius:50%;background:var(--vr-point-fill);border:1.5px solid var(--vr-point-rim);box-shadow:0 0 0 1px rgba(0,0,0,.55);will-change:transform}
 .comment-marker-3d[hidden]{display:none}
-.comment-marker-3d.is-behind{width:8px;height:8px;background:var(--vr-point-dot);border:0}
+.comment-marker-3d.is-behind{width:6px;height:6px;background:var(--vr-point-dot);border:0}
 .comment-lines-3d{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
 .comment-lines-3d line{stroke:var(--vr-point-dot);stroke-opacity:.6;stroke-width:1.2}
-/* on the active section: x1.4 like VR (centre unchanged) */
-.comment-marker-3d.is-on-section{width:20px;height:20px}
-.comment-marker-3d.is-behind.is-on-section{width:11px;height:11px}
-.vrl-ipad-ui .comment-marker-3d.is-on-section{width:25px;height:25px}
-.vrl-ipad-ui .comment-marker-3d.is-behind.is-on-section{width:14px;height:14px}
-.comment-marker-3d-no{position:absolute;left:100%;bottom:100%;margin:0 0 -3px 3px;min-width:14px;padding:1px 3px;box-sizing:border-box;border-radius:7px;background:var(--vr-point-dot);color:var(--vr-point-ink,#04202a);font:800 10px/12px sans-serif;text-align:center;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;white-space:nowrap}
-.comment-marker-3d.is-behind .comment-marker-3d-no{font-size:9px;line-height:11px;min-width:12px;padding:0 3px;margin:0 0 -2px 2px}
-.vrl-ipad-ui .comment-marker-3d{width:18px;height:18px}
-.vrl-ipad-ui .comment-marker-3d.is-behind{width:10px;height:10px}
-.vrl-ipad-ui .comment-marker-3d-no{font-size:12px;line-height:14px;min-width:16px;border-radius:8px}
-.vrl-ipad-ui .comment-marker-3d.is-behind .comment-marker-3d-no{font-size:10px;line-height:12px;min-width:14px}
+/* build 480: the dots are about 0.65 x the old size (VR's small markers); the tap area is the JS reach (16 / 24 px), not the drawn size. On the active section: x1.4 (centre unchanged) */
+.comment-marker-3d.is-on-section{width:13px;height:13px}
+.comment-marker-3d.is-behind.is-on-section{width:8px;height:8px}
+.vrl-ipad-ui .comment-marker-3d.is-on-section{width:16px;height:16px}
+.vrl-ipad-ui .comment-marker-3d.is-behind.is-on-section{width:10px;height:10px}
+.comment-marker-3d-no{position:absolute;left:100%;bottom:100%;margin:0 0 -1px 2px;min-width:11px;padding:0 2px;box-sizing:border-box;border-radius:6px;background:var(--vr-point-dot);color:var(--vr-point-ink,#04202a);font:800 8px/10px sans-serif;text-align:center;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;white-space:nowrap}
+.comment-marker-3d.is-behind .comment-marker-3d-no{font-size:8px;line-height:9px;min-width:10px;padding:0 2px;margin:0 0 -1px 1px}
+.vrl-ipad-ui .comment-marker-3d{width:12px;height:12px}
+.vrl-ipad-ui .comment-marker-3d.is-behind{width:7px;height:7px}
+.vrl-ipad-ui .comment-marker-3d-no{font-size:10px;line-height:12px;min-width:13px;border-radius:7px}
+.vrl-ipad-ui .comment-marker-3d.is-behind .comment-marker-3d-no{font-size:9px;line-height:11px;min-width:11px}
 .comment-bubble-3d{pointer-events:none}
 
 /* build 477: point menu (long press / right-click on a point), distances (line + label in 3D, list in the panel), the start of a distance */
@@ -997,9 +997,13 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .measure-note{font-size:11px;color:rgb(var(--ui-amber-tx));margin-right:6px}
 .measure-item .measure-value{margin-left:8px;flex:1;font-variant-numeric:tabular-nums}
 .measure-line-3d{stroke:#ffd23d;stroke-width:2;stroke-opacity:.95;stroke-dasharray:6 4;filter:drop-shadow(0 0 1.5px rgba(0,0,0,.9))}
-.measure-label-3d,.measure-hint-3d{position:absolute;left:0;top:0;padding:2px 7px;border-radius:999px;border:1px solid #ffd23d;background:rgba(17,23,27,.88);color:#fff;font:700 12px/16px sans-serif;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;will-change:transform}
+.measure-label-3d,.measure-hint-3d{position:absolute;left:0;top:0;padding:1px 6px;border-radius:999px;border:1px solid #ffd23d;background:rgba(17,23,27,.88);color:#fff;font:700 10px/13px sans-serif;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;will-change:transform}
 .measure-label-3d[hidden],.measure-hint-3d[hidden]{display:none}
-.vrl-ipad-ui .measure-label-3d,.vrl-ipad-ui .measure-hint-3d{font-size:14px;line-height:18px}
+/* build 480: the labels can be dragged (the view finds them itself, they take no pointer events: a point under the press wins) */
+.measure-label-3d{-webkit-user-select:none;user-select:none}
+.measure-label-3d.is-dragging{cursor:grabbing;box-shadow:0 0 0 2px rgba(255,210,61,.7)}
+.vrl-ipad-ui .measure-label-3d,.vrl-ipad-ui .measure-hint-3d{font-size:12px;line-height:15px}
+.measure-leader-3d{stroke:#ffd23d;stroke-width:1;stroke-opacity:.8}
 .comment-marker-3d.is-measure-start{box-shadow:0 0 0 3px #ffd23d,0 0 0 4px rgba(0,0,0,.6);animation:vrl-measure-pulse 1.2s ease-in-out infinite}
 @keyframes vrl-measure-pulse{0%,100%{box-shadow:0 0 0 2px #ffd23d,0 0 0 3px rgba(0,0,0,.6)}50%{box-shadow:0 0 0 7px rgba(255,210,61,.7),0 0 0 8px rgba(0,0,0,.5)}}
 @media (prefers-reduced-motion:reduce){.comment-marker-3d.is-measure-start{animation:none}}

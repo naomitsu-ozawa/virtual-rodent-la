@@ -2,9 +2,9 @@
 // The distance is NOT stored: it is computed from the two voxel positions and the volume's voxel spacing (the adopted spacing, series.spacingX/Y/Z),
 // so moving a point changes the value by itself. Pure data + a small in-memory store, no DOM / three.js (the VR and PC / iPad views share it).
 // Saved in the project as `measurements` (an unknown field for older apps: they ignore it, so the project version is not bumped).
-import { getComments, onCommentsChange, commentVoxel, commentMatchesSeries } from './comments.js?v=20261007-build478';
-import { compareFingerprints } from './project-file.js?v=20261007-build478';
-import { spacingWarningText } from './slice-spacing.js?v=20261007-build478';
+import { getComments, onCommentsChange, commentVoxel, commentMatchesSeries } from './comments.js?v=20261007-build481';
+import { compareFingerprints } from './project-file.js?v=20261007-build481';
+import { spacingWarningText } from './slice-spacing.js?v=20261007-build481';
 
 export const MEASURE_MAX=500;
 
@@ -34,6 +34,21 @@ export const pointsShareSeries=(a,b)=>!!a?.series&&!!b?.series&&compareFingerpri
 // the note for a series' spacing check: 'warn' (z approximate: ⚠), 'info' (the tag spacing is unverified) or null
 export const spacingLevel=s=>spacingWarningText(s?.spacingCheck)?.level||null;
 
+// ---- the label offset (build 480) ----
+// The label of a distance starts NEAR the line (each view's default placement) and can be moved by the user at any time (a drag in the 3D / 2D views, a grab in VR).
+// A moved label is stored as `labelOffset` {i,j,k}: the vector from the line's midpoint to the label, in VOXEL units (floats), so it is the same in every view and survives
+// a reload; no field = the default placement. Anything invalid is dropped (-> default).
+export const LABEL_OFFSET_MAX=1e4;
+export function normalizeLabelOffset(o){
+ if(!o||typeof o!=='object')return null;
+ const v=[o.i,o.j,o.k].map(x=>typeof x==='number'?x:NaN);
+ if(!v.every(x=>Number.isFinite(x)&&Math.abs(x)<=LABEL_OFFSET_MAX))return null;
+ return{i:Math.round(v[0]*1000)/1000,j:Math.round(v[1]*1000)/1000,k:Math.round(v[2]*1000)/1000};
+}
+const withOffset=(m,o)=>{const lo=normalizeLabelOffset(o);return lo?{...m,labelOffset:lo}:m};
+const cp=m=>withOffset({id:m.id,a:m.a,b:m.b},m.labelOffset);
+const sigOf=m=>pairKey(m.a,m.b)+(m.labelOffset?'|'+m.labelOffset.i+','+m.labelOffset.j+','+m.labelOffset.k:'');
+
 // ---- sanitize ----
 // from a project file / anything untrusted: keep {id,a,b} entries whose two points exist (validIds: a Set / array of point ids) and differ, drop the rest, no duplicate id or pair
 export function sanitizeMeasurements(list,validIds){
@@ -43,7 +58,7 @@ export function sanitizeMeasurements(list,validIds){
   if(!m||typeof m!=='object'||typeof m.a!=='string'||typeof m.b!=='string'||!m.a||!m.b||m.a===m.b||!ok.has(m.a)||!ok.has(m.b))continue;
   const pair=pairKey(m.a,m.b);if(pairs.has(pair))continue;
   let id=typeof m.id==='string'&&m.id?m.id:'m-'+out.length;while(ids.has(id))id+='_';
-  ids.add(id);pairs.add(pair);out.push({id,a:m.a,b:m.b});
+  ids.add(id);pairs.add(pair);out.push(withOffset({id,a:m.a,b:m.b},m.labelOffset));
   if(out.length>=MEASURE_MAX)break;
  }
  return out;
@@ -53,17 +68,18 @@ const pairKey=(a,b)=>a<b?a+'\n'+b:b+'\n'+a;
 // ---- store ----
 let list=[],counter=0;
 const listeners=new Set();
-const emit=()=>{for(const cb of [...listeners]){try{cb(getMeasurements())}catch(e){console.warn('measurement listener failed',e)}}};
-export const getMeasurements=()=>list.map(m=>({...m}));
+// info {labelOnly:true}: only a label offset changed (a drag): a list view need not rebuild, a drawing view redraws
+const emit=info=>{for(const cb of [...listeners]){try{cb(getMeasurements(),info)}catch(e){console.warn('measurement listener failed',e)}}};
+export const getMeasurements=()=>list.map(cp);
 export const onMeasurementsChange=cb=>{listeners.add(cb);return()=>listeners.delete(cb)};
-export const measurementsOfPoint=id=>list.filter(m=>m.a===id||m.b===id).map(m=>({...m}));
+export const measurementsOfPoint=id=>list.filter(m=>m.a===id||m.b===id).map(cp);
 // a new measurement between two existing, different points; the same pair again returns the existing one (no duplicates). null = refused.
 export function addMeasurement(a,b,{now=Date.now(),id}={}){
  if(!a||!b||a===b||list.length>=MEASURE_MAX)return null;
  const cs=getComments(),ca=cs.find(c=>c.id===a),cb=cs.find(c=>c.id===b);if(!ca||!cb||!pointsShareSeries(ca,cb))return null;
- const same=list.find(m=>pairKey(m.a,m.b)===pairKey(a,b));if(same)return{...same,existed:true};
+ const same=list.find(m=>pairKey(m.a,m.b)===pairKey(a,b));if(same)return{...cp(same),existed:true};
  const m={id:id||('m'+now.toString(36)+'-'+(++counter)),a,b};
- list=[...list,m];emit();return{...m};
+ list=[...list,m];emit();return cp(m);
 }
 export function removeMeasurement(id){const n=list.length;list=list.filter(m=>m.id!==id);if(list.length!==n)emit();return list.length!==n}
 // put measurements back (the undo of a delete / of a point's deletion): only those whose points exist, not duplicating an id or pair
@@ -72,9 +88,17 @@ export function restoreMeasurements(ms){
  for(const m of ms||[]){
   if(!m||!ids.has(m.a)||!ids.has(m.b)||m.a===m.b||have.has(m.id)||pairs.has(pairKey(m.a,m.b)))continue;
   if(!pointsShareSeries(cs.find(c=>c.id===m.a),cs.find(c=>c.id===m.b)))continue;
-  list=[...list,{id:m.id,a:m.a,b:m.b}];have.add(m.id);pairs.add(pairKey(m.a,m.b));n++;
+  list=[...list,cp(m)];have.add(m.id);pairs.add(pairKey(m.a,m.b));n++;
  }
  if(n)emit();return n>0;
+}
+// move the label (offset {i,j,k} in voxel units from the midpoint) or null = back to the default placement; an unchanged value is not a change
+export function setLabelOffset(id,offset){
+ const i=list.findIndex(m=>m.id===id);if(i<0)return false;
+ const lo=normalizeLabelOffset(offset),old=list[i].labelOffset;
+ if(offset!==null&&offset!==undefined&&!lo)return false;
+ if((old?old.i+','+old.j+','+old.k:'')===(lo?lo.i+','+lo.j+','+lo.k:''))return true;
+ const{labelOffset:_o,...rest}=list[i];list=list.map((m,n)=>n===i?withOffset(rest,lo):m);emit({labelOnly:true});return true;
 }
 export const restoreMeasurement=m=>restoreMeasurements([m]);
 export function setMeasurements(next){list=sanitizeMeasurements(next,new Set(getComments().map(c=>c.id)));emit()}
@@ -89,7 +113,7 @@ onCommentsChange(cs=>{
 
 // ---- project file ----
 // the measurements whose two points are both in `ids` (the points saved with the file: the open series' comments)
-export const measurementsForProject=ids=>{const s=ids instanceof Set?ids:new Set(ids||[]);return list.filter(m=>s.has(m.a)&&s.has(m.b)).map(m=>({id:m.id,a:m.a,b:m.b}))};
+export const measurementsForProject=ids=>{const s=ids instanceof Set?ids:new Set(ids||[]);return list.filter(m=>s.has(m.a)&&s.has(m.b)).map(cp)};
 // merged with what is in memory (by id and by pair), never replacing: entries of other series stay. Call it AFTER the comments are loaded (it checks the point ids).
 // idMap: {fileId: newId} of the points loadProjectComments had to rename, so an entry follows its points.
 export function loadProjectMeasurements(incoming,idMap=null){
@@ -110,13 +134,13 @@ export function loadProjectMeasurements(incoming,idMap=null){
 // unsaved changes, per series like comments.js: what the file last held {pair, series} against what is in memory
 const saved=new Map();
 const seriesOf=m=>getComments().find(c=>c.id===m.a)?.series||null;
-const markSaved=m=>saved.set(m.id,{pair:pairKey(m.a,m.b),series:seriesOf(m)});
+const markSaved=m=>saved.set(m.id,{pair:sigOf(m),series:seriesOf(m)});
 export function markMeasurementsSaved(fingerprint,written=measurementsForProject(new Set(getComments().filter(c=>commentMatchesSeries(c,fingerprint)).map(c=>c.id)))){
  for(const [id,e] of [...saved])if(commentMatchesSeries({series:e.series},fingerprint))saved.delete(id);
  for(const m of written)markSaved(m);
 }
 export function hasUnsavedMeasurements(){
- if(list.some(m=>saved.get(m.id)?.pair!==pairKey(m.a,m.b)))return true;
+ if(list.some(m=>saved.get(m.id)?.pair!==sigOf(m)))return true;
  const ids=new Set(list.map(m=>m.id));
  for(const id of saved.keys())if(!ids.has(id))return true;
  return false;

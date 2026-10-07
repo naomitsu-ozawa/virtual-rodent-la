@@ -80,6 +80,38 @@ test('PC: long press a dot -> 距離 -> start (marked + hint) -> pick the other 
   await expect(label).toHaveText(want.toFixed(2) + ' mm');
   await expect(page.locator('.measure-line-3d')).toHaveCount(1);
 
+  // the label can be dragged at any time: only the label moves (the view and the dots stay), the place is kept as labelOffset
+  const lb0 = await label.boundingBox(), dotsBefore = await dotCentres(page);
+  await page.mouse.move(lb0.x + lb0.width / 2, lb0.y + lb0.height / 2); await page.mouse.down();
+  await page.mouse.move(lb0.x + lb0.width / 2 + 30, lb0.y + lb0.height / 2 + 20, { steps: 5 }); await page.mouse.move(lb0.x + lb0.width / 2 + 60, lb0.y + lb0.height / 2 + 40, { steps: 5 }); await page.mouse.up();
+  const lb1 = await label.boundingBox();
+  expect(Math.abs(lb1.x - lb0.x - 60)).toBeLessThan(4); expect(Math.abs(lb1.y - lb0.y - 40)).toBeLessThan(4);
+  expect(await dotCentres(page)).toEqual(dotsBefore); // the 3D view did not rotate
+  await expect(page.locator('.comment-bubble-3d')).toBeHidden(); expect((await state(page)).start).toBeNull();
+  const moved = (await state(page)).ms[0];
+  expect(moved.labelOffset).toBeTruthy(); expect(Object.keys(moved.labelOffset).sort()).toEqual(['i', 'j', 'k']);
+  expect(await mod(page, m => m.ms.measurementsForProject(new Set(m.c.getComments().map(c => c.id)))[0].labelOffset)).toEqual(moved.labelOffset); // it goes into the project
+
+  // a label moved far away is SHOWN inside the view (display-time clamp); the stored offset is unchanged
+  await mod(page, (m, [id, off]) => m.ms.setLabelOffset(id, off), [moved.id, { i: -900, j: 0, k: 0 }]);
+  const view = await page.locator('#viewport-3d').boundingBox();
+  await expect.poll(async () => { const b = await label.boundingBox(); return b.x >= view.x - 1 && b.y >= view.y - 1 && b.x + b.width <= view.x + view.width + 1 && b.y + b.height <= view.y + view.height + 1; }).toBe(true);
+  expect((await state(page)).ms[0].labelOffset).toEqual({ i: -900, j: 0, k: 0 });
+  // double click on the label: back to its default place
+  let lb2 = await label.boundingBox(); await page.mouse.dblclick(lb2.x + lb2.width / 2, lb2.y + lb2.height / 2);
+  expect((await state(page)).ms[0].labelOffset).toBeUndefined();
+  // a point under the press wins over a label on top of it: drag the label onto dot A, then long press there -> the point menu, the label stays
+  lb2 = await label.boundingBox(); await page.mouse.move(lb2.x + lb2.width / 2, lb2.y + lb2.height / 2); await page.mouse.down();
+  await page.mouse.move(a.x, a.y, { steps: 8 }); await page.mouse.up();
+  const onDot = (await state(page)).ms[0].labelOffset; expect(onDot).toBeTruthy();
+  await page.mouse.move(a.x, a.y); await page.mouse.down();
+  await expect(page.locator('.point-menu')).toBeVisible({ timeout: 3000 }); await page.mouse.up();
+  expect((await state(page)).ms[0].labelOffset).toEqual(onDot);
+  // the menu of a point whose label was moved offers 「ラベル位置を戻す」
+  await page.locator('.point-menu-labelreset').click();
+  expect((await state(page)).ms[0].labelOffset).toBeUndefined();
+  await mod(page, (m, [id, off]) => m.ms.setLabelOffset(id, off), [moved.id, moved.labelOffset]); // (as moved before, for the list below)
+
   // the list under the point list
   await page.locator('[data-ipad-drawer-tab="display"]').click();
   const panel = page.locator('#comment-panel');
@@ -161,21 +193,30 @@ test('PC: the same flow on the 2D marks (long press -> 距離 -> tap the other m
   await expect(page.locator('.measure-pill')).toContainText('距離を追加しました');
   // both ends are on the slice on show: the 2D view draws the line and a label (the dark label box) at the midpoint
   [a, b] = await where();
-  const px = await page.evaluate(async ([a, b]) => {
-    const cv = document.getElementById('axial-crosshair'), r = cv.getBoundingClientRect(), k = cv.width / r.width;
-    const d = cv.getContext('2d').getImageData(Math.round(((a.x + b.x) / 2 - r.left) * k), Math.round(((a.y + b.y) / 2 - r.top) * k), 1, 1).data;
-    return [...d];
+  const solid = () => page.evaluate(([a, b]) => { // opaque pixels in a window around the midpoint (the line, its leader and the compact label beside it)
+    const cv = document.getElementById('axial-crosshair'), r = cv.getBoundingClientRect(), k = cv.width / r.width, n = 80;
+    const d = cv.getContext('2d').getImageData(Math.round(((a.x + b.x) / 2 - r.left) * k - n / 2), Math.round(((a.y + b.y) / 2 - r.top) * k - n / 2), n, n).data;
+    let c = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) c++; return c;
   }, [a, b]);
-  expect(px[3]).toBeGreaterThan(150);
+  expect(await solid()).toBeGreaterThan(40);
+  // drag the 2D label (found where the default placement puts it): it moves, the slice does not change, the offset is stored
+  const lab = await page.evaluate(async ([a, b]) => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search, ml = await import('./measure-label.js' + v);
+    const cv = document.getElementById('axial-crosshair'), r = cv.getBoundingClientRect();
+    const pl = ml.planeLabelPlacement({ x: a.x - r.left, y: a.y - r.top }, { x: b.x - r.left, y: b.y - r.top }, { w: 50, h: 16, gap: 4 });
+    return { x: pl.x + r.left, y: pl.y + r.top };
+  }, [a, b]);
+  await page.mouse.move(lab.x, lab.y); await page.mouse.down(); await page.mouse.move(lab.x + 25, lab.y + 15, { steps: 6 }); await page.mouse.up();
+  const after2d = await state(page);
+  expect(after2d.ms[0].labelOffset).toBeTruthy();
+  expect(await page.evaluate(async () => { const v = new URL(document.querySelector('script[src*="app.js"]').src).search; return (await import('./ui-shell.js' + v)).planes.axial.slider.value; })).toBe('5');
+  expect(await solid()).toBeGreaterThan(40);
   // on another slice nothing is drawn
   await page.evaluate(async () => {
     const v = new URL(document.querySelector('script[src*="app.js"]').src).search, ui = await import('./ui-shell.js' + v);
     ui.planes.axial.slider.value = '9'; ui.planes.axial.slider.dispatchEvent(new Event('input', { bubbles: true }));
   });
   await page.waitForTimeout(500);
-  const px2 = await page.evaluate(async ([a, b]) => {
-    const cv = document.getElementById('axial-crosshair'), r = cv.getBoundingClientRect(), k = cv.width / r.width;
-    return cv.getContext('2d').getImageData(Math.round(((a.x + b.x) / 2 - r.left) * k), Math.round(((a.y + b.y) / 2 - r.top) * k), 1, 1).data[3];
-  }, [a, b]);
+  const px2 = await solid();
   expect(px2).toBe(0);
 });
