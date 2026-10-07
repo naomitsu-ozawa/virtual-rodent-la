@@ -1,6 +1,6 @@
 // VR display of the position comments (Issue #88, stages 3-4): one real 3D sphere per comment of the open series (right parallax in stereo)
-// plus a small number chip. Number = the place in the whole comment list and colour = the 2D markers' cyan, the same rule as the 2D panel
-// and the 3D overlay. vr-view.js calls createVrPointMarkers(THREE, scene) -> { update, pick, dispose } and does everything else
+// plus a small number chip. Number = the place in the whole comment list; colour (build 472) = the point's own colour or its auto colour
+// (point-colors.js, the same in the 2D panel, the 3D overlay and the lists). The cyan constants below are only the fallback / the old look. vr-view.js calls createVrPointMarkers(THREE, scene) -> { update, pick, dispose } and does everything else
 // (hidden test, laser, selection) itself; the look is decided here and nowhere else.
 //
 // Look (build 464):
@@ -12,6 +12,7 @@
 // Spheres are drawn after the volume without a depth test, so a hidden point is still visible (as the small dot).
 import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build473';
 import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261007-build473';
+import { pointColor, colorToInt, darkFill, inkOn } from './point-colors.js?v=20261007-build473';
 
 export const VR_MARKER_COLOR=0x4dd8ff,VR_MARKER_FILL=0x0b6f8c,VR_RIM_COLOR=0xffffff,VR_HALO_HOVER=0xffffff,VR_HALO_SELECTED=0xffd23d;
 export const PICK_MIN_M=0.004,MARKER_SCALE=0.4; // MARKER_SCALE: the drawn radius as a factor of the base radius, the same in every state (build 471)
@@ -32,27 +33,33 @@ export function markerStyle({hidden=false,section=null,selected=false,hover=fals
 export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersShown}){
  const geo=new THREE.SphereGeometry(1,16,12);
  const mk=(color,extra={})=>new THREE.MeshBasicMaterial({color,transparent:true,depthTest:false,toneMapped:false,...extra});
- const mats={dot:mk(VR_MARKER_COLOR),solid:mk(VR_MARKER_FILL),rim:mk(VR_RIM_COLOR,{side:THREE.BackSide}),hover:mk(VR_HALO_HOVER,{side:THREE.BackSide,opacity:0.9}),selected:mk(VR_HALO_SELECTED,{side:THREE.BackSide,opacity:0.95}),ghost:mk(VR_MARKER_FILL,{opacity:0.35})};
- const lineMat=new THREE.LineBasicMaterial({color:VR_MARKER_COLOR,transparent:true,opacity:0.6,depthTest:false,toneMapped:false});
+ const mats={rim:mk(VR_RIM_COLOR,{side:THREE.BackSide}),hover:mk(VR_HALO_HOVER,{side:THREE.BackSide,opacity:0.9}),selected:mk(VR_HALO_SELECTED,{side:THREE.BackSide,opacity:0.95})};
+ // per-colour materials (build 472): dot = the colour, solid = its dark body, ghost = the faint copy while moving, line = the perpendicular; made on first use
+ const byColor=new Map();
+ const colored=hex=>{
+  let m=byColor.get(hex);
+  if(!m){m={dot:mk(colorToInt(hex)),solid:mk(darkFill(hex)),ghost:mk(darkFill(hex),{opacity:0.35}),line:new THREE.LineBasicMaterial({color:colorToInt(hex),transparent:true,opacity:0.6,depthTest:false,toneMapped:false})};byColor.set(hex,m)}
+  return m;
+ };
  const chipGeo=new THREE.PlaneGeometry(1,1),items=new Map(); // comment id -> {sphere,rim,halo,line,chip,no}
  const v=new THREE.Vector3(),f=new THREE.Vector3(),s=new THREE.Vector3();
- const drawChip=(item,no)=>{
+ const drawChip=(item,no,hex)=>{
   const c=item.chip.material.map.image,ctx=c.getContext('2d');
-  ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle='#4dd8ff';ctx.beginPath();ctx.roundRect(3,3,c.width-6,c.height-6,24);ctx.fill();
+  ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle=hex;ctx.beginPath();ctx.roundRect(3,3,c.width-6,c.height-6,24);ctx.fill();
   ctx.lineWidth=5;ctx.strokeStyle='rgba(0,0,0,.75)';ctx.stroke();
-  ctx.fillStyle='#04202a';ctx.font='800 56px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(no),c.width/2,c.height/2+3);
-  item.chip.material.map.needsUpdate=true;item.no=no;
+  ctx.fillStyle=inkOn(hex);ctx.font='800 56px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(no),c.width/2,c.height/2+3);
+  item.chip.material.map.needsUpdate=true;item.no=no;item.hex=hex;
  };
  const make=()=>{
   const canvas=document.createElement('canvas');canvas.width=96;canvas.height=96;
   const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
-  const sphere=new THREE.Mesh(geo,mats.solid);sphere.renderOrder=4;sphere.frustumCulled=false;
+  const sphere=new THREE.Mesh(geo,colored('#19d3ee').solid);sphere.renderOrder=4;sphere.frustumCulled=false;
   const rim=new THREE.Mesh(geo,mats.rim);rim.renderOrder=3;rim.frustumCulled=false;
   const halo=new THREE.Mesh(geo,mats.hover);halo.renderOrder=2;halo.frustumCulled=false;halo.visible=false;
-  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),lineMat);line.renderOrder=3;line.frustumCulled=false;line.visible=false;
+  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),colored('#19d3ee').line);line.renderOrder=3;line.frustumCulled=false;line.visible=false;
   const chip=new THREE.Mesh(chipGeo,new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:false,toneMapped:false,side:THREE.DoubleSide}));chip.renderOrder=5;chip.frustumCulled=false;
   for(const o of [halo,rim,sphere,line,chip])scene.add(o);
-  return{sphere,rim,halo,line,chip,no:0,radius:0};
+  return{sphere,rim,halo,line,chip,no:0,hex:'',radius:0};
  };
  const drop=(id,it)=>{for(const o of [it.sphere,it.rim,it.halo,it.line,it.chip])scene.remove(o);it.line.geometry.dispose();it.chip.material.map.dispose();it.chip.material.dispose();items.delete(id)};
  return{
@@ -68,12 +75,14 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
      if(!commentMatchesSeries(c,fingerprint))return;
      const t=commentTarget(c,dims);if(!t)return;
      keep.add(c.id);let it=items.get(c.id);if(!it){it=make();items.set(c.id,it)}
-     if(it.no!==n+1)drawChip(it,n+1);
+     const hex=pointColor(c),col=colored(hex);
+     if(it.no!==n+1||it.hex!==hex)drawChip(it,n+1,hex);
+     if(it.line.material!==col.line)it.line.material=col.line;
      const pv=preview&&preview.id===c.id?preview:null,ghost=!!pv&&!pv.voxel,l=voxelToLocal(pv&&pv.voxel?pv.voxel:t,halfExt,dims),rel=section?sectionRelation(l,section,halfExt,dims):null;
      const st=markerStyle({hidden:!!hidden?.has(c.id),section:rel?(rel.onSection?'on':'off'):null,selected:c.id===selectedId,hover:!!hover?.has(c.id)});
      v.set(l.x,l.y,l.z);mesh.localToWorld(v);
      const r=r0*st.scale;it.radius=Math.max(PICK_MIN_M,r0*1.3*1.2); // build 471: the hit radius stays what the normal-size disc had (base radius, rim included, +20 %), independent of the smaller drawn size; the least is PICK_MIN_M
-     it.sphere.material=ghost?mats.ghost:mats[st.fill];
+     it.sphere.material=ghost?col.ghost:col[st.fill==='dot'?'dot':'solid'];
      it.sphere.position.copy(v);it.sphere.scale.setScalar(r);
      it.rim.visible=st.rim&&!ghost;it.rim.position.copy(v);it.rim.scale.setScalar(r*1.3);
      it.halo.visible=!!st.halo;if(st.halo){it.halo.material=mats[st.halo];it.halo.position.copy(v);it.halo.scale.setScalar(r*1.9)}
@@ -88,7 +97,7 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
   pick(o,d){return pickPoint(o,d,[...items].map(([id,it])=>({id,center:it.sphere.position,radius:it.radius})))},
   // world centres of the points shown: [{id,world:Vector3}] (for the hidden test)
   centres(){return[...items].map(([id,it])=>({id,world:it.sphere.position}))},
-  dispose(){for(const [id,it] of [...items])drop(id,it);geo.dispose();for(const m of Object.values(mats))m.dispose();lineMat.dispose();chipGeo.dispose()},
+  dispose(){for(const [id,it] of [...items])drop(id,it);geo.dispose();for(const m of Object.values(mats))m.dispose();for(const m of byColor.values())for(const x of Object.values(m))x.dispose();chipGeo.dispose()},
  };
 }
 

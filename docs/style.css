@@ -920,6 +920,12 @@ html.vrl-ipad-ui .crosshair-readout{font-size:12px}
 .comment-text{margin:0;font-size:13px;color:rgb(var(--ui-t1));white-space:pre-wrap;overflow-wrap:anywhere}
 .comment-undo{margin:4px 0;font-size:12px;color:rgb(var(--ui-t1));display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .comment-undo[hidden]{display:none}
+.comment-color{width:26px;height:26px;padding:0;border-radius:50%;border:2px solid rgb(var(--ui-t1));box-shadow:0 0 0 1px rgba(0,0,0,.45);cursor:pointer;align-self:center}
+.comment-color-palette{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.comment-color-opt{width:28px;height:28px;padding:0;border-radius:50%;border:2px solid transparent;box-shadow:0 0 0 1px rgba(0,0,0,.45);cursor:pointer}
+.comment-color-opt.is-current{border-color:rgb(var(--ui-t1))}
+.vrl-ipad-ui .comment-color{width:36px;height:36px}
+.vrl-ipad-ui .comment-color-opt{width:40px;height:40px}
 .comment-actions{display:flex;gap:14px;margin-top:6px;flex-wrap:wrap}
 .comment-panel .tool-chip{min-height:34px;touch-action:manipulation}
 .comment-panel .tool-chip:disabled{opacity:.45}
@@ -964,7 +970,7 @@ html.vrl-ipad-ui .comment-popover .comment-input{font-size:16px}
 .comment-marker-3d.is-behind.is-on-section{width:11px;height:11px}
 .vrl-ipad-ui .comment-marker-3d.is-on-section{width:25px;height:25px}
 .vrl-ipad-ui .comment-marker-3d.is-behind.is-on-section{width:14px;height:14px}
-.comment-marker-3d-no{position:absolute;left:100%;bottom:100%;margin:0 0 -3px 3px;min-width:14px;padding:1px 3px;box-sizing:border-box;border-radius:7px;background:var(--vr-point-dot);color:#04202a;font:800 10px/12px sans-serif;text-align:center;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;white-space:nowrap}
+.comment-marker-3d-no{position:absolute;left:100%;bottom:100%;margin:0 0 -3px 3px;min-width:14px;padding:1px 3px;box-sizing:border-box;border-radius:7px;background:var(--vr-point-dot);color:var(--vr-point-ink,#04202a);font:800 10px/12px sans-serif;text-align:center;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;white-space:nowrap}
 .comment-marker-3d.is-behind .comment-marker-3d-no{font-size:9px;line-height:11px;min-width:12px;padding:0 3px;margin:0 0 -2px 2px}
 .vrl-ipad-ui .comment-marker-3d{width:18px;height:18px}
 .vrl-ipad-ui .comment-marker-3d.is-behind{width:10px;height:10px}

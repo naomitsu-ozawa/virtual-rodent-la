@@ -9,7 +9,7 @@
 // that another clipping section has cut away. A section whose intersection is outside the volume is skipped, never clamped.
 // Voxel rule: voxel i covers the fraction [i/n, (i+1)/n) of the box along its axis, so the index is floor(fraction * n); a point
 // outside [0,1) on any axis (the far face itself included) is NOT recorded: it is never moved into the volume.
-import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, commentMatchesSeries } from './comments.js?v=20261007-build473';
+import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, updateCommentColor, commentMatchesSeries } from './comments.js?v=20261007-build473';
 import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build473';
 
 const T_MIN=1e-6,EDGE_EPS=1e-4;
@@ -69,8 +69,8 @@ export function nextVrPointNumber(comments,fingerprint){
 // store: the comment store to use (the app's by default; a test passes its own, as the module URLs carry a ?v= build tag)
 export function recordVrPoint({voxel,series,language='ja',now=Date.now(),store={getComments,addComment}}){
  if(!voxel||!series)return null;
- const text=vrPointText(nextVrPointNumber(store.getComments(),series),language);
- return store.addComment(createComment({text,position:voxel,series,now}));
+ const n=nextVrPointNumber(store.getComments(),series),text=vrPointText(n,language);
+ return store.addComment(createComment({text,position:voxel,series,now,autoKey:n})); // autoKey: the number given now, which fixes the auto colour (build 472)
 }
 
 // ---- thumbstick gate (build 464) ----
@@ -343,7 +343,7 @@ export const HAPTIC={
 export const HAPTIC_SILENT=['emptyTap','gateBlocked','undoFailed','moveCancel','dragEnd'];
 
 // ---- undo stack (spec 7) ----
-// ops: {type:'add',id} | {type:'delete',c,index} | {type:'move',id,from,to}; the oldest is dropped beyond max
+// ops: {type:'add',id} | {type:'delete',c,index} | {type:'move',id,from,to} | {type:'color',id,from,to} (colours: hex or null = auto); the oldest is dropped beyond max
 export function createUndoStack({max=20}={}){
  let ops=[];
  return{
@@ -354,12 +354,13 @@ export function createUndoStack({max=20}={}){
  };
 }
 // undo one op on the comment store; true when it worked
-export function applyUndo(op,store={removeComment,restoreComment,updateCommentPosition}){
+export function applyUndo(op,store={removeComment,restoreComment,updateCommentPosition,updateCommentColor}){
  if(!op)return false;
  try{
   if(op.type==='add')return!!store.removeComment(op.id);
   if(op.type==='delete')return!!store.restoreComment(op.c,op.index);
   if(op.type==='move')return!!store.updateCommentPosition(op.id,op.from);
+  if(op.type==='color')return!!store.updateCommentColor(op.id,op.from);
  }catch(e){console.warn('undo failed',e)}
  return false;
 }
