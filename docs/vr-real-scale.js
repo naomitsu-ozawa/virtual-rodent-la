@@ -62,9 +62,14 @@ export function pinchScale(s0, d0, d, longMm) {
 // build 490: the section frame (outline, grab band, number tag, glow) is UI, not volume: it is a child of the holder, so it used to grow with the zoom
 // (24 cm square at 16.5 cm display -> 44 cm at 30 cm). Its world size is capped at the size it has at the default 16.5 cm display (holder scale 0.05):
 // above that scale the frame's local scale is shrunk by the same factor, so its world size is constant; below it, it follows the volume as before.
+// build 491: the capped square was smaller than the volume at max zoom (24 cm frame around a 30 cm volume: too tight to use). The square (outline, glow,
+// grab band, arrow) now has its own cap of 1.5x the design size (36 cm edge, ~3 cm margin around a 30 cm volume); the number tag keeps the 1x cap (3.4 cm).
 export const FRAME_REF_SCALE = 0.05;
-export const frameWorldScale = holderScale => Math.min(1, holderScale / FRAME_REF_SCALE); // 1 = the frame's design size (half side 0.12 m, tag 3.4 cm, glow 3 mm)
-export const planeFrameLocalScale = holderScale => 1 / Math.max(holderScale, FRAME_REF_SCALE); // obj.scale inside the holder; world scale = holderScale x this
+export const FRAME_SQUARE_MAX = 1.5;
+export const frameWorldScale = holderScale => Math.min(1, holderScale / FRAME_REF_SCALE); // tag / handle: 1 = design size (tag 3.4 cm), never larger
+export const frameSquareWorldScale = holderScale => Math.min(FRAME_SQUARE_MAX, holderScale / FRAME_REF_SCALE); // square: 1 = design size (half side 0.12 m, glow 3 mm), up to 1.5x
+export const planeFrameLocalScale = holderScale => frameSquareWorldScale(holderScale) / holderScale; // obj.scale inside the holder; world scale = holderScale x this
+export const planeTagLocalScale = holderScale => frameWorldScale(holderScale) / frameSquareWorldScale(holderScale); // handle.scale inside obj (<= 1); world tag size = this x obj world scale
 
 // warning shown at load (normal UI) and on entering VR / AR for oversize data; null when none
 export function oversizeNote(longMm, lang) {

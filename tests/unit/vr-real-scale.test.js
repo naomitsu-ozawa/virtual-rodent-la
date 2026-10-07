@@ -96,38 +96,58 @@ describe('vr-real-scale', () => {
 const displayed = s => s * NORM_LONG;
 
 // build 490: the section frame (a child of the holder) keeps its world size above the default 16.5 cm display
-import { FRAME_REF_SCALE, frameWorldScale, planeFrameLocalScale } from '../../docs/vr-real-scale.js';
+import { FRAME_REF_SCALE, FRAME_SQUARE_MAX, frameWorldScale, frameSquareWorldScale, planeFrameLocalScale, planeTagLocalScale } from '../../docs/vr-real-scale.js';
 describe('section frame size cap', () => {
   const HALF = 0.12, HANDLE = 0.034, GLOW = 0.0015; // design sizes in vr-view.js (frame half side, number tag, glow half width), metres at the default display
-  const worldOf = (holderScale, v) => v * holderScale * planeFrameLocalScale(holderScale); // local size x holder scale x frame local scale
-  it('the reference is the default 16.5 cm display', () => {
+  const squareWorld = (holderScale, v) => v * holderScale * planeFrameLocalScale(holderScale); // square / glow: local size x holder scale x frame local scale
+  const tagWorld = (holderScale, v) => squareWorld(holderScale, v) * planeTagLocalScale(holderScale); // tag: also x its own scale inside the frame group
+  it('the reference is the default 16.5 cm display; the square cap is 1.5x', () => {
     expect(FRAME_REF_SCALE).toBeCloseTo(0.165 / NORM_LONG, 12);
+    expect(FRAME_SQUARE_MAX).toBe(1.5);
     expect(frameWorldScale(DEFAULT_SCALE)).toBeCloseTo(1, 12);
+    expect(frameSquareWorldScale(DEFAULT_SCALE)).toBeCloseTo(1, 12);
   });
-  it('frame, tag and glow world sizes never exceed the default size, from 1x to 30 cm', () => {
+  it('square and glow never exceed 1.5x, the tag never exceeds 1x, from 1x to 30 cm', () => {
     for (let longCm = 3; longCm <= 30; longCm += 0.5) {
       const s = longCm / 100 / NORM_LONG;
-      expect(worldOf(s, HALF)).toBeLessThanOrEqual(HALF + 1e-12);
-      expect(worldOf(s, HANDLE)).toBeLessThanOrEqual(HANDLE + 1e-12);
-      expect(worldOf(s, GLOW)).toBeLessThanOrEqual(GLOW + 1e-12);
+      expect(squareWorld(s, HALF)).toBeLessThanOrEqual(HALF * 1.5 + 1e-12);
+      expect(squareWorld(s, GLOW)).toBeLessThanOrEqual(GLOW * 1.5 + 1e-12);
+      expect(tagWorld(s, HANDLE)).toBeLessThanOrEqual(HANDLE + 1e-12);
+      expect(planeTagLocalScale(s)).toBeLessThanOrEqual(1 + 1e-12);
     }
   });
-  it('at 30 cm the frame is the same size as at 16.5 cm (before: 1.82x larger)', () => {
+  it('at 30 cm the frame edge is 36 cm (margin around the volume), the tag stays 3.4 cm', () => {
     const s30 = 0.30 / NORM_LONG;
-    expect(worldOf(s30, HALF)).toBeCloseTo(HALF, 12);
-    expect(worldOf(s30, HANDLE)).toBeCloseTo(HANDLE, 12);
-    expect(worldOf(s30, HALF)).toBeCloseTo(worldOf(DEFAULT_SCALE, HALF), 12);
-    expect(s30 / DEFAULT_SCALE).toBeGreaterThan(1.8); // the old growth factor
+    expect(2 * squareWorld(s30, HALF)).toBeCloseTo(0.36, 12);
+    expect(2 * squareWorld(s30, HALF)).toBeGreaterThanOrEqual(0.30 * 1.2 - 1e-12);
+    expect(tagWorld(s30, HANDLE)).toBeCloseTo(0.034, 12);
+    expect(squareWorld(s30, GLOW)).toBeCloseTo(GLOW * 1.5, 12);
+    expect(s30 / DEFAULT_SCALE).toBeGreaterThan(1.8); // the pre-490 growth factor (44 cm edge)
   });
-  it('below the default display it still follows the volume (a small mouse at 1x)', () => {
+  it('at the default 16.5 cm display the frame is the design size (24 cm edge, 3.4 cm tag)', () => {
+    expect(2 * squareWorld(DEFAULT_SCALE, HALF)).toBeCloseTo(0.24, 12);
+    expect(tagWorld(DEFAULT_SCALE, HANDLE)).toBeCloseTo(0.034, 12);
+    expect(planeTagLocalScale(DEFAULT_SCALE)).toBeCloseTo(1, 12);
+  });
+  it('below the default display it still follows the volume exactly as before (a small mouse at 1x)', () => {
     const s = realHolderScale(mouse.dims ? longestMm(physicalExtentsMm(mouse.dims, mouse.sp)) : 0);
     expect(s).toBeLessThan(DEFAULT_SCALE);
-    expect(worldOf(s, HALF)).toBeCloseTo(HALF * s / DEFAULT_SCALE, 12);
+    expect(squareWorld(s, HALF)).toBeCloseTo(HALF * s / DEFAULT_SCALE, 12);
+    expect(tagWorld(s, HANDLE)).toBeCloseTo(HANDLE * s / DEFAULT_SCALE, 12);
     expect(frameWorldScale(s)).toBeCloseTo(s / DEFAULT_SCALE, 12);
+    expect(planeTagLocalScale(s)).toBeCloseTo(1, 12);
+    for (let t = 0.005; t <= FRAME_REF_SCALE; t += 0.001) expect(planeFrameLocalScale(t)).toBeCloseTo(1 / FRAME_REF_SCALE, 9); // same as the build 490 value 1/max(s, ref)
   });
-  it('is monotone and continuous at the reference', () => {
-    let prev = 0;
-    for (let s = 0.005; s <= 0.0909; s += 0.001) { const w = s * planeFrameLocalScale(s); expect(w).toBeGreaterThanOrEqual(prev - 1e-12); prev = w; }
-    expect(planeFrameLocalScale(FRAME_REF_SCALE * 0.999999) * FRAME_REF_SCALE).toBeCloseTo(planeFrameLocalScale(FRAME_REF_SCALE * 1.000001) * FRAME_REF_SCALE, 5);
+  it('is monotone and continuous at both caps', () => {
+    let prev = 0, prevTag = 0;
+    for (let s = 0.005; s <= 0.0909; s += 0.001) {
+      const w = squareWorld(s, HALF), t = tagWorld(s, HANDLE);
+      expect(w).toBeGreaterThanOrEqual(prev - 1e-12); prev = w;
+      expect(t).toBeGreaterThanOrEqual(prevTag - 1e-12); prevTag = t;
+    }
+    const edge = FRAME_REF_SCALE * FRAME_SQUARE_MAX; // holder scale where the square cap starts
+    expect(squareWorld(edge * 0.999999, HALF)).toBeCloseTo(squareWorld(edge * 1.000001, HALF), 5);
+    expect(planeTagLocalScale(FRAME_REF_SCALE * 0.999999)).toBeCloseTo(planeTagLocalScale(FRAME_REF_SCALE * 1.000001), 5);
   });
 });
+

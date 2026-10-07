@@ -8,30 +8,30 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build490';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build490';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build490';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build490';
-import { datasetFingerprint } from './project-file.js?v=20261007-build490';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build490';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build490';
-import { buildClsData } from './point-cls.js?v=20261007-build490';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build490';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build490';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build490';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build490';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build490';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build490';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build490';
-import { tr } from './i18n.js?v=20261007-build490';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build490';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale } from './vr-real-scale.js?v=20261007-build490';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build490';
-import { createVrMeasure } from './vr-measure.js?v=20261007-build490';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build490';
-import { APP_BUILD } from './version.js?v=20261007-build490';
-import { wc, ww } from './ui-shell.js?v=20261007-build490';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261007-build490';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build491';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build491';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build491';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build491';
+import { datasetFingerprint } from './project-file.js?v=20261007-build491';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build491';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build491';
+import { buildClsData } from './point-cls.js?v=20261007-build491';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build491';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build491';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build491';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build491';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build491';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build491';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build491';
+import { tr } from './i18n.js?v=20261007-build491';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build491';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261007-build491';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build491';
+import { createVrMeasure } from './vr-measure.js?v=20261007-build491';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build491';
+import { APP_BUILD } from './version.js?v=20261007-build491';
+import { wc, ww } from './ui-shell.js?v=20261007-build491';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261007-build491';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1082,8 +1082,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
   else{ctx.font='bold 64px system-ui,sans-serif';ctx.fillText(String(i+1),48,52)}
   hd.material.map.needsUpdate=true;
  };
+ // build 491: the square may be larger (up to 1.5x) than the tag, so the tag has its own scale k (<= 1) inside the frame group: size HANDLE*k, offset from the corner (0.01+HANDLE/2)*k
+ const placeHandle=(pl,hs)=>{const k=planeTagLocalScale(hs),o=pl.h+(0.01+HANDLE/2)*k,[sy,sz]=HANDLE_CORNERS[(pl.idx||0)%4];pl.handle.scale.setScalar(k);pl.handle.position.set(0,sy*o,sz*o)};
+ const applyFrameScale=pl=>{const hs=holder.scale.x,fs=planeFrameLocalScale(hs);if(pl.obj.scale.x!==fs)pl.obj.scale.setScalar(fs);if(pl.tagHs!==hs){pl.tagHs=hs;placeHandle(pl,hs)}};
  const refreshHandles=()=>planes.forEach((pl,i)=>{
-  const o=pl.h+0.01+HANDLE/2,[sy,sz]=HANDLE_CORNERS[i%4];drawHandle(pl,i);pl.handle.position.set(0,sy*o,sz*o);
+  pl.idx=i;drawHandle(pl,i);placeHandle(pl,holder.scale.x);pl.tagHs=holder.scale.x;
  });
  // side that removes the viewer's half right now (what 'near' shows)
  const chooseSide=pl=>{readHead();scene.updateMatrixWorld();pl.obj.getWorldPosition(tmpA);tmpB.set(1,0,0).transformDirection(pl.obj.matrixWorld);pl.side=tmpB.dot(tmpA.subVectors(head,tmpA))>0?-1:1};
@@ -1832,7 +1835,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(help.mesh.visible&&!helpPlaced&&poseAt)placeHelpNow();
   if(help.mesh.visible&&settings.help===1&&!helpHeld){computeHelpTarget();helpMoving=lazyFollow(help.mesh,helpTarget,helpMoving,false)}
   if(twoHand)holder.scale.setScalar(pinchScale(twoHand.s0,twoHand.d0,handDist(),realLongMm()));
-  {const fs=planeFrameLocalScale(holder.scale.x);for(const pl of planes)if(pl.obj.scale.x!==fs)pl.obj.scale.setScalar(fs)} // build 490: the section frame keeps its world size above the default 16.5 cm display
+  for(const pl of planes)applyFrameScale(pl); // build 490/491: the section square is capped at 1.5x its design size (36 cm), the number tag at 1x (3.4 cm), above the default 16.5 cm display
   {const lm=realLongMm(),lim=scaleLimits(lm);
    if(lm>0&&!bench.active&&!anBench.active){const cs=clampScale(holder.scale.x,lm);if(cs!==holder.scale.x)holder.scale.setScalar(cs)} // initial placement, restored or any other out-of-range scale
    scaleTag.mesh.visible=!!(mesh&&vrHalfExt&&lm>0);
