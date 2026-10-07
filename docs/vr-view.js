@@ -8,24 +8,25 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build472';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build472';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build472';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build472';
-import { datasetFingerprint } from './project-file.js?v=20261007-build472';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build472';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build472';
-import { buildClsData } from './point-cls.js?v=20261007-build472';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build472';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build472';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build472';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build472';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build472';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build472';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build472';
-import { tr } from './i18n.js?v=20261007-build472';
-import { APP_BUILD } from './version.js?v=20261007-build472';
-import { wc, ww } from './ui-shell.js?v=20261007-build472';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build473';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build473';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build473';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build473';
+import { datasetFingerprint } from './project-file.js?v=20261007-build473';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build473';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build473';
+import { buildClsData } from './point-cls.js?v=20261007-build473';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build473';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build473';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build473';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build473';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build473';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build473';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build473';
+import { tr } from './i18n.js?v=20261007-build473';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build473';
+import { APP_BUILD } from './version.js?v=20261007-build473';
+import { wc, ww } from './ui-shell.js?v=20261007-build473';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1228,13 +1229,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,depthTest:false}));line.frustumCulled=false;line.renderOrder=5;line.visible=false;
   scene.add(m);scene.add(line);return{m,line,ctx:canvas.getContext('2d'),tex,key:null,anchor:new THREE.Vector3(),world:new THREE.Vector3()};
  };
+ const spacingNote=()=>vrSpacingNote((gpuVolumeTarget()?.series||activeSeries)?.spacingCheck,language);
  const drawLabel=(lb,hit,faint)=>{
-  const r=hit.id?regionList[hit.id-1]:null,seg=tr(hit.key)||hit.key,hc=lb.hand?handColor(lb.hand):0,key=(r?hit.id:'n'+hit.key)+(faint?'f':'p')+hc;if(lb.key===key)return;lb.key=key;
+  const r=hit.id?regionList[hit.id-1]:null,sn=r?spacingNote():null,seg=tr(hit.key)||hit.key,hc=lb.hand?handColor(lb.hand):0,key=(r?hit.id:'n'+hit.key)+(faint?'f':'p')+hc+(sn?'w'+language:'');if(lb.key===key)return;lb.key=key;
   const ctx=lb.ctx;ctx.clearRect(0,0,512,154);ctx.fillStyle='rgba(17,23,27,0.92)';ctx.beginPath();ctx.roundRect(4,4,504,146,26);ctx.fill();
   if(lb.hand){ctx.strokeStyle='#'+hc.toString(16).padStart(6,'0');ctx.lineWidth=6;ctx.stroke()}
   ctx.textBaseline='middle';ctx.fillStyle='#eef5f8';
   if(r){const hex='#'+r.color.toString(16).padStart(6,'0');ctx.fillStyle=hex;ctx.beginPath();ctx.arc(62,77,34,0,Math.PI*2);ctx.fill();
-   ctx.fillStyle='#eef5f8';ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(hit.id+'. '+r.segmentKeys.map(k=>tr(k)).join('+'),118,50);ctx.font='40px system-ui,sans-serif';ctx.fillText(r.mm3.toFixed(2)+' mm³',118,108)}
+   ctx.fillStyle='#eef5f8';ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(hit.id+'. '+r.segmentKeys.map(k=>tr(k)).join('+'),118,50);ctx.font='40px system-ui,sans-serif';ctx.fillText(vrVolumeText(r.mm3,sn),118,108)}
   else{ctx.font='bold 44px system-ui,sans-serif';ctx.fillText(seg,34,50);ctx.font='38px system-ui,sans-serif';ctx.fillStyle='#9fb3c3';ctx.fillText(ja?'解析結果なし':'no analysis result',34,108)}
   lb.tex.needsUpdate=true;lb.m.material.opacity=faint?0.85:1;lb.line.material.opacity=0.9;lb.faint=faint;
  };
@@ -1622,12 +1624,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
    label(X,y0+10,L.anT,{bold:true,size:30});
    if(!regionList.length)label(X,y0+70,L.anNone,{size:26,color:'#9fb3c3'});
    else{
-    const per=10,pages=Math.ceil(regionList.length/per),pg=Math.min(ui.anPage|0,pages-1);
+    const sn=spacingNote(),per=sn?8:10,pages=Math.ceil(regionList.length/per),pg=Math.min(ui.anPage|0,pages-1);
     regionList.slice(pg*per,pg*per+per).forEach((r,k)=>{const y=y0+56+k*62,hex='#'+r.color.toString(16).padStart(6,'0');
      w.push({type:'button',x:X,y,w:56,h:50,label:'',on:true,color:hex,action:()=>{}});
      label(X+76,y+34,String(pg*per+k+1)+'. '+r.segmentKeys.map(k2=>tr(k2)).join('+'),{size:28,color:hex,bold:true});
-     label(X+520,y+34,r.mm3.toFixed(2)+' mm³',{size:28})});
-    const total=regionList.reduce((a,r)=>a+r.mm3,0);label(X,y0+56+per*62+40,L.anTotal+' '+total.toFixed(2)+' mm³ · '+regionList.length,{size:26,color:'#9fb3c3'});
+     label(X+520,y+34,vrVolumeText(r.mm3,sn),{size:28,color:sn?'#ffd166':undefined})});
+    const total=regionList.reduce((a,r)=>a+r.mm3,0);label(X,y0+56+per*62+40,L.anTotal+' '+(sn?sn.mark+' ':'')+total.toFixed(2)+' mm³ · '+regionList.length,{size:26,color:sn?'#ffd166':'#9fb3c3'});
+    if(sn){label(X,y0+640,sn.mark+' '+sn.short,{size:26,bold:true,color:'#ffd166'});sn.lines.forEach((t,i)=>label(X,y0+672+i*26,t,{size:21,color:'#d9c28a'}))}
     if(pages>1){btn(MENU_W-X-300,y0+56+per*62,140,'◀',false,()=>{ui.anPage=Math.max(0,pg-1)},{size:28});btn(MENU_W-X-150,y0+56+per*62,140,'▶',false,()=>{ui.anPage=Math.min(pages-1,pg+1)},{size:28});label(MENU_W-X-470,y0+56+per*62+40,L.anPage+' '+(pg+1)+'/'+pages,{size:26,color:'#9fb3c3'})}
    }
    choice(y0+770,L.lbSize,L.lbSizeV.map((t,i)=>({label:t,value:i})),settings.labelSize??1,v=>{settings.labelSize=v;saveSettings(settings)});
