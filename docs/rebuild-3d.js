@@ -1,20 +1,20 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale, mark3DCurrent, set3DState } from './three-state.js?v=20261007-build481';
-import { updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261007-build481';
-import { currentLanguage, volume, threeDApplying, threeRenderMode, sceneState, sourceVolume, setThreeDCancelRequested, threeDCancelRequested, filterRebuildRevision, setCurrent3DVolume, deferAutomatic3D, setDeferAutomatic3D, setMemoryGpuPreviewActive, setVolume, filterOrder } from './state.js?v=20261007-build481';
-import { setGpuComputeBackend } from './gpu-compute.js?v=20261007-build481';
-import { gpuVolumeApplied, refreshGpuVolumeData } from './gpu-volume-data.js?v=20261007-build481';
-import { renderAll } from './mpr-render.js?v=20261007-build481';
-import { sourceFilterStages, filterState, memoryFilterPreviewCache, sourceFilterHalo, fitSourceTile, processMemoryRegion, currentFilterSignature } from './source-filters.js?v=20261007-build481';
-import { footer, threeLabel, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, bar, progLabel, anisotropicKappa, tvEps } from './ui-shell.js?v=20261007-build481';
-import { tr } from './i18n.js?v=20261007-build481';
-import { render3D, gpuMeshBlockDepth } from './surface-build.js?v=20261007-build481';
-import { resetAnalysisRegistryAfterRebuild } from './analysis-results.js?v=20261007-build481';
-import { setProcessingBusy } from './busy.js?v=20261007-build481';
-import { reportBusyProgress } from './progress-modal.js?v=20261007-build481';
-import { cpuSpikeHole, cpuNlm3D, cpuAnisotropicDiffusion, cpuGaussian3D, cpuMedian3D, cpuSigmoid, cpuBilateral3D, cpuTvDenoising3D, cpuUnsharpMask3D } from './cpu-filters.js?v=20261007-build481';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261007-build481';
+import { mark3DStale, mark3DCurrent, set3DState } from './three-state.js?v=20261007-build482';
+import { updateVolumeFilterBadge, set3DBusy } from './three-status.js?v=20261007-build482';
+import { currentLanguage, volume, threeDApplying, threeRenderMode, sceneState, sourceVolume, setThreeDCancelRequested, threeDCancelRequested, filterRebuildRevision, setCurrent3DVolume, deferAutomatic3D, setDeferAutomatic3D, setMemoryGpuPreviewActive, setVolume, filterOrder } from './state.js?v=20261007-build482';
+import { setGpuComputeBackend } from './gpu-compute.js?v=20261007-build482';
+import { gpuVolumeApplied, refreshGpuVolumeData } from './gpu-volume-data.js?v=20261007-build482';
+import { renderAll } from './mpr-render.js?v=20261007-build482';
+import { sourceFilterStages, filterState, memoryFilterPreviewCache, sourceFilterHalo, fitSourceTile, processMemoryRegion, currentFilterSignature } from './source-filters.js?v=20261007-build482';
+import { footer, threeLabel, smoothingType, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, bar, progLabel, anisotropicKappa, tvEps } from './ui-shell.js?v=20261007-build482';
+import { tr } from './i18n.js?v=20261007-build482';
+import { render3D, gpuMeshBlockDepth } from './surface-build.js?v=20261007-build482';
+import { resetAnalysisRegistryAfterRebuild } from './analysis-results.js?v=20261007-build482';
+import { setProcessingBusy } from './busy.js?v=20261007-build482';
+import { reportBusyProgress } from './progress-modal.js?v=20261007-build482';
+import { cpuSpikeHole, cpuNlm3D, cpuAnisotropicDiffusion, cpuGaussian3D, cpuMedian3D, cpuSigmoid, cpuBilateral3D, cpuTvDenoising3D, cpuUnsharpMask3D } from './cpu-filters.js?v=20261007-build482';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261007-build482';
 export function mark3DUpdating(){set3DState('updating')}
 export async function buildCpuFilteredVolumeFor3D(){
  const previousDefer=deferAutomatic3D;setDeferAutomatic3D(true);setMemoryGpuPreviewActive(false);clearMemoryFilterPreviewCache();setVolume(sourceVolume);
