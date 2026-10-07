@@ -951,13 +951,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // build 468: ring menus (vr-ring.js): the quick ring around the hand (A/X short) and the point ring (long press on a point)
  const wheel=createRingMenu(THREE),pointWheel=createRingMenu(THREE);scene.add(wheel.mesh);scene.add(pointWheel.mesh);
  let wheelOwner=null,pw=null; // pw = {c,id,mode}: mode 'main' (move / delete / colour) or 'color' (the palette ring, build 472)
- // build 474: the ring OWNER's own laser also stops on the dark disc of its ring (the ring now sits in front of the hand, on the laser), so the ring is no longer
- // passed through and wins over a menu behind it; another hand's laser (and any laser on a ring it does not own) only stops on the item rects, blank space does not block
- const ringHit=(c,ring,own)=>{if(!ring.mesh.visible)return null;setRay(c);const x=raycaster.intersectObject(ring.mesh,false)[0];if(!x||!x.uv)return null;const k=ring.slotFromUv(x.uv);return k===null&&!(own&&ring.inDisk(x.uv))?null:{distance:x.distance,slot:k}};
+ // build 474: EVERY hand's laser stops on the whole dark disc of an open ring (items and blank space alike); slot = the item under the ray or null (blank).
+ // Nothing behind the disc is hit while the ray is inside it (menu / help / points / planes / volume).
+ const ringHit=(c,ring)=>{if(!ring.mesh.visible)return null;setRay(c);const x=raycaster.intersectObject(ring.mesh,false)[0];if(!x||!x.uv)return null;const k=ring.slotFromUv(x.uv);return k===null&&!ring.inDisk(x.uv)?null:{distance:x.distance,slot:k}};
  // the nearest of the menu, the help board and the ring items along the ray wins; {menu,help,wheel,pwheel}
  const bhOut={menu:null,help:null,wheel:null,pwheel:null}; // reused (read at once by the caller, never kept)
  const boardHits=c=>{
-  const o=bhOut;o.menu=menuHit(c);o.help=helpHit(c);o.wheel=ringHit(c,wheel,wheelOwner===c);o.pwheel=ringHit(c,pointWheel,pw?.c===c);
+  const o=bhOut;o.menu=menuHit(c);o.help=helpHit(c);o.wheel=ringHit(c,wheel);o.pwheel=ringHit(c,pointWheel);
   let bd=Infinity,bk=null;for(const k of ['menu','help','wheel','pwheel']){const x=o[k];if(x&&x.distance<bd){bd=x.distance;bk=k}}
   for(const k of ['menu','help','wheel','pwheel'])if(k!==bk)o[k]=null;
   return o};
@@ -1321,6 +1321,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(bd.wheel&&bd.wheel.slot!==null){confirmWheel(bd.wheel.slot,c);return}
    if(bd.pwheel&&bd.pwheel.slot!==null){confirmPoint(bd.pwheel.slot,c);return}
    if(bd.help)return;
+   if((bd.wheel||bd.pwheel)&&wheelOwner!==c&&pw?.c!==c)return; // blank part of a ring disc, not this hand's ring: nothing, and it does not pass through
    const r0=c.userData.res,res=r0&&r0.kind!=='board'?r0:{kind:'none',ref:null},now=performance.now(),hp=handInHolder(c);
    // this hand's ring is open: the press confirms the lit item, or only closes the ring
    if(res.kind==='ring-confirm'){if(wheelOwner===c)confirmWheel(res.ref,c);else confirmPoint(res.ref,c);return}
@@ -1760,7 +1761,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const bd=boardHits(c),h=bd.menu,hh=bd.help,rh=bd.wheel||bd.pwheel,board=h||hh||(rh&&rh.slot!==null?rh:null),ray=c.userData.ray,nowF=performance.now();
    let tab=null,pt=null,band=null,vh=null,sh=null;
    const selOk=!!(section.on&&section.selected&&!draggedBy(section.selected,c)),anyOk=section.on&&planes.some(p=>!draggedBy(p,c));
-   if(!board){
+   if(!board&&!rh){
     const vis=section.on?planes.filter(p=>!draggedBy(p,c)):[];
     tab=tabHit(c,vis);
     setRay(c);pt=vpMarkers.pick(raycaster.ray.origin,raycaster.ray.direction);
@@ -1771,7 +1772,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    c.userData.volHit=vh;c.userData.helpHit=!!hh;
    // where a moved point would land (the current mode's rule): the surface voxel or the selected section's voxel
    const placement=surfaceActive()?(vh&&vh.voxel?vh:null):(sh&&sh.voxel?sh:null);c.userData.placement=placement;
-   const res=resolveTriggerTarget({board:board?bd:null,ringOwnOpen:wheelOwner===c||pw?.c===c,ringHighlight:c.userData.ringHl??null,moving:!!c.userData.moving,placement,tab,point:pt,band,tissue:vh,plane:sh,mode:vrPointMode,analysis:ui.open&&ui.tab===5,canDrag:anyOk&&(surfaceActive()||labelMode()||!vh)});
+   const res=rh&&!board&&wheelOwner!==c&&pw?.c!==c?{kind:'none',ref:null}:resolveTriggerTarget({board:board?bd:null,ringOwnOpen:wheelOwner===c||pw?.c===c,ringHighlight:c.userData.ringHl??null,moving:!!c.userData.moving,placement,tab,point:pt,band,tissue:vh,plane:sh,mode:vrPointMode,analysis:ui.open&&ui.tab===5,canDrag:anyOk&&(surfaceActive()||labelMode()||!vh)});
    c.userData.res=res;if(res.kind==='point')hoverIds.add(res.ref.id);
    if(!c.userData.press&&!c.userData.drag){const hpz=c.userData.hoverPulse||=createHoverPulse({debounceMs:HAPTIC.hover.debounceMs});if(hpz.update(res.kind==='point'?res.ref.id:null,nowF))pulse(c,HAPTIC.hover.amp,HAPTIC.hover.ms)}
    updatePress(c,nowF);
