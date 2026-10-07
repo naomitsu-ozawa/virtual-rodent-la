@@ -38,6 +38,25 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-07 — claude/vr-render-guards (automated VR render guards, no app change)
+
+**Agent:** Claude (Opus 5.5 worker)
+**Task:** Before more VR performance work: detect breakage automatically (golden images, CPU/GPU parity, shader compile, swallowed-comment guard) in CI.
+
+### What changed
+- Tests / tools / CI only; no docs/*.js change, no build bump. Everything is documented in `tests/golden/README.md` (how to run, how to update goldens, thresholds, what is not covered).
+- `tools/vr-render-golden.mjs` + `tests/golden/vr-render/*.png` (16 images), `tools/vr-cls-parity.mjs`, `tests/unit/cls-parity.test.js`, `tests/unit/swallowed-statement.test.js`, `tools/vr-gpu-prepare-check.mjs` now also checks every program's link status (three.js compiles lazily and only logs a failure, so it used to pass with a broken shader). New CI job `vr-guards`.
+- Rule: VR perf PRs must keep the golden diff at 0 or declare and justify the threshold; perf PRs should not touch vr-pick.js / point-cls.js / vr-point.js without updating the parity test.
+
+### Why
+- Past regressions: drift between the classification copies (WGSL, GLSL, point-cls.js, vr-pick.js), shader hot-loop edits, a statement swallowed by a `//` comment (build 474).
+
+### Follow-up / open questions
+- The static guard found two more swallowed statements on main (listed in `KNOWN` in the test): `docs/comment-ui.js` build 481 (`onMeasureStartChange(...)` after "no DOM rebuild per move": the measurement-start pulse / list refresh of the PC panel is never registered) and `docs/data-load.js` build 436 (`sigmoidCenter.disabled=!filterState.sigmoid;` after "(was the window centre)": never runs). Fix = put the statement on its own line (app change: bump the build) and delete the `KNOWN` entry.
+- Goldens were made with Chromium 141 SwiftShader; CI uses Playwright 1.63's Chromium: if it differs by an LSB, regenerate or declare a threshold (see the README).
+
+---
+
 ## 2026-10-07 — claude/point-color (point colours, build 472)
 
 **Agent:** Claude (Sonnet worker, supervised)

@@ -33,6 +33,32 @@ jobs:
         run: npm run lint
       - run: npm test
 
+  vr-guards:
+    name: VR render guards (golden images, CPU/GPU parity, shader compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Headless Chromium on SwiftShader (software WebGL2), synthetic data only. See tests/golden/README.md.
+      - name: VR shader compiles and links (every variant)
+        run: npm run vr-gpu-prepare-check
+      - name: VR render golden images (pixel-identical unless the threshold is declared)
+        run: npm run vr-render-golden
+      - name: CPU / GPU classification parity (vr-pick.js vs the GLSL march)
+        run: npm run vr-cls-parity
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: vr-golden-diff
+          path: test-results/vr-golden/
+          if-no-files-found: ignore
+          retention-days: 7
+
   e2e:
     name: Browser smoke tests
     runs-on: ubuntu-latest
