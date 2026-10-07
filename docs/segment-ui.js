@@ -1,16 +1,16 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20261007-build486';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261007-build486';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261007-build486';
-import { dispose } from './surface-mesh.js?v=20261007-build486';
-import { request3DRender } from './scene3d.js?v=20261007-build486';
-import { renderAnalysisResults } from './analysis-results.js?v=20261007-build486';
-import { segmentEditState, segmentEditGen, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges } from './segments.js?v=20261007-build486';
-import { tr } from './i18n.js?v=20261007-build486';
-import { niceCtStep, formatCtValue } from './utils.js?v=20261007-build486';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261007-build486';
-import { renderAll } from './mpr-render.js?v=20261007-build486';
+import { mark3DStale } from './three-state.js?v=20261007-build488';
+import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261007-build488';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261007-build488';
+import { dispose } from './surface-mesh.js?v=20261007-build488';
+import { request3DRender } from './scene3d.js?v=20261007-build488';
+import { renderAnalysisResults } from './analysis-results.js?v=20261007-build488';
+import { segmentEditState, segmentEditGen, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges } from './segments.js?v=20261007-build488';
+import { tr } from './i18n.js?v=20261007-build488';
+import { niceCtStep, formatCtValue } from './utils.js?v=20261007-build488';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261007-build488';
+import { renderAll } from './mpr-render.js?v=20261007-build488';
 // build 439 (owner: change the card order by dragging): a pointer drag on a card's ⋮⋮ handle (mouse and touch alike)
 // moves the card live; on release the new card order becomes the priority (segment-exclusive.js) and every segment
 // whose range in use changed is recomputed
