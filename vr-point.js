@@ -9,8 +9,8 @@
 // that another clipping section has cut away. A section whose intersection is outside the volume is skipped, never clamped.
 // Voxel rule: voxel i covers the fraction [i/n, (i+1)/n) of the box along its axis, so the index is floor(fraction * n); a point
 // outside [0,1) on any axis (the far face itself included) is NOT recorded: it is never moved into the volume.
-import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, updateCommentColor, commentMatchesSeries } from './comments.js?v=20261007-build483';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build483';
+import { createComment, addComment, getComments, removeComment, restoreComment, updateCommentPosition, updateCommentColor, commentMatchesSeries } from './comments.js?v=20261007-build484';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build484';
 
 const T_MIN=1e-6,EDGE_EPS=1e-4;
 
@@ -218,6 +218,7 @@ export function resolveTriggerTarget(c={}){
  let target=null;
  if(c.analysis){if(c.tissue)target={kind:'label',ref:c.tissue}}
  else if(normalizePointMode(c.mode)==='surface'){if(c.tissue)target={kind:'record',ref:c.tissue,plane:false}}
+ else if(c.tissue&&(!c.plane||hitT(c.tissue)<hitT(c.plane)-(Number.isFinite(c.occludeEps)?c.occludeEps:TIE_EPS)))target={kind:'tissue',ref:c.tissue}; // build 484: section mode: an object surface in front of the plane (or no plane) stops the laser; the plane is recorded on only where it is in front of the surface or the object is cut away
  else if(c.plane)target={kind:'record',ref:c.plane,plane:true};
  const cands=[];
  if(c.point&&hitT(c.point)!==null)cands.push({kind:'point',ref:c.point,t:hitT(c.point),rank:0});
