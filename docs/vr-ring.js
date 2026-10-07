@@ -159,7 +159,8 @@ export function createRingMenu(THREE,{size=WHEEL_BOARD_M}={}){
    sector(a0,a1,ro);
    if(t===null||t===undefined){ctx.setLineDash([8,8]);ctx.strokeStyle='rgba(159,179,195,.45)';ctx.lineWidth=3;ctx.stroke();ctx.setLineDash([]);return}
    if(isSw(t)){
-    ctx.fillStyle=t.color;ctx.fill();ctx.strokeStyle=lit?'#fff':'rgba(255,255,255,.3)';ctx.lineWidth=lit?6:2;ctx.stroke();
+    ctx.fillStyle=t.color;ctx.fill();if(lit){ctx.fillStyle='rgba(255,255,255,.28)';ctx.fill()} // the focused colour is brightened too
+    ctx.strokeStyle=lit?'#fff':'rgba(255,255,255,.3)';ctx.lineWidth=lit?7:2;ctx.stroke();
     if(lit)centre=t.name||t.text||'';
     if(t.text){ctx.fillStyle='#fff';ctx.font='bold 28px system-ui,sans-serif';ctx.fillText(t.text,cx,cy+(on[k]?-14:1))} // a text swatch (the 自動 sector)
     if(on[k]){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(cx,t.text?cy+20:cy,10,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=3;ctx.stroke()} // the current colour

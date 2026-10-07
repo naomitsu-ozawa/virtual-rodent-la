@@ -8,25 +8,25 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build475';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build475';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build475';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build475';
-import { datasetFingerprint } from './project-file.js?v=20261007-build475';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build475';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build475';
-import { buildClsData } from './point-cls.js?v=20261007-build475';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build475';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build475';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build475';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build475';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build475';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build475';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build475';
-import { tr } from './i18n.js?v=20261007-build475';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build475';
-import { APP_BUILD } from './version.js?v=20261007-build475';
-import { wc, ww } from './ui-shell.js?v=20261007-build475';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build476';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build476';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build476';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build476';
+import { datasetFingerprint } from './project-file.js?v=20261007-build476';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build476';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build476';
+import { buildClsData } from './point-cls.js?v=20261007-build476';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build476';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build476';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build476';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build476';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build476';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build476';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build476';
+import { tr } from './i18n.js?v=20261007-build476';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build476';
+import { APP_BUILD } from './version.js?v=20261007-build476';
+import { wc, ww } from './ui-shell.js?v=20261007-build476';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1371,7 +1371,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const lockStick=c=>{c.userData.stickLock=true}; // the thumbstick does not scroll the section until it is back at the centre
  const closeWheel=()=>{if(!wheelOwner)return;lockStick(wheelOwner);wheelOwner=null;wheel.mesh.visible=false};
  const closePointWheel=()=>{if(!pw)return;lockStick(pw.c);pw=null;pointWheel.mesh.visible=false};
- const openWheel=c=>{closeWheel();closePointWheel();wheelOwner=c;c.userData.stick.reset();refreshWheel();wheel.setHighlight(null);wheel.mesh.visible=true};
+ // build 476: the quick ring is placed ONCE where it is opened and stays there (world-fixed, facing the head at that moment): WHEEL_FRONT_M in front of the hand
+ // along its laser, so the same hand can point at any sector (about 16 degrees to the ring's edge) and pull the trigger; it no longer follows the hand
+ const WHEEL_FRONT_M=0.28; // distance in front of the hand (m) where the quick ring is fixed when it opens
+ const openWheel=c=>{closeWheel();closePointWheel();wheelOwner=c;c.userData.stick.reset();c.userData.laserHl=null;refreshWheel();wheel.setHighlight(null);
+  readHead();setRay(c);tmpRc.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction,WHEEL_FRONT_M);wheel.placeAt(tmpRc,head);wheel.mesh.visible=true};
  // build 472: the point ring has 「色」; choosing it turns the ring into a palette ring (自動 + the 8 palette colours; the current one is dotted)
  const CTX=ja?{color:'色',auto:'自動',done:'色を変えました',doneAuto:'色を自動に戻しました'}:{color:'Colour',auto:'Auto',done:'Colour changed',doneAuto:'Colour set to auto'};
  const COLOR_IDS=['auto',...POINT_PALETTE.map(p=>p.hex)];
@@ -1391,7 +1395,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
   undo.push({type:'color',id,from,to:hex});vpSel=id;flashMsg(hex?CTX.done:CTX.doneAuto,2500);return true;
  };
  const openPointWheel=(c,id)=>{
-  closeWheel();closePointWheel();pw={c,id,mode:'main'};c.userData.stick.reset();
+  closeWheel();closePointWheel();pw={c,id,mode:'main'};c.userData.stick.reset();c.userData.laserHl=null;
+  // build 476: fixed at the point where it was opened (a little toward the head, scaled by the distance then); it does not follow the head or the point afterwards
+  {const pt=vpMarkers.centres().find(x=>x.id===id);if(pt){readHead();const dist=Math.max(0.05,head.distanceTo(pt.world));tmpRd.subVectors(head,pt.world).normalize();tmpRc.copy(pt.world).addScaledVector(tmpRd,0.02);
+   pointWheel.mesh.scale.setScalar(Math.min(2,Math.max(0.6,dist/0.5)));pointWheel.placeAt(tmpRc,head)}}
   const lab={move:L.ptMove,delete:L.ptDelete,comment:L.ptComment,color:CTX.color},ids=pwIds();
   pointWheel.setItems(ids.map(k=>lab[k]),ids.map(()=>true),[]);pointWheel.setHighlight(null);pointWheel.mesh.visible=true;
  };
@@ -1450,25 +1457,24 @@ export async function startVrView({language='ja',mode='vr'}={}){
  };
  const tmpRc=new THREE.Vector3(),tmpRd=new THREE.Vector3();
  // every frame: the open ring follows its place (the hand / the point), the owner's thumbstick lights and confirms an item
- const WHEEL_FRONT_M=0.1; // build 474: the quick ring floats this far in front of the hand, ON the laser (it used to sit behind the laser's root, so the laser never met it)
- const updateRings=(c,now)=>{
+  const laserLit=(c,h)=>h&&h.slot!==null&&h.slot!==undefined?h.slot:null; // the sector under the laser of the ring's owner (null: none / the blank disc)
+ const updateRings=(c,now,bd)=>{
   const bt=c.userData.source?.gamepad,ax=bt?.axes?.[2]||0,ay=bt?.axes?.[3]||0;
   if(c.userData.stickLock&&Math.hypot(ax,ay)<0.15)c.userData.stickLock=false;
   const isW=wheelOwner===c,isP=pw?.c===c;c.userData.ringHl=null;
   if(isW){
    const k=wheelKeyNow();if(k!==wheelKey)refreshWheel();
-   setRay(c);tmpRc.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction,WHEEL_FRONT_M);wheel.placeAt(tmpRc,head);
    const r=c.userData.stick.update(ax,ay,settings.wheel.map(id=>!!id&&wheelAvail(id)));
-   wheel.setHighlight(r.highlight);c.userData.ringHl=r.highlight;
-   if(r.changed)pulse(c,HAPTIC.ringHighlight.amp,HAPTIC.ringHighlight.ms);
+   const lh=laserLit(c,bd?.wheel),hlk=r.highlight!==null?r.highlight:lh; // the stick wins while it is tilted, else the sector under this hand's laser
+   wheel.setHighlight(hlk);c.userData.ringHl=hlk;
+   if(r.changed||lh!==c.userData.laserHl&&lh!==null)pulse(c,HAPTIC.ringHighlight.amp,HAPTIC.ringHighlight.ms);c.userData.laserHl=lh;
    if(r.confirm!==null)confirmWheel(r.confirm,c);
   }else if(isP){
    const pt=vpMarkers.centres().find(x=>x.id===pw.id);if(!pt){closePointWheel();return}
-   const dist=Math.max(0.05,head.distanceTo(pt.world));tmpRd.subVectors(head,pt.world).normalize();tmpRc.copy(pt.world).addScaledVector(tmpRd,0.02);
-   pointWheel.mesh.scale.setScalar(Math.min(2,Math.max(0.6,dist/0.5)));pointWheel.placeAt(tmpRc,head);
    const r=c.userData.stick.update(ax,ay,pwIds().map(()=>true));
-   pointWheel.setHighlight(r.highlight);c.userData.ringHl=r.highlight;
-   if(r.changed)pulse(c,HAPTIC.ringHighlight.amp,HAPTIC.ringHighlight.ms);
+   const lh=laserLit(c,bd?.pwheel),hlk=r.highlight!==null?r.highlight:lh;
+   pointWheel.setHighlight(hlk);c.userData.ringHl=hlk;
+   if(r.changed||lh!==c.userData.laserHl&&lh!==null)pulse(c,HAPTIC.ringHighlight.amp,HAPTIC.ringHighlight.ms);c.userData.laserHl=lh;
    if(r.confirm!==null)confirmPoint(r.confirm,c);
   }
  };
@@ -1792,7 +1798,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const bt=c.userData.source?.gamepad?.buttons;
    const axEv=(c.userData.axPress||=createButtonPress()).update(!!bt?.[4]?.pressed,nowF);
    if(axEv==='short')onAxShort(c);else if(axEv==='long')onAxLong(c);
-   updateRings(c,nowF);
+   updateRings(c,nowF,bd);
    // build 464: the thumbstick (axes 2 / 3) only feeds the recording gate; its click (button 3) is unused again
    c.userData.gate.update(c.userData.source?.gamepad?.axes?.[2]||0,ay,performance.now());
    // B/Y: short press shows / hides the sections, long press adds one
