@@ -11,18 +11,20 @@
 // view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
 // (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build476';
-import { tr } from './i18n.js?v=20261007-build476';
-import { datasetFingerprint } from './project-file.js?v=20261007-build476';
-import { voxelToLocal3D } from './crosshair.js?v=20261007-build476';
-import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build476';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build476';
-import { request3DRender } from './scene3d.js?v=20261007-build476';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build476';
-import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build476';
-import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build476';
-import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build476';
-import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build476';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build477';
+import { tr } from './i18n.js?v=20261007-build477';
+import { datasetFingerprint } from './project-file.js?v=20261007-build477';
+import { voxelToLocal3D } from './crosshair.js?v=20261007-build477';
+import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build477';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build477';
+import { getMeasurements, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingWarns, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261007-build477';
+import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build477';
+import { request3DRender } from './scene3d.js?v=20261007-build477';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build477';
+import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build477';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build477';
+import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build477';
+import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build477';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
 let rels=new Map(),relSig='',svg=null,cuesOn=false;
@@ -63,7 +65,7 @@ function refreshHidden(obj,camera,pts,plane){
  if(!anyShown||!pts.length){const had=hiddenIds.size>0;hiddenIds=new Set();return had}
  if(vrModFailed)return false; // the builder could not be loaded: every point stays exposed
  if(!vrMod){ // the classification builder lives in vr-view.js: loaded once, on the first need; until then the previous judgement stays
-  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build476').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
+  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build477').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
   return false;
  }
  const prep=vrMod.hiddenClsFor(()=>{throttle.reset();refreshSoon()});
@@ -93,6 +95,37 @@ function projectPair(obj,camera,W,H,a,b,out){
  return out.every(Number.isFinite);
 }
 const seg4=[0,0,0,0];
+// build 477: distances. A line between the two points (the SVG layer, clipped at the near plane) and the value at its midpoint (a small label); the start of a
+// distance in the making gets a pulsing ring (.is-measure-start) and a hint next to it. Follows the points live (they are recomputed every frame).
+const measEls=new Map(); // measurement id -> {line,label,text}
+let hintEl=null;
+function drawMeasures(obj,camera,W,H,pts,keep){
+ const byId=new Map(pts.map(p=>[p.id,p])),ms=getMeasurements().filter(m=>byId.has(m.a)&&byId.has(m.b));
+ if(!ms.length)return;
+ ensureSvg();svg.setAttribute('width',W);svg.setAttribute('height',H);
+ const cs=getComments(),sp=seriesSpacing(activeSeries),warn=spacingWarns(activeSeries);
+ for(const m of ms){
+  keep.add(m.id);let e=measEls.get(m.id);
+  if(!e){
+   const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('class','measure-line-3d');svg.appendChild(line);
+   const label=document.createElement('div');label.className='measure-label-3d';layer.appendChild(label);
+   e={line,label,text:''};measEls.set(m.id,e);
+  }
+  const text=measureLabel(measurementMm(m,cs,sp),warn);if(e.text!==text){e.text=text;e.label.textContent=text;if(warn)e.label.title=tr('measureWarn')}
+  if(projectPair(obj,camera,W,H,byId.get(m.a).local,byId.get(m.b).local,seg4)){
+   e.line.setAttribute('x1',seg4[0].toFixed(1));e.line.setAttribute('y1',seg4[1].toFixed(1));e.line.setAttribute('x2',seg4[2].toFixed(1));e.line.setAttribute('y2',seg4[3].toFixed(1));e.line.style.display='';
+   e.label.hidden=false;e.label.style.transform='translate('+((seg4[0]+seg4[2])/2).toFixed(1)+'px,'+((seg4[1]+seg4[3])/2).toFixed(1)+'px) translate(-50%,-50%)';
+  }else{e.line.style.display='none';e.label.hidden=true}
+ }
+}
+function pruneMeasures(keep){for(const [id,e] of [...measEls])if(!keep.has(id)){e.line.remove();e.label.remove();measEls.delete(id)}}
+function placeHint(){
+ const id=getMeasureStart(),m=id?els.get(id):null;
+ if(!id||!m||!m.vis||!layer){if(hintEl)hintEl.hidden=true;return}
+ if(!hintEl){hintEl=document.createElement('div');hintEl.className='measure-hint-3d';layer.appendChild(hintEl)}
+ const t=tr('pmHint');if(hintEl.textContent!==t)hintEl.textContent=t;
+ hintEl.hidden=false;hintEl.style.transform='translate('+m.x.toFixed(1)+'px,'+(m.y+22).toFixed(1)+'px) translate(-50%,0)';
+}
 function drawSectionCues(obj,camera,W,H,pts){
  const hasPlane=rels.size>0;
  if(!hasPlane&&!cuesOn)return; // no active section and nothing left to clear
@@ -117,7 +150,7 @@ export function updateComment3dMarkers(){
  const s=sceneState,obj=s?.obj,camera=s?.camera;
  const fp=activeSeries?datasetFingerprint(activeSeries):null;
  const list=obj&&camera&&volume&&fp&&getMarkersShown()?getComments():[];
- const W=host.clientWidth,H=host.clientHeight,keep=new Set();
+ const W=host.clientWidth,H=host.clientHeight,keep=new Set(),keepM=new Set();
  if(list.length&&W>=8&&H>=8){
   const dims={columns:volume.columns,rows:volume.rows,slices:volume.slices};
   obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
@@ -139,6 +172,7 @@ export function updateComment3dMarkers(){
    if(m.no!==n+1){m.no=n+1;m.el.textContent='';const sp=document.createElement('span');sp.className='comment-marker-3d-no';sp.textContent=String(n+1);m.el.appendChild(sp)} // the dot is the element (its centre = the point); the number sits beside it
    const label=tr('commentMarker3d')+' '+(n+1);if(m.label!==label){m.label=label;m.el.setAttribute('aria-label',label)}
    m.el.hidden=!vis;
+   const isStart=c.id===getMeasureStart();if(m.start!==isStart){m.start=isStart;m.el.classList.toggle('is-measure-start',isStart)}
    if(vis)m.el.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-50%)';
   });
   // hidden behind tissue: judged at most ~10 times a second (the positions above follow every frame), plus once more after the view stops
@@ -153,24 +187,46 @@ export function updateComment3dMarkers(){
   const rsig=(plane?[plane.x,plane.y,plane.z,plane.w].join(','):'')+'|'+pts.map(p=>p.id+':'+p.local.x+','+p.local.y+','+p.local.z).join(';');
   if(rsig!==relSig){relSig=rsig;rels=planeRelations(pts,plane,boxHalfExtent(dims,volume.spacing),dims)}
   drawSectionCues(obj,camera,W,H,pts);
+  drawMeasures(obj,camera,W,H,pts,keepM);
  }
+ pruneMeasures(keepM);
  if(!list.length){clearTimeout(hiddenTimer);hiddenTimer=0}
  for(const [id,m] of [...els])if(!keep.has(id)){m.el.remove();m.line?.remove();els.delete(id)}
  if(bubbleId!=null)placeBubble();
+ placeHint();
 }
 // tap on a dot (not a drag): the pointer handlers of the 3D view are untouched (listeners are only added, nothing is stopped); taps in
 // the analysis / edit modes, where a tap already means something, and taps that moved are ignored.
 function installTap(){
  let d=null;
- host.addEventListener('pointerdown',e=>{closeBubble3d();d=e.target?.tagName==='CANVAS'?{id:e.pointerId,x:e.clientX,y:e.clientY}:null});
- host.addEventListener('pointerup',e=>{
-  const s=d;d=null;if(!s||s.id!==e.pointerId||volumeAnalysisMode||analysisEditTool!=='select'||!getMarkersShown())return;
-  if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>6)return;
-  const r=host.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,reach=document.documentElement.classList.contains('vrl-ipad-ui')?24:16;
+ const gate=()=>!volumeAnalysisMode&&analysisEditTool==='select'&&getMarkersShown();
+ const nearest=(cx,cy)=>{
+  const r=host.getBoundingClientRect(),x=cx-r.left,y=cy-r.top,reach=document.documentElement.classList.contains('vrl-ipad-ui')?24:16;
   let best=null,bd=1e9;for(const [id,m] of els){if(!m.vis)continue;const dd=Math.hypot(m.x-x,m.y-y);if(dd<=reach&&dd<bd){best=id;bd=dd}}
+  return best;
+ };
+ host.addEventListener('pointerdown',e=>{
+  closeBubble3d();clearTimeout(d?.timer);
+  d=e.target?.tagName==='CANVAS'?{id:e.pointerId,x:e.clientX,y:e.clientY,lp:createLongPress({ms:450}),timer:0}:null;
+  if(!d)return;d.lp.down(e.clientX,e.clientY,performance.now());
+  // build 477: long press on a dot (touch long press / mouse press-and-hold; a right-click opens it too) = the point menu
+  const hit=(e.button===0||e.pointerType==='touch')&&gate()?nearest(e.clientX,e.clientY):null;
+  if(hit!=null){const mine=d;mine.timer=setTimeout(()=>{if(d===mine&&mine.lp.tick(performance.now())==='long')openPointMenu({id:hit,x:mine.x,y:mine.y})},500)}
+ });
+ host.addEventListener('pointermove',e=>{if(d&&d.id===e.pointerId)d.lp.move(e.clientX,e.clientY)});
+ host.addEventListener('pointerup',e=>{
+  const s=d;d=null;if(s)clearTimeout(s.timer);if(!s||s.id!==e.pointerId||!gate())return;
+  const r=s.lp.up();if(r==='long'||r==='moved')return; // the long press opened the menu: the release is not a tap
+  if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>6)return;
+  const best=nearest(e.clientX,e.clientY);
+  if(getMeasureStart()){if(best!=null)endMeasureAt(best);else cancelMeasureUi();return} // a distance is being measured: a dot = its END, empty space = cancel
   if(best!=null)showBubble3d(best);
  });
- host.addEventListener('pointercancel',()=>{d=null});
+ host.addEventListener('pointercancel',()=>{if(d)clearTimeout(d.timer);d=null});
+ host.addEventListener('contextmenu',e=>{
+  if(!gate())return;const best=nearest(e.clientX,e.clientY);if(best==null)return;
+  e.preventDefault();if(d){clearTimeout(d.timer);d=null}openPointMenu({id:best,x:e.clientX,y:e.clientY});
+ });
  host.addEventListener('wheel',closeBubble3d,{passive:true});
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBubble3d()});
 }
@@ -179,6 +235,6 @@ export function installComment3d(viewportEl){
  host=viewportEl;layer=document.createElement('div');layer.className='comment-layer-3d';layer.setAttribute('aria-hidden','false');host.appendChild(layer);
  installTap();
  const again=()=>{request3DRender()};
- onCommentsChange(again);onMarkersShownChange(()=>{closeBubble3d();if(!getMarkersShown())releaseHidden();again()});
+ onCommentsChange(again);onMeasurementsChange(again);onMeasureStartChange(again);onMarkersShownChange(()=>{closeBubble3d();if(!getMarkersShown())releaseHidden();again()});
  document.addEventListener('vrl-serieschange',()=>{releaseHidden();again()});
 }

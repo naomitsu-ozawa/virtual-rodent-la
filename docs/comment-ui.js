@@ -1,17 +1,19 @@
 // Position comments UI (Issue #88, stage 2): a small panel in the display drawer. "Add" records the current position (the linked
 // crosshair, or the three slices on show) with the text; "View this place" moves the crosshair and the three sliders there. Nothing
 // here runs by itself on load, and no pointer handler is added to the image canvases (the click / swipe on them is untouched).
-import { planes } from './ui-shell.js?v=20261007-build476';
-import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build476';
-import { tr } from './i18n.js?v=20261007-build476';
-import { datasetFingerprint } from './project-file.js?v=20261007-build476';
-import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build476';
-import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build476';
-import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build476';
+import { planes } from './ui-shell.js?v=20261007-build477';
+import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build477';
+import { tr } from './i18n.js?v=20261007-build477';
+import { datasetFingerprint } from './project-file.js?v=20261007-build477';
+import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build477';
+import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build477';
+import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build477';
+import { getMeasurements, onMeasurementsChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, measurementMm, measureLabel, seriesSpacing, spacingWarns, getMeasureStart, onMeasureStartChange, createLongPress, hasUnsavedMeasurements } from './measurements.js?v=20261007-build477';
+import { openPointMenu, setPointMenuHandlers, installPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build477';
 
 let pop=null,popText=null,popPos=null,popStatus=null,popTimer=0,popFrom=null;
 let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
-let showEl=null,bubble=null,bubbleTimer=0;
+let showEl=null,bubble=null,bubbleTimer=0,measTitleEl=null,measListEl=null;
 let colorOpenId=null; // build 472: the point whose colour palette is open in the list
 let editId=null,editDraft='',editFocus=false; // the comment being edited in the list (the draft survives a re-render of the list)
 const hits={axial:[],coronal:[],sagittal:[]}; // exact markers last drawn per plane (CSS px on the overlay canvas), for the tap test
@@ -36,6 +38,23 @@ export function viewComment(id){
  const target=commentTarget(c,dimsOf());return target?showCrosshairAt(target,'comment'):null;
 }
 
+// build 477: the start point of a distance: a pulsing ring and the hint next to it (the hint pill at the bottom of the page is always shown)
+function paintStart(ctx,x,y,R,ipad){
+ const ph=(performance.now()%1200)/1200,k=0.5+0.5*Math.sin(ph*Math.PI*2);
+ ctx.beginPath();ctx.arc(x,y,R+4+k*6,0,Math.PI*2);ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.7)';ctx.stroke();
+ ctx.lineWidth=1.8;ctx.strokeStyle='#ffd23d';ctx.globalAlpha=.55+.45*k;ctx.stroke();ctx.globalAlpha=1;
+ const text=tr('pmHint'),fs=ipad?14:12;ctx.font='700 '+fs+'px sans-serif';const w=ctx.measureText(text).width+12,h=fs+8,tx=Math.min(Math.max(4,x-w/2),Math.max(4,ctx.canvas.clientWidth-w-4)),ty=y+R+12;
+ ctx.fillStyle='rgba(17,23,27,.88)';ctx.beginPath();ctx.roundRect(tx,ty,w,h,6);ctx.fill();ctx.strokeStyle='#ffd23d';ctx.lineWidth=1;ctx.stroke();
+ ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(text,tx+6,ty+h/2+0.5);
+}
+let pulseTimer=0;
+function syncPulse(){
+ const on=!!getMeasureStart();
+ if(on&&!pulseTimer)pulseTimer=setInterval(requestOverlayDraw,90);
+ else if(!on&&pulseTimer){clearInterval(pulseTimer);pulseTimer=0}
+ requestOverlayDraw();
+}
+
 // ---- markers (drawn on the crosshair overlay canvases, never on the slice canvases) ----
 function paintMarkers(ctx,p,g){
  hits[p]=[];if(!ctx||!getMarkersShown()||!volume)return;
@@ -49,6 +68,7 @@ function paintMarkers(ctx,p,g){
    ctx.beginPath();ctx.arc(x,y,R,0,Math.PI*2);ctx.fillStyle=m.color;ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle='rgba(0,0,0,.75)';ctx.stroke();
    ctx.fillStyle=inkOn(m.color);ctx.font='800 '+(R*1.05)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(m.number),x,y+0.5);
    hits[p].push({id:m.id,x,y,r:Math.max(R,ipad?22:16)});
+   if(m.id===getMeasureStart())paintStart(ctx,x,y,R,ipad); // build 477: the START of a distance (pulsing ring + hint)
   }else{ // a few slices away: a thin ring (dark halo under a light one), no number
    ctx.globalAlpha=.55;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.6)';ctx.stroke();ctx.lineWidth=1.8;ctx.strokeStyle=m.color;ctx.stroke();ctx.globalAlpha=1;
   }
@@ -76,30 +96,51 @@ function showBubble(p,hit){
 function installMarkerTap(){
  for(const p of Object.keys(hits)){
   const cv=planes[p].canvas;let d=null;
-  cv.addEventListener('pointerdown',e=>{d={id:e.pointerId,x:e.clientX,y:e.clientY}});
-  cv.addEventListener('pointerup',e=>{
-   const s=d;d=null;if(!s||s.id!==e.pointerId||crosshairModeActive()||!getMarkersShown())return;
-   if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>6)return;
-   const o=document.getElementById(p+'-crosshair').getBoundingClientRect(),x=e.clientX-o.left,y=e.clientY-o.top;
+  const hitAt=(cx,cy)=>{
+   const o=document.getElementById(p+'-crosshair').getBoundingClientRect(),x=cx-o.left,y=cy-o.top;
    let best=null,bd=1e9;for(const h of hits[p]){const dd=Math.hypot(h.x-x,h.y-y);if(dd<=h.r&&dd<bd){best=h;bd=dd}}
+   return best;
+  };
+  cv.addEventListener('pointerdown',e=>{
+   clearTimeout(d?.timer);
+   const lp=createLongPress({ms:450}),hit=e.button===0||e.pointerType==='touch'?hitAt(e.clientX,e.clientY):null;lp.down(e.clientX,e.clientY,performance.now());
+   d={id:e.pointerId,x:e.clientX,y:e.clientY,lp,timer:0,hit};
+   // build 477: long press on a mark (touch long press / mouse press-and-hold) opens the point menu
+   if(hit&&!crosshairModeActive()&&getMarkersShown()){const mine=d;mine.timer=setTimeout(()=>{if(d===mine&&mine.lp.tick(performance.now())==='long')openPointMenu({id:mine.hit.id,x:mine.x,y:mine.y})},500)}
+  });
+  cv.addEventListener('pointermove',e=>{if(d&&d.id===e.pointerId)d.lp.move(e.clientX,e.clientY)});
+  cv.addEventListener('pointerup',e=>{
+   const s=d;d=null;if(s)clearTimeout(s.timer);if(!s||s.id!==e.pointerId||crosshairModeActive()||!getMarkersShown())return;
+   const r=s.lp.up();if(r==='long'||r==='moved')return; // the long press opened the menu: the release is not a tap
+   if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>6)return;
+   const best=hitAt(e.clientX,e.clientY);
+   if(getMeasureStart()){ // build 477: a distance is being measured: a point = its END, empty space = cancel (no bubble)
+    if(best)endMeasureAt(best.id);else cancelMeasureUi();
+    return;
+   }
    if(best)showBubble(p,{...best});else if(bubble&&!bubble.hidden)closeBubble();
   });
-  cv.addEventListener('pointercancel',()=>{d=null});
+  cv.addEventListener('pointercancel',()=>{if(d)clearTimeout(d.timer);d=null});
+  // right-click on a mark: the same menu (the browser's own menu only when no mark is under the pointer)
+  cv.addEventListener('contextmenu',e=>{
+   if(crosshairModeActive()||!getMarkersShown())return;
+   const best=hitAt(e.clientX,e.clientY);if(!best)return;
+   e.preventDefault();if(d){clearTimeout(d.timer);d=null}openPointMenu({id:best.id,x:e.clientX,y:e.clientY});
+  });
  }
 }
-
 // delete = remove + an "undo" that stays until the next add / delete / view (or 20 s): a click on a 6-12 px neighbour must not lose data
 function clearUndo(){clearTimeout(undoTimer);lastDeleted=null;if(undoEl){undoEl.hidden=true}}
 function deleteWithUndo(id){
  const index=getComments().findIndex(c=>c.id===id),c=getComments()[index];if(!c)return;
- removeComment(id);lastDeleted={c,index};
+ const ms=measurementsOfPoint(id);removeComment(id);lastDeleted={c,index,ms}; // build 477: its distances are deleted with it (the cascade) and come back with the undo
  undoEl.querySelector('.comment-undo-text').textContent=tr('commentDeleted');undoEl.querySelector('.comment-undo-btn').textContent=tr('commentUndo');
  undoEl.hidden=false;noteEl.textContent='';clearTimeout(undoTimer);undoTimer=setTimeout(clearUndo,20000);
  undoEl.querySelector('.comment-undo-btn').focus(); // the delete button is gone: keep the keyboard focus inside the panel
 }
 function undoDelete(){
  const d=lastDeleted;if(!d)return;clearUndo();
- if(restoreComment(d.c,d.index))listEl.querySelector('[data-comment-id="'+CSS.escape(d.c.id)+'"] .comment-view')?.focus();
+ if(restoreComment(d.c,d.index)){restoreMeasurements(d.ms);listEl.querySelector('[data-comment-id="'+CSS.escape(d.c.id)+'"] .comment-view')?.focus()}
 }
 // edit = the text of that list item turns into an input in place; save keeps position / time / series (comments.js updateCommentText)
 function startEdit(id){const c=getComments().find(x=>x.id===id);if(!c)return;clearUndo();noteEl.textContent='';editId=id;editDraft=c.text;editFocus=true;render()}
@@ -108,9 +149,29 @@ function saveEdit(id){
  if(updateCommentText(id,editDraft)===null){noteEl.textContent=tr('commentEmptyNotSaved');return} // blank: nothing changes, stay in the editor
  noteEl.textContent='';stopEdit(id); // (a changed text re-rendered the list already; an unchanged one did not)
 }
+// build 477: the 「距離」 section under the point list: "1 – 3  12.3 mm" + delete (the value follows the points' positions; ⚠ = slice spacing issue)
+function renderMeasures(){
+ if(!measListEl)return;
+ measTitleEl.textContent=tr('measureTitle');measListEl.replaceChildren();
+ const ms=getMeasurements(),cs=getComments(),fp=fingerprint(),sp=seriesSpacing(activeSeries),warn=spacingWarns(activeSeries);
+ const mine=ms.filter(m=>{const a=cs.find(c=>c.id===m.a),b=cs.find(c=>c.id===m.b);return a&&b&&commentMatchesSeries(a,fp)&&commentMatchesSeries(b,fp)});
+ measTitleEl.hidden=!mine.length&&!getMeasureStart();
+ if(!mine.length){measListEl.hidden=true;return}
+ measListEl.hidden=false;
+ for(const m of mine){
+  const li=document.createElement('li');li.className='measure-item';li.dataset.measureId=m.id;
+  const badge=id=>{const c=cs.find(x=>x.id===id),b=document.createElement('span'),pc=pointColor(c);b.className='comment-no';b.textContent=String(cs.indexOf(c)+1);b.style.background=pc;b.style.borderColor=pc;b.style.color=inkOn(pc);return b};
+  const sep=document.createElement('span');sep.className='measure-sep';sep.textContent='–';
+  const val=document.createElement('strong');val.className='measure-value';val.textContent=measureLabel(measurementMm(m,cs,sp),warn);if(warn)val.title=tr('measureWarn');
+  const del=document.createElement('button');del.type='button';del.className='tool-chip measure-delete';del.textContent=tr('commentDelete');del.title=tr('measureDeleteTitle');
+  del.addEventListener('click',()=>removeMeasurement(m.id));
+  li.append(badge(m.a),sep,badge(m.b),val,del);measListEl.appendChild(li);
+ }
+}
 function fmtTime(iso){try{const d=new Date(iso);return isNaN(d)?'':d.toLocaleString(currentLanguage==='ja'?'ja-JP':'en-US',{dateStyle:'short',timeStyle:'short'})}catch{return''}}
 function render(){
  if(!root)return;
+ renderMeasures();
  const fp=fingerprint(),list=getComments(),ok=ready();
  addBtn.disabled=!ok;
  document.querySelectorAll('[data-comment-toggle]').forEach(b=>{b.disabled=!ok;b.title=tr('commentAddTitle')});
@@ -216,19 +277,20 @@ export function installComments(){
  const host=document.querySelector('.sidebar-scroll > .panel.compact-panel')||document.querySelector('.sidebar-scroll');
  if(!host||root)return;
  root=document.createElement('details');root.id='comment-panel';root.className='comment-panel';
- root.innerHTML='<summary></summary><p class="comment-hint"></p><label class="comment-show"><input type="checkbox" class="comment-show-input" checked><span></span></label><textarea class="comment-input" rows="2" maxlength="2000"></textarea><button type="button" class="tool-chip comment-add"></button><p class="comment-note" role="status"></p><div class="comment-undo" hidden role="status"><span class="comment-undo-text"></span> <button type="button" class="tool-chip comment-undo-btn"></button></div><ul class="comment-list"></ul>';
+ root.innerHTML='<summary></summary><p class="comment-hint"></p><label class="comment-show"><input type="checkbox" class="comment-show-input" checked><span></span></label><textarea class="comment-input" rows="2" maxlength="2000"></textarea><button type="button" class="tool-chip comment-add"></button><p class="comment-note" role="status"></p><div class="comment-undo" hidden role="status"><span class="comment-undo-text"></span> <button type="button" class="tool-chip comment-undo-btn"></button></div><ul class="comment-list"></ul><h4 class="measure-title"></h4><ul class="measure-list"></ul>';
  host.appendChild(root);
  showEl=root.querySelector('.comment-show-input');showEl.addEventListener('change',()=>setMarkersShown(showEl.checked));onMarkersShownChange(on=>{if(showEl.checked!==on)showEl.checked=on;closeBubble();requestOverlayDraw()});
  // build 472: the colour palette of a list row closes on a tap / click outside it and on Escape
  document.addEventListener('pointerdown',e=>{if(colorOpenId&&!e.target?.closest?.('.comment-color-palette,.comment-color')){colorOpenId=null;render()}},true);
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&colorOpenId){colorOpenId=null;render()}});
  setOverlayPainter(paintMarkers);installMarkerTap();document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBubble()});
- listEl=root.querySelector('.comment-list');textEl=root.querySelector('.comment-input');addBtn=root.querySelector('.comment-add');noteEl=root.querySelector('.comment-note');undoEl=root.querySelector('.comment-undo');
+ measTitleEl=root.querySelector('.measure-title');measListEl=root.querySelector('.measure-list');listEl=root.querySelector('.comment-list');textEl=root.querySelector('.comment-input');addBtn=root.querySelector('.comment-add');noteEl=root.querySelector('.comment-note');undoEl=root.querySelector('.comment-undo');
  undoEl.querySelector('.comment-undo-btn').addEventListener('click',undoDelete);
  addBtn.addEventListener('click',()=>{if(addCommentHere(textEl.value)){textEl.value='';clearUndo()}});
  // unsaved comments (added / deleted / edited since the last project save or load) are lost on reload: ask the browser to confirm
- window.addEventListener('beforeunload',e=>{if(hasUnsavedComments()){e.preventDefault();e.returnValue=''}});
- onCommentsChange(render);
+ window.addEventListener('beforeunload',e=>{if(hasUnsavedComments()||hasUnsavedMeasurements()){e.preventDefault();e.returnValue=''}});
+ onCommentsChange(render);onMeasurementsChange(renderMeasures);onMeasureStartChange(()=>{syncPulse();renderMeasures()});
+ installPointMenu();setPointMenuHandlers({delete:id=>deleteWithUndo(id)});
   // (render() rebuilds the buttons: never on pointerdown, it would swallow the click that follows)
  root.addEventListener('toggle',render);
  // (no render on vrl-crosshairchange: the list does not depend on it, and rebuilding it made "view this place" lose the focus)
