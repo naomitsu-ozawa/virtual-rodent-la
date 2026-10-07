@@ -2,13 +2,18 @@
 // (measurements.js labelOffset: voxel units from the midpoint). Pure functions (no DOM, no three.js); screen coordinates in px (x right, y down).
 const norm=(x,y)=>{const l=Math.hypot(x,y);return l>1e-9?{x:x/l,y:y/l}:null};
 
+// keep a label (w x h, centre x,y) inside the rect (x0,y0,iw,ih): at DISPLAY time only (the stored offset is untouched), so a label moved far away can never be lost off-screen
+export function clampLabelCenter(x,y,{w=60,h=16,x0=-1e9,y0=-1e9,iw=2e9,ih=2e9,pad=2}={}){
+ const cx=Math.min(Math.max(x,x0+w/2+pad),Math.max(x0+w/2+pad,x0+iw-w/2-pad)),cy=Math.min(Math.max(y,y0+h/2+pad),Math.max(y0+h/2+pad,y0+ih-h/2-pad));
+ return{x:cx,y:cy};
+}
 // The default label of the PC views (3D and 2D MPR): beside the line a-b, perpendicular to it (the upper side), just clear of the line, clamped into the rect (x0,y0,iw,ih) (the image / the view). -> {x,y} the label's centre, {mx,my} the midpoint.
 export function planeLabelPlacement(a,b,{w=48,h=14,gap=4,x0=-1e9,y0=-1e9,iw=2e9,ih=2e9}={}){
  const mx=(a.x+b.x)/2,my=(a.y+b.y)/2,u=norm(b.x-a.x,b.y-a.y)||{x:1,y:0};
  let n={x:-u.y,y:u.x};if(n.y>0||(n.y===0&&n.x<0))n={x:-n.x,y:-n.y};
  const d=gap+Math.abs(n.x)*w/2+Math.abs(n.y)*h/2; // the rectangle's half extent along n: its edge just clears the line
- const x=Math.min(Math.max(mx+n.x*d,x0+w/2+1),Math.max(x0+w/2+1,x0+iw-w/2-1)),y=Math.min(Math.max(my+n.y*d,y0+h/2+1),Math.max(y0+h/2+1,y0+ih-h/2-1));
- return{x,y,mx,my};
+ const c=clampLabelCenter(mx+n.x*d,my+n.y*d,{w,h,x0,y0,iw,ih,pad:1});
+ return{x:c.x,y:c.y,mx,my};
 }
 
 // ---- moving the label ----

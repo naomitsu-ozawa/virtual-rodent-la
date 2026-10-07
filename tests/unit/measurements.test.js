@@ -7,7 +7,7 @@ const ver = JSON.parse(readFileSync(new URL('../../docs/version.json', import.me
 const load = f => import(/* @vite-ignore */ '../../docs/' + f + '.js' + tag);
 const {
   distanceMm, formatMm, measureLabel, seriesSpacing, spacingWarns, measurementMm, sanitizeMeasurements,
-  getMeasurements, setLabelOffset, normalizeLabelOffset, addMeasurement, removeMeasurement, restoreMeasurements, measurementsOfPoint, measurementsForProject, loadProjectMeasurements,
+  getMeasurements, onMeasurementsChange, setLabelOffset, normalizeLabelOffset, addMeasurement, removeMeasurement, restoreMeasurements, measurementsOfPoint, measurementsForProject, loadProjectMeasurements,
   markMeasurementsSaved, hasUnsavedMeasurements, resetMeasurements, getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange,
   createLongPress, POINT_MENU_ITEMS, MEASURE_MAX,
 } = await load('measurements');
@@ -301,6 +301,22 @@ describe('the label: size, default placement near the line, offset (move) persis
   it('moving a label is an unsaved change', () => {
     pt('p1', 1, 1, 1); pt('p2', 5, 5, 5); const m = addMeasurement('p1', 'p2'); markMeasurementsSaved(fp); expect(hasUnsavedMeasurements()).toBe(false);
     setLabelOffset(m.id, { i: 1, j: 1, k: 1 }); expect(hasUnsavedMeasurements()).toBe(true); markMeasurementsSaved(fp); expect(hasUnsavedMeasurements()).toBe(false);
+  });
+});
+
+describe('label moves do not rebuild lists; point priority and reset are wired (static)', () => {
+  it('an offset-only change is announced as labelOnly; add / remove are not; an unchanged value is silent', () => {
+    pt('p1', 1, 1, 1); pt('p2', 5, 5, 5); const seen = [], off = onMeasurementsChange((_, info) => seen.push(info?.labelOnly === true));
+    const m = addMeasurement('p1', 'p2'); setLabelOffset(m.id, { i: 1, j: 1, k: 1 }); setLabelOffset(m.id, { i: 1, j: 1, k: 1 }); setLabelOffset(m.id, null); removeMeasurement(m.id);
+    expect(seen).toEqual([false, true, true, false]); off();
+  });
+  it('the views let a point under the press win over a label, reset on double tap, rebuild the list only for real changes', () => {
+    const ui = readFileSync(new URL('../../docs/comment-ui.js', import.meta.url), 'utf8'), d3 = readFileSync(new URL('../../docs/comment-3d.js', import.meta.url), 'utf8'), pm = readFileSync(new URL('../../docs/point-menu.js', import.meta.url), 'utf8');
+    expect(ui).toContain('hits[p].some(h=>Math.hypot(h.x-x,h.y-y)<=h.r))return;'); // 2D: a mark under the press wins
+    expect(d3).toContain('if(nearestDot(ev.clientX,ev.clientY)!=null)return;'); // 3D: a dot under the press wins
+    expect(ui).toContain('setLabelOffset(L.id,null)'); expect(d3).toContain('setLabelOffset(id,null)'); // double tap / click
+    expect(ui).toContain('if(!info?.labelOnly)renderMeasures()');
+    expect(pm).toContain("'point-menu-labelreset'"); expect(pm).toContain('setLabelOffset(m.id,null)');
   });
 });
 

@@ -92,6 +92,26 @@ test('PC: long press a dot -> 距離 -> start (marked + hint) -> pick the other 
   expect(moved.labelOffset).toBeTruthy(); expect(Object.keys(moved.labelOffset).sort()).toEqual(['i', 'j', 'k']);
   expect(await mod(page, m => m.ms.measurementsForProject(new Set(m.c.getComments().map(c => c.id)))[0].labelOffset)).toEqual(moved.labelOffset); // it goes into the project
 
+  // a label moved far away is SHOWN inside the view (display-time clamp); the stored offset is unchanged
+  await mod(page, (m, [id, off]) => m.ms.setLabelOffset(id, off), [moved.id, { i: -900, j: 0, k: 0 }]);
+  const view = await page.locator('#viewport-3d').boundingBox();
+  await expect.poll(async () => { const b = await label.boundingBox(); return b.x >= view.x - 1 && b.y >= view.y - 1 && b.x + b.width <= view.x + view.width + 1 && b.y + b.height <= view.y + view.height + 1; }).toBe(true);
+  expect((await state(page)).ms[0].labelOffset).toEqual({ i: -900, j: 0, k: 0 });
+  // double click on the label: back to its default place
+  let lb2 = await label.boundingBox(); await page.mouse.dblclick(lb2.x + lb2.width / 2, lb2.y + lb2.height / 2);
+  expect((await state(page)).ms[0].labelOffset).toBeUndefined();
+  // a point under the press wins over a label on top of it: drag the label onto dot A, then long press there -> the point menu, the label stays
+  lb2 = await label.boundingBox(); await page.mouse.move(lb2.x + lb2.width / 2, lb2.y + lb2.height / 2); await page.mouse.down();
+  await page.mouse.move(a.x, a.y, { steps: 8 }); await page.mouse.up();
+  const onDot = (await state(page)).ms[0].labelOffset; expect(onDot).toBeTruthy();
+  await page.mouse.move(a.x, a.y); await page.mouse.down();
+  await expect(page.locator('.point-menu')).toBeVisible({ timeout: 3000 }); await page.mouse.up();
+  expect((await state(page)).ms[0].labelOffset).toEqual(onDot);
+  // the menu of a point whose label was moved offers 「ラベル位置を戻す」
+  await page.locator('.point-menu-labelreset').click();
+  expect((await state(page)).ms[0].labelOffset).toBeUndefined();
+  await mod(page, (m, [id, off]) => m.ms.setLabelOffset(id, off), [moved.id, moved.labelOffset]); // (as moved before, for the list below)
+
   // the list under the point list
   await page.locator('[data-ipad-drawer-tab="display"]').click();
   const panel = page.locator('#comment-panel');

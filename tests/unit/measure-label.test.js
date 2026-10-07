@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planeLabelPlacement, planeVoxelDelta, stepDelta, offsetFromDelta, nearLabelWorld } from '../../docs/measure-label.js';
+import { clampLabelCenter, planeLabelPlacement, planeVoxelDelta, stepDelta, offsetFromDelta, nearLabelWorld } from '../../docs/measure-label.js';
 import { planePointFromVoxel } from '../../docs/crosshair.js';
 
 
@@ -40,5 +40,16 @@ describe('moving a label: pixels / metres <-> voxel offsets', () => {
     expect(dv.x * (head.x - mid.x) + dv.y * (head.y - mid.y) + dv.z * (head.z - mid.z)).toBeCloseTo(0, 9); // and to the view direction
     expect(dv.y).toBeGreaterThan(0); // upper side
     expect(Number.isFinite(nearLabelWorld(a, b, { x: 0, y: 1.3, z: -0.6 }, 0.02).y)).toBe(true); // a degenerate view still gives a spot
+  });
+});
+
+describe('clamping a label into the view (display time only)', () => {
+  it('keeps a label inside the rect, leaves one that already fits, and works for a rect with an origin', () => {
+    const o = { w: 60, h: 14, x0: 0, y0: 0, iw: 400, ih: 300 };
+    expect(clampLabelCenter(200, 150, o)).toEqual({ x: 200, y: 150 });
+    expect(clampLabelCenter(-500, 9999, o)).toEqual({ x: 32, y: 291 }); // 30 + pad 2, 300 - 7 - 2
+    expect(clampLabelCenter(9999, -50, o)).toEqual({ x: 368, y: 9 });
+    expect(clampLabelCenter(0, 0, { ...o, x0: 100, y0: 50 })).toEqual({ x: 132, y: 59 });
+    expect(clampLabelCenter(5, 5, { w: 60, h: 14, x0: 0, y0: 0, iw: 40, ih: 10 })).toEqual({ x: 32, y: 9 }); // a rect smaller than the label: no crash
   });
 });

@@ -2,9 +2,9 @@
 // The distance is NOT stored: it is computed from the two voxel positions and the volume's voxel spacing (the adopted spacing, series.spacingX/Y/Z),
 // so moving a point changes the value by itself. Pure data + a small in-memory store, no DOM / three.js (the VR and PC / iPad views share it).
 // Saved in the project as `measurements` (an unknown field for older apps: they ignore it, so the project version is not bumped).
-import { getComments, onCommentsChange, commentVoxel, commentMatchesSeries } from './comments.js?v=20261007-build480';
-import { compareFingerprints } from './project-file.js?v=20261007-build480';
-import { spacingWarningText } from './slice-spacing.js?v=20261007-build480';
+import { getComments, onCommentsChange, commentVoxel, commentMatchesSeries } from './comments.js?v=20261007-build481';
+import { compareFingerprints } from './project-file.js?v=20261007-build481';
+import { spacingWarningText } from './slice-spacing.js?v=20261007-build481';
 
 export const MEASURE_MAX=500;
 
@@ -68,7 +68,8 @@ const pairKey=(a,b)=>a<b?a+'\n'+b:b+'\n'+a;
 // ---- store ----
 let list=[],counter=0;
 const listeners=new Set();
-const emit=()=>{for(const cb of [...listeners]){try{cb(getMeasurements())}catch(e){console.warn('measurement listener failed',e)}}};
+// info {labelOnly:true}: only a label offset changed (a drag): a list view need not rebuild, a drawing view redraws
+const emit=info=>{for(const cb of [...listeners]){try{cb(getMeasurements(),info)}catch(e){console.warn('measurement listener failed',e)}}};
 export const getMeasurements=()=>list.map(cp);
 export const onMeasurementsChange=cb=>{listeners.add(cb);return()=>listeners.delete(cb)};
 export const measurementsOfPoint=id=>list.filter(m=>m.a===id||m.b===id).map(cp);
@@ -97,7 +98,7 @@ export function setLabelOffset(id,offset){
  const lo=normalizeLabelOffset(offset),old=list[i].labelOffset;
  if(offset!==null&&offset!==undefined&&!lo)return false;
  if((old?old.i+','+old.j+','+old.k:'')===(lo?lo.i+','+lo.j+','+lo.k:''))return true;
- const{labelOffset:_o,...rest}=list[i];list=list.map((m,n)=>n===i?withOffset(rest,lo):m);emit();return true;
+ const{labelOffset:_o,...rest}=list[i];list=list.map((m,n)=>n===i?withOffset(rest,lo):m);emit({labelOnly:true});return true;
 }
 export const restoreMeasurement=m=>restoreMeasurements([m]);
 export function setMeasurements(next){list=sanitizeMeasurements(next,new Set(getComments().map(c=>c.id)));emit()}
