@@ -8,28 +8,29 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build486';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build486';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build486';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build486';
-import { datasetFingerprint } from './project-file.js?v=20261007-build486';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build486';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build486';
-import { buildClsData } from './point-cls.js?v=20261007-build486';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build486';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build486';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build486';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build486';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build486';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build486';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build486';
-import { tr } from './i18n.js?v=20261007-build486';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build486';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build486';
-import { createVrMeasure } from './vr-measure.js?v=20261007-build486';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build486';
-import { APP_BUILD } from './version.js?v=20261007-build486';
-import { wc, ww } from './ui-shell.js?v=20261007-build486';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build488';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build488';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build488';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build488';
+import { datasetFingerprint } from './project-file.js?v=20261007-build488';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build488';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build488';
+import { buildClsData } from './point-cls.js?v=20261007-build488';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build488';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build488';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build488';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build488';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build488';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build488';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build488';
+import { tr } from './i18n.js?v=20261007-build488';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build488';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build488';
+import { createVrMeasure } from './vr-measure.js?v=20261007-build488';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build488';
+import { APP_BUILD } from './version.js?v=20261007-build488';
+import { wc, ww } from './ui-shell.js?v=20261007-build488';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261007-build488';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -949,9 +950,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    handR:'R',handL:'L',secHelp:'Trigger on a thin frame line, number tag or empty space (not on the 3D object), hold and move: the section sticks to the hand (under the number: last hand)',secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',am:'Auto floor',amv:['Min 50%','Min 35%','Min 25%'],dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: being moved',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
- const menu=makeMenu();scene.add(menu.mesh);
+ const menu=makeMenu(MENU_W,MENU_H,MENU_WIDTH);scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
- const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
+ const holder=new THREE.Group();holder.position.set(0,1.3,-VOLUME_FWD);scene.add(holder);
  let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volPick=null,regionList=[],volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
@@ -982,14 +983,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // menu placement: in front, a little left and below eye level so it does
  // not cover the volume; follow mode moves it back when the head turns away
  const menuTarget=new THREE.Vector3();let menuMoving=false,menuPlaced=false;
- const computeMenuTarget=()=>menuTarget.copy(head).addScaledVector(headFwd,0.62).addScaledVector(headLeft,0.3).add(new THREE.Vector3(0,-0.16,0));
+ const computeMenuTarget=()=>menuTarget.copy(head).addScaledVector(headFwd,MENU_OFFSET.fwd).addScaledVector(headLeft,MENU_OFFSET.left).add(new THREE.Vector3(0,-MENU_OFFSET.down,0));
  const placeMenuNow=()=>{readHead();computeMenuTarget();menu.mesh.position.copy(menuTarget);menu.mesh.lookAt(head);menuPlaced=true;menuMoving=false};
  // help board (build 367): the controls for the current state, front-right,
  // mirrored from the menu; follows lazily, or fixed, or hidden (settings.help);
  // no widgets, but the grip moves it like the menu
- const help=makeMenu(820,560,0.32);help.mesh.visible=false;scene.add(help.mesh);
+ const help=makeMenu(820,560,HELP_WIDTH);help.mesh.visible=false;scene.add(help.mesh);
  const helpTarget=new THREE.Vector3();let helpMoving=false,helpPlaced=false,helpHeld=null,helpKey='';
- const computeHelpTarget=()=>helpTarget.copy(head).addScaledVector(headFwd,0.62).addScaledVector(headLeft,-0.34).add(new THREE.Vector3(0,-0.16,0));
+ const computeHelpTarget=()=>helpTarget.copy(head).addScaledVector(headFwd,HELP_OFFSET.fwd).addScaledVector(headLeft,HELP_OFFSET.left).add(new THREE.Vector3(0,-HELP_OFFSET.down,0));
  const placeHelpNow=()=>{readHead();computeHelpTarget();help.mesh.position.copy(helpTarget);help.mesh.lookAt(head);helpPlaced=true;helpMoving=false};
  const helpHit=c=>{if(!help.mesh.visible||help.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(help.mesh,false)[0]||null};
  // build 468: ring menus (vr-ring.js): the quick ring around the hand (A/X short) and the point ring (long press on a point)
@@ -1021,7 +1022,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // menu grab (build 366): grip while pointing at the menu moves it with the hand; released, it stays there (position becomes fixed)
  let menuHeld=null;
  const setMenuOpen=open=>{ui.open=open;menu.mesh.visible=open;if(open)placeMenuNow();menu.refresh()};
- const bringVolumeFront=()=>{readHead();scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(head).addScaledVector(headFwd,0.55).add(new THREE.Vector3(0,-0.12,0));holder.quaternion.identity();holder.scale.setScalar(baseScale)};
+ const bringVolumeFront=()=>{readHead();scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(head).addScaledVector(headFwd,VOLUME_FWD).add(new THREE.Vector3(0,-VOLUME_DOWN,0));holder.quaternion.identity();holder.scale.setScalar(baseScale)};
  // grab: one hand moves/rotates (holder follows the controller); two hands
  // scale by the change in hand distance
  const grabbing=new Set();let twoHand=null;const tmpA=new THREE.Vector3(),tmpB=new THREE.Vector3();
