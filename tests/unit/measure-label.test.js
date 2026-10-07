@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clampLabelCenter, planeLabelPlacement, planeVoxelDelta, stepDelta, offsetFromDelta, nearLabelWorld } from '../../docs/measure-label.js';
+import { clampLabelCenter, planeLabelPlacement, planeVoxelDelta, stepDelta, offsetFromDelta, nearLabelWorld, createFocusTracker } from '../../docs/measure-label.js';
 import { planePointFromVoxel } from '../../docs/crosshair.js';
 
 
@@ -51,5 +51,16 @@ describe('clamping a label into the view (display time only)', () => {
     expect(clampLabelCenter(9999, -50, o)).toEqual({ x: 368, y: 9 });
     expect(clampLabelCenter(0, 0, { ...o, x0: 100, y0: 50 })).toEqual({ x: 132, y: 59 });
     expect(clampLabelCenter(5, 5, { w: 60, h: 14, x0: 0, y0: 0, iw: 40, ih: 10 })).toEqual({ x: 32, y: 9 }); // a rect smaller than the label: no crash
+  });
+});
+
+describe('createFocusTracker (the lit distance label)', () => {
+  it('calls back only when the lit label changes; a drag keeps it lit when the hover leaves', () => {
+    const calls = [], f = createFocusTracker((n, p) => calls.push([n, p]));
+    f.hover('a'); f.hover('a'); expect(calls).toEqual([['a', null]]);
+    f.drag('a'); expect(calls.length).toBe(1); // already lit: no change
+    f.hover(null); expect(f.get()).toBe('a'); expect(calls.length).toBe(1); // still dragged
+    f.drag(null); expect(f.get()).toBeNull(); expect(calls[calls.length - 1]).toEqual([null, 'a']);
+    f.drag('b'); f.hover('c'); expect(f.get()).toBe('b'); // the drag wins over the hover
   });
 });

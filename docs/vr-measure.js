@@ -2,13 +2,15 @@
 // distance is being made, the START point with a pulsing ring and the hint 「終点のポイントを選んでください」 next to it.
 // vr-view.js calls createVrMeasure(THREE, scene) -> { update, pickLabel, dragLabel, dispose } every frame and does everything else (the flow, haptics, undo) itself; the state is
 // measurements.js (the same for the PC / iPad). The value follows the points: it is recomputed from their voxels each frame (a point being moved included, preview).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build483';
-import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261007-build483';
-import { nearLabelWorld, stepDelta, offsetFromDelta } from './measure-label.js?v=20261007-build483';
-import { voxelToLocal } from './vr-point.js?v=20261007-build483';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build485';
+import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261007-build485';
+import { nearLabelWorld, stepDelta, offsetFromDelta } from './measure-label.js?v=20261007-build485';
+import { voxelToLocal } from './vr-point.js?v=20261007-build485';
 
 export const VR_MEASURE_COLOR=0xffd23d,MEASURE_LABEL_W_M=0.045,MEASURE_LABEL_H_M=0.0132,MEASURE_HINT_W_M=0.2,MEASURE_HINT_H_M=0.026;
 // the label's size factor from the head distance (m): about 1 at arm's length (0.6 m), bigger when far, never tiny
+// the lit label (the laser on it / grabbed): like the ring menu's lit sector (vr-ring.js) it turns #ffe27a with dark text and a white rim, and grows a little
+export const LABEL_LIT_SCALE=1.15;
 export const labelScaleFor=dist=>Math.min(2.2,Math.max(0.7,(+dist||0.6)/0.6));
 
 // pure: the pulse of the start ring, 0..1, a period of 1.2 s
@@ -24,14 +26,14 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
   const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
   const mesh=new THREE.Mesh(planeGeo,new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:false,toneMapped:false,side:THREE.DoubleSide}));
   mesh.scale.set(w,h,1);mesh.renderOrder=6;mesh.frustumCulled=false;mesh.visible=false;scene.add(mesh);
-  return{mesh,canvas,tex,text:null};
+  return{mesh,canvas,tex,text:null,lit:false};
  };
- const drawText=(lb,text,font)=>{
-  if(lb.text===text)return;lb.text=text;
+ const drawText=(lb,text,font,lit=false)=>{
+  if(lb.text===text&&lb.lit===lit)return;lb.text=text;lb.lit=lit; // the canvas is redrawn (and re-uploaded) only when the text or the lit state changes
   const c=lb.canvas,ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);
-  ctx.fillStyle='rgba(17,23,27,.92)';ctx.beginPath();ctx.roundRect(3,3,c.width-6,c.height-6,c.height/2.4);ctx.fill();
-  ctx.lineWidth=5;ctx.strokeStyle='#ffd23d';ctx.stroke();
-  ctx.fillStyle='#ffffff';ctx.font=font;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,c.width/2,c.height/2+2);
+  ctx.fillStyle=lit?'#ffe27a':'rgba(17,23,27,.92)';ctx.beginPath();ctx.roundRect(3,3,c.width-6,c.height-6,c.height/2.4);ctx.fill();
+  ctx.lineWidth=lit?7:5;ctx.strokeStyle=lit?'#ffffff':'#ffd23d';ctx.stroke();
+  ctx.fillStyle=lit?'#111111':'#ffffff';ctx.font=font;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,c.width/2,c.height/2+2);
   lb.tex.needsUpdate=true;
  };
  const disposeLabel=lb=>{scene.remove(lb.mesh);lb.tex.dispose();lb.mesh.material.dispose()};
@@ -45,7 +47,7 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
  return{
   // fingerprint / dims / halfExt / mesh: as vpMarkers.update; head: the head's world position; spacing: [sx,sy,sz] mm; warn: the series has a slice-spacing warning;
   // startId: the point a distance starts at (or null); hint: its text; now: ms; preview: {id,voxel} a point being moved (voxel null = still at its place)
-  update({fingerprint,dims,halfExt,mesh,head,spacing,warn=false,startId=null,hint='',now=performance.now(),preview=null}){
+  update({fingerprint,dims,halfExt,mesh,head,spacing,warn=false,startId=null,hint='',now=performance.now(),preview=null,lit=null}){ // lit: a Set of measurement ids whose label is lit (laser on it / grabbed), or null
    const all=fingerprint&&dims&&halfExt&&mesh&&deps.getMarkersShown()?deps.getComments():[],byId=new Map();
    for(const c of all){
     if(!commentMatchesSeries(c,fingerprint))continue;
@@ -66,11 +68,11 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
      }
      a.set(A.local.x,A.local.y,A.local.z);mesh.localToWorld(a);b.set(B.local.x,B.local.y,B.local.z);mesh.localToWorld(b);
      const pos=it.line.geometry.attributes.position;pos.setXYZ(0,a.x,a.y,a.z);pos.setXYZ(1,b.x,b.y,b.z);pos.needsUpdate=true;
-     drawText(it.label,measureLabel(distanceMm(A.vox,B.vox,spacing),warn),'bold 40px system-ui,sans-serif');
+     const isLit=!!lit&&lit.has(m.id);drawText(it.label,measureLabel(distanceMm(A.vox,B.vox,spacing),warn),'bold 40px system-ui,sans-serif',isLit);
      // the label (60 % size, scaled with the head distance): where the user left it (labelOffset: voxel units from the midpoint) or, by default, NEAR the line
      // (beside it as seen from the head); a thin leader joins it to the midpoint
      mid.addVectors(a,b).multiplyScalar(0.5);
-     const k=labelScaleFor(head?head.distanceTo(mid):0.6),ctx=it.ctx||(it.ctx={mesh:null,step:null,ml:{x:0,y:0,z:0}}),ml=ctx.ml;
+     const k=labelScaleFor(head?head.distanceTo(mid):0.6)*(isLit?LABEL_LIT_SCALE:1),ctx=it.ctx||(it.ctx={mesh:null,step:null,ml:{x:0,y:0,z:0}}),ml=ctx.ml;
      mv.i=(A.vox.i+B.vox.i)/2;mv.j=(A.vox.j+B.vox.j)/2;mv.k=(A.vox.k+B.vox.k)/2;ml.x=((mv.i+.5)/dims.columns-.5)*2*halfExt[0];ml.y=(.5-(mv.j+.5)/dims.rows)*2*halfExt[1];ml.z=((mv.k+.5)/dims.slices-.5)*2*halfExt[2]; // = voxelToLocal(mv), without a new object per frame
      ctx.mesh=mesh;ctx.step=step; // for dragLabel
      if(m.labelOffset){const d=stepDelta(m.labelOffset,step);lab.set(ml.x+d.x,ml.y+d.y,ml.z+d.z);mesh.localToWorld(lab)}

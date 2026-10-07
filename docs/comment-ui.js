@@ -1,17 +1,17 @@
 // Position comments UI (Issue #88, stage 2): a small panel in the display drawer. "Add" records the current position (the linked
 // crosshair, or the three slices on show) with the text; "View this place" moves the crosshair and the three sliders there. Nothing
 // here runs by itself on load, and no pointer handler is added to the image canvases (the click / swipe on them is untouched).
-import { planes } from './ui-shell.js?v=20261007-build483';
-import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build483';
-import { tr } from './i18n.js?v=20261007-build483';
-import { datasetFingerprint } from './project-file.js?v=20261007-build483';
-import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build483';
-import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build483';
-import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build483';
-import { getMeasurements, setLabelOffset, onMeasurementsChange, removeMeasurement, measurementsOfPoint, restoreMeasurements, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, cancelMeasure, createLongPress, hasUnsavedMeasurements } from './measurements.js?v=20261007-build483';
-import { planeLabelPlacement, planeVoxelDelta, clampLabelCenter } from './measure-label.js?v=20261007-build483';
-import { planePointFromVoxel } from './crosshair.js?v=20261007-build483';
-import { openPointMenu, setPointMenuHandlers, installPointMenu, endMeasureAt, cancelMeasureUi, flashUndo } from './point-menu.js?v=20261007-build483';
+import { planes } from './ui-shell.js?v=20261007-build485';
+import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build485';
+import { tr } from './i18n.js?v=20261007-build485';
+import { datasetFingerprint } from './project-file.js?v=20261007-build485';
+import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build485';
+import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build485';
+import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build485';
+import { getMeasurements, setLabelOffset, onMeasurementsChange, removeMeasurement, measurementsOfPoint, restoreMeasurements, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, cancelMeasure, createLongPress, hasUnsavedMeasurements } from './measurements.js?v=20261007-build485';
+import { planeLabelPlacement, planeVoxelDelta, clampLabelCenter, createFocusTracker } from './measure-label.js?v=20261007-build485';
+import { planePointFromVoxel } from './crosshair.js?v=20261007-build485';
+import { openPointMenu, setPointMenuHandlers, installPointMenu, endMeasureAt, cancelMeasureUi, flashUndo } from './point-menu.js?v=20261007-build485';
 
 let pop=null,popText=null,popPos=null,popStatus=null,popTimer=0,popFrom=null;
 let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
@@ -71,16 +71,25 @@ function paintMeasures(ctx,ms,g,p){
   const x=pl.x-w/2,y=pl.y-h/2;
   labelHits[p].push({id:m.id,x:x-4,y:y-4,w:w+8,h:h+8,lx:pl.x,ly:pl.y,mx,my,iw:g.w,ih:g.h}); // a little bigger than drawn: easier to grab
   ctx.lineWidth=1;ctx.strokeStyle='rgba(255,210,61,.8)';ctx.beginPath();ctx.moveTo(pl.mx,pl.my);ctx.lineTo(pl.x,pl.y);ctx.stroke();
-  ctx.fillStyle='rgba(17,23,27,.88)';ctx.beginPath();ctx.roundRect(x,y,w,h,5);ctx.fill();ctx.strokeStyle='#ffd23d';ctx.stroke();
-  ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(text,x+4,y+h/2+0.5);
+  const lit=labelFocus2d.get()===m.id; // lit like the ring menu's focused sector: #ffe27a, dark text, white rim
+  ctx.fillStyle=lit?'#ffe27a':'rgba(17,23,27,.88)';ctx.beginPath();ctx.roundRect(x,y,w,h,5);ctx.fill();ctx.strokeStyle=lit?'#fff':'#ffd23d';ctx.lineWidth=lit?2.5:1;ctx.stroke();
+  ctx.fillStyle=lit?'#111':'#fff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(text,x+4,y+h/2+0.5);
  }
 }
 // build 480: dragging a label on a 2D plane. A listener on the plane's card in the CAPTURE phase, so a press on a label never reaches the slice swipe / crosshair /
 // mark handlers of the canvas; everything else passes untouched. The new place is stored as labelOffset (shared with VR and 3D).
 let lastLabelDown={id:null,t:0,x:0,y:0};
+const labelFocus2d=createFocusTracker(()=>requestOverlayDraw()); // build 485: the lit label (hover / drag): the overlay is redrawn only when it changes
 function installLabelDrag2d(){
  for(const p of Object.keys(labelHits)){
   const cv=planes[p].canvas,host=cv.closest('.view-card')||cv.parentElement;if(!host)continue;
+  host.addEventListener('pointermove',e=>{ // hover (mouse / pen)
+   if(e.pointerType==='touch'||e.buttons)return;
+   const ov=document.getElementById(p+'-crosshair');if(!ov||!getMarkersShown()){labelFocus2d.hover(null);return}
+   const o=ov.getBoundingClientRect(),x=e.clientX-o.left,y=e.clientY-o.top,L=labelHits[p].find(l=>x>=l.x&&x<=l.x+l.w&&y>=l.y&&y<=l.y+l.h);
+   labelFocus2d.hover(L&&!hits[p].some(h=>Math.hypot(h.x-x,h.y-y)<=h.r)?L.id:null);
+  });
+  host.addEventListener('pointerleave',()=>labelFocus2d.hover(null));
   host.addEventListener('pointerdown',e=>{
    if(e.pointerType==='mouse'&&e.button!==0)return;
    const ov=document.getElementById(p+'-crosshair');if(!ov||!getMarkersShown())return;
@@ -93,9 +102,10 @@ function installLabelDrag2d(){
    lastLabelDown={id:L.id,t:e.timeStamp,x:e.clientX,y:e.clientY};
    const project=v=>planePointFromVoxel(p,v,dims);
    // the offset the label stands at now (a default label: from where it is drawn), then every move adds the voxel change of the pixel change
+   labelFocus2d.drag(L.id);
    const off0=m.labelOffset||planeVoxelDelta(project,(L.lx-L.mx)/L.iw,(L.ly-L.my)/L.ih),sx=e.clientX,sy=e.clientY,pid=e.pointerId;
    const move=ev=>{if(ev.pointerId!==pid)return;const d=planeVoxelDelta(project,(ev.clientX-sx)/L.iw,(ev.clientY-sy)/L.ih);ev.stopPropagation();setLabelOffset(L.id,{i:off0.i+d.i,j:off0.j+d.j,k:off0.k+d.k})};
-   const up=ev=>{if(ev.pointerId!==pid)return;document.removeEventListener('pointermove',move,true);document.removeEventListener('pointerup',up,true);document.removeEventListener('pointercancel',up,true)};
+   const up=ev=>{if(ev.pointerId!==pid)return;labelFocus2d.drag(null);document.removeEventListener('pointermove',move,true);document.removeEventListener('pointerup',up,true);document.removeEventListener('pointercancel',up,true)};
    document.addEventListener('pointermove',move,true);document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',up,true);
   },true);
  }

@@ -16,6 +16,15 @@ export function planeLabelPlacement(a,b,{w=48,h=14,gap=4,x0=-1e9,y0=-1e9,iw=2e9,
  return{x:c.x,y:c.y,mx,my};
 }
 
+// ---- focus (build 485) ----
+// Which distance label is lit (the PC hover / the touch or mouse drag): hover and drag are kept apart so a drag keeps the label lit when the pointer leaves it.
+// onChange(now,prev) is called ONLY when the lit label changes (so a redraw / class toggle happens once per change, never per move event). Pure: no DOM.
+export function createFocusTracker(onChange){
+ let hov=null,drg=null,cur=null;
+ const sync=()=>{const n=drg!==null?drg:hov;if(n!==cur){const p=cur;cur=n;if(onChange)onChange(n,p)}};
+ return{hover(id){hov=id==null?null:id;sync()},drag(id){drg=id==null?null:id;sync()},get:()=>cur};
+}
+
 // ---- moving the label ----
 // a voxel offset {i,j,k} -> a vector in the view's space, and back; step = the space's change per voxel along i / j / k, e.g. VR [2hx/cols, -2hy/rows, 2hz/slices]
 export const stepDelta=(off,step)=>({x:off.i*step[0],y:off.j*step[1],z:off.k*step[2]});
