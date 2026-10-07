@@ -2,10 +2,10 @@
 // distance is being made, the START point with a pulsing ring and the hint 「終点のポイントを選んでください」 next to it.
 // vr-view.js calls createVrMeasure(THREE, scene) -> { update, pickLabel, dragLabel, dispose } every frame and does everything else (the flow, haptics, undo) itself; the state is
 // measurements.js (the same for the PC / iPad). The value follows the points: it is recomputed from their voxels each frame (a point being moved included, preview).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build480';
-import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261007-build480';
-import { nearLabelWorld, stepDelta, offsetFromDelta } from './measure-label.js?v=20261007-build480';
-import { voxelToLocal } from './vr-point.js?v=20261007-build480';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build481';
+import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261007-build481';
+import { nearLabelWorld, stepDelta, offsetFromDelta } from './measure-label.js?v=20261007-build481';
+import { voxelToLocal } from './vr-point.js?v=20261007-build481';
 
 export const VR_MEASURE_COLOR=0xffd23d,MEASURE_LABEL_W_M=0.045,MEASURE_LABEL_H_M=0.0132,MEASURE_HINT_W_M=0.2,MEASURE_HINT_H_M=0.026;
 // the label's size factor from the head distance (m): about 1 at arm's length (0.6 m), bigger when far, never tiny
@@ -38,6 +38,7 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
  const items=new Map(); // measurement id -> {line,label}
  let start=null; // {ring,hint}
  const a=new THREE.Vector3(),b=new THREE.Vector3(),mid=new THREE.Vector3(),s=new THREE.Vector3(),lab=new THREE.Vector3(),inv=new THREE.Matrix4(),lo=new THREE.Vector3(),ld=new THREE.Vector3(),hit=new THREE.Vector3();
+ const mv={i:0,j:0,k:0};
  const voxelStep=(h,d)=>[2*h[0]/d.columns,-2*h[1]/d.rows,2*h[2]/d.slices]; // object-space change per voxel along i / j / k (vr-point.js voxelToLocal)
  const dropItem=(id,it)=>{scene.remove(it.line);scene.remove(it.leader);it.line.geometry.dispose();it.leader.geometry.dispose();disposeLabel(it.label);items.delete(id)};
  const dropStart=()=>{if(!start)return;scene.remove(start.ring);disposeLabel(start.hint);start=null};
@@ -54,7 +55,7 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
    }
    const keep=new Set();
    if(byId.size){
-    mesh.updateWorldMatrix(true,false);mesh.getWorldScale(s);const unit=s.x||1,r0=Math.max(0.003,0.045*unit);
+    mesh.updateWorldMatrix(true,false);mesh.getWorldScale(s);const unit=s.x||1,r0=Math.max(0.003,0.045*unit),step=voxelStep(halfExt,dims);
     for(const m of deps.getMeasurements()){
      const A=byId.get(m.a),B=byId.get(m.b);if(!A||!B)continue;
      keep.add(m.id);let it=items.get(m.id);
@@ -69,8 +70,9 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
      // the label (60 % size, scaled with the head distance): where the user left it (labelOffset: voxel units from the midpoint) or, by default, NEAR the line
      // (beside it as seen from the head); a thin leader joins it to the midpoint
      mid.addVectors(a,b).multiplyScalar(0.5);
-     const k=labelScaleFor(head?head.distanceTo(mid):0.6),mv={i:(A.vox.i+B.vox.i)/2,j:(A.vox.j+B.vox.j)/2,k:(A.vox.k+B.vox.k)/2},step=voxelStep(halfExt,dims),ml=voxelToLocal(mv,halfExt,dims);
-     it.ctx={mesh,step,ml}; // for dragLabel
+     const k=labelScaleFor(head?head.distanceTo(mid):0.6),ctx=it.ctx||(it.ctx={mesh:null,step:null,ml:{x:0,y:0,z:0}}),ml=ctx.ml;
+     mv.i=(A.vox.i+B.vox.i)/2;mv.j=(A.vox.j+B.vox.j)/2;mv.k=(A.vox.k+B.vox.k)/2;ml.x=((mv.i+.5)/dims.columns-.5)*2*halfExt[0];ml.y=(.5-(mv.j+.5)/dims.rows)*2*halfExt[1];ml.z=((mv.k+.5)/dims.slices-.5)*2*halfExt[2]; // = voxelToLocal(mv), without a new object per frame
+     ctx.mesh=mesh;ctx.step=step; // for dragLabel
      if(m.labelOffset){const d=stepDelta(m.labelOffset,step);lab.set(ml.x+d.x,ml.y+d.y,ml.z+d.z);mesh.localToWorld(lab)}
      else{const p=nearLabelWorld(a,b,head||{x:mid.x,y:mid.y+1,z:mid.z+1},(MEASURE_LABEL_W_M*0.35+0.008)*k);lab.set(p.x,p.y,p.z)}
      it.label.mesh.position.copy(lab);it.label.mesh.scale.set(MEASURE_LABEL_W_M*k,MEASURE_LABEL_H_M*k,1);if(head)it.label.mesh.lookAt(head);it.label.mesh.visible=true;it.label.mesh.updateMatrixWorld(true);
