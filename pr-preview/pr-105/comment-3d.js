@@ -15,6 +15,7 @@ import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool,
 import { tr } from './i18n.js?v=20261007-build473';
 import { datasetFingerprint } from './project-file.js?v=20261007-build473';
 import { voxelToLocal3D } from './crosshair.js?v=20261007-build473';
+import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build473';
 import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build473';
 import { request3DRender } from './scene3d.js?v=20261007-build473';
 import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build473';
@@ -103,7 +104,7 @@ function drawSectionCues(obj,camera,W,H,pts){
   const on=!!r&&r.on;if(m.on!==on){m.on=on;m.el.classList.toggle('is-on-section',on)}
   const want=!!r&&!r.on;
   if(want){
-   if(!m.line){m.line=document.createElementNS('http://www.w3.org/2000/svg','line');svg.appendChild(m.line)}
+   if(!m.line){m.line=document.createElementNS('http://www.w3.org/2000/svg','line');if(m.hex)m.line.style.stroke=m.hex;svg.appendChild(m.line)}
    if(projectPair(obj,camera,W,H,p.local,r.foot,seg4)){m.line.setAttribute('x1',seg4[0].toFixed(1));m.line.setAttribute('y1',seg4[1].toFixed(1));m.line.setAttribute('x2',seg4[2].toFixed(1));m.line.setAttribute('y2',seg4[3].toFixed(1));m.line.style.display=''}
    else m.line.style.display='none';
   }else if(m.line){m.line.remove();m.line=null}
@@ -131,8 +132,10 @@ export function updateComment3dMarkers(){
    const x=(v3.x+1)/2*W,y=(1-v3.y)/2*H,vis=v3.z>-1&&v3.z<1&&x>-12&&x<W+12&&y>-12&&y<H+12;
    keep.add(c.id);
    let m=els.get(c.id);
-   if(!m){const el=document.createElement('div');el.className='comment-marker-3d';el.setAttribute('role','img');layer.appendChild(el);m={el,x:0,y:0,vis:false,no:0,label:'',back:null,on:false,line:null};els.set(c.id,m)}
+   if(!m){const el=document.createElement('div');el.className='comment-marker-3d';el.setAttribute('role','img');layer.appendChild(el);m={el,x:0,y:0,vis:false,no:0,label:'',back:null,on:false,line:null,hex:''};els.set(c.id,m)}
    m.x=x;m.y=y;m.vis=vis;
+   const hex=pointColor(c);if(m.hex!==hex){ // build 472: the point's colour (own or auto) overrides the CSS variables of this one element; the number chip inherits them
+    m.hex=hex;const st=m.el.style,fill='#'+darkFill(hex).toString(16).padStart(6,'0');st.setProperty('--vr-point-dot',hex);st.setProperty('--vr-point-fill',fill);st.setProperty('--vr-point-ink',inkOn(hex));if(m.line)m.line.style.stroke=hex}
    if(m.no!==n+1){m.no=n+1;m.el.textContent='';const sp=document.createElement('span');sp.className='comment-marker-3d-no';sp.textContent=String(n+1);m.el.appendChild(sp)} // the dot is the element (its centre = the point); the number sits beside it
    const label=tr('commentMarker3d')+' '+(n+1);if(m.label!==label){m.label=label;m.el.setAttribute('aria-label',label)}
    m.el.hidden=!vis;

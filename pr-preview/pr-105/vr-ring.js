@@ -142,14 +142,23 @@ export function createRingMenu(THREE,{size=WHEEL_BOARD_M}={}){
  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(size,size),new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
  mesh.renderOrder=7;mesh.frustumCulled=false;mesh.visible=false;
  let labels=[],enabled=[],on=[],hl=null;
+ // build 472: an item is a name (string) or a colour swatch {color,name} (a narrower box so nine fit on the ring; the lit one shows its name in the centre)
+ const isSw=t=>!!t&&typeof t==='object',itemW=t=>isSw(t)?100:160;
  const draw=()=>{
   ctx.clearRect(0,0,N,N);
   const n=labels.length,ang=wheelAngles(n);
   ctx.fillStyle='rgba(14,20,27,.55)';ctx.beginPath();ctx.arc(N/2,N/2,Rpx+110,0,Math.PI*2);ctx.fill();
   ctx.textAlign='center';ctx.textBaseline='middle';
   labels.forEach((t,k)=>{
-   const a=ang[k]*Math.PI/180,cx=N/2+Math.sin(a)*Rpx,cy=N/2-Math.cos(a)*Rpx,w=160,h=72,x=cx-w/2,y=cy-h/2;
+   const a=ang[k]*Math.PI/180,cx=N/2+Math.sin(a)*Rpx,cy=N/2-Math.cos(a)*Rpx,w=itemW(t),h=72,x=cx-w/2,y=cy-h/2;
    ctx.beginPath();ctx.roundRect(x,y,w,h,16);
+   if(isSw(t)){
+    ctx.fillStyle=t.color;ctx.fill();ctx.strokeStyle=k===hl?'#ffd23d':'rgba(255,255,255,.35)';ctx.lineWidth=k===hl?9:2;ctx.stroke();
+    if(t.text){ctx.fillStyle='#fff';ctx.font='bold 28px system-ui,sans-serif';ctx.fillText(t.text,cx,cy+(on[k]?-16:1))} // a text swatch (the 自動 item)
+    if(on[k]){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(cx,t.text?cy+18:cy,9,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=3;ctx.stroke()} // the current colour
+    if(k===hl&&t.name&&!t.text){ctx.fillStyle='#fff';ctx.font='bold 34px system-ui,sans-serif';ctx.fillText(t.name,N/2,N/2+1)}
+    return;
+   }
    if(t===null||t===undefined){ctx.setLineDash([8,8]);ctx.strokeStyle='rgba(159,179,195,.6)';ctx.lineWidth=3;ctx.stroke();ctx.setLineDash([]);return}
    const ok=!!enabled[k];ctx.fillStyle=k===hl?'#ffd23d':!ok?'#1a2129':on[k]?'#2d6cdf':'#26313b';ctx.fill();
    ctx.strokeStyle=k===hl?'#fff':'rgba(255,255,255,.35)';ctx.lineWidth=k===hl?5:2;ctx.stroke();
@@ -165,13 +174,13 @@ export function createRingMenu(THREE,{size=WHEEL_BOARD_M}={}){
   setItems(l,e,o){labels=l;enabled=e;on=o||[];draw()},
   setHighlight(k){if(k!==hl){hl=k;draw()}},
   // the slot under a uv of the board (the raycaster's), or null
-  // only inside the label rect of a filled, usable item (160 x 72 px of the 512 px canvas); empty / disabled slots and the gaps are null
+  // only inside the label rect of a filled, usable item (160 x 72 px, a swatch 100 x 72, of the 512 px canvas); empty / disabled slots and the gaps are null
   slotFromUv(uv){
    const px=uv.x*N,py=(1-uv.y)*N,ang=wheelAngles(labels.length);
    for(let k=0;k<labels.length;k++){
     if(labels[k]===null||labels[k]===undefined||!enabled[k])continue;
     const a=ang[k]*Math.PI/180,cx=N/2+Math.sin(a)*Rpx,cy=N/2-Math.cos(a)*Rpx;
-    if(Math.abs(px-cx)<=80&&Math.abs(py-cy)<=36)return k;
+    if(Math.abs(px-cx)<=itemW(labels[k])/2&&Math.abs(py-cy)<=36)return k;
    }
    return null;
   },

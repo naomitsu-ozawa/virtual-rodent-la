@@ -5,12 +5,14 @@ import { planes } from './ui-shell.js?v=20261007-build473';
 import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build473';
 import { tr } from './i18n.js?v=20261007-build473';
 import { datasetFingerprint } from './project-file.js?v=20261007-build473';
-import { COMMENT_MAX_TEXT, createComment, addComment, removeComment, restoreComment, updateCommentText, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build473';
+import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build473';
+import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build473';
 import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build473';
 
 let pop=null,popText=null,popPos=null,popStatus=null,popTimer=0,popFrom=null;
 let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
 let showEl=null,bubble=null,bubbleTimer=0;
+let colorOpenId=null; // build 472: the point whose colour palette is open in the list
 let editId=null,editDraft='',editFocus=false; // the comment being edited in the list (the draft survives a re-render of the list)
 const hits={axial:[],coronal:[],sagittal:[]}; // exact markers last drawn per plane (CSS px on the overlay canvas), for the tap test
 const dimsOf=()=>volume?{columns:volume.columns,rows:volume.rows,slices:volume.slices}:null;
@@ -25,7 +27,7 @@ export function currentCommentPosition(){
 }
 export function addCommentHere(text){
  const position=currentCommentPosition(),series=fingerprint();if(!position||!series)return null;
- return addComment(createComment({text,position,series}));
+ return addComment(createComment({text,position,series,autoKey:nextAutoKey(getComments())}));
 }
 // "View this place": only for a comment of the open series; the position is clamped into the volume
 export function viewComment(id){
@@ -35,7 +37,6 @@ export function viewComment(id){
 }
 
 // ---- markers (drawn on the crosshair overlay canvases, never on the slice canvases) ----
-const MARK='#4dd8ff';
 function paintMarkers(ctx,p,g){
  hits[p]=[];if(!ctx||!getMarkersShown()||!volume)return;
  const fp=fingerprint(),dims=dimsOf();if(!fp||!dims)return;
@@ -45,11 +46,11 @@ function paintMarkers(ctx,p,g){
  for(const m of ms){
   const x=g.x0+m.fx*g.w,y=g.y0+m.fy*g.h;
   if(m.exact){
-   ctx.beginPath();ctx.arc(x,y,R,0,Math.PI*2);ctx.fillStyle=MARK;ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle='rgba(0,0,0,.75)';ctx.stroke();
-   ctx.fillStyle='#04202a';ctx.font='800 '+(R*1.05)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(m.number),x,y+0.5);
+   ctx.beginPath();ctx.arc(x,y,R,0,Math.PI*2);ctx.fillStyle=m.color;ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle='rgba(0,0,0,.75)';ctx.stroke();
+   ctx.fillStyle=inkOn(m.color);ctx.font='800 '+(R*1.05)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(m.number),x,y+0.5);
    hits[p].push({id:m.id,x,y,r:Math.max(R,ipad?22:16)});
   }else{ // a few slices away: a thin ring (dark halo under a light one), no number
-   ctx.globalAlpha=.55;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.6)';ctx.stroke();ctx.lineWidth=1.8;ctx.strokeStyle=MARK;ctx.stroke();ctx.globalAlpha=1;
+   ctx.globalAlpha=.55;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.6)';ctx.stroke();ctx.lineWidth=1.8;ctx.strokeStyle=m.color;ctx.stroke();ctx.globalAlpha=1;
   }
  }
 }
@@ -116,12 +117,14 @@ function render(){
  if(!ok)closePopover();
  requestOverlayDraw();closeBubble();
  if(editId&&!list.some(c=>c.id===editId)){editId=null;editDraft=''}
+ if(colorOpenId&&!list.some(c=>c.id===colorOpenId))colorOpenId=null;
  listEl.replaceChildren();
  if(!list.length){const e=document.createElement('p');e.className='comment-empty';e.textContent=tr('commentEmpty');listEl.appendChild(e);return}
  for(const c of list){
   const same=commentMatchesSeries(c,fp),li=document.createElement('li');li.className='comment-item';li.dataset.commentId=c.id;
   const body=document.createElement('div');body.className='comment-body';
   const no=document.createElement('span');no.className='comment-no';no.textContent=String(list.indexOf(c)+1);no.setAttribute('aria-hidden','true');
+  const pc=pointColor(c);no.style.background=pc;no.style.borderColor=pc;no.style.color=inkOn(pc); // build 472: the number badge wears the point's colour
   const t=document.createElement('p');t.className='comment-text';t.textContent=c.text;
   const m=document.createElement('p');m.className='comment-meta';
   m.textContent=`i ${c.position.i} · j ${c.position.j} · k ${c.position.k}`+(c.createdAt?' · '+fmtTime(c.createdAt):'')+(same?'':' · '+tr('commentOtherSeries')+' · '+tr('commentNotSaved'));
@@ -149,7 +152,22 @@ function render(){
   del.addEventListener('click',()=>deleteWithUndo(c.id));
   const ed=document.createElement('button');ed.type='button';ed.className='tool-chip comment-edit';ed.textContent=tr('commentEdit');
   ed.addEventListener('click',()=>startEdit(c.id));
-  acts.append(view,ed,del);li.append(body,acts);listEl.appendChild(li);
+  // build 472: colour swatch (tap = a small palette: 8 colours + back to auto); the choice is saved in the project with the point
+  const sw=document.createElement('button');sw.type='button';sw.className='comment-color';sw.style.background=pc;sw.setAttribute('aria-haspopup','true');sw.setAttribute('aria-expanded',colorOpenId===c.id?'true':'false');
+  const lang=currentLanguage==='ja'?'ja':'en';sw.setAttribute('aria-label',tr('commentColor')+' '+paletteName(pc,lang));sw.title=tr('commentColor');
+  sw.addEventListener('click',()=>{colorOpenId=colorOpenId===c.id?null:c.id;render()});
+  acts.append(view,ed,del,sw);li.append(body,acts);
+  if(colorOpenId===c.id){
+   const pal=document.createElement('div');pal.className='comment-color-palette';pal.setAttribute('role','group');pal.setAttribute('aria-label',tr('commentColor'));
+   for(const p of POINT_PALETTE){
+    const b=document.createElement('button');b.type='button';b.className='comment-color-opt'+(p.hex===pc?' is-current':'');b.style.background=p.hex;b.setAttribute('aria-label',lang==='ja'?p.ja:p.en);b.title=lang==='ja'?p.ja:p.en;
+    b.addEventListener('click',()=>{colorOpenId=null;if(updateCommentColor(c.id,p.hex)===null)render()});pal.appendChild(b);
+   }
+   const au=document.createElement('button');au.type='button';au.className='tool-chip comment-color-auto';au.textContent=tr('commentColorAuto');au.title=autoPointColor(c);
+   au.addEventListener('click',()=>{colorOpenId=null;if(updateCommentColor(c.id,null)===null)render()});pal.appendChild(au);
+   li.appendChild(pal);
+  }
+  listEl.appendChild(li);
  }
 }
 export function refreshCommentsUi(){
@@ -201,6 +219,9 @@ export function installComments(){
  root.innerHTML='<summary></summary><p class="comment-hint"></p><label class="comment-show"><input type="checkbox" class="comment-show-input" checked><span></span></label><textarea class="comment-input" rows="2" maxlength="2000"></textarea><button type="button" class="tool-chip comment-add"></button><p class="comment-note" role="status"></p><div class="comment-undo" hidden role="status"><span class="comment-undo-text"></span> <button type="button" class="tool-chip comment-undo-btn"></button></div><ul class="comment-list"></ul>';
  host.appendChild(root);
  showEl=root.querySelector('.comment-show-input');showEl.addEventListener('change',()=>setMarkersShown(showEl.checked));onMarkersShownChange(on=>{if(showEl.checked!==on)showEl.checked=on;closeBubble();requestOverlayDraw()});
+ // build 472: the colour palette of a list row closes on a tap / click outside it and on Escape
+ document.addEventListener('pointerdown',e=>{if(colorOpenId&&!e.target?.closest?.('.comment-color-palette,.comment-color')){colorOpenId=null;render()}},true);
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&colorOpenId){colorOpenId=null;render()}});
  setOverlayPainter(paintMarkers);installMarkerTap();document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBubble()});
  listEl=root.querySelector('.comment-list');textEl=root.querySelector('.comment-input');addBtn=root.querySelector('.comment-add');noteEl=root.querySelector('.comment-note');undoEl=root.querySelector('.comment-undo');
  undoEl.querySelector('.comment-undo-btn').addEventListener('click',undoDelete);
