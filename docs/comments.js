@@ -2,8 +2,9 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build471';
-import { compareFingerprints } from './project-file.js?v=20261006-build471';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261007-build472';
+import { compareFingerprints } from './project-file.js?v=20261007-build472';
+import { normalizeColor, pointColor } from './point-colors.js?v=20261007-build472';
 
 export const COMMENT_MAX_TEXT=2000;
 const isIdx=n=>Number.isFinite(+n)&&n!==null&&n!==''&&n!==true&&n!==false;
@@ -21,7 +22,8 @@ export function sanitizeComments(list){
  for(const c of list){
   const pos=commentVoxel(c?.position);if(!pos||!c||typeof c!=='object')continue;
   let id=typeof c.id==='string'&&c.id?c.id:'c-'+out.length;while(seen.has(id))id+='_';seen.add(id);
-  out.push({id,text:String(c.text??'').slice(0,COMMENT_MAX_TEXT),createdAt:typeof c.createdAt==='string'?c.createdAt:'',position:pos,series:c.series&&typeof c.series==='object'?c.series:null});
+  const color=normalizeColor(c.color); // build 472: an optional colour chosen by the user; an invalid one is dropped (the point gets its auto colour)
+  out.push({id,text:String(c.text??'').slice(0,COMMENT_MAX_TEXT),createdAt:typeof c.createdAt==='string'?c.createdAt:'',position:pos,series:c.series&&typeof c.series==='object'?c.series:null,...(color?{color}:{})});
  }
  return out;
 }
@@ -40,7 +42,7 @@ export function commentMarkers(plane,comments,fingerprint,sliceIdx,dims,near=COM
   const t=commentTarget(c,dims);if(!t)return;
   const delta=sliceIndexFor(plane,t)-Math.round(+sliceIdx);if(!(Math.abs(delta)<=near))return;
   const{fx,fy}=planePointFromVoxel(plane,t,dims);
-  out.push({id:c.id,number:n+1,fx,fy,delta,exact:delta===0});
+  out.push({id:c.id,number:n+1,fx,fy,delta,exact:delta===0,color:pointColor(c)});
  });
  return out;
 }
@@ -64,6 +66,15 @@ export function updateCommentPosition(id,position){
  const i=list.findIndex(c=>c.id===id);if(i<0)return null;
  const o=list[i].position;
  if(o.i!==pos.i||o.j!==pos.j||o.k!==pos.k){list=list.map((c,n)=>n===i?{...c,position:pos}:c);emit()}
+ return getComments()[i];
+}
+// set / clear the colour of a point (build 472): a valid "#rrggbb" sets it, null / '' goes back to the auto colour; anything else is refused (null).
+// Text, position, createdAt and series stay. An unchanged colour is not a change.
+export function updateCommentColor(id,color){
+ const none=color===null||color===undefined||color==='',col=none?null:normalizeColor(color);
+ if(!none&&!col)return null;
+ const i=list.findIndex(c=>c.id===id);if(i<0)return null;
+ if((list[i].color||null)!==col){list=list.map((c,n)=>{if(n!==i)return c;const{color:_o,...rest}=c;return col?{...rest,color:col}:rest});emit()}
  return getComments()[i];
 }
 export function removeComment(id){const n=list.length;list=list.filter(c=>c.id!==id);if(list.length!==n)emit();return list.length!==n}
@@ -91,7 +102,7 @@ export function loadProjectComments(incoming,fingerprint){
  emit();
 }
 // ---- unsaved changes: what was last written to / read from a project file, against what is in memory now ----
-const sigOf=c=>[c.id,c.text,c.position.i,c.position.j,c.position.k].join('|');
+const sigOf=c=>[c.id,c.text,c.position.i,c.position.j,c.position.k,c.color||''].join('|');
 const saved=new Map();
 export function markCommentsSaved(fingerprint,written=commentsForProject(fingerprint)){
  for(const [id,e] of [...saved])if(commentMatchesSeries({series:e.series},fingerprint))saved.delete(id);

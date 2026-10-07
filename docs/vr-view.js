@@ -8,23 +8,24 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261006-build471';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261006-build471';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261006-build471';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261006-build471';
-import { datasetFingerprint } from './project-file.js?v=20261006-build471';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261006-build471';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261006-build471';
-import { buildClsData } from './point-cls.js?v=20261006-build471';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261006-build471';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261006-build471';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText } from './comments.js?v=20261006-build471';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261006-build471';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261006-build471';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261006-build471';
-import { tr } from './i18n.js?v=20261006-build471';
-import { APP_BUILD } from './version.js?v=20261006-build471';
-import { wc, ww } from './ui-shell.js?v=20261006-build471';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build472';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build472';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build472';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build472';
+import { datasetFingerprint } from './project-file.js?v=20261007-build472';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build472';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build472';
+import { buildClsData } from './point-cls.js?v=20261007-build472';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build472';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build472';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build472';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build472';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build472';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build472';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build472';
+import { tr } from './i18n.js?v=20261007-build472';
+import { APP_BUILD } from './version.js?v=20261007-build472';
+import { wc, ww } from './ui-shell.js?v=20261007-build472';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -615,6 +616,7 @@ function makeMenu(W=MENU_W,H=MENU_H,widthM=0.5){
    }
    ctx.fillStyle=w.disabled?'#1a2129':w.on?(w.color||'#2d6cdf'):(i===hover?'#3a4652':'#26313b');ctx.beginPath();ctx.roundRect(w.x,w.y,w.w,w.h,16);ctx.fill();
    if(w.color&&!w.on&&!w.disabled){ctx.strokeStyle=w.color;ctx.lineWidth=4;ctx.stroke()}
+   if(w.outline){ctx.strokeStyle=w.outline;ctx.lineWidth=8;ctx.stroke()}
    if(i===hover&&!w.disabled){ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.stroke()}
    // dark text on a light fill (e.g. the bone colour)
    let fg='#fff';if(w.on&&w.color){const c=new THREE.Color(w.color);if(0.2126*c.r+0.7152*c.g+0.0722*c.b>0.6)fg='#111'}
@@ -947,7 +949,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const helpHit=c=>{if(!help.mesh.visible||help.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(help.mesh,false)[0]||null};
  // build 468: ring menus (vr-ring.js): the quick ring around the hand (A/X short) and the point ring (long press on a point)
  const wheel=createRingMenu(THREE),pointWheel=createRingMenu(THREE);scene.add(wheel.mesh);scene.add(pointWheel.mesh);
- let wheelOwner=null,pw=null; // pw = {c,id}
+ let wheelOwner=null,pw=null; // pw = {c,id,mode}: mode 'main' (move / delete / colour) or 'color' (the palette ring, build 472)
  const ringHit=(c,ring)=>{if(!ring.mesh.visible)return null;setRay(c);const x=raycaster.intersectObject(ring.mesh,false)[0];if(!x||!x.uv)return null;const k=ring.slotFromUv(x.uv);return k===null?null:{distance:x.distance,slot:k}};
  // the nearest of the menu, the help board and the ring items along the ray wins; {menu,help,wheel,pwheel}
  const bhOut={menu:null,help:null,wheel:null,pwheel:null}; // reused (read at once by the caller, never kept)
@@ -1156,7 +1158,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const flashMsg=(t,ms=2500)=>{ui.flash=t;ui.flashUntil=performance.now()+ms;menu.refresh()};
  const pulseTwice=c=>{pulse(c,0.35,18);setTimeout(()=>pulse(c,0.35,18),90)};
  // selected point (a comment id, or null) and the last deletion (for the undo), both only for this VR session
- let vpSel=null;const undo=createUndoStack(),undoStore={removeComment,restoreComment,updateCommentPosition};
+ let vpSel=null;const undo=createUndoStack(),undoStore={removeComment,restoreComment,updateCommentPosition,updateCommentColor};
  // build 468: records the place that was under the laser at the moment of the press (hit: {voxel}); a failure is silent (no vibration)
  const recordPoint=(c,hit)=>{
   if(!hit?.voxel||!vrFp)return null;
@@ -1365,10 +1367,27 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const closeWheel=()=>{if(!wheelOwner)return;lockStick(wheelOwner);wheelOwner=null;wheel.mesh.visible=false};
  const closePointWheel=()=>{if(!pw)return;lockStick(pw.c);pw=null;pointWheel.mesh.visible=false};
  const openWheel=c=>{closeWheel();closePointWheel();wheelOwner=c;c.userData.stick.reset();refreshWheel();wheel.setHighlight(null);wheel.mesh.visible=true};
- const pwIds=()=>VR_POINT_COMMENT?['move','delete','comment']:['move','delete'];
+ // build 472: the point ring has 「色」; choosing it turns the ring into a palette ring (自動 + the 8 palette colours; the current one is dotted)
+ const CTX=ja?{color:'色',auto:'自動',done:'色を変えました',doneAuto:'色を自動に戻しました'}:{color:'Colour',auto:'Auto',done:'Colour changed',doneAuto:'Colour set to auto'};
+ const COLOR_IDS=['auto',...POINT_PALETTE.map(p=>p.hex)];
+ const pwIds=()=>pw?.mode==='color'?COLOR_IDS:VR_POINT_COMMENT?['move','delete','comment','color']:['move','delete','color'];
+ const openColorRing=()=>{
+  const c0=getComments().find(x=>x.id===pw?.id);if(!c0)return;
+  pw.mode='color';pw.c.userData.stick.reset();
+  const cur=normalizeColor(c0.color);
+  pointWheel.setItems(COLOR_IDS.map(k=>k==='auto'?{color:'#26313b',text:CTX.auto,name:CTX.auto}:{color:k,name:ja?POINT_PALETTE.find(p=>p.hex===k).ja:POINT_PALETTE.find(p=>p.hex===k).en}),COLOR_IDS.map(()=>true),COLOR_IDS.map(k=>k==='auto'?!cur:k===cur));
+  pointWheel.setHighlight(null);
+ };
+ // set the colour (a hex, or null = auto); one undo step per change
+ const changePointColor=(id,hex)=>{
+  const c0=getComments().find(x=>x.id===id);if(!c0)return false;
+  const from=normalizeColor(c0.color)||null;if(from===hex)return true;
+  if(!updateCommentColor(id,hex))return false;
+  undo.push({type:'color',id,from,to:hex});vpSel=id;flashMsg(hex?CTX.done:CTX.doneAuto,2500);return true;
+ };
  const openPointWheel=(c,id)=>{
-  closeWheel();closePointWheel();pw={c,id};c.userData.stick.reset();
-  const lab={move:L.ptMove,delete:L.ptDelete,comment:L.ptComment},ids=pwIds();
+  closeWheel();closePointWheel();pw={c,id,mode:'main'};c.userData.stick.reset();
+  const lab={move:L.ptMove,delete:L.ptDelete,comment:L.ptComment,color:CTX.color},ids=pwIds();
   pointWheel.setItems(ids.map(k=>lab[k]),ids.map(()=>true),[]);pointWheel.setHighlight(null);pointWheel.mesh.visible=true;
  };
  const editComment=id=>{
@@ -1397,7 +1416,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
  };
  const confirmWheel=(k,c)=>{const id=settings.wheel[k];if(!id||!wheelAvail(id))return false;closeWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);wheelDo(id,c);return true};
  const confirmPoint=(k,c)=>{
-  const key=pwIds()[k],id=pw?.id;if(!key||!id)return false;closePointWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);
+  const key=pwIds()[k],id=pw?.id;if(!key||!id)return false;
+  if(pw.mode==='color'){closePointWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);changePointColor(id,key==='auto'?null:key);return true}
+  if(key==='color'){pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);openColorRing();return true} // the ring stays open, now showing the palette
+  closePointWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);
   if(key==='move'){const c0=getComments().find(x=>x.id===id);if(c0){c.userData.moving={id,from:{...c0.position}};flashMsg(L.ptMoveHint,4000)}}
   else if(key==='delete')deletePoint(id);
   else if(key==='comment')editComment(id);
@@ -1623,7 +1645,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const mine=getComments().map((c,n)=>({c,n})).filter(x=>vrFp&&commentMatchesSeries(x.c,vrFp)),shown=mine.slice(-5);
    if(!shown.length)label(X,y0+550,L.ptNone,{size:26,color:'#9fb3c3'});
    shown.forEach(({c,n},k)=>{const y=y0+520+k*60;
-    w.push({type:'button',x:X,y,w:56,h:50,label:String(n+1),on:true,color:c.id===vpSel?'#ffd23d':'#4dd8ff',size:26,action:()=>{}});
+    w.push({type:'button',x:X,y,w:56,h:50,label:String(n+1),on:true,color:pointColor(c),outline:c.id===vpSel?'#ffd23d':null,size:26,action:()=>{}}); // build 472: the point's colour; the selected one gets a thick yellow outline
     label(X+76,y+34,(c.text||'—').slice(0,14),{size:28,bold:true});label(X+520,y+34,'i '+c.position.i+' · j '+c.position.j+' · k '+c.position.k,{size:26,color:'#9fb3c3'})});
    if(mine.length>shown.length)label(X,y0+520+shown.length*60+30,'… '+(mine.length-shown.length),{size:24,color:'#9fb3c3'});
   }else if(ui.tab===7){
