@@ -924,7 +924,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const dotGeo=new THREE.SphereGeometry(0.004,12,8);
  for(const c of controllers){
   c.userData.ray.material.transparent=true;
-  const dot=new THREE.Mesh(dotGeo,new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,transparent:true}));dot.visible=false; // transparent: drawn in the same pass as the rings, so renderOrder can put it over themscene.add(dot);c.userData.dot=dot;
+  const dot=new THREE.Mesh(dotGeo,new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,transparent:true}));dot.visible=false;scene.add(dot);c.userData.dot=dot; // transparent: drawn in the same pass as the rings, so renderOrder can put it over them
   // build 468: no guide line any more (sections are not picked by nearness)
  }
  const pulse=(c,v=0.35,ms=18)=>{try{c.userData.source?.gamepad?.hapticActuators?.[0]?.pulse?.(v,ms)}catch{}};
