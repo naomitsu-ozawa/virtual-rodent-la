@@ -19,6 +19,10 @@ const FAIL_LAPSE = 120;   // samples (60 s) after which a failed level may be tr
 export const autoFloor = idx => AUTO_FLOORS[idx] ?? AUTO_FLOORS[0];
 
 export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO_MAX } = {}) {
+  // build 487: optional discrete resolution levels (descending, for the direct-scale mode); null = continuous, exactly as before
+  let levels = null;
+  const lvDown = x => { for (const l of levels) if (l <= x + 1e-9) return l; return levels[levels.length - 1]; };
+  const lvUp = x => { let r = null; for (const l of levels) if (l > x + 1e-6 && (r === null || l < r)) r = l; return r; };
   const st = { f, stepIdx: baseStep, min, baseStep, over: 0, good: 0, penalty: 1, sinceUp: 99, stable: 0, failPos: null, sinceFail: 0, ctx: null };
   const maxIdx = () => Math.max(STEP_LEVELS.length - 1, st.baseStep);
   const clampState = () => {
@@ -32,6 +36,7 @@ export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO
   const mid = () => Math.max(st.min, AUTO_MID);
   // the next rung down from the present state, or null at the bottom
   const down = scale => {
+    if (levels) return downLv(scale);
     if (st.stepIdx < maxIdx()) {
       if (st.f > mid() + 1e-6) return { f: Math.max(mid(), st.f * scale), stepIdx: st.stepIdx };
       return { f: st.f, stepIdx: st.stepIdx + 1 };
@@ -39,12 +44,28 @@ export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO
     if (st.f > st.min + 1e-6) return { f: Math.max(st.min, st.f * scale), stepIdx: st.stepIdx };
     return null;
   };
+  // levels mode: the same order of rungs, resolution moving to the next level at or below the wanted value (never to the same one)
+  const downLv = scale => {
+    const to = (lo) => { const f = Math.max(lo, lvDown(st.f * scale)); return f < st.f - 1e-9 ? { f, stepIdx: st.stepIdx } : null; };
+    if (st.stepIdx < maxIdx()) {
+      if (st.f > mid() + 1e-6) return to(mid());
+      return { f: st.f, stepIdx: st.stepIdx + 1 };
+    }
+    return st.f > st.min + 1e-6 ? to(0) : null;
+  };
   // the next rung up (reverse order), or null at the top
   const up = () => {
+    if (levels) return upLv();
     if (st.stepIdx >= maxIdx() && st.f < mid() - 1e-6) return { f: Math.min(mid(), st.f * 1.15), stepIdx: st.stepIdx };
     if (st.stepIdx > st.baseStep) return { f: Math.max(st.f, mid()), stepIdx: st.stepIdx - 1 };
     if (st.f < AUTO_MAX - 1e-6) return { f: Math.min(AUTO_MAX, st.f * 1.15), stepIdx: st.stepIdx };
     return null;
+  };
+  const upLv = () => {
+    const nx = lvUp(st.f);
+    if (st.stepIdx >= maxIdx() && st.f < mid() - 1e-6) return nx !== null ? { f: Math.min(mid(), nx), stepIdx: st.stepIdx } : null;
+    if (st.stepIdx > st.baseStep) return { f: Math.max(st.f, mid()), stepIdx: st.stepIdx - 1 };
+    return nx !== null && st.f < AUTO_MAX - 1e-6 ? { f: nx, stepIdx: st.stepIdx } : null;
   };
   // predicted GPU time of a candidate state: the volume part scales with the
   // pixel count (f^2) and with 1/step; the rest of the frame stays
@@ -58,6 +79,9 @@ export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO
     get state() { return { f: st.f, stepIdx: st.stepIdx, over: st.over, good: st.good, penalty: st.penalty }; },
     setFloor(m) { st.min = m; clampState(); },
     setBaseStep(i) { st.baseStep = i; clampState(); },
+    // build 487: switch the resolution between continuous (null) and a descending list of levels; the present f is moved onto a level
+    setLevels(l) { levels = l && l.length ? l : null; if (levels) { st.f = lvDown(st.f); clampState(); } },
+    get levels() { return levels; },
     // sample: one 0.5 s window. volMs = GPU time of the low-resolution volume pass (0 when drawn directly),
     // mainMs = GPU time of the main pass (0 = no timer query: wall-clock interval only), interval = mean frame interval, budget = frame budget (ms)
     update({ volMs = 0, mainMs = 0, interval = 0, budget, ctx = null }) {

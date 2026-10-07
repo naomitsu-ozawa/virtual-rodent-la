@@ -8,28 +8,29 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build485';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build485';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build485';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build485';
-import { datasetFingerprint } from './project-file.js?v=20261007-build485';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build485';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build485';
-import { buildClsData } from './point-cls.js?v=20261007-build485';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build485';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build485';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build485';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build485';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build485';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build485';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build485';
-import { tr } from './i18n.js?v=20261007-build485';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build485';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build485';
-import { createVrMeasure } from './vr-measure.js?v=20261007-build485';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build485';
-import { APP_BUILD } from './version.js?v=20261007-build485';
-import { wc, ww } from './ui-shell.js?v=20261007-build485';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build487';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build487';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build487';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build487';
+import { datasetFingerprint } from './project-file.js?v=20261007-build487';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build487';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build487';
+import { buildClsData } from './point-cls.js?v=20261007-build487';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build487';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build487';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build487';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build487';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build487';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build487';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build487';
+import { tr } from './i18n.js?v=20261007-build487';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build487';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build487';
+import { DIRECT_LEVELS, DIRECT_MIN_INTERVAL_MS, directScaleOn, viewportScaleSupported, fixedScale, startScale, createChangeGate, effectiveScale } from './vr-direct-scale.js?v=20261007-build487';
+import { createVrMeasure } from './vr-measure.js?v=20261007-build487';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build487';
+import { APP_BUILD } from './version.js?v=20261007-build487';
+import { wc, ww } from './ui-shell.js?v=20261007-build487';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -596,7 +597,7 @@ async function buildVolumeData(maxDim,onProgress,{noBricks=false}={}){
 // VR settings kept per browser (resolution only applies when a session starts)
 const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is (build 468: no setting for how a section is held; sections are moved with the trigger)
-const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,wheel:[...DEFAULT_WHEEL],cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,autoMin:0,foveation:2,rate:0,help:1,refine:1,labelSize:0};
+const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,wheel:[...DEFAULT_WHEEL],cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,autoMin:0,foveation:2,rate:0,help:1,refine:1,labelSize:0,dscale:0};
 // an older key is migrated once, with the slice opacity reset to the new default
 function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);const v={...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})};v.wheel=normalizeWheelItems(v.wheel);return v}catch{return{...DEFAULTS,wheel:[...DEFAULT_WHEEL]}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
@@ -949,6 +950,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    handR:'R',handL:'L',secHelp:'Trigger on a thin frame line, number tag or empty space (not on the 3D object), hold and move: the section sticks to the hand (under the number: last hand)',secOff:'Turn it on here or press B/Y',
    r:'Volume resolution',auto:'Auto',am:'Auto floor',amv:['Min 50%','Min 35%','Min 25%'],dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: being moved',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
+ let dsStartScale=1;
+ const L2=ja?{ds:'周辺簡略化を効かせて解像度を下げる（試験）',dsHelpDyn:'オン：縮小描画をやめ、XR画面へ直接描く範囲を縮めます（周辺簡略化が効く）。倍率は上の解像度／自動に従います（100/85/70/60%）',dsHelpFix:'オン：この機種は動的な縮小に非対応。上の解像度（100/70/50%）を倍率として次回のVR開始時に反映します（自動は70%）'}
+  :{ds:'Keep foveation while lowering resolution (experimental)',dsHelpDyn:'On: no offscreen low-res pass; the drawn area of the XR framebuffer is shrunk (foveation stays). Scale follows Resolution / Auto above (100/85/70/60%)',dsHelpFix:'On: this device has no dynamic viewport scale. The Resolution above (100/70/50%) becomes the framebuffer scale at the next VR start (Auto = 70%)'};
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
  const holder=new THREE.Group();holder.position.set(0,1.3,-0.6);scene.add(holder);
@@ -1545,6 +1549,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
  const aq=createAutoQuality({min:autoFloor(settings.autoMin),baseStep:settings.quality|0});let autoFrames=0,autoAt=performance.now(); // build 395: starts at 100 % (72 fps there at the default size since build 387) and only drops when the frames say so
  let frames=0,fpsAt=performance.now(),fps=0;
+ // build 487 (experimental, default off): direct scale. dsReq = the viewport scale last requested from the XR views (-1: none yet), dsBaseW = widest eye viewport seen (the 100 % reference)
+ let dsReq=-1,dsBaseW=0;const dsGate=createChangeGate(DIRECT_MIN_INTERVAL_MS);
+ const dsText=t=>{
+  const cv=renderer.xr.getCamera().cameras[0]?.viewport,vw=cv?cv.z:0;if(vw>dsBaseW)dsBaseW=vw;
+  const head=(ja?'直接描画（周辺簡略化あり） ':'direct (foveation kept) ')+'XR '+(t?.width||0)+'×'+(t?.height||0);
+  return dsDyn?head+(ja?' · 表示 ':' · drawn ')+Math.round(effectiveScale(vw,dsBaseW)*100)+'%'+(ja?'（動的 要求 ':' (dynamic, asked ')+Math.round((dsReq>0?dsReq:1)*100)+'%）':head+(ja?' · 起動時倍率 ':' · start scale ')+Math.round(dsStartScale*100)+(ja?'%（次回VR開始で反映）':'% (applied at the next VR start)');
+ };
+ const dsRequest=sc=>{
+  if(Math.abs(sc-dsReq)<1e-6)return;
+  try{const fr=renderer.xr.getFrame?.(),rs=renderer.xr.getReferenceSpace?.(),pose=fr&&rs?fr.getViewerPose(rs):null;if(!pose)return;for(const v of pose.views)v.requestViewportScale?.(sc);dsReq=sc}catch(e){console.warn(e)}
+ };
  // build 385: benchmark — 12 phases (3 sizes × shown segments / bone only × 100 % / 50 %), 0.8 s settle + 2 s count each;
  // the state is restored afterwards and the result goes to the 画質 tab, the console, localStorage (vrl-vr-bench) and a
  // panel on the page after the session
@@ -1612,6 +1627,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   ui.benchLine=lines.join(' | ');menu.refresh();
  };
  const applyQuality=()=>{
+  {const lv=directScaleOn(settings)&&dsDyn;if(lv!==!!aq.levels){aq.setLevels(lv?DIRECT_LEVELS:null);dsGate.reset()}} // build 487: the ladder moves on coarse levels only while the direct scale is on (off: exactly as before)
   if(material){aq.setFloor(autoFloor(settings.autoMin));aq.setBaseStep(settings.quality|0);material.uniforms.stepSize.value=baseStep*(STEP[VRES[settings.vres]?settings.quality:aq.stepIdx]??1);material.uniforms.diag.value=settings.diag|0;material.uniforms.refine.value=settings.refine|0;useData(settings.data|0)}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
   if(rates.length&&session.updateTargetFrameRate)session.updateTargetFrameRate(rates[Math.min(settings.rate,rates.length-1)]).catch(()=>{});
@@ -1689,6 +1705,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0+180,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
    choice(y0+270,L.q,L.qv.map((t,i)=>({label:t,value:i})),settings.quality,v=>{settings.quality=v;applyQuality()});
    choice(y0+360,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
+   label(X,y0+735,L2.ds,{size:26,color:'#ffd27a'});choice(y0+770,'',L.offOn.map((t,i)=>({label:t,value:i})),settings.dscale===1?1:0,v=>{settings.dscale=v;applyQuality()});label(X,y0+855,dsDyn?L2.dsHelpDyn:L2.dsHelpFix,{size:22,color:'#9fb3c3'});
    if(rates.length>1)choice(y0+450,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
    // build 385: in-VR benchmark (the owner should not have to read numbers off the headset one by one)
    btn(X,y0+550,460,L.bench,bench.active,()=>startBench(),{size:28});btn(X+480,y0+550,440,L.anBench,anBench.active,()=>startAnBench(),{size:28});if(ui.benchLine)label(X,y0+650,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+690,L.benchHelp,{size:22,color:'#9fb3c3'});
@@ -1748,6 +1765,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }
   return w;
  });
+ // build 487 (experimental, default off): without XRView.requestViewportScale the resolution can only be lowered by the framebuffer scale, fixed from the session start
+ const dsDyn=viewportScaleSupported();
+ if(directScaleOn(settings)&&!dsDyn){const sf=startScale(VRES[settings.vres]);if(sf<1)renderer.xr.setFramebufferScaleFactor(sf);dsStartScale=sf}
  await renderer.xr.setSession(session);
  applyQuality();menu.refresh();
  let lastT=0;const tmpS=new THREE.Vector3(); // scroll: previous frame time, parent scale
@@ -1925,8 +1945,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
    vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds,preview:previewArg});
    vpMeasure.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,spacing:vrSpacing,warn:!!spacingNote(),startId:getMeasureStart(),hint:L.ptDistHint,now:nowH,preview:previewArg,lit:lblLit})}
   // auto: frame interval from the XR loop, checked twice a second
-  const auto=!VRES[settings.vres];
-  if(auto){
+  const auto=!VRES[settings.vres],dsOn=directScaleOn(settings),dsLive=dsOn&&dsDyn;
+  if(auto&&!(dsOn&&!dsDyn)){
    autoFrames++;const nowA=performance.now();
    if(nowA-autoAt>=500){
     const interval=(nowA-autoAt)/autoFrames,budget=1000/(targetRate()||72);
@@ -1934,7 +1954,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
     // build 482: degradation ladder (vr-auto-quality.js): resolution down to 70 %, then the step 1 → 1.5 → 2, then the floor; recovery in reverse.
     // GPU time from the timer query when the extension is offered (mainMs > 0); otherwise the wall-clock frame interval, which the refresh rate caps.
     const uA=material?.uniforms,ctxKey=uA?[holder.scale.x.toFixed(2),uA.segA.value.map(v=>v.w).join(''),uA.planeCount.value,uA.planeCut.value,uA.sliceOpacity.value>0?1:0,settings.data|0].join('|'):''; // view size, shown segments, section, data grid: a change lets the scaler try higher levels again
-    const r=aq.update({volMs,mainMs,interval,budget,ctx:ctxKey});
+    const r=dsLive&&!dsGate.ready(nowA)?{changed:false,stepChanged:false}:aq.update({volMs,mainMs,interval,budget,ctx:ctxKey}); // build 487: direct scale: at least DIRECT_MIN_INTERVAL_MS between two changes
+    if(dsLive&&r.changed)dsGate.mark(nowA);
     if(r.stepChanged&&material)material.uniforms.stepSize.value=baseStep*(STEP[aq.stepIdx]??1);
     const stepTxt=(ja?' · 刻み ':' · step ')+STEP[aq.stepIdx];
     ui.autoLine=mainMs>0?(ja?'自動: GPU ボリューム ':'auto: GPU volume ')+volMs.toFixed(1)+' ms · '+(ja?'本描画 ':'main ')+mainMs.toFixed(1)+' ms / '+(ja?'予算 ':'budget ')+budget.toFixed(1)+' ms → '+Math.round(aq.f*100)+'%'+stepTxt
@@ -1942,7 +1963,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
     ctrl.vol=ctrl.main=0;ctrlN.vol=ctrlN.main=0;autoFrames=0;autoAt=nowA;
    }
   }
-  const f=auto?aq.f:(VRES[settings.vres]??1);
+  if(dsOn&&!dsDyn)ui.autoLine=ja?'自動: 動的な縮小に非対応のため停止（起動時の倍率で固定）':'auto: stopped (no dynamic viewport scale; fixed at the start scale)';
+  const dsWant=dsLive?(auto?aq.f:fixedScale(VRES[settings.vres])):1;
+  if(dsLive)dsRequest(dsWant);else if(dsReq>=0&&dsReq!==1)dsRequest(1); // build 487: shrink the drawn part of the XR swapchain (the volume still goes straight into it, with its foveation)
+  const f=dsOn?1:auto?aq.f:(VRES[settings.vres]??1);
   // build 424: the same variants without VRL_REGIONS (sharing the uniforms), built on first use by the analysis bench
   let plain=null;
   const plainSets=()=>{if(!plain){const base=material.clone();base.uniforms=material.uniforms;base.defines={};const vars=materialVariants(base);plain={vars,ray:{full:rayMaterialOf(vars.full),combined:rayMaterialOf(vars.combined),noEvents:rayMaterialOf(vars.noEvents)}}}return plain};
@@ -1971,7 +1995,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(ar?0x000000:BG,ar?0:1);
     compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.invSize.value.set(f/tw,f/th);
     mesh.material=compMaterial;
-   }else{mesh.material=(diagAn.noRegion?plainSets().vars:variants)[variantKey()];const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
+   }else{mesh.material=(diagAn.noRegion?plainSets().vars:variants)[variantKey()];const t=renderer.getRenderTarget();sizes=dsOn?dsText(t):(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
    if(firstDrawMs<0)firstDrawMs=performance.now()-sessionAt;
   }
   menu.flush();
@@ -1985,7 +2009,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    ui.fpsLine=(firstDrawMs>=0?(ja?'初回描画 ':'first draw ')+Math.round(firstDrawMs)+' ms · ':'')+fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
    ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info+' · '+(ja?'データ ':'data ')+((settings.data|0)?'256':'512')+(ja?' · 表示セグメント ':' · shown segments ')+SEGMENT_PRESET_ORDER.filter(k=>{const g=segmentState[k];return g?.active&&g?.enabled&&segMode[k]!==2}).length;
    // build 483: one line for the Quest numbers: fps / auto % / step / samples per ray / ended by hit / skipped by jumps / GPU ms
-   ui.diagLine=fps.toFixed(0)+' fps · '+(VRES[settings.vres]?Math.round(VRES[settings.vres]*100)+'%':(ja?'自動 ':'auto ')+Math.round(aq.f*100)+'%')+' · '+(ja?'刻み ':'step ')+STEP[VRES[settings.vres]?settings.quality|0:aq.stepIdx]+(probe?' · '+(ja?'反復 ':'samples ')+probe.samples.toFixed(0)+(ja?' · hit終了 ':' · hit end ')+Math.round(probe.hit*100)+'% · '+(ja?'跳躍 ':'jump ')+Math.round(probe.skip*100)+'%':'')+' · vol '+avg('vol')+' ms · '+(ja?'本 ':'main ')+avg('main')+' ms';
+   ui.diagLine=fps.toFixed(0)+' fps · '+(dsOn?(ja?'直接 ':'direct ')+Math.round((dsDyn?dsWant:dsStartScale)*100)+'%':VRES[settings.vres]?Math.round(VRES[settings.vres]*100)+'%':(ja?'自動 ':'auto ')+Math.round(aq.f*100)+'%')+' · '+(ja?'刻み ':'step ')+STEP[VRES[settings.vres]?settings.quality|0:aq.stepIdx]+(probe?' · '+(ja?'反復 ':'samples ')+probe.samples.toFixed(0)+(ja?' · hit終了 ':' · hit end ')+Math.round(probe.hit*100)+'% · '+(ja?'跳躍 ':'jump ')+Math.round(probe.skip*100)+'%':'')+' · vol '+avg('vol')+' ms · '+(ja?'本 ':'main ')+avg('main')+' ms';
    if(ui.tab===4)try{measureSamples()}catch(e){console.warn(e)}
    if(ui.tab===4||ui.flash)menu.refresh();
    if(ui.flash&&now>ui.flashUntil)ui.flash='';
