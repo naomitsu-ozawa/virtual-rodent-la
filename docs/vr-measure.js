@@ -2,17 +2,39 @@
 // distance is being made, the START point with a pulsing ring and the hint 「終点のポイントを選んでください」 next to it.
 // vr-view.js calls createVrMeasure(THREE, scene) -> { update, dispose } every frame and does everything else (the flow, haptics, undo) itself; the state is
 // measurements.js (the same for the PC / iPad). The value follows the points: it is recomputed from their voxels each frame (a point being moved included, preview).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build478';
-import { getMeasurements, distanceMm, measureLabel } from './measurements.js?v=20261007-build478';
-import { voxelToLocal } from './vr-point.js?v=20261007-build478';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build479';
+import { getMeasurements, distanceMm, measureLabel } from './measurements.js?v=20261007-build479';
+import { voxelToLocal } from './vr-point.js?v=20261007-build479';
 
-export const VR_MEASURE_COLOR=0xffd23d,MEASURE_LABEL_W_M=0.075,MEASURE_LABEL_H_M=0.022,MEASURE_HINT_W_M=0.2,MEASURE_HINT_H_M=0.026;
+export const VR_MEASURE_COLOR=0xffd23d,MEASURE_LABEL_W_M=0.045,MEASURE_LABEL_H_M=0.0132,MEASURE_HINT_W_M=0.2,MEASURE_HINT_H_M=0.026;
+// pure (build 479): where the label of a line goes, in the volume's local space. The label sits OUTSIDE the volume box: from the line's midpoint, outward
+// (away from the box centre, perpendicular to the line), just past the point where that ray leaves the box (+ margin), so it never covers the volume.
+// a, b: the ends; half: box half extents [hx,hy,hz]; margin: extra distance (local units); fallbackDir: used when the line passes through the centre. -> {x,y,z}
+export function labelPlacement(a,b,half,margin=0,fallbackDir={x:0,y:1,z:0}){
+ const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2,z:(a.z+b.z)/2};
+ let u={x:b.x-a.x,y:b.y-a.y,z:b.z-a.z};const ul=Math.hypot(u.x,u.y,u.z)||1;u={x:u.x/ul,y:u.y/ul,z:u.z/ul};
+ const dot=(p,q)=>p.x*q.x+p.y*q.y+p.z*q.z,perp=v=>{const k=dot(v,u);return{x:v.x-k*u.x,y:v.y-k*u.y,z:v.z-k*u.z}};
+ let q=perp(mid),ql=Math.hypot(q.x,q.y,q.z);
+ if(ql<1e-9){q=perp(fallbackDir);ql=Math.hypot(q.x,q.y,q.z)}
+ if(ql<1e-9){q={x:-u.y,y:u.x,z:0};ql=Math.hypot(q.x,q.y,q.z)||1}
+ q={x:q.x/ql,y:q.y/ql,z:q.z/ql};
+ // distance along q to leave the box (0 when the midpoint is already outside it)
+ const P=[mid.x,mid.y,mid.z],Q=[q.x,q.y,q.z];let exit=Infinity;
+ if(Math.abs(P[0])>half[0]||Math.abs(P[1])>half[1]||Math.abs(P[2])>half[2])exit=0; // the midpoint is already outside the box
+ for(let i=0;i<3&&exit!==0;i++){if(Math.abs(Q[i])<1e-12)continue;const t=((Q[i]>0?half[i]:-half[i])-P[i])/Q[i];exit=Math.min(exit,t)}
+ if(!(exit>0)||!Number.isFinite(exit))exit=0;
+ return{x:mid.x+q.x*(exit+margin),y:mid.y+q.y*(exit+margin),z:mid.z+q.z*(exit+margin)};
+}
+// the label's size factor from the head distance (m): about 1 at arm's length (0.6 m), bigger when far, never tiny
+export const labelScaleFor=dist=>Math.min(2.2,Math.max(0.7,(+dist||0.6)/0.6));
+
 // pure: the pulse of the start ring, 0..1, a period of 1.2 s
 export const pulsePhase=nowMs=>0.5+0.5*Math.sin((+nowMs||0)/1200*Math.PI*2);
 
 export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,getMeasurements}){
  const planeGeo=new THREE.PlaneGeometry(1,1),sphereGeo=new THREE.SphereGeometry(1,16,12);
  const lineMat=new THREE.LineBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.95,depthTest:false,toneMapped:false});
+ const leaderMat=new THREE.LineBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.6,depthTest:false,toneMapped:false});
  const pulseMat=new THREE.MeshBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.9,side:THREE.BackSide,depthTest:false,toneMapped:false});
  const makeLabel=(cw,ch,w,h)=>{
   const canvas=document.createElement('canvas');canvas.width=cw;canvas.height=ch;
@@ -32,8 +54,8 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
  const disposeLabel=lb=>{scene.remove(lb.mesh);lb.tex.dispose();lb.mesh.material.dispose()};
  const items=new Map(); // measurement id -> {line,label}
  let start=null; // {ring,hint}
- const a=new THREE.Vector3(),b=new THREE.Vector3(),mid=new THREE.Vector3(),s=new THREE.Vector3();
- const dropItem=(id,it)=>{scene.remove(it.line);it.line.geometry.dispose();disposeLabel(it.label);items.delete(id)};
+ const a=new THREE.Vector3(),b=new THREE.Vector3(),mid=new THREE.Vector3(),s=new THREE.Vector3(),lab=new THREE.Vector3(),hl=new THREE.Vector3();
+ const dropItem=(id,it)=>{scene.remove(it.line);scene.remove(it.leader);it.line.geometry.dispose();it.leader.geometry.dispose();disposeLabel(it.label);items.delete(id)};
  const dropStart=()=>{if(!start)return;scene.remove(start.ring);disposeLabel(start.hint);start=null};
  return{
   // fingerprint / dims / halfExt / mesh: as vpMarkers.update; head: the head's world position; spacing: [sx,sy,sz] mm; warn: the series has a slice-spacing warning;
@@ -54,12 +76,20 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
      keep.add(m.id);let it=items.get(m.id);
      if(!it){
       const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),lineMat);line.renderOrder=4;line.frustumCulled=false;scene.add(line);
-      it={line,label:makeLabel(256,72,MEASURE_LABEL_W_M,MEASURE_LABEL_H_M)};items.set(m.id,it);
+      const leader=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),leaderMat);leader.renderOrder=4;leader.frustumCulled=false;scene.add(leader);
+      it={line,leader,label:makeLabel(256,72,MEASURE_LABEL_W_M,MEASURE_LABEL_H_M)};items.set(m.id,it);
      }
      a.set(A.local.x,A.local.y,A.local.z);mesh.localToWorld(a);b.set(B.local.x,B.local.y,B.local.z);mesh.localToWorld(b);
      const pos=it.line.geometry.attributes.position;pos.setXYZ(0,a.x,a.y,a.z);pos.setXYZ(1,b.x,b.y,b.z);pos.needsUpdate=true;
      drawText(it.label,measureLabel(distanceMm(A.vox,B.vox,spacing),warn),'bold 40px system-ui,sans-serif');
-     mid.addVectors(a,b).multiplyScalar(0.5);mid.y+=MEASURE_LABEL_H_M*0.8+r0*0.5;it.label.mesh.position.copy(mid);if(head)it.label.mesh.lookAt(head);it.label.mesh.visible=true;
+     // the label: outside the volume box, outward from the midpoint (labelPlacement), smaller (60 %) and scaled with the head distance, with a thin leader back to the midpoint
+     mid.addVectors(a,b).multiplyScalar(0.5);
+     const k=labelScaleFor(head?head.distanceTo(mid):0.6),marginLocal=(MEASURE_LABEL_W_M*k*0.5+0.008)/unit;
+     if(head){hl.copy(head);mesh.worldToLocal(hl)}
+     const lp=labelPlacement(A.local,B.local,halfExt,marginLocal,head?{x:hl.x,y:hl.y,z:hl.z}:undefined);
+     lab.set(lp.x,lp.y,lp.z);mesh.localToWorld(lab);
+     it.label.mesh.position.copy(lab);it.label.mesh.scale.set(MEASURE_LABEL_W_M*k,MEASURE_LABEL_H_M*k,1);if(head)it.label.mesh.lookAt(head);it.label.mesh.visible=true;
+     const lg=it.leader.geometry.attributes.position;lg.setXYZ(0,mid.x,mid.y,mid.z);lg.setXYZ(1,lab.x,lab.y,lab.z);lg.needsUpdate=true;
     }
     const S=startId?byId.get(startId):null;
     if(S){
@@ -75,6 +105,6 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
    }else dropStart();
    for(const [id,it] of [...items])if(!keep.has(id))dropItem(id,it);
   },
-  dispose(){for(const [id,it] of [...items])dropItem(id,it);dropStart();planeGeo.dispose();sphereGeo.dispose();lineMat.dispose();pulseMat.dispose()},
+  dispose(){for(const [id,it] of [...items])dropItem(id,it);dropStart();planeGeo.dispose();sphereGeo.dispose();lineMat.dispose();leaderMat.dispose();pulseMat.dispose()},
  };
 }

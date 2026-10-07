@@ -13,7 +13,7 @@ const {
 } = await load('measurements');
 const { setComments, addComment, removeComment, restoreComment, createComment, getComments, updateCommentPosition, updateCommentColor, setMarkersShown, loadProjectComments } = await load('comments');
 const { datasetFingerprint, packProject, unpackProject } = await load('project-file');
-const { createVrMeasure } = await load('vr-measure');
+const { createVrMeasure, labelPlacement, labelScaleFor, MEASURE_LABEL_W_M } = await load('vr-measure');
 const { createUndoStack, applyUndo, voxelToLocal, HAPTIC } = await load('vr-point');
 
 // synthetic data only: a 16 x 16 x 12 grid, anisotropic spacing 0.1 x 0.2 x 0.5 mm
@@ -221,10 +221,14 @@ describe('VR display (vr-measure.js)', () => {
     const pos = line.geometry.attributes.position;
     expect(new THREE.Vector3(pos.getX(0), pos.getY(0), pos.getZ(0)).distanceTo(w1)).toBeLessThan(1e-6); expect(new THREE.Vector3(pos.getX(1), pos.getY(1), pos.getZ(1)).distanceTo(w2)).toBeLessThan(1e-6);
     const label = scene.children.find(o => o.isMesh && o.renderOrder === 6);
-    expect(label.visible).toBe(true); expect(label.position.distanceTo(w1.clone().add(w2).multiplyScalar(0.5))).toBeLessThan(0.05);
-    expect(scene.children.length).toBe(n0 + 2);
-    v.update({ ...base, startId: 'p1' }); expect(scene.children.length).toBe(n0 + 4); // + ring + hint
-    v.update({ ...base, startId: null }); expect(scene.children.length).toBe(n0 + 2);
+    expect(label.visible).toBe(true);
+    // the label is OUTSIDE the volume box (local space), within reach of the midpoint, and a leader line joins them
+    const loc = mesh.worldToLocal(label.position.clone()), outside = Math.abs(loc.x) > halfExt[0] || Math.abs(loc.y) > halfExt[1] || Math.abs(loc.z) > halfExt[2];
+    expect(outside).toBe(true); expect(label.position.distanceTo(w1.clone().add(w2).multiplyScalar(0.5))).toBeLessThan(0.5);
+    expect(label.scale.x).toBeLessThan(0.075); // smaller than build 478 (0.075 m wide) at arm's length
+    expect(scene.children.length).toBe(n0 + 3);
+    v.update({ ...base, startId: 'p1' }); expect(scene.children.length).toBe(n0 + 5); // + ring + hint
+    v.update({ ...base, startId: null }); expect(scene.children.length).toBe(n0 + 3);
     removeMeasurement(getMeasurements()[0].id); v.update({ ...base }); expect(scene.children.length).toBe(n0);
     addMeasurement('p1', 'p2'); v.update({ ...base }); v.dispose(); expect(scene.children.length).toBe(n0);
   });
@@ -260,5 +264,29 @@ describe('review fixes: series, id renames, per-series saved state', () => {
     markMeasurementsSaved(fp2); expect(hasUnsavedMeasurements()).toBe(false);
     markMeasurementsSaved(fp); expect(hasUnsavedMeasurements()).toBe(false); // saving series 1 again does not forget series 2
     loadProjectMeasurements([{ id: 'other-id', a: 'p2', b: 'p1' }]); expect(getMeasurements()).toHaveLength(2); expect(hasUnsavedMeasurements()).toBe(false);
+  });
+});
+
+describe('VR label placement (build 479)', () => {
+  const half = [8, 8, 6];
+  const outside = p => Math.abs(p.x) > half[0] || Math.abs(p.y) > half[1] || Math.abs(p.z) > half[2];
+  it('goes outward from the midpoint, perpendicular to the line, and out of the box', () => {
+    const a = { x: -3, y: 2, z: 0 }, b = { x: 3, y: 2, z: 0 }, p = labelPlacement(a, b, half, 0.5);
+    expect(p.x).toBeCloseTo(0, 9); expect(p.z).toBeCloseTo(0, 9); expect(p.y).toBeGreaterThan(half[1]); expect(p.y).toBeCloseTo(8.5, 9); // straight up from (0,2,0), 0.5 past the box
+    const q = labelPlacement({ x: 1, y: -1, z: -2 }, { x: 5, y: -3, z: -4 }, half, 0.2);
+    expect(outside(q)).toBe(true);
+    // perpendicular to the line: (q - mid) . (b - a) = 0
+    const mid = { x: 3, y: -2, z: -3 }, dv = { x: q.x - mid.x, y: q.y - mid.y, z: q.z - mid.z }, u = { x: 4, y: -2, z: -2 };
+    expect(dv.x * u.x + dv.y * u.y + dv.z * u.z).toBeCloseTo(0, 9);
+  });
+  it('a line through the centre still gets an outside spot (fallback direction); a midpoint already outside stays near it', () => {
+    expect(outside(labelPlacement({ x: -2, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, half, 0.1, { x: 0, y: 1, z: 0 }))).toBe(true);
+    expect(outside(labelPlacement({ x: -2, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, half, 0.1))).toBe(true);
+    const far = labelPlacement({ x: 10, y: 0, z: 0 }, { x: 12, y: 0, z: 0 }, half, 0.3);
+    expect(Math.hypot(far.x - 11, far.y, far.z)).toBeCloseTo(0.3, 9);
+  });
+  it('about 60 % of build 478 in size, growing with the head distance', () => {
+    expect(MEASURE_LABEL_W_M).toBeCloseTo(0.075 * 0.6, 6);
+    expect(labelScaleFor(0.6)).toBeCloseTo(1, 9); expect(labelScaleFor(1.2)).toBeCloseTo(2, 9); expect(labelScaleFor(0.1)).toBe(0.7); expect(labelScaleFor(5)).toBe(2.2);
   });
 });
