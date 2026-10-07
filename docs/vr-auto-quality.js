@@ -13,11 +13,13 @@ const UNDER = 0.8;  // a move up needs the predicted time at or below this share
 const DOWN_N = 2;   // consecutive over samples before anything is lowered
 const UP_N = 3;     // consecutive samples with headroom before anything is raised (GPU timer present)
 const UP_N_BLIND = 6; // same with the wall-clock interval only (it is capped by the refresh rate: no headroom information)
+const FAIL_MARGIN = 0.03; // a level this close to (or better than) one that failed under the same view is not retried
+const FAIL_LAPSE = 120;   // samples (60 s) after which a failed level may be tried again
 
 export const autoFloor = idx => AUTO_FLOORS[idx] ?? AUTO_FLOORS[0];
 
 export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO_MAX } = {}) {
-  const st = { f, stepIdx: baseStep, min, baseStep, over: 0, good: 0, penalty: 1, sinceUp: 99, stable: 0 };
+  const st = { f, stepIdx: baseStep, min, baseStep, over: 0, good: 0, penalty: 1, sinceUp: 99, stable: 0, failPos: null, sinceFail: 0, ctx: null };
   const maxIdx = () => Math.max(STEP_LEVELS.length - 1, st.baseStep);
   const clampState = () => {
     st.min = Math.min(AUTO_MID, Math.max(0.05, st.min));
@@ -25,6 +27,8 @@ export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO
     st.f = Math.min(AUTO_MAX, Math.max(st.min, st.f));
   };
   clampState();
+  // position on the ladder, growing with the load saved: resolution first (1 - f), then one unit per step level
+  const posOf = c => (1 - c.f) + (c.stepIdx - st.baseStep);
   const mid = () => Math.max(st.min, AUTO_MID);
   // the next rung down from the present state, or null at the bottom
   const down = scale => {
@@ -56,7 +60,10 @@ export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO
     setBaseStep(i) { st.baseStep = i; clampState(); },
     // sample: one 0.5 s window. volMs = GPU time of the low-resolution volume pass (0 when drawn directly),
     // mainMs = GPU time of the main pass (0 = no timer query: wall-clock interval only), interval = mean frame interval, budget = frame budget (ms)
-    update({ volMs = 0, mainMs = 0, interval = 0, budget }) {
+    update({ volMs = 0, mainMs = 0, interval = 0, budget, ctx = null }) {
+      // the view changed (size, shown segments, section): what failed before says nothing about it
+      if (ctx !== st.ctx) { st.ctx = ctx; st.failPos = null; }
+      if (st.failPos !== null && ++st.sinceFail >= FAIL_LAPSE) st.failPos = null;
       const gpu = mainMs > 0;
       const total = mainMs + (st.f < AUTO_MAX ? volMs : 0);
       const vol = st.f < AUTO_MAX && volMs > 0 ? volMs : total, rest = st.f < AUTO_MAX && volMs > 0 ? mainMs : 0;
@@ -73,6 +80,7 @@ export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO
           if (dropping) scale = Math.min(scale, 0.85);
           const c = down(scale);
           if (c) {
+            st.failPos = posOf(before); st.sinceFail = 0; // this level is too heavy for the present view: do not climb back to it
             if (st.sinceUp <= 4) st.penalty = Math.min(4, st.penalty * 2); // a rise just before was too optimistic: wait longer next time
             st.f = c.f; st.stepIdx = c.stepIdx; changed = true;
           }
@@ -82,7 +90,8 @@ export function createAutoQuality({ min = AUTO_FLOORS[0], baseStep = 0, f = AUTO
         st.over = 0; st.stable++;
         if (st.stable >= 40 && st.penalty > 1) { st.penalty = 1; st.stable = 0; }
         const c = up();
-        const ok = c && (gpu ? predict(c, vol, rest) <= budget * UNDER : interval < budget * 1.04);
+        const blocked = c && st.failPos !== null && posOf(c) < st.failPos + FAIL_MARGIN;
+        const ok = c && !blocked && (gpu ? predict(c, vol, rest) <= budget * UNDER : interval < budget * 1.04);
         if (ok) {
           st.good++;
           if (st.good >= Math.ceil((gpu ? UP_N : UP_N_BLIND) * st.penalty)) {

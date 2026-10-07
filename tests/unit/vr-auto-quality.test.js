@@ -39,7 +39,7 @@ describe('ladder', () => {
   it('manual Detail is the lowest rung: base step 1 never goes back to 0, base 2 never moves the step', () => {
     const a = createAutoQuality({ baseStep: 1 });
     expect(Math.min(...run(a, 40, 40).map(t => t.s))).toBe(1);
-    expect(Math.min(...run(a, 1, 80).map(t => t.s))).toBe(1);
+    expect(Math.min(...run(a, 1, 200).map(t => t.s))).toBe(1);
     const b = createAutoQuality({ baseStep: 2 });
     const tb = run(b, 40, 60);
     expect(tb.every(t => t.s === 2)).toBe(true);
@@ -73,7 +73,7 @@ describe('ladder', () => {
     const aq = createAutoQuality({ min: 0.35 });
     run(aq, 400, 200);
     expect(aq.stepIdx).toBe(2); expect(aq.f).toBeCloseTo(0.35, 6);
-    const trace = run(aq, 3, 120); // light scene now
+    const trace = run(aq, 3, 300); // light scene now (the failed-level memory lapses after 120 samples)
     expect(aq.f).toBe(1); expect(aq.stepIdx).toBe(0);
     for (let i = 1; i < trace.length; i++) {
       const p = trace[i - 1], t = trace[i];
@@ -120,5 +120,43 @@ describe('ladder', () => {
     expect(aq.f).toBeCloseTo(0.25, 6);
     aq.setFloor(0.5); expect(aq.f).toBe(0.5);
     aq.setBaseStep(2); expect(aq.stepIdx).toBe(2);
+  });
+});
+
+// build 483: the wall-clock fallback cycled 81 % -> 70 % -> 81 % ... for ever (a small overrun shows as a halved rate)
+describe('failed level is remembered', () => {
+  const budget = 1000 / 72;
+  const quant = load => Math.ceil(load / budget - 1e-9) * budget; // the display halves the rate on a small overrun
+  const loadOf = aq => 20 * aq.f * aq.f * STEP_LEVELS[0] / STEP_LEVELS[aq.stepIdx] + 2;
+  const drive = (aq, n, ctx = 'a') => { const tr = []; for (let i = 0; i < n; i++) { aq.update({ volMs: 0, mainMs: 0, interval: quant(loadOf(aq)), budget, ctx }); tr.push(aq.f); } return tr; };
+  const flips = tr => { let n = 0; for (let i = 1; i < tr.length; i++) if (Math.abs(tr[i] - tr[i - 1]) > 1e-9) n++; return n; };
+  it('settles: no resolution moves in the second minute', () => {
+    const aq = createAutoQuality();
+    const tr = drive(aq, 200);
+    expect(flips(tr.slice(100, 118))).toBe(0); // 100..118 samples = 50..59 s
+    expect(Math.min(...tr)).toBeGreaterThanOrEqual(0.7 - 1e-9);
+  });
+  it('does not retry above 0.97x of the level that failed while the context is unchanged', () => {
+    const aq = createAutoQuality();
+    const tr = drive(aq, 60);
+    const peaks = []; for (let i = 1; i < tr.length - 1; i++) if (tr[i] > tr[i - 1] + 1e-9 && tr[i] >= tr[i + 1]) peaks.push(tr[i]);
+    // at most one overshoot that fails; afterwards never above 0.97 x the failed level
+    expect(peaks.length).toBeLessThanOrEqual(1);
+  });
+  it('a changed context (view size, segments, section) allows a new attempt', () => {
+    const aq = createAutoQuality();
+    drive(aq, 80, 'a');
+    const settled = aq.f;
+    drive(aq, 3, 'b'); // load is the same: it climbs again for one try
+    const tr = drive(aq, 40, 'b');
+    expect(Math.max(settled, ...tr)).toBeGreaterThan(settled - 1e-9);
+    expect(aq.state.penalty).toBeGreaterThanOrEqual(1);
+  });
+  it('the memory lapses after about 60 s (120 samples)', () => {
+    const aq = createAutoQuality();
+    drive(aq, 60); const f0 = aq.f;
+    const light = []; for (let i = 0; i < 160; i++) { aq.update({ volMs: 0, mainMs: 0, interval: budget, budget, ctx: 'a' }); light.push(aq.f); }
+    expect(light[20]).toBeCloseTo(f0, 6);           // still held at 10 s
+    expect(aq.f).toBeGreaterThan(f0);               // released afterwards
   });
 });
