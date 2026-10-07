@@ -321,7 +321,8 @@ export function configure(v){
  const p=ctRangeProfile,center=p.center,initialWidth=p.width;
  wc.min=p.fullMin;wc.max=p.fullMax;wc.value=Math.max(p.fullMin,Math.min(p.fullMax,center));wc.disabled=false;
  ww.min=Math.max(niceCtStep(p.fullSpan),1e-6);ww.max=p.fullWidthMax;ww.value=Math.max(+ww.min,Math.min(p.fullWidthMax,initialWidth));ww.disabled=false;
- sigmoidCenter.min=p.fullMin;sigmoidCenter.max=p.fullMax;sigmoidCenter.value=Math.max(p.fullMin,Math.min(p.fullMax,0)); // build 436: 0 HU, between fat and soft tissue (was the window centre)sigmoidCenter.disabled=!filterState.sigmoid;
+ sigmoidCenter.min=p.fullMin;sigmoidCenter.max=p.fullMax;sigmoidCenter.value=Math.max(p.fullMin,Math.min(p.fullMax,0)); // build 436: 0 HU, between fat and soft tissue (was the window centre)
+ sigmoidCenter.disabled=!filterState.sigmoid;
  const vals={axial:[v.slices,v.slices/2],coronal:[v.rows,v.rows/2],sagittal:[v.columns,v.columns/2]};for(const [plane,[max,mid]]of Object.entries(vals)){planes[plane].slider.max=max-1;planes[plane].slider.value=Math.floor(mid);planes[plane].slider.disabled=false}
  configureSegments(v);
  ctRangeAuto.disabled=ctRangeFull.disabled=false;applyCtRangeMode('auto');

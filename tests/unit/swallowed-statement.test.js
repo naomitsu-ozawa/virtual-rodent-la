@@ -8,8 +8,6 @@ import { lineComments, swallowedStatement } from '../helpers/line-comments.js';
 // Known live defects on main, found when this guard was written. App behaviour was deliberately not changed in that PR, so they are listed here.
 // FIX = move the swallowed statement onto its own line (that changes the app: bump the build), then DELETE the entry (a stale entry fails the test below).
 const KNOWN = [
-  { file: 'comment-ui.js', has: 'no DOM rebuild per moveonMeasureStartChange(', swallowed: 'onMeasureStartChange(()=>{syncPulse();renderMeasures()});', since: 'build 481' },
-  { file: 'data-load.js', has: '(was the window centre)sigmoidCenter.disabled=!filterState.sigmoid;', swallowed: 'sigmoidCenter.disabled=!filterState.sigmoid;', since: 'build 436' },
 ];
 
 const files = readdirSync('docs').filter(f => f.endsWith('.js'));

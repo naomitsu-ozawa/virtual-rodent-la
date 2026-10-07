@@ -354,7 +354,8 @@ export function installComments(){
  addBtn.addEventListener('click',()=>{if(addCommentHere(textEl.value)){textEl.value='';clearUndo()}});
  // unsaved comments (added / deleted / edited since the last project save or load) are lost on reload: ask the browser to confirm
  window.addEventListener('beforeunload',e=>{if(hasUnsavedComments()||hasUnsavedMeasurements()){e.preventDefault();e.returnValue=''}});
- onCommentsChange(render);onMeasurementsChange((_,info)=>{if(!info?.labelOnly)renderMeasures();requestOverlayDraw()}); // a label drag changes no list row: no DOM rebuild per moveonMeasureStartChange(()=>{syncPulse();renderMeasures()});
+ onCommentsChange(render);onMeasurementsChange((_,info)=>{if(!info?.labelOnly)renderMeasures();requestOverlayDraw()}); // a label drag changes no list row: no DOM rebuild per move
+ onMeasureStartChange(()=>{syncPulse();renderMeasures()});
  installPointMenu();setPointMenuHandlers({delete:id=>{deleteWithUndo(id);flashUndo(tr('commentDeleted'),tr('commentUndo'),undoDelete)}}); // the panel's own undo button is inside a closed <details>: the pill carries one too
   // (render() rebuilds the buttons: never on pointerdown, it would swallow the click that follows)
  root.addEventListener('toggle',render);
