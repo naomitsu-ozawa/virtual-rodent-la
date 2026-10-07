@@ -29,19 +29,26 @@ export const normalizeColor=v=>typeof v==='string'&&HEX.test(v.trim())?v.trim().
 const NAME_RE=/^(?:VR ポイント|VR point)\s+(\d+)$/i;
 // FNV-1a, 32 bit
 const hash=s=>{let h=0x811c9dc5;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0}return h>>>0};
-// the stable key of a point: its recorded number, else a hash of its id
+// a valid stored key: a non-negative integer (anything else from a file is dropped)
+export const normalizeAutoKey=v=>Number.isSafeInteger(v)&&v>=0?v:null;
+// the number a point of the OLD kind would be given from its text 「VR ポイント N」 (null for other texts)
+export const textPointNumber=text=>{const m=NAME_RE.exec(String(text??'').trim());return m?Math.max(1,+m[1]):null};
+// the stable key of a point (build 472): its stored `autoKey` (set when it was recorded: the N of 「VR ポイント N」 in VR, the next free number
+// for a point added on the PC / iPad), so editing the text never changes the colour. A legacy point without one derives it once from its
+// text (「VR ポイント N」 -> N) or the hash of its id; comments.js stores that derived key before the text is edited.
 export function pointKey(c){
- const m=NAME_RE.exec(String(c?.text??'').trim());
- return m?Math.max(1,+m[1]):hash(String(c?.id??''))+1;
+ const k=normalizeAutoKey(c?.autoKey);if(k!==null)return k;
+ return textPointNumber(c?.text)??hash(String(c?.id??''))+1;
 }
-export const autoPointColor=c=>POINT_PALETTE[(pointKey(c)-1)%POINT_PALETTE.length].hex;
+export const autoPointColor=c=>POINT_PALETTE[(((pointKey(c)-1)%POINT_PALETTE.length)+POINT_PALETTE.length)%POINT_PALETTE.length].hex;
 // the colour to draw: the point's own colour, else the auto one
 export const pointColor=c=>normalizeColor(c?.color)||autoPointColor(c);
 export const colorToInt=hex=>parseInt((normalizeColor(hex)||'#000000').slice(1),16);
-// a dark body for the solid VR sphere (the bright colour is the hidden dot and the chip): the same hue at 45 % brightness
+// the body of the solid VR sphere (the colour itself is the hidden dot and the chip): the same hue at 80 % brightness, so blue / violet / brown stay
+// visible on the dark background at the small size (build 472)
 export function darkFill(hex){
  const n=colorToInt(hex);
- return(Math.round((n>>16&255)*0.45)<<16)|(Math.round((n>>8&255)*0.45)<<8)|Math.round((n&255)*0.45);
+ return(Math.round((n>>16&255)*0.8)<<16)|(Math.round((n>>8&255)*0.8)<<8)|Math.round((n&255)*0.8);
 }
 // text colour on that colour: dark ink on a light colour, white on a dark one
 export function inkOn(hex){

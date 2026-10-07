@@ -5,7 +5,7 @@ import { planes } from './ui-shell.js?v=20261007-build472';
 import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build472';
 import { tr } from './i18n.js?v=20261007-build472';
 import { datasetFingerprint } from './project-file.js?v=20261007-build472';
-import { COMMENT_MAX_TEXT, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build472';
+import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build472';
 import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build472';
 import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build472';
 
@@ -27,7 +27,7 @@ export function currentCommentPosition(){
 }
 export function addCommentHere(text){
  const position=currentCommentPosition(),series=fingerprint();if(!position||!series)return null;
- return addComment(createComment({text,position,series}));
+ return addComment(createComment({text,position,series,autoKey:nextAutoKey(getComments())}));
 }
 // "View this place": only for a comment of the open series; the position is clamped into the volume
 export function viewComment(id){
@@ -219,6 +219,9 @@ export function installComments(){
  root.innerHTML='<summary></summary><p class="comment-hint"></p><label class="comment-show"><input type="checkbox" class="comment-show-input" checked><span></span></label><textarea class="comment-input" rows="2" maxlength="2000"></textarea><button type="button" class="tool-chip comment-add"></button><p class="comment-note" role="status"></p><div class="comment-undo" hidden role="status"><span class="comment-undo-text"></span> <button type="button" class="tool-chip comment-undo-btn"></button></div><ul class="comment-list"></ul>';
  host.appendChild(root);
  showEl=root.querySelector('.comment-show-input');showEl.addEventListener('change',()=>setMarkersShown(showEl.checked));onMarkersShownChange(on=>{if(showEl.checked!==on)showEl.checked=on;closeBubble();requestOverlayDraw()});
+ // build 472: the colour palette of a list row closes on a tap / click outside it and on Escape
+ document.addEventListener('pointerdown',e=>{if(colorOpenId&&!e.target?.closest?.('.comment-color-palette,.comment-color')){colorOpenId=null;render()}},true);
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&colorOpenId){colorOpenId=null;render()}});
  setOverlayPainter(paintMarkers);installMarkerTap();document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBubble()});
  listEl=root.querySelector('.comment-list');textEl=root.querySelector('.comment-input');addBtn=root.querySelector('.comment-add');noteEl=root.querySelector('.comment-note');undoEl=root.querySelector('.comment-undo');
  undoEl.querySelector('.comment-undo-btn').addEventListener('click',undoDelete);
