@@ -8,27 +8,28 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build481';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build481';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build481';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build481';
-import { datasetFingerprint } from './project-file.js?v=20261007-build481';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build481';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build481';
-import { buildClsData } from './point-cls.js?v=20261007-build481';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build481';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build481';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build481';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build481';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build481';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build481';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build481';
-import { tr } from './i18n.js?v=20261007-build481';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build481';
-import { createVrMeasure } from './vr-measure.js?v=20261007-build481';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build481';
-import { APP_BUILD } from './version.js?v=20261007-build481';
-import { wc, ww } from './ui-shell.js?v=20261007-build481';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build483';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build483';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build483';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build483';
+import { datasetFingerprint } from './project-file.js?v=20261007-build483';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build483';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build483';
+import { buildClsData } from './point-cls.js?v=20261007-build483';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build483';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build483';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build483';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build483';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build483';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build483';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build483';
+import { tr } from './i18n.js?v=20261007-build483';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build483';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build483';
+import { createVrMeasure } from './vr-measure.js?v=20261007-build483';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build483';
+import { APP_BUILD } from './version.js?v=20261007-build483';
+import { wc, ww } from './ui-shell.js?v=20261007-build483';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -58,6 +59,7 @@ uniform vec3 halfExt;
 uniform vec3 texDims;
 uniform vec3 brickDims;
 uniform float stepSize;
+const float ACC_STOP=0.95; // build 482: rays stop once 95 % opaque (was 98.5 %): dense fat saturates early, so fewer steps
 // diagnostics (build 339/341): 0 normal, 1 box only (no marching), 2 loop
 // count heat map (blue = few iterations, red = 1024 or more), 3 no shading at
 // hits (no refinement, no gradient), 4 no empty-space skipping
@@ -104,7 +106,8 @@ vec2 hitBox(vec3 o,vec3 d){
  vec3 lo=min(a,b);vec3 hi=max(a,b);
  return vec2(max(lo.x,max(lo.y,lo.z)),min(hi.x,min(hi.y,hi.z)));
 }
-vec3 texCoord(vec3 p){return vec3(p.x/(2.0*halfExt.x)+0.5,0.5-p.y/(2.0*halfExt.y),p.z/(2.0*halfExt.z)+0.5);}
+vec3 gInv=vec3(0.0); // build 483: 0.5 / halfExt, set once in main (was three divisions per call)
+vec3 texCoord(vec3 p){return vec3(p.x*gInv.x+0.5,0.5-p.y*gInv.y,p.z*gInv.z+0.5);}
 // analysis results (build 409): colour index per voxel (0 none, 1..14 = regionC), read only where a colour is
 // chosen (surface hit, cut face, slice tint), never per step; the hit is sampled a little inside the surface.
 // Compiled only with VRL_REGIONS (a session without results runs the shader as before: the branch alone cost
@@ -216,6 +219,18 @@ vec4 sliceColor(vec3 p){
  if(sliceTint>0.0){int si=segmentIndexAt(texCoord(p));if(si>=0)return vec4(mix(vec3(g),regionColor(p,segC[si].rgb,si),sliceTint),a);}
  return vec4(vec3(g),a);
 }
+// build 483: gradient normal. Central differences (six fetches) by default. VRL_TETRA = tetrahedral (four fetches at (+,-,-) (-,-,+) (-,+,-) (+,+,+)
+// voxels): measured on the synthetic fat volume it changes ~98 % of the shaded pixels and looks noisier, and it saves 2 fetches per ray only, so it is off.
+#ifdef VRL_TETRA
+vec3 gradientAt(vec3 tc){
+ vec3 d=1.0/max(texDims,vec3(1.0));
+ float a=huAt(tc+vec3(d.x,-d.y,-d.z)),b=huAt(tc+vec3(-d.x,-d.y,d.z)),c=huAt(tc+vec3(-d.x,d.y,-d.z)),e=huAt(tc+d);
+ float gx=a-b-c+e,gy=-a-b+c+e,gz=-a+b-c+e;
+ vec3 voxel=2.0*halfExt/max(texDims,vec3(1.0));
+ vec3 g=vec3(gx/max(voxel.x,1e-6),-gy/max(voxel.y,1e-6),gz/max(voxel.z,1e-6));
+ float l=length(g);return l<1e-6?vec3(0.0,0.0,1.0):g/l;
+}
+#else
 vec3 gradientAt(vec3 tc){
  vec3 d=1.0/max(texDims,vec3(1.0));
  float gx=huAt(tc+vec3(d.x,0.0,0.0))-huAt(tc-vec3(d.x,0.0,0.0));
@@ -225,8 +240,10 @@ vec3 gradientAt(vec3 tc){
  vec3 g=vec3(gx/max(voxel.x,1e-6),-gy/max(voxel.y,1e-6),gz/max(voxel.z,1e-6));
  float l=length(g);return l<1e-6?vec3(0.0,0.0,1.0):g/l;
 }
+#endif
 void main(){
  vec3 o=vOrigin;vec3 dir=normalize(vPos-vOrigin);
+ gInv=0.5/halfExt;vec3 tcO=texCoord(o),tcD=vec3(dir.x*gInv.x,-dir.y*gInv.y,dir.z*gInv.z); // build 483: texture coordinate along the ray = tcO + tcD * t
  vec2 bounds=hitBox(o,dir);
  if(bounds.x>bounds.y)discard;
  if(diag==1){outColor=vec4(0.2,0.35,0.5,1.0);return;}
@@ -250,6 +267,7 @@ void main(){
  }
  int nextSlice=0;
  float previousT=t;int lastIndex=-1;vec4 acc=vec4(0.0);int iters=0;
+ float t0=t,jumpLen=0.0;bool hitEnd=false; // build 483: diagnostics (diag 5): path skipped by jumps, ray ended by a hit
  // build 368: brickEnd = t where the current non-empty brick is left; the
  // brick min/max is fetched once per brick instead of once per sample
  float brickEnd=-1.0;int uniformSeg=-1;bool prevValid=false;float prevF=0.0;float lastDd=99.0;float distInc=ceil(1.5*ceil(step/max(voxelMin,1e-6)));
@@ -264,36 +282,47 @@ void main(){
   // surface search testing the fetched classification directly (pixel-identical; practice data 609 -> 177 ms on SwiftShader)
   // build 387: a hit that ends the ray (opaque segment) is searched and shaded after the loop, so the search does not run
   // inside the divergent march; semi-transparent hits are handled inline as before. Same arithmetic, same order.
-  int hitIdx=-1;float hitLo=0.0;float hitHi=0.0;float hitF0=0.0;float hitF1=0.0;bool hitIso=false;
+  int hitIdx=-1;float hitLo=0.0;float hitHi=0.0;float hitF0=0.0;float hitF1=0.0;bool hitIso=false;bool hitSimple=false;int hitNb=6;
   // per-ray constant: enabled channels as a mask (1 enabled, 0 not)
-  vec4 enM=vec4(0.0);for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5)enM[c]=1.0;}
+  // build 483: one-hot channel selectors per segment (no dynamic indexing of fv[c] / clsChan[s] inside the march); off = 1e9 for a disabled segment
+  vec4 sel0=vec4(0.0),sel1=vec4(0.0),sel2=vec4(0.0),sel3=vec4(0.0);float off0=1e9,off1=1e9,off2=1e9,off3=1e9;
+  {int c=clsChan[0];if(c>=0&&segA[0].w>0.5){sel0[c]=1.0;off0=0.0;}}
+  {int c=clsChan[1];if(c>=0&&segA[1].w>0.5){sel1[c]=1.0;off1=0.0;}}
+  {int c=clsChan[2];if(c>=0&&segA[2].w>0.5){sel2[c]=1.0;off2=0.0;}}
+  {int c=clsChan[3];if(c>=0&&segA[3].w>0.5){sel3[c]=1.0;off3=0.0;}}
   // build 389: rays with a slice or a cut face use a second copy of the march with those events (the same code in one
   // loop made SwiftShader's compiled loop twice as slow for every ray, so the two stay separate)
 #ifndef VRL_NO_EVENTS
   if(nSlice==0&&capT<0.0){
 #endif
   for(int iter=0;iter<4096;iter++){
-   if(t>endT||acc.a>0.985)break;
+   if(t>endT||acc.a>ACC_STOP)break;
    iters++;
-   vec4 q=texture(clsTex,clamp(texCoord(o+dir*t),vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
-   if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
-   vec4 fv=(q-0.5)*enM-(1.0-enM)*1e9;float maxF=max(max(fv.x,fv.y),max(fv.z,fv.w));
+   vec4 q=texture(clsTex,clamp(tcO+tcD*t,vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
+   // build 483: a jump is never shorter than a normal step
+   if(dd>=2.7){float nextJ=max(t+(dd-1.8)*voxelMin,t+step);jumpLen+=nextJ-t;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+   vec4 qc=q-0.5;float f0=dot(qc,sel0)-off0,f1=dot(qc,sel1)-off1,f2=dot(qc,sel2)-off2,f3=dot(qc,sel3)-off3;
    int idx=-1;float curF=-1.0;
-   for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&fv[c]>=0.0){idx=s;curF=fv[c];break;}}
+   if(f0>=0.0){idx=0;curF=f0;}else if(f1>=0.0){idx=1;curF=f1;}else if(f2>=0.0){idx=2;curF=f2;}else if(f3>=0.0){idx=3;curF=f3;}
    gQ=q;
    if(idx!=lastIndex){
     if(idx>=0){
      float lo=previousT;float hi=t;bool simple=diag==3||segC[idx].w>0.5;
      float f1=curF;bool iso=refine==1&&((editMask>>idx)&1)==0&&prevValid&&prevF<0.0;
+     int nb=prevValid?6:2; // build 483: right after a jump the bracket is ~0.05 step wide: two bisections are enough (was six)
+#ifdef VRL_OPAQUE
+     // build 483: segments are always opaque (alpha 1): every hit ends the ray and is searched and shaded after the loop
+     {hitIdx=idx;hitLo=lo;hitHi=hi;hitF0=prevF;hitF1=f1;hitIso=iso;hitSimple=simple;hitNb=nb;lastIndex=idx;break;}
+#else
      float alpha=clamp(segA[idx].z,0.03,1.0);
-     if((1.0-acc.a)*alpha+acc.a>0.985&&!simple){hitIdx=idx;hitLo=lo;hitHi=hi;hitF0=prevF;hitF1=f1;hitIso=iso;lastIndex=idx;break;}
+     if((1.0-acc.a)*alpha+acc.a>ACC_STOP&&!simple){hitIdx=idx;hitLo=lo;hitHi=hi;hitF0=prevF;hitF1=f1;hitIso=iso;hitNb=nb;lastIndex=idx;break;}
      int cIdx=clsChan[idx];
      if(!simple&&iso){float f0=prevF;
       for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
-       vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+       vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
        for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
        if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
-     else if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+     else if(!simple)for(int r=0;r<6;r++){if(r>=nb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
        for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
        if(inside)hi=mid;else lo=mid;}
      vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
@@ -303,16 +332,17 @@ void main(){
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
      vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb,idx)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
+#endif
     }
     lastIndex=idx;
    }
-   prevValid=true;prevF=idx>=0?curF:maxF;
+   prevValid=true;prevF=idx>=0?curF:max(max(f0,f1),max(f2,f3));
    previousT=t;t+=step;
   }
 #ifndef VRL_NO_EVENTS
   }else{
   for(int iter=0;iter<4096;iter++){
-   if(t>endT||acc.a>0.985)break;
+   if(t>endT||acc.a>ACC_STOP)break;
    iters++;
    // slices and the cut face as in the general loop (same order: slices up to t + step, then the cap, then the sample)
    while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
@@ -329,25 +359,31 @@ void main(){
      lastIndex=ci;previousT=t;t+=step;continue;
     }
    }
-   vec4 q=texture(clsTex,clamp(texCoord(o+dir*t),vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
-   if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
-   vec4 fv=(q-0.5)*enM-(1.0-enM)*1e9;float maxF=max(max(fv.x,fv.y),max(fv.z,fv.w));
+   vec4 q=texture(clsTex,clamp(tcO+tcD*t,vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
+   // build 483: a jump is never shorter than a normal step
+   if(dd>=2.7){float nextJ=max(t+(dd-1.8)*voxelMin,t+step);jumpLen+=nextJ-t;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+   vec4 qc=q-0.5;float f0=dot(qc,sel0)-off0,f1=dot(qc,sel1)-off1,f2=dot(qc,sel2)-off2,f3=dot(qc,sel3)-off3;
    int idx=-1;float curF=-1.0;
-   for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&fv[c]>=0.0){idx=s;curF=fv[c];break;}}
+   if(f0>=0.0){idx=0;curF=f0;}else if(f1>=0.0){idx=1;curF=f1;}else if(f2>=0.0){idx=2;curF=f2;}else if(f3>=0.0){idx=3;curF=f3;}
    gQ=q;
    if(idx!=lastIndex){
     if(idx>=0){
      float lo=previousT;float hi=t;bool simple=diag==3||segC[idx].w>0.5;
      float f1=curF;bool iso=refine==1&&((editMask>>idx)&1)==0&&prevValid&&prevF<0.0;
+     int nb=prevValid?6:2; // build 483: right after a jump the bracket is ~0.05 step wide: two bisections are enough (was six)
+#ifdef VRL_OPAQUE
+     // build 483: segments are always opaque (alpha 1): every hit ends the ray and is searched and shaded after the loop
+     {hitIdx=idx;hitLo=lo;hitHi=hi;hitF0=prevF;hitF1=f1;hitIso=iso;hitSimple=simple;hitNb=nb;lastIndex=idx;break;}
+#else
      float alpha=clamp(segA[idx].z,0.03,1.0);
-     if((1.0-acc.a)*alpha+acc.a>0.985&&!simple){hitIdx=idx;hitLo=lo;hitHi=hi;hitF0=prevF;hitF1=f1;hitIso=iso;lastIndex=idx;break;}
+     if((1.0-acc.a)*alpha+acc.a>ACC_STOP&&!simple){hitIdx=idx;hitLo=lo;hitHi=hi;hitF0=prevF;hitF1=f1;hitIso=iso;hitNb=nb;lastIndex=idx;break;}
      int cIdx=clsChan[idx];
      if(!simple&&iso){float f0=prevF;
       for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
-       vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+       vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
        for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
        if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
-     else if(!simple)for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+     else if(!simple)for(int r=0;r<6;r++){if(r>=nb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
        for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
        if(inside)hi=mid;else lo=mid;}
      vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
@@ -357,37 +393,39 @@ void main(){
      float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
      vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb,idx)*diffuse+vec3(spec);
      float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
+#endif
     }
     lastIndex=idx;
    }
-   prevValid=true;prevF=idx>=0?curF:maxF;
+   prevValid=true;prevF=idx>=0?curF:max(max(f0,f1),max(f2,f3));
    previousT=t;t+=step;
   }
   }
 #endif
   if(hitIdx>=0){
    int idx=hitIdx;float lo=hitLo;float hi=hitHi;float f0=hitF0;float f1=hitF1;int cIdx=clsChan[idx];
-   if(hitIso){
+   if(hitSimple){}
+   else if(hitIso){
     for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
-     vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+     vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
      for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
      if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
-   else for(int r=0;r<6;r++){float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(texCoord(o+dir*mid),vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+   else if(!hitSimple)for(int r=0;r<6;r++){if(r>=hitNb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
      for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
      if(inside)hi=mid;else lo=mid;}
    vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
-   vec3 n=gradientAt(tc);
+   vec3 n=hitSimple?-dir:gradientAt(tc);
    vec3 viewDir=normalize(o-hp);vec3 lightDir=normalize(viewDir+vec3(0.35,0.5,0.25));
    float diffuse=0.28+0.72*abs(dot(n,lightDir));
    float spec=pow(max(dot(n,normalize(lightDir+viewDir)),0.0),20.0)*0.18;
    float alpha=clamp(segA[idx].z,0.03,1.0);
    vec3 lit=regionColor(hp+dir*(0.75*voxelMin),segC[idx].rgb,idx)*diffuse+vec3(spec);
-   float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);
+   float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);hitEnd=true;
   }
 #ifndef VRL_NO_GENERAL
  }else
  for(int iter=0;iter<4096;iter++){
-  if(t>endT||acc.a>0.985)break;
+  if(t>endT||acc.a>ACC_STOP)break;
   iters++;
   while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
    // a slice lies before the next sample: composite it in depth order
@@ -412,14 +450,14 @@ void main(){
    // trilinearly: every corner value is a lower bound of the distance to the seeds and the distance is
    // 1-Lipschitz, so the surface is at least dd - 1.74 voxels away; jump dd - 1.8 when that is 0.9 or more
    qHere=texture(clsTex,clamp(tc0,vec3(0.0),vec3(0.999999)));haveQ=true;float dd=qHere.a*255.0;
-   if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+   if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;jumpLen+=nextJ-t;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
   }
   else if(useDist>0&&diag!=4){
    // build 381: the field is read only when a jump is possible. One step moves the sampled voxel by at most one per
    // axis (chamfer 5 = 1.5 in field units, floor: +2), so after a read of 0 the next value is at most 2 and the read is
    // skipped; the bound grows by distInc per skipped step (steps longer than a voxel: more). Same jumps, same image.
    if(lastDd>=1.0){float dd=distAt(tc0);lastDd=dd;
-    if(dd>=3.0){float nextJ=t+(dd-2.0)*voxelMin;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;lastDd=99.0;continue;}
+    if(dd>=3.0){float nextJ=t+(dd-2.0)*voxelMin;jumpLen+=nextJ-t;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;lastDd=99.0;continue;}
    }else{lastDd+=distInc;}
   }
   bool canSample=diag==4||useDist>0||t<brickEnd;
@@ -464,12 +502,17 @@ void main(){
 #else
  }
 #endif
- while(nextSlice<nSlice&&acc.a<=0.985){
+ while(nextSlice<nSlice&&acc.a<=ACC_STOP){
   vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
   float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
  }
  if(diag==2){float h=clamp(float(iters)/1024.0,0.0,1.0);outColor=vec4(h,1.0-abs(h*2.0-1.0),1.0-h,1.0);return;}
+ if(acc.a>ACC_STOP)hitEnd=true;
+ // build 483: probe (diag 5, the VR settings tab 4): R = samples / 1024, G = ray ended by a hit, B = share of the path skipped by jumps
+ if(diag==5){outColor=vec4(clamp(float(iters)/1024.0,0.0,1.0),hitEnd?1.0:0.0,clamp(jumpLen/max(endT-t0,1e-6),0.0,1.0),1.0);return;}
  if(acc.a<0.004)discard;
+ // build 483: a ray stopped at ACC_STOP is made fully opaque (AR passthrough would show the real world through the last 5 %)
+ if(acc.a>ACC_STOP)acc/=acc.a;
  // premultiplied, blended over the VR background (raw colour like the
  // WebGPU canvas: no colour-space conversion)
  outColor=acc;
@@ -553,7 +596,7 @@ async function buildVolumeData(maxDim,onProgress,{noBricks=false}={}){
 // VR settings kept per browser (resolution only applies when a session starts)
 const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is (build 468: no setting for how a section is held; sections are moved with the trigger)
-const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,wheel:[...DEFAULT_WHEEL],cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,foveation:2,rate:0,help:1,refine:1,labelSize:0};
+const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,wheel:[...DEFAULT_WHEEL],cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,autoMin:0,foveation:2,rate:0,help:1,refine:1,labelSize:0};
 // an older key is migrated once, with the slice opacity reset to the new default
 function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);const v={...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})};v.wheel=normalizeWheelItems(v.wheel);return v}catch{return{...DEFAULTS,wheel:[...DEFAULT_WHEEL]}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
@@ -567,7 +610,7 @@ function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v)
 // the resolution while the volume is large and raising it when small.
 // build 370: auto may reach 100 % (was 80 %); the controller follows the GPU
 // time of the volume pass when the timer extension is offered
-const VRES=[0,1,0.7,0.5],AUTO_MIN=0.25,AUTO_MAX=1,STEP=[1,1.5,2],FOVEATION=[0,0.5,1];
+const VRES=[0,1,0.7,0.5],STEP=STEP_LEVELS,FOVEATION=[0,0.5,1];
 // VR window slider / button step in HU (build 361)
 const WIN_STEP=10,AIR_MIN=-1000,AIR_MAX=500;
 
@@ -581,7 +624,7 @@ precision highp float;
 uniform sampler2D img;
 uniform vec2 invSize; // resolution factor / offscreen target size
 out highp vec4 outColor;
-void main(){outColor=texture(img,gl_FragCoord.xy*invSize);}`;
+void main(){vec4 c=texture(img,gl_FragCoord.xy*invSize);if(c.a<=0.0)discard;outColor=c;}`;
 
 // background: a dark gradient dome and a floor grid (a few triangles, no
 // cost next to the ray marching)
@@ -731,7 +774,7 @@ const makeComboTexture=(data,dims)=>{const x=new THREE.Data3DTexture(data,...dim
 const shownMask=()=>{let mask=0;for(let i=0;i<4;i++){const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];if(seg?.active&&seg?.enabled&&segMode[key]!==2)mask|=1<<i}return mask};
 // build 393: shader variants (preprocessor guards in fragmentShader) sharing one uniforms object:
 // combined = without the general loop (used when the combined field is in use), noEvents = also without the slice / cut-face loop (no section)
-const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...base.defines,...defs};return m};return{full:base,combined:mk({VRL_NO_GENERAL:''}),noEvents:mk({VRL_NO_GENERAL:'',VRL_NO_EVENTS:''})}};
+const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...base.defines,...defs};return m};return{full:base,combined:mk({VRL_NO_GENERAL:'',VRL_OPAQUE:''}),noEvents:mk({VRL_NO_GENERAL:'',VRL_NO_EVENTS:'',VRL_OPAQUE:''})}};
 const rayMaterialOf=m=>{const r=m.clone();r.uniforms=m.uniforms;r.defines={...m.defines};r.blending=THREE.NoBlending;r.transparent=false;return r};
 const volumeUniforms=(vd,full,settings)=>({vol:{value:full.v},bricks:{value:full.b},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
  stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
@@ -898,13 +941,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',anBench:'解析の重さ（約 12 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
    sec:'断面',addPlane:'＋追加',planeN:'断面',clipOn:'切る',clipOff:'切らない',remove:'消す',maxPlanes:'断面は4枚までです',byHelp:'B/Y：短く押す＝表示／非表示、長押し＝断面を追加',scrollHelp:['スティック上下：選んだ断面（一覧で色付き）を法線方向に動かします','何もない所でトリガーを押したまま動かすと、選んだ断面が動きます（枠は手の色で光ります）'],snapL:'選んだ断面を',snapModes:['軸位','冠状','矢状'],offOn:['オフ','オン'],cap:'キャップ',tint:'スライスの色付け',cut:'切り取り',cutModes:['オフ','手前','片側'],flip:'向きを反転',cutHelp:['オフ：切らずにスライスだけ映します','手前：見ている側を消します（向きは自動）','片側：矢印の側を消します。「反転」で入れ替え'],sl:'スライス不透明度',
    handR:'右',handL:'左',secHelp:'枠の細い線・番号札・何もない所（3Dに触れていない所）をトリガーで押したまま動かすと、断面が手に付いて動く（番号の下＝最後に動かした手）',secOff:'「オン」かB/Yボタンで断面を出します',
-   r:'ボリューム解像度',auto:'自動',dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
+   r:'ボリューム解像度',auto:'自動',am:'自動の下限',amv:['最低 50%','最低 35%','最低 25%'],dt:'データ',q:'描画の細かさ',qv:['標準','粗め','最粗'],f:'周辺の簡略化',fv:['なし','中','強'],hz:'リフレッシュレート',diag:'診断',dv:['通常','箱のみ','ループ数','陰影なし','スキップなし'],
    stHeld:'断面：動かしています',stFixed:'断面：固定中',stNone:'グリップでつかむ・両手で拡大縮小',preparing:'VRボリューム準備中… ',failed:'VR準備に失敗: ',shotDone:'スクリーンショットを撮りました（終了後にページで保存）',filtered:' フィルター適用'}
   :{ptT:'Position comments (VR points)',ptMode:'Record on',ptModeV:['Section','Surface'],ptHelpSurf:['Short trigger press: records on the first tissue surface the laser meets; laser on a point selects it','Surface = edge of a shown segment (opacity ignored; a face cut by a section counts)','The place is the one at the moment of the press; holding 0.5 s or more records nothing','No recording for 0.3 s after the thumbstick is moved (that hand only)','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptDone:'Recorded: ',ptHelp:['Short trigger press: laser on the selected section records (air included); laser on a point selects it; press and move 2 cm drags the section','The place is the one at the moment of the press; holding 0.5 s or more records nothing','No recording for 0.3 s after the thumbstick is moved (that hand only)','Saved as “VR point N” (shown in the 2D page list, where the text can be edited)'],ptDel:'Delete this point',ptUndo:'Undo',ptSel:'Selected point: ',ptNoSel:'Point the laser at a point and pull the trigger to select',ptDeleted:'Point deleted (Undo brings it back)',ptRestored:'Point restored',ptList:'Position comments',ptNone:'None yet',title:'Virtual Rodent Lab',tabs:['View','Section','Slice','Quality','Details','Analysis','Points'],anT:'Analysis results (volume)',anNone:'No analysis results (made with the volume analysis on the page; the visible ones come into VR)',anTotal:'Total',anPage:'Page',lbSize:'Label size',lbSizeV:['Small','Medium','Large'],win:'The CT image shown on the sections (the app values are not changed)',winHelp:'Sliders step 10 HU; −/＋ move 10 HU',airL:'Transparent at or below',airHelp:'Slice is transparent at or below this value (−500: air, −50: fat too)',wcL:'Window centre',wwL:'Window width',pApp:'App values',pFull:'Full range',pBone:'Bone',pSoft:'Soft tissue',follow:'Follow',fixed:'Fixed',menuPos:'Menu position',menuKey:'A/X: short = quick ring, hold = open / close the menu',menuGrab:'Point at the menu or help board, grip: move it (becomes Fixed)',helpT:'Controls',helpModes:['Hidden','Follow','Fixed'],helpBasic:['Grip: grab and turn / move the volume','Grip with both hands: scale','Trigger (short): record / select a point (hold on a point: move, delete, colour, distance)','A / X: short = quick ring, hold = menu','B / Y: show a section (long press: add)','Point at the menu, grip: move it'],helpSec:['Thin frame line / number tag: trigger selects, hold and move to slide / rotate','Thumbstick up / down: scroll the selected plane','Hold on a point: ring with move / delete / colour / distance','B / Y: show / hide sections (long press: add)','Trigger (short): records a point on a section or tissue; on a point selects it','A / X: short = quick ring, hold = menu'],helpMenu:'Trigger: menu buttons and sliders',close:'Close',badge:'X: quick / hold: menu',wheelEdit:'Set quick ring items',wheelT:'Quick ring items',wheelHelp:'1 = top, clockwise. Pick a slot, then an item',wheelEmpty:'Empty',wheelPrev:'◀ Prev',wheelNext:'Next ▶',wheelClear:'Clear',wheelReset:'Defaults',back:'Back',wheelNoMode:'No section / surface mode item (the mode cannot be switched)',ptMove:'Move',ptDelete:'Delete',ptComment:'Comment',modeNow:'Record on: ',modeHint:' (switch in the A/X ring)',undoDone:'Undone',undoFail:'Could not undo',undoNone:'Nothing to undo',ptMoved:'Point moved (Undo brings it back)',ptMoveHint:'Moving: trigger where it goes (A/X cancels)',ptDist:'Distance',ptDistHint:'Pick the end point',ptDistStart:'Start set: ',ptDistDone:'Distance added (Undo removes it)',ptDistExists:'This pair already has a distance',ptDistCancel:'Distance measurement cancelled',ptDistSame:'Pick a point other than the start',ptDistRefused:'No more distances can be added',ptDistOther:'Cannot measure to a point of another series',
    seg:'Segments',segModes:['Normal','Simple','Hidden'],noSeg:'No segment shown (set thresholds in the app)',home:'Bring to front',clsD:'Precomputed (diag.)',distD:'Distance field (diag.)',bench:'Benchmark (about 35 s)',anBench:'Analysis cost (about 12 s)',benchRun:'benchmark ',benchHelp:'fps while a section sweeps and the volume turns: 16.5/30 cm × shown / bone+fat / bone only × 100% / 50%; the result is shown after leaving VR',samples:'samples / pixel ',samplesNote:' (mean over covered pixels, 48×48 probe)',refineL:'Surface search',refineV:['Fast','Exact'],editD:'Processing mask (diag.)',editDv:['Smooth','Voxel','Off'],shot:'Screenshot',exit:'Exit',
    sec:'Sections',addPlane:'+ Add',planeN:'Plane ',clipOn:'Clips',clipOff:'No clip',remove:'Remove',maxPlanes:'Up to 4 planes',byHelp:'B/Y: press = show / hide, long press = add a plane',scrollHelp:['Thumbstick up / down moves the selected plane (highlighted in the list) on its normal','Hold the trigger on empty space and move: the selected plane moves (its frame glows in the hand colour)'],snapL:'Selected plane',snapModes:['Axial','Coronal','Sagittal'],offOn:['Off','On'],cap:'Cap',tint:'Slice colouring',cut:'Clip',cutModes:['Off','Near side','One side'],flip:'Flip side',cutHelp:['Off: nothing is cut, only the slice is shown','Near side: the side you look from is removed (follows you)','One side: the arrow side is removed; Flip swaps it'],sl:'Slice opacity',
    handR:'R',handL:'L',secHelp:'Trigger on a thin frame line, number tag or empty space (not on the 3D object), hold and move: the section sticks to the hand (under the number: last hand)',secOff:'Turn it on here or press B/Y',
-   r:'Volume resolution',auto:'Auto',dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
+   r:'Volume resolution',auto:'Auto',am:'Auto floor',amv:['Min 50%','Min 35%','Min 25%'],dt:'Data',q:'Detail',qv:['Normal','Coarse','Coarsest'],f:'Foveation',fv:['Off','Mid','High'],hz:'Refresh rate',diag:'Diagnostics',dv:['Normal','Box only','Loop count','No shading','No skipping'],
    stHeld:'Section: being moved',stFixed:'Section: fixed',stNone:'Grip to grab, both hands to scale',preparing:'Preparing VR volume… ',failed:'VR failed: ',shotDone:'Screenshot taken (save it on the page after exit)',filtered:' filtered'};
  const menu=makeMenu();scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
@@ -915,7 +958,6 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // segMode (normal / simple / hidden per segment) lives at module level since build 393 (shownMask); it persists across sessions
  // VR opacity per segment (build 354): 100 % by default, so rays stop at the
  // first surface; the app's opacity is not used or changed
- const segOpacity={};
  // controllers: ray, input source (handedness, gamepad), haptics
  const raycaster=new THREE.Raycaster(),tmpM=new THREE.Matrix4();
  const controllers=[0,1].map(i=>{const c=renderer.xr.getController(i);scene.add(c);
@@ -1501,7 +1543,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  };
  const rates=[...(session.supportedFrameRates||[])].filter(r=>r>=60).sort((a,b)=>a-b);
  const targetRate=()=>session.frameRate||(rates.length?rates[Math.min(settings.rate,rates.length-1)]:72);
- let autoF=1,autoFrames=0,autoAt=performance.now(); // build 395: starts at 100 % (72 fps there at the default size since build 387) and only drops when the frames say so
+ const aq=createAutoQuality({min:autoFloor(settings.autoMin),baseStep:settings.quality|0});let autoFrames=0,autoAt=performance.now(); // build 395: starts at 100 % (72 fps there at the default size since build 387) and only drops when the frames say so
  let frames=0,fpsAt=performance.now(),fps=0;
  // build 385: benchmark — 12 phases (3 sizes × shown segments / bone only × 100 % / 50 %), 0.8 s settle + 2 s count each;
  // the state is restored afterwards and the result goes to the 画質 tab, the console, localStorage (vrl-vr-bench) and a
@@ -1570,7 +1612,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   ui.benchLine=lines.join(' | ');menu.refresh();
  };
  const applyQuality=()=>{
-  if(material){material.uniforms.stepSize.value=baseStep*(STEP[settings.quality]??1);material.uniforms.diag.value=settings.diag|0;material.uniforms.refine.value=settings.refine|0;useData(settings.data|0)}
+  if(material){aq.setFloor(autoFloor(settings.autoMin));aq.setBaseStep(settings.quality|0);material.uniforms.stepSize.value=baseStep*(STEP[VRES[settings.vres]?settings.quality:aq.stepIdx]??1);material.uniforms.diag.value=settings.diag|0;material.uniforms.refine.value=settings.refine|0;useData(settings.data|0)}
   renderer.xr.setFoveation?.(FOVEATION[settings.foveation]??1);
   if(rates.length&&session.updateTargetFrameRate)session.updateTargetFrameRate(rates[Math.min(settings.rate,rates.length-1)]).catch(()=>{});
   saveSettings(settings);frames=0;fpsAt=performance.now();
@@ -1592,10 +1634,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(ui.tab===0){
    const active=SEGMENT_PRESET_ORDER.filter(k=>segmentState[k]?.active);
    if(!active.length)label(X,y0+40,L.noSeg);
-   // name + VR opacity, display mode, opacity slider (VR only; starts at 100 %)
-   active.forEach((key,i)=>{const seg=segmentState[key],y=y0+i*76,m=segMode[key]|0,op=segOpacity[key]??1;label(X,y+36,tr(key)+' '+Math.round(op*100)+'%',{color:seg.color||'#fff',bold:true,size:28});
-    L.segModes.forEach((t,j)=>btn(250+j*160,y,150,t,m===j,()=>{segMode[key]=j},{color:j===0?seg.color:undefined,size:28}));
-    w.push({type:'slider',x:760,y,w:210,h:72,value:op,text:'',set:v=>{segOpacity[key]=Math.max(0.05,Math.round(v*20)/20)}})});
+   // name + display mode. build 483 (owner: VR / AR objects need no transparency): segments are always opaque, the opacity slider and its % are gone
+   active.forEach((key,i)=>{const seg=segmentState[key],y=y0+i*76,m=segMode[key]|0;label(X,y+36,tr(key),{color:seg.color||'#fff',bold:true,size:28});
+    L.segModes.forEach((t,j)=>btn(250+j*160,y,150,t,m===j,()=>{segMode[key]=j},{color:j===0?seg.color:undefined,size:28}));});
    const yb=MENU_H-110;
    // build 365: 持ち方 moved here from the 断面 tab (room for the snap row)
    choice(yb-370,L.helpT,L.helpModes.map((t,i)=>({label:t,value:i})),settings.help|0,v=>{settings.help=v;saveSettings(settings);if(v===1)helpMoving=true});
@@ -1644,12 +1685,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
     label(X,y0+720,L.airHelp,{size:24,color:'#9fb3c3'})}
   }else if(ui.tab===3){
    choice(y0,L.r,VRES.map((r,i)=>({label:r?Math.round(r*100)+'%':L.auto,value:i})),settings.vres,v=>{settings.vres=v;applyQuality()});
-   choice(y0+90,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
-   choice(y0+180,L.q,L.qv.map((t,i)=>({label:t,value:i})),settings.quality,v=>{settings.quality=v;applyQuality()});
-   choice(y0+270,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
-   if(rates.length>1)choice(y0+360,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
+   choice(y0+90,L.am,L.amv.map((t,i)=>({label:t,value:i})),settings.autoMin|0,v=>{settings.autoMin=v;applyQuality()});
+   choice(y0+180,L.dt,[{label:'256³',value:1},{label:'512³',value:0}],settings.data,v=>{settings.data=v;applyQuality()});
+   choice(y0+270,L.q,L.qv.map((t,i)=>({label:t,value:i})),settings.quality,v=>{settings.quality=v;applyQuality()});
+   choice(y0+360,L.f,L.fv.map((t,i)=>({label:t,value:i})),settings.foveation,v=>{settings.foveation=v;applyQuality()});
+   if(rates.length>1)choice(y0+450,L.hz,rates.slice(0,4).map((r,i)=>({label:r+' Hz',value:i})),settings.rate,v=>{settings.rate=v;applyQuality()});
    // build 385: in-VR benchmark (the owner should not have to read numbers off the headset one by one)
-   btn(X,y0+460,460,L.bench,bench.active,()=>startBench(),{size:28});btn(X+480,y0+460,440,L.anBench,anBench.active,()=>startAnBench(),{size:28});if(ui.benchLine)label(X,y0+560,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+600,L.benchHelp,{size:22,color:'#9fb3c3'});
+   btn(X,y0+550,460,L.bench,bench.active,()=>startBench(),{size:28});btn(X+480,y0+550,440,L.anBench,anBench.active,()=>startAnBench(),{size:28});if(ui.benchLine)label(X,y0+650,ui.benchLine,{size:26,color:'#9fb3c3'});label(X,y0+690,L.benchHelp,{size:22,color:'#9fb3c3'});
   }else if(ui.tab===5){
    // build 409 (owner: show the analysis results in VR / AR): read only — colour, segment, volume; 10 per page
    label(X,y0+10,L.anT,{bold:true,size:30});
@@ -1696,7 +1738,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    WHEEL_ITEMS.forEach((it,i)=>btn(X+(i%2)*480,yo+120+Math.floor(i/2)*64,470,itemName(it.id)+(items.includes(it.id)?'  ✓':''),items[slot]===it.id,()=>save(setWheelItem(items,slot,it.id)),{size:24,h:58}));
    btn(X,MENU_H-100,260,L.back,false,()=>{ui.tab=0;menu.refresh()},{size:28});
   }else if(ui.tab===4){
-   label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
+   label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.diagLine)label(X,y0+122,ui.diagLine,{size:22,color:'#cfe3f0'});else if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
    choice(y0+470,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
    choice(y0+560,L.refineL,L.refineV.map((t,i)=>({label:t,value:1-i})),settings.refine|0,v=>{settings.refine=v;applyQuality()});
@@ -1757,15 +1799,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // samples per pixel (build 369): the loop-count diagnostic drawn to a 48×48
  // target from the left eye once a second while 詳細 is open, averaged over
  // the covered pixels (8-bit: steps of 4 samples)
- const probeTarget=new THREE.WebGLRenderTarget(48,48,{depthBuffer:false}),probePx=new Uint8Array(48*48*4);
+ const probeTarget=new THREE.WebGLRenderTarget(48,48,{depthBuffer:false}),probePx=new Uint8Array(48*48*4);let probe=null;
  const measureSamples=()=>{
   if(!mesh||!material||!rayMesh)return;
   const sub=renderer.xr.getCamera().cameras[0]||camera,prev=renderer.getRenderTarget(),wasXr=renderer.xr.enabled,d0=material.uniforms.diag.value,clearC=renderer.getClearColor(new THREE.Color()),clearA=renderer.getClearAlpha();
-  material.uniforms.diag.value=2;renderer.xr.enabled=false;renderer.setRenderTarget(probeTarget);renderer.setClearColor(0x000000,0);renderer.clear();
+  material.uniforms.diag.value=5;renderer.xr.enabled=false;renderer.setRenderTarget(probeTarget);renderer.setClearColor(0x000000,0);renderer.clear();
   scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);renderer.render(volScene,sub);renderer.readRenderTargetPixels(probeTarget,0,0,48,48,probePx);
   renderer.setRenderTarget(prev);renderer.xr.enabled=wasXr;material.uniforms.diag.value=d0;renderer.setClearColor(clearC,clearA);
-  let sum=0,n=0;for(let i=0;i<probePx.length;i+=4)if(probePx[i+3]>0){sum+=probePx[i]/255*1024;n++}
-  ui.sampleLine=n?L.samples+(sum/n).toFixed(0)+L.samplesNote:'';
+  // build 483: R = samples (8-bit: steps of 4), G = ray ended by a hit, B = share of the path skipped by jumps; means over the covered pixels
+  let sum=0,hit=0,skip=0,n=0;for(let i=0;i<probePx.length;i+=4)if(probePx[i+3]>0){sum+=probePx[i]/255*1024;hit+=probePx[i+1]/255;skip+=probePx[i+2]/255;n++}
+  probe=n?{samples:sum/n,hit:hit/n,skip:skip/n}:null;
+  ui.sampleLine=probe?L.samples+probe.samples.toFixed(0)+L.samplesNote:'';
  };
  renderer.setAnimationLoop(()=>{
   const js0=performance.now();if(timerExt)pollTimers();
@@ -1865,7 +1909,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    u.sliceWindow.value.set(vrWindow.c,Math.max(1,vrWindow.w));u.sliceAir.value=Number.isFinite(+settings.sliceAir)?+settings.sliceAir:-500;
    for(let i=0;i<4;i++){
     const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];
-    u.segA.value[i].set(seg?.min||0,seg?.max||0,segOpacity[key]??1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
+    u.segA.value[i].set(seg?.min||0,seg?.max||0,1,seg?.active&&seg?.enabled&&segMode[key]!==2?1:0);
     color.set(seg?.color||'#ffffff');u.segC.value[i].set(color.r,color.g,color.b,segMode[key]===1?1:0);
    }
    refreshCombo();
@@ -1884,27 +1928,18 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(nowA-autoAt>=500){
     const interval=(nowA-autoAt)/autoFrames,budget=1000/(targetRate()||72);
     const volMs=ctrlN.vol?ctrl.vol/ctrlN.vol:0,mainMs=ctrlN.main?ctrl.main/ctrlN.main:0;
-    if(mainMs>0){
-     // build 370: GPU-timed control. The frame interval is quantised by the
-     // display (a small overrun shows as a halved rate), so the factor now
-     // follows the measured GPU time: pixel cost ∝ f², target = 80 % of the
-     // budget minus the rest of the frame; damped (×0.7 … ×1.15 per step)
-     let want;
-     if(autoF>=1||volMs<=0){const total=mainMs;want=total>budget*0.8?autoF*Math.sqrt(budget*0.8/total):(autoF<1?autoF*1.15:1)}
-     else{const target=Math.max(1,budget*0.8-mainMs);want=autoF*Math.sqrt(target/volMs)}
-     let next=want<autoF?Math.max(want,autoF*0.7):Math.min(want,autoF*1.15);
-     if(interval>budget*1.5)next=Math.min(next,autoF*0.85); // frames are being dropped anyway
-     autoF=Math.min(AUTO_MAX,Math.max(AUTO_MIN,next));
-     ui.autoLine=(ja?'自動: GPU ボリューム ':'auto: GPU volume ')+volMs.toFixed(1)+' ms · '+(ja?'本描画 ':'main ')+mainMs.toFixed(1)+' ms / '+(ja?'予算 ':'budget ')+budget.toFixed(1)+' ms → '+Math.round(autoF*100)+'%';
-    }else{
-     if(interval>budget*1.12)autoF=Math.max(AUTO_MIN,autoF*Math.min(0.92,Math.sqrt(budget/interval)));
-     else if(interval<budget*1.04)autoF=Math.min(AUTO_MAX,autoF*1.15); // build 395: 1.06 → 1.15 per half second (50 % → 100 % in about 2.5 s instead of 6)
-     ui.autoLine=(ja?'自動（間隔）: ':'auto (interval): ')+interval.toFixed(1)+' ms / '+budget.toFixed(1)+' ms → '+Math.round(autoF*100)+'%';
-    }
+    // build 482: degradation ladder (vr-auto-quality.js): resolution down to 70 %, then the step 1 → 1.5 → 2, then the floor; recovery in reverse.
+    // GPU time from the timer query when the extension is offered (mainMs > 0); otherwise the wall-clock frame interval, which the refresh rate caps.
+    const uA=material?.uniforms,ctxKey=uA?[holder.scale.x.toFixed(2),uA.segA.value.map(v=>v.w).join(''),uA.planeCount.value,uA.planeCut.value,uA.sliceOpacity.value>0?1:0,settings.data|0].join('|'):''; // view size, shown segments, section, data grid: a change lets the scaler try higher levels again
+    const r=aq.update({volMs,mainMs,interval,budget,ctx:ctxKey});
+    if(r.stepChanged&&material)material.uniforms.stepSize.value=baseStep*(STEP[aq.stepIdx]??1);
+    const stepTxt=(ja?' · 刻み ':' · step ')+STEP[aq.stepIdx];
+    ui.autoLine=mainMs>0?(ja?'自動: GPU ボリューム ':'auto: GPU volume ')+volMs.toFixed(1)+' ms · '+(ja?'本描画 ':'main ')+mainMs.toFixed(1)+' ms / '+(ja?'予算 ':'budget ')+budget.toFixed(1)+' ms → '+Math.round(aq.f*100)+'%'+stepTxt
+     :(ja?'自動（間隔）: ':'auto (interval): ')+interval.toFixed(1)+' ms / '+budget.toFixed(1)+' ms → '+Math.round(aq.f*100)+'%'+stepTxt;
     ctrl.vol=ctrl.main=0;ctrlN.vol=ctrlN.main=0;autoFrames=0;autoAt=nowA;
    }
   }
-  const f=auto?autoF:(VRES[settings.vres]??1);
+  const f=auto?aq.f:(VRES[settings.vres]??1);
   // build 424: the same variants without VRL_REGIONS (sharing the uniforms), built on first use by the analysis bench
   let plain=null;
   const plainSets=()=>{if(!plain){const base=material.clone();base.uniforms=material.uniforms;base.defines={};const vars=materialVariants(base);plain={vars,ray:{full:rayMaterialOf(vars.full),combined:rayMaterialOf(vars.combined),noEvents:rayMaterialOf(vars.noEvents)}}}return plain};
@@ -1915,11 +1950,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
     // on the same box upscales it inside the main XR render
     const xrTarget=renderer.getRenderTarget(),w=xrTarget?.width||1,h=xrTarget?.height||1;
     renderer.xr.updateCamera(camera);const xrCam=renderer.xr.getCamera();
-    // auto: one target at the largest factor, only the viewports shrink
-    // build 371: the target grows to the factor in use (never shrinks) instead of being allocated at the maximum
+    // auto: one target per factor, a viewport per eye
+    // build 483: the target is exactly the size in use (reallocated when the factor changes; the hysteresis keeps that rare)
     const tw0=Math.max(1,Math.ceil(w*f)),th0=Math.max(1,Math.ceil(h*f));
     if(!lowTarget)lowTarget=new THREE.WebGLRenderTarget(tw0,th0,{depthBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
-    else if(lowTarget.width<tw0||lowTarget.height<th0)lowTarget.setSize(Math.max(lowTarget.width,tw0),Math.max(lowTarget.height,th0));
+    else if(lowTarget.width!==tw0||lowTarget.height!==th0)lowTarget.setSize(tw0,th0); // build 483: exactly the size in use (was: only ever grown), so the clear and the upscale touch only the used pixels
     const tw=lowTarget.width,th=lowTarget.height;
     scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);rayMesh.material=(diagAn.noRegion?plainSets().ray:rayVariants)[variantKey()];
     renderer.xr.enabled=false;renderer.setRenderTarget(lowTarget);
@@ -1945,7 +1980,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(now-fpsAt>=1000){
    fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
    ui.fpsLine=(firstDrawMs>=0?(ja?'初回描画 ':'first draw ')+Math.round(firstDrawMs)+' ms · ':'')+fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
-   ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info;
+   ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info+' · '+(ja?'データ ':'data ')+((settings.data|0)?'256':'512')+(ja?' · 表示セグメント ':' · shown segments ')+SEGMENT_PRESET_ORDER.filter(k=>{const g=segmentState[k];return g?.active&&g?.enabled&&segMode[k]!==2}).length;
+   // build 483: one line for the Quest numbers: fps / auto % / step / samples per ray / ended by hit / skipped by jumps / GPU ms
+   ui.diagLine=fps.toFixed(0)+' fps · '+(VRES[settings.vres]?Math.round(VRES[settings.vres]*100)+'%':(ja?'自動 ':'auto ')+Math.round(aq.f*100)+'%')+' · '+(ja?'刻み ':'step ')+STEP[VRES[settings.vres]?settings.quality|0:aq.stepIdx]+(probe?' · '+(ja?'反復 ':'samples ')+probe.samples.toFixed(0)+(ja?' · hit終了 ':' · hit end ')+Math.round(probe.hit*100)+'% · '+(ja?'跳躍 ':'jump ')+Math.round(probe.skip*100)+'%':'')+' · vol '+avg('vol')+' ms · '+(ja?'本 ':'main ')+avg('main')+' ms';
    if(ui.tab===4)try{measureSamples()}catch(e){console.warn(e)}
    if(ui.tab===4||ui.flash)menu.refresh();
    if(ui.flash&&now>ui.flashUntil)ui.flash='';
