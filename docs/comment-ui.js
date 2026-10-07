@@ -1,15 +1,15 @@
 // Position comments UI (Issue #88, stage 2): a small panel in the display drawer. "Add" records the current position (the linked
 // crosshair, or the three slices on show) with the text; "View this place" moves the crosshair and the three sliders there. Nothing
 // here runs by itself on load, and no pointer handler is added to the image canvases (the click / swipe on them is untouched).
-import { planes } from './ui-shell.js?v=20261007-build477';
-import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build477';
-import { tr } from './i18n.js?v=20261007-build477';
-import { datasetFingerprint } from './project-file.js?v=20261007-build477';
-import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build477';
-import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build477';
-import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build477';
-import { getMeasurements, onMeasurementsChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, measurementMm, measureLabel, seriesSpacing, spacingWarns, getMeasureStart, onMeasureStartChange, createLongPress, hasUnsavedMeasurements } from './measurements.js?v=20261007-build477';
-import { openPointMenu, setPointMenuHandlers, installPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build477';
+import { planes } from './ui-shell.js?v=20261007-build478';
+import { volume, activeSeries, getCrosshair, currentLanguage } from './state.js?v=20261007-build478';
+import { tr } from './i18n.js?v=20261007-build478';
+import { datasetFingerprint } from './project-file.js?v=20261007-build478';
+import { COMMENT_MAX_TEXT, nextAutoKey, createComment, addComment, removeComment, restoreComment, updateCommentText, updateCommentColor, hasUnsavedComments, getComments, onCommentsChange, commentMatchesSeries, commentTarget, commentMarkers, getMarkersShown, setMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build478';
+import { POINT_PALETTE, pointColor, autoPointColor, inkOn, paletteName } from './point-colors.js?v=20261007-build478';
+import { showCrosshairAt, crosshairModeActive, setOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261007-build478';
+import { getMeasurements, onMeasurementsChange, removeMeasurement, measurementsOfPoint, restoreMeasurements, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, cancelMeasure, createLongPress, hasUnsavedMeasurements } from './measurements.js?v=20261007-build478';
+import { openPointMenu, setPointMenuHandlers, installPointMenu, endMeasureAt, cancelMeasureUi, flashUndo } from './point-menu.js?v=20261007-build478';
 
 let pop=null,popText=null,popPos=null,popStatus=null,popTimer=0,popFrom=null;
 let root=null,listEl=null,textEl=null,addBtn=null,noteEl=null,undoEl=null,undoTimer=0,lastDeleted=null;
@@ -47,6 +47,21 @@ function paintStart(ctx,x,y,R,ipad){
  ctx.fillStyle='rgba(17,23,27,.88)';ctx.beginPath();ctx.roundRect(tx,ty,w,h,6);ctx.fill();ctx.strokeStyle='#ffd23d';ctx.lineWidth=1;ctx.stroke();
  ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(text,tx+6,ty+h/2+0.5);
 }
+// build 477: a distance is drawn on a plane only when BOTH of its points lie on the slice on show (a dashed line + the value at its midpoint); otherwise nothing
+function paintMeasures(ctx,ms,g){
+ const at=new Map();for(const m of ms)if(m.exact)at.set(m.id,{x:g.x0+m.fx*g.w,y:g.y0+m.fy*g.h});
+ const mm=getMeasurements().filter(m=>at.has(m.a)&&at.has(m.b));if(!mm.length)return;
+ const cs=getComments(),sp=seriesSpacing(activeSeries),lvl=spacingLevel(activeSeries),ipad=document.documentElement.classList.contains('vrl-ipad-ui');
+ for(const m of mm){
+  const A=at.get(m.a),B=at.get(m.b);
+  ctx.setLineDash([6,4]);ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.6)';ctx.beginPath();ctx.moveTo(A.x,A.y);ctx.lineTo(B.x,B.y);ctx.stroke();
+  ctx.lineWidth=2;ctx.strokeStyle='#ffd23d';ctx.stroke();ctx.setLineDash([]);
+  const text=measureLabel(measurementMm(m,cs,sp),lvl==='warn'),fs=ipad?14:12;ctx.font='700 '+fs+'px sans-serif';
+  const w=ctx.measureText(text).width+12,h=fs+8,x=(A.x+B.x)/2-w/2,y=(A.y+B.y)/2-h/2;
+  ctx.fillStyle='rgba(17,23,27,.88)';ctx.beginPath();ctx.roundRect(x,y,w,h,6);ctx.fill();ctx.strokeStyle='#ffd23d';ctx.lineWidth=1;ctx.stroke();
+  ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(text,x+6,y+h/2+0.5);
+ }
+}
 let pulseTimer=0;
 function syncPulse(){
  const on=!!getMeasureStart();
@@ -62,6 +77,7 @@ function paintMarkers(ctx,p,g){
  const ms=commentMarkers(p,getComments(),fp,+planes[p].slider.value,dims);if(!ms.length)return;
  const ipad=document.documentElement.classList.contains('vrl-ipad-ui'),R=ipad?13:11,r=R*0.62;
  ms.sort((a,b)=>a.exact-b.exact); // faint ones first, exact ones on top
+ paintMeasures(ctx,ms,g);
  for(const m of ms){
   const x=g.x0+m.fx*g.w,y=g.y0+m.fy*g.h;
   if(m.exact){
@@ -153,7 +169,7 @@ function saveEdit(id){
 function renderMeasures(){
  if(!measListEl)return;
  measTitleEl.textContent=tr('measureTitle');measListEl.replaceChildren();
- const ms=getMeasurements(),cs=getComments(),fp=fingerprint(),sp=seriesSpacing(activeSeries),warn=spacingWarns(activeSeries);
+ const ms=getMeasurements(),cs=getComments(),fp=fingerprint(),sp=seriesSpacing(activeSeries),lvl=spacingLevel(activeSeries),warn=lvl==='warn';
  const mine=ms.filter(m=>{const a=cs.find(c=>c.id===m.a),b=cs.find(c=>c.id===m.b);return a&&b&&commentMatchesSeries(a,fp)&&commentMatchesSeries(b,fp)});
  measTitleEl.hidden=!mine.length&&!getMeasureStart();
  if(!mine.length){measListEl.hidden=true;return}
@@ -163,9 +179,10 @@ function renderMeasures(){
   const badge=id=>{const c=cs.find(x=>x.id===id),b=document.createElement('span'),pc=pointColor(c);b.className='comment-no';b.textContent=String(cs.indexOf(c)+1);b.style.background=pc;b.style.borderColor=pc;b.style.color=inkOn(pc);return b};
   const sep=document.createElement('span');sep.className='measure-sep';sep.textContent='–';
   const val=document.createElement('strong');val.className='measure-value';val.textContent=measureLabel(measurementMm(m,cs,sp),warn);if(warn)val.title=tr('measureWarn');
+  const note=lvl?document.createElement('span'):null;if(note){note.className='measure-note';note.textContent=warn?tr('measureWarnShort'):tr('measureUnverifiedShort');note.title=warn?tr('measureWarn'):tr('measureUnverified')}
   const del=document.createElement('button');del.type='button';del.className='tool-chip measure-delete';del.textContent=tr('commentDelete');del.title=tr('measureDeleteTitle');
   del.addEventListener('click',()=>removeMeasurement(m.id));
-  li.append(badge(m.a),sep,badge(m.b),val,del);measListEl.appendChild(li);
+  li.append(badge(m.a),sep,badge(m.b),val);if(note)li.appendChild(note);li.appendChild(del);measListEl.appendChild(li);
  }
 }
 function fmtTime(iso){try{const d=new Date(iso);return isNaN(d)?'':d.toLocaleString(currentLanguage==='ja'?'ja-JP':'en-US',{dateStyle:'short',timeStyle:'short'})}catch{return''}}
@@ -290,11 +307,11 @@ export function installComments(){
  // unsaved comments (added / deleted / edited since the last project save or load) are lost on reload: ask the browser to confirm
  window.addEventListener('beforeunload',e=>{if(hasUnsavedComments()||hasUnsavedMeasurements()){e.preventDefault();e.returnValue=''}});
  onCommentsChange(render);onMeasurementsChange(renderMeasures);onMeasureStartChange(()=>{syncPulse();renderMeasures()});
- installPointMenu();setPointMenuHandlers({delete:id=>deleteWithUndo(id)});
+ installPointMenu();setPointMenuHandlers({delete:id=>{deleteWithUndo(id);flashUndo(tr('commentDeleted'),tr('commentUndo'),undoDelete)}}); // the panel's own undo button is inside a closed <details>: the pill carries one too
   // (render() rebuilds the buttons: never on pointerdown, it would swallow the click that follows)
  root.addEventListener('toggle',render);
  // (no render on vrl-crosshairchange: the list does not depend on it, and rebuilding it made "view this place" lose the focus)
- document.addEventListener('vrl-serieschange',render);
+ document.addEventListener('vrl-serieschange',()=>{cancelMeasure();render()}); // a start set on the old series must not end on the new one
  const mo=typeof MutationObserver!=='undefined'?new MutationObserver(render):null;
  mo?.observe(planes.axial.slider,{attributes:true,attributeFilter:['disabled']});
  installPopover();

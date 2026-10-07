@@ -11,7 +11,7 @@ const {
   markMeasurementsSaved, hasUnsavedMeasurements, resetMeasurements, getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange,
   createLongPress, POINT_MENU_ITEMS, MEASURE_MAX,
 } = await load('measurements');
-const { setComments, addComment, removeComment, restoreComment, createComment, getComments, updateCommentPosition, updateCommentColor, setMarkersShown } = await load('comments');
+const { setComments, addComment, removeComment, restoreComment, createComment, getComments, updateCommentPosition, updateCommentColor, setMarkersShown, loadProjectComments } = await load('comments');
 const { datasetFingerprint, packProject, unpackProject } = await load('project-file');
 const { createVrMeasure } = await load('vr-measure');
 const { createUndoStack, applyUndo, voxelToLocal, HAPTIC } = await load('vr-point');
@@ -95,9 +95,9 @@ describe('sanitize / project round trip', () => {
   });
   it('unsaved changes are noticed', () => {
     pt('p1', 1, 1, 1); pt('p2', 2, 2, 2);
-    markMeasurementsSaved([]); expect(hasUnsavedMeasurements()).toBe(false);
+    markMeasurementsSaved(fp, []); expect(hasUnsavedMeasurements()).toBe(false);
     const m = addMeasurement('p1', 'p2'); expect(hasUnsavedMeasurements()).toBe(true);
-    markMeasurementsSaved(); expect(hasUnsavedMeasurements()).toBe(false);
+    markMeasurementsSaved(fp); expect(hasUnsavedMeasurements()).toBe(false);
     removeMeasurement(m.id); expect(hasUnsavedMeasurements()).toBe(true);
   });
 });
@@ -235,5 +235,30 @@ describe('VR display (vr-measure.js)', () => {
     const pos = scene.children.find(o => o.isLine).geometry.attributes.position, l = voxelToLocal({ i: 4, j: 3, k: 1 }, halfExt, dims);
     expect(new THREE.Vector3(pos.getX(1), pos.getY(1), pos.getZ(1)).distanceTo(new THREE.Vector3(l.x, l.y, l.z).applyMatrix4(mesh.matrixWorld))).toBeLessThan(1e-6);
     removeComment('p2'); v.update({ ...base }); expect(scene.children.some(o => o.isLine)).toBe(false); v.dispose();
+  });
+});
+
+describe('review fixes: series, id renames, per-series saved state', () => {
+  const fp2 = datasetFingerprint(series({ slices: Array.from({ length: 12 }, (_, i) => (i ? {} : { studyUid: 's', seriesUid: '2' })) }));
+  it('a distance between points of different series is refused (the flow stays armed)', () => {
+    pt('p1', 1, 1, 1); addComment(createComment({ text: 'o', position: { i: 2, j: 2, k: 2 }, series: fp2, id: 'o1' }));
+    expect(addMeasurement('p1', 'o1')).toBeNull();
+    startMeasure('p1'); expect(pickMeasureEnd('o1').kind).toBe('other-series'); expect(getMeasureStart()).toBe('p1'); expect(getMeasurements()).toEqual([]);
+    expect(loadProjectMeasurements([{ id: 'x', a: 'p1', b: 'o1' }])).toBeUndefined(); expect(getMeasurements()).toEqual([]);
+  });
+  it('a measurement follows its points when loadProjectComments renames a colliding id', () => {
+    addComment(createComment({ text: 'mem', position: { i: 0, j: 0, k: 0 }, series: fp2, id: 'p1' })); // another series already uses the id p1
+    const map = loadProjectComments([{ id: 'p1', text: 'a', position: { i: 1, j: 1, k: 1 }, series: fp }, { id: 'p2', text: 'b', position: { i: 3, j: 3, k: 3 }, series: fp }], fp);
+    expect(map).toEqual({ p1: 'p1_' });
+    loadProjectMeasurements([{ id: 'm1', a: 'p1', b: 'p2' }], map);
+    expect(getMeasurements()).toEqual([{ id: 'm1', a: 'p1_', b: 'p2' }]);
+  });
+  it('saved tracking is per series; a loaded pair that already exists in memory counts as saved', () => {
+    pt('p1', 1, 1, 1); pt('p2', 2, 2, 2); addComment(createComment({ text: 'o', position: { i: 2, j: 2, k: 2 }, series: fp2, id: 'o1' })); addComment(createComment({ text: 'o', position: { i: 3, j: 3, k: 3 }, series: fp2, id: 'o2' }));
+    addMeasurement('o1', 'o2'); addMeasurement('p1', 'p2');
+    markMeasurementsSaved(fp); expect(hasUnsavedMeasurements()).toBe(true); // series 2 was never saved
+    markMeasurementsSaved(fp2); expect(hasUnsavedMeasurements()).toBe(false);
+    markMeasurementsSaved(fp); expect(hasUnsavedMeasurements()).toBe(false); // saving series 1 again does not forget series 2
+    loadProjectMeasurements([{ id: 'other-id', a: 'p2', b: 'p1' }]); expect(getMeasurements()).toHaveLength(2); expect(hasUnsavedMeasurements()).toBe(false);
   });
 });

@@ -994,6 +994,7 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .measure-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .measure-item{display:flex;align-items:center;gap:4px;border:1px solid rgb(var(--ui-b2));border-radius:7px;padding:5px 8px}
 .measure-item .comment-no{margin-right:0}
+.measure-note{font-size:11px;color:rgb(var(--ui-amber-tx));margin-right:6px}
 .measure-item .measure-value{margin-left:8px;flex:1;font-variant-numeric:tabular-nums}
 .measure-line-3d{stroke:#ffd23d;stroke-width:2;stroke-opacity:.95;stroke-dasharray:6 4;filter:drop-shadow(0 0 1.5px rgba(0,0,0,.9))}
 .measure-label-3d,.measure-hint-3d{position:absolute;left:0;top:0;padding:2px 7px;border-radius:999px;border:1px solid #ffd23d;background:rgba(17,23,27,.88);color:#fff;font:700 12px/16px sans-serif;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;will-change:transform}

@@ -108,6 +108,11 @@ test('PC: long press a dot -> 距離 -> start (marked + hint) -> pick the other 
   const after = await state(page);
   expect(after.n).toBe(1); expect(after.ms).toHaveLength(0);
   await expect(page.locator('.measure-line-3d')).toHaveCount(0);
+  // the pill carries an undo button (the panel's own one is in a closed <details>): the point and its distance come back
+  await expect(page.locator('.measure-pill-undo')).toBeVisible();
+  await page.locator('.measure-pill-undo').click();
+  const back = await state(page);
+  expect(back.n).toBe(2); expect(back.ms).toHaveLength(1);
 });
 
 test('PC: colour from the point menu', async ({ page }) => {
@@ -154,4 +159,23 @@ test('PC: the same flow on the 2D marks (long press -> 距離 -> tap the other m
   const st = await state(page);
   expect(st.start).toBeNull(); expect(st.ms).toHaveLength(1); expect(st.ms[0]).toMatchObject({ a: idA, b: idB });
   await expect(page.locator('.measure-pill')).toContainText('距離を追加しました');
+  // both ends are on the slice on show: the 2D view draws the line and a label (the dark label box) at the midpoint
+  [a, b] = await where();
+  const px = await page.evaluate(async ([a, b]) => {
+    const cv = document.getElementById('axial-crosshair'), r = cv.getBoundingClientRect(), k = cv.width / r.width;
+    const d = cv.getContext('2d').getImageData(Math.round(((a.x + b.x) / 2 - r.left) * k), Math.round(((a.y + b.y) / 2 - r.top) * k), 1, 1).data;
+    return [...d];
+  }, [a, b]);
+  expect(px[3]).toBeGreaterThan(150);
+  // on another slice nothing is drawn
+  await page.evaluate(async () => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search, ui = await import('./ui-shell.js' + v);
+    ui.planes.axial.slider.value = '9'; ui.planes.axial.slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(500);
+  const px2 = await page.evaluate(async ([a, b]) => {
+    const cv = document.getElementById('axial-crosshair'), r = cv.getBoundingClientRect(), k = cv.width / r.width;
+    return cv.getContext('2d').getImageData(Math.round(((a.x + b.x) / 2 - r.left) * k), Math.round(((a.y + b.y) / 2 - r.top) * k), 1, 1).data[3];
+  }, [a, b]);
+  expect(px2).toBe(0);
 });
