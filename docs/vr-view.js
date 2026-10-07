@@ -8,30 +8,30 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build491';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build491';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build491';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build491';
-import { datasetFingerprint } from './project-file.js?v=20261007-build491';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build491';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build491';
-import { buildClsData } from './point-cls.js?v=20261007-build491';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build491';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build491';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build491';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build491';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build491';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build491';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build491';
-import { tr } from './i18n.js?v=20261007-build491';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build491';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261007-build491';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build491';
-import { createVrMeasure } from './vr-measure.js?v=20261007-build491';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build491';
-import { APP_BUILD } from './version.js?v=20261007-build491';
-import { wc, ww } from './ui-shell.js?v=20261007-build491';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261007-build491';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build492';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build492';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build492';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build492';
+import { datasetFingerprint } from './project-file.js?v=20261007-build492';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build492';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build492';
+import { buildClsData } from './point-cls.js?v=20261007-build492';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build492';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build492';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build492';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build492';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build492';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build492';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build492';
+import { tr } from './i18n.js?v=20261007-build492';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build492';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261007-build492';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build492';
+import { createVrMeasure } from './vr-measure.js?v=20261007-build492';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build492';
+import { APP_BUILD } from './version.js?v=20261007-build492';
+import { wc, ww } from './ui-shell.js?v=20261007-build492';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261007-build492';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1028,7 +1028,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // menu grab (build 366): grip while pointing at the menu moves it with the hand; released, it stays there (position becomes fixed)
  let menuHeld=null;
  const setMenuOpen=open=>{ui.open=open;menu.mesh.visible=open;if(open)placeMenuNow();menu.refresh()};
- const bringVolumeFront=()=>{readHead();scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(head).addScaledVector(headFwd,VOLUME_FWD).add(new THREE.Vector3(0,-VOLUME_DOWN,0));holder.quaternion.identity();holder.scale.setScalar(clampScale(baseScale,realLongMm()))};
+ const bringVolumeFront=()=>{readHead();scene.attach(holder);grabbing.clear();twoHand=null;holder.position.copy(head).addScaledVector(headFwd,VOLUME_FWD).add(new THREE.Vector3(0,-VOLUME_DOWN,0));holder.quaternion.identity();holder.scale.setScalar(startHolderScale(realLongMm(),baseScale))}; // build 492: starts at 1x (real size); oversize: fitted to 0.30 m; unknown size: the old default fit
  // grab: one hand moves/rotates (holder follows the controller); two hands
  // scale by the change in hand distance
  const grabbing=new Set();let twoHand=null;const tmpA=new THREE.Vector3(),tmpB=new THREE.Vector3();

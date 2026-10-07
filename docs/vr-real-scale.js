@@ -51,6 +51,14 @@ export function realHolderScale(longMm) {
   return clampScale(realScaleOf(longMm), longMm);
 }
 
+// build 492: the scale when VR / AR starts (and on Home): 1x (real size). Oversize data -> fitted to 0.30 m (locked); unknown physical size
+// (no spacing) -> the old default fit (fallbackScale, 16.5 cm display), because there is no real size to show.
+export function startHolderScale(longMm, fallbackScale) {
+  const r = realHolderScale(longMm);
+  if (r) return r;
+  return clampScale(fallbackScale, longMm);
+}
+
 // two-hand pinch: the new scale from the scale and hand distance at the grab (s0, d0) and the current distance d.
 // Always derived from the grab values (not accumulated), so pushing past a limit and coming back resumes exactly where the hands cross the limit.
 export function pinchScale(s0, d0, d, longMm) {

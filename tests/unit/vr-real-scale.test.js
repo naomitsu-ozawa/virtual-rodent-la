@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, formatMagnification, magnificationText, NORM_LONG, scaleLimits, clampScale, pinchScale, isOversize, oversizeNote, sizeWarningHtml } from '../../docs/vr-real-scale.js';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, formatMagnification, magnificationText, NORM_LONG, scaleLimits, clampScale, pinchScale, isOversize, oversizeNote, sizeWarningHtml, startHolderScale } from '../../docs/vr-real-scale.js';
 
 const DEFAULT_SCALE = 0.165 / NORM_LONG; // the initial display: longest side 16.5 cm
 // synthetic mouse-like micro-CT: 400 x 200 x 500 voxels at 0.2 x 0.2 x 0.2 mm -> 80 x 40 x 100 mm
@@ -151,3 +151,24 @@ describe('section frame size cap', () => {
   });
 });
 
+
+describe('startHolderScale (VR / AR start = 1x)', () => {
+  it('75 mm cube starts at real size (magnification 1)', () => {
+    const s = startHolderScale(75, DEFAULT_SCALE);
+    expect(realMagnification(s, 75)).toBeCloseTo(1, 9);
+    expect(s * NORM_LONG).toBeCloseTo(0.075, 9);
+  });
+  it('300 mm data starts at real size, which is also the 0.30 m cap', () => {
+    expect(realMagnification(startHolderScale(300, DEFAULT_SCALE), 300)).toBeCloseTo(1, 9);
+  });
+  it('over 30 cm: fitted to 0.30 m and locked', () => {
+    const s = startHolderScale(1800, DEFAULT_SCALE);
+    expect(s * NORM_LONG).toBeCloseTo(0.30, 9);
+    expect(scaleLimits(1800).locked).toBe(true);
+    expect(clampScale(s, 1800)).toBe(s);
+  });
+  it('unknown physical size keeps the old default fit', () => {
+    expect(startHolderScale(0, DEFAULT_SCALE)).toBeCloseTo(DEFAULT_SCALE, 12);
+    expect(startHolderScale(NaN, DEFAULT_SCALE)).toBeCloseTo(DEFAULT_SCALE, 12);
+  });
+});
