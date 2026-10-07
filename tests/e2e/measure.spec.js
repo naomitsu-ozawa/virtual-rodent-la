@@ -1,0 +1,181 @@
+import { test, expect } from '@playwright/test';
+import { dicomFolder } from '../helpers/dicom-folder.js';
+
+// Distances between two points (build 477), PC / iPad flow: long press (or right-click) on a point -> menu -> 距離 -> start (pulsing mark + hint)
+// -> the next point picked is the END -> a line + label in 3D and a row in the panel. The same flow as the VR point ring. Synthetic data only
+// (16 x 16 x 12 voxels, 0.1 x 0.1 x 0.2 mm). Runs on the WebGL fallback of the sandbox like comments3d.spec.js.
+test.beforeEach(async ({ page }, testInfo) => {
+  testInfo.pageErrors = [];
+  page.on('pageerror', err => testInfo.pageErrors.push(err.message));
+});
+test.afterEach(async ({}, testInfo) => {
+  expect(testInfo.pageErrors, 'uncaught page errors').toEqual([]);
+});
+
+async function open3d(page) {
+  await page.goto('/');
+  await page.locator('#folder-input').setInputFiles(dicomFolder());
+  await page.locator('.series-card').first().click();
+  await expect(page.locator('.ready-badge').first()).toContainText(/ready/i, { timeout: 60_000 });
+  await expect(page.locator('[data-crosshair-toggle="axial"]')).toBeEnabled({ timeout: 30_000 });
+  await page.evaluate(async () => { // a stand-in object for the 3D build (as comments3d.spec.js)
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search;
+    const st = await import('./state.js' + v), THREE = await import('https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js');
+    const s = st.sceneState; if (!s.obj) { s.obj = new THREE.Group(); s.scene.add(s.obj); }
+    s.needsRender = true;
+  });
+}
+const mod = (page, fn, arg) => page.evaluate(async ([src, arg]) => {
+  const v = new URL(document.querySelector('script[src*="app.js"]').src).search;
+  const m = { st: await import('./state.js' + v), c: await import('./comments.js' + v), pf: await import('./project-file.js' + v), ms: await import('./measurements.js' + v) };
+  return new Function('m', 'arg', 'return (' + src + ')(m,arg)')(m, arg);
+}, [fn.toString(), arg]);
+const addAt = (page, text, position) => mod(page, (m, [text, position]) => m.c.addComment(m.c.createComment({ text, position, series: m.pf.datasetFingerprint(m.st.activeSeries) })).id, [text, position]);
+const dotCentres = page => page.evaluate(() => [...document.querySelectorAll('.comment-marker-3d:not([hidden])')].map(e => { const r = e.getBoundingClientRect(); return { n: e.textContent, x: r.left + r.width / 2, y: r.top + r.height / 2 }; }));
+const state = page => mod(page, m => ({ ms: m.ms.getMeasurements(), start: m.ms.getMeasureStart(), n: m.c.getComments().length }));
+
+test('PC: long press a dot -> 距離 -> start (marked + hint) -> pick the other dot -> line + label + list; Esc / empty tap cancel; deleting a point removes it', async ({ page }) => {
+  test.setTimeout(150_000);
+  await open3d(page);
+  const A = { i: 3, j: 5, k: 4 }, B = { i: 12, j: 10, k: 9 };
+  const idA = await addAt(page, 'first spot', A), idB = await addAt(page, 'second spot', B);
+  await expect(page.locator('.comment-marker-3d:not([hidden])')).toHaveCount(2);
+  const [a, b] = await dotCentres(page);
+
+  // a plain tap on a dot still shows its bubble (unchanged)
+  await page.mouse.click(a.x, a.y);
+  await expect(page.locator('.comment-bubble-3d')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.comment-bubble-3d')).toBeHidden();
+
+  // long press (mouse press-and-hold) on A opens the point menu with 距離 / 色 / 削除
+  await page.mouse.move(a.x, a.y); await page.mouse.down();
+  await expect(page.locator('.point-menu')).toBeVisible({ timeout: 3000 });
+  await page.mouse.up();
+  await expect(page.locator('.point-menu .point-menu-btn')).toHaveText(['距離', '色', '削除']);
+  await expect(page.locator('.comment-bubble-3d')).toBeHidden(); // the release after a long press is not a tap
+  await page.locator('.point-menu-distance').click();
+  await expect(page.locator('.point-menu')).toBeHidden();
+  expect((await state(page)).start).toBe(idA);
+  await expect(page.locator('.measure-pill')).toContainText('終点のポイントを選んでください');
+  await expect(page.locator('.comment-marker-3d.is-measure-start')).toHaveCount(1);
+  await expect(page.locator('.measure-hint-3d')).toBeVisible();
+
+  // Esc cancels
+  await page.keyboard.press('Escape');
+  expect((await state(page)).start).toBeNull();
+  await expect(page.locator('.comment-marker-3d.is-measure-start')).toHaveCount(0);
+
+  // right-click on A -> the same menu -> 距離; then a tap on B is the END
+  await page.mouse.click(a.x, a.y, { button: 'right' });
+  await expect(page.locator('.point-menu')).toBeVisible();
+  await page.locator('.point-menu-distance').click();
+  expect((await state(page)).start).toBe(idA);
+  await page.mouse.click(b.x, b.y);
+  const st = await state(page);
+  expect(st.start).toBeNull(); expect(st.ms).toHaveLength(1); expect(st.ms[0]).toMatchObject({ a: idA, b: idB });
+  const want = Math.hypot(9 * 0.1, 5 * 0.1, 5 * 0.2); // (12-3, 10-5, 9-4) voxels x (0.1, 0.1, 0.2) mm = 1.2 mm
+  const label = page.locator('.measure-label-3d');
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(want.toFixed(2) + ' mm');
+  await expect(page.locator('.measure-line-3d')).toHaveCount(1);
+
+  // the list under the point list
+  await page.locator('[data-ipad-drawer-tab="display"]').click();
+  const panel = page.locator('#comment-panel');
+  if (!(await panel.evaluate(el => el.open))) await panel.locator('summary').click();
+  await expect(panel.locator('.measure-item .measure-value')).toHaveText(want.toFixed(2) + ' mm');
+
+  // a tap on empty space while a start is armed cancels (no bubble). (opening the panel resized the view: take the dots again)
+  let [a2, b2] = await dotCentres(page);
+  await page.mouse.click(a2.x, a2.y, { button: 'right' });
+  await page.locator('.point-menu-distance').click();
+  const box = await page.locator('#viewport-3d canvas').first().boundingBox();
+  await page.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.1);
+  expect((await state(page)).start).toBeNull();
+
+  // delete the measurement from the list
+  await panel.locator('.measure-delete').click();
+  expect((await state(page)).ms).toHaveLength(0);
+  await expect(label).toHaveCount(0);
+
+  // measure again, then delete the point from its menu: the measurement goes with it
+  [a2, b2] = await dotCentres(page);
+  await page.mouse.click(a2.x, a2.y, { button: 'right' }); await page.locator('.point-menu-distance').click(); await page.mouse.click(b2.x, b2.y);
+  expect((await state(page)).ms).toHaveLength(1);
+  await page.mouse.click(b2.x, b2.y, { button: 'right' });
+  await page.locator('.point-menu-delete').click();
+  const after = await state(page);
+  expect(after.n).toBe(1); expect(after.ms).toHaveLength(0);
+  await expect(page.locator('.measure-line-3d')).toHaveCount(0);
+  // the pill carries an undo button (the panel's own one is in a closed <details>): the point and its distance come back
+  await expect(page.locator('.measure-pill-undo')).toBeVisible();
+  await page.locator('.measure-pill-undo').click();
+  const back = await state(page);
+  expect(back.n).toBe(2); expect(back.ms).toHaveLength(1);
+});
+
+test('PC: colour from the point menu', async ({ page }) => {
+  test.setTimeout(150_000);
+  await open3d(page);
+  const id = await addAt(page, 'spot', { i: 4, j: 4, k: 4 });
+  await expect(page.locator('.comment-marker-3d:not([hidden])')).toHaveCount(1);
+  const [a] = await dotCentres(page);
+  await page.mouse.click(a.x, a.y, { button: 'right' });
+  await page.locator('.point-menu-color').click();
+  await page.locator('.point-menu-palette .comment-color-opt').nth(2).click();
+  const col = await mod(page, (m, id) => m.c.getComments().find(c => c.id === id).color, id);
+  expect(col).toBe('#2fbf4f');
+});
+
+test('PC: the same flow on the 2D marks (long press -> 距離 -> tap the other mark)', async ({ page }) => {
+  test.setTimeout(150_000);
+  await open3d(page);
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  const idA = await addAt(page, 'a', { i: 3, j: 4, k: 5 }), idB = await addAt(page, 'b', { i: 11, j: 9, k: 5 });
+  // show slice k = 5 on the axial plane, then where the two marks are drawn (screen coordinates of the voxels on the image)
+  const where = async () => page.evaluate(async () => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search;
+    const ui = await import('./ui-shell.js' + v), cr = await import('./crosshair.js' + v);
+    const sl = ui.planes.axial.slider; if (sl.value !== '5') { sl.value = '5'; sl.dispatchEvent(new Event('input', { bubbles: true })); }
+    const ir = ui.planes.axial.canvas.getBoundingClientRect(), dims = { columns: 16, rows: 16, slices: 12 };
+    return [{ i: 3, j: 4, k: 5 }, { i: 11, j: 9, k: 5 }].map(q => { const { fx, fy } = cr.planePointFromVoxel('axial', q, dims); return { x: ir.left + fx * ir.width, y: ir.top + fy * ir.height }; });
+  });
+  await page.waitForTimeout(800);
+  let [a, b] = await where();
+  await page.mouse.click(a.x, a.y); // a plain tap on a mark still shows its bubble (unchanged)
+  await expect(page.locator('.comment-bubble')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.comment-bubble')).toBeHidden();
+  await page.mouse.move(a.x, a.y); await page.mouse.down();
+  await expect(page.locator('.point-menu')).toBeVisible({ timeout: 3000 });
+  await page.mouse.up();
+  await expect(page.locator('.comment-bubble')).toBeHidden();
+  await page.locator('.point-menu-distance').click();
+  expect((await state(page)).start).toBe(idA);
+  await expect(page.locator('.measure-pill')).toBeVisible();
+  [a, b] = await where();
+  await page.mouse.click(b.x, b.y);
+  const st = await state(page);
+  expect(st.start).toBeNull(); expect(st.ms).toHaveLength(1); expect(st.ms[0]).toMatchObject({ a: idA, b: idB });
+  await expect(page.locator('.measure-pill')).toContainText('距離を追加しました');
+  // both ends are on the slice on show: the 2D view draws the line and a label (the dark label box) at the midpoint
+  [a, b] = await where();
+  const px = await page.evaluate(async ([a, b]) => {
+    const cv = document.getElementById('axial-crosshair'), r = cv.getBoundingClientRect(), k = cv.width / r.width;
+    const d = cv.getContext('2d').getImageData(Math.round(((a.x + b.x) / 2 - r.left) * k), Math.round(((a.y + b.y) / 2 - r.top) * k), 1, 1).data;
+    return [...d];
+  }, [a, b]);
+  expect(px[3]).toBeGreaterThan(150);
+  // on another slice nothing is drawn
+  await page.evaluate(async () => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search, ui = await import('./ui-shell.js' + v);
+    ui.planes.axial.slider.value = '9'; ui.planes.axial.slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(500);
+  const px2 = await page.evaluate(async ([a, b]) => {
+    const cv = document.getElementById('axial-crosshair'), r = cv.getBoundingClientRect(), k = cv.width / r.width;
+    return cv.getContext('2d').getImageData(Math.round(((a.x + b.x) / 2 - r.left) * k), Math.round(((a.y + b.y) / 2 - r.top) * k), 1, 1).data[3];
+  }, [a, b]);
+  expect(px2).toBe(0);
+});

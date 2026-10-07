@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261007-build476';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261007-build476';
+import { installGpuLedger } from './mem-ledger.js?v=20261007-build478';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261007-build478';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261007-build476';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261007-build476';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261007-build476';
-import { runsSliceToMask } from './run-length.js?v=20261007-build476';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261007-build476';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261007-build476';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261007-build478';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261007-build478';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261007-build478';
+import { runsSliceToMask } from './run-length.js?v=20261007-build478';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261007-build478';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261007-build478';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{

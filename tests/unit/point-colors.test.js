@@ -151,10 +151,10 @@ describe('the point ring offers 色 (static check of vr-view.js)', () => {
   it('the point ring has a colour item that opens a palette ring, and the change is undoable', async () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync(new URL('../../docs/vr-view.js', import.meta.url), 'utf8');
-    expect(src).toContain("['move','delete','color']");
+    expect(src).toContain("['move','delete','color','distance']");
     expect(src).toContain("const COLOR_IDS=['auto',...POINT_PALETTE.map(p=>p.hex)]");
     expect(src).toContain("undo.push({type:'color'");
-    expect(src).toContain('updateCommentPosition,updateCommentColor}');
+    expect(src).toContain('updateCommentPosition,updateCommentColor,removeMeasurement,restoreMeasurements}');
   });
 });
 
