@@ -1,7 +1,8 @@
 // Smoke check of the GPU preparation before a VR session (build 393): loads the
 // app offline like boot-check, imports vr-view.js, calls prepareVrGpu with a small
 // synthetic volume on SwiftShader WebGL2 and expects the textures uploaded and
-// every shader variant compiled without GL errors.
+// every shader variant compiled without GL errors. Build 484 guard: three.js compiles lazily and only logs a failure on first use, so the check also asks the GL
+// context for the link status and info log of every program it created (a GLSL syntax error in the VR shader fails here, and therefore CI).
 //   PW_CHROMIUM=/opt/pw-browsers/chromium node tools/vr-gpu-prepare-check.mjs
 import { chromium } from '@playwright/test';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
@@ -38,7 +39,8 @@ const result=await pg.evaluate(async ver=>{
  const t0=performance.now();const g=await m.prepareVrGpu(P,'vr',{data:0,refine:1,quality:0});
  if(!g)return{ok:false,reason:'prepareVrGpu returned null'};
  const gl=g.renderer.getContext(),err=gl.getError();
- const out={ok:err===gl.NO_ERROR&&g.warm.length===7&&!!g.full&&!!g.full.combo,glError:err,warm:g.warm.length,combo:!!g.full.combo,times:g.times,ms:performance.now()-t0,programs:g.renderer.info.programs.length};
+ const progs=g.renderer.info.programs||[],broken=progs.filter(p=>!gl.getProgramParameter(p.program,gl.LINK_STATUS)).map(p=>(gl.getProgramInfoLog(p.program)||'link failed').slice(0,400));
+ const out={ok:err===gl.NO_ERROR&&g.warm.length===7&&!!g.full&&!!g.full.combo&&progs.length>=4&&broken.length===0,broken,glError:err,warm:g.warm.length,combo:!!g.full.combo,times:g.times,ms:performance.now()-t0,programs:g.renderer.info.programs.length};
  m.disposeGpuPrepared();return out;
 },ver);
 console.log(JSON.stringify(result));
