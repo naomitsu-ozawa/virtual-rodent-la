@@ -13,7 +13,7 @@ const {
 } = await load('measurements');
 const { setComments, addComment, removeComment, restoreComment, createComment, getComments, updateCommentPosition, updateCommentColor, setMarkersShown, loadProjectComments } = await load('comments');
 const { datasetFingerprint, packProject, unpackProject } = await load('project-file');
-const { createVrMeasure, labelScaleFor, MEASURE_LABEL_W_M } = await load('vr-measure');
+const { createVrMeasure, labelScaleFor, MEASURE_LABEL_W_M, LABEL_LIT_SCALE } = await load('vr-measure');
 const { createUndoStack, applyUndo, voxelToLocal, HAPTIC } = await load('vr-point');
 
 // synthetic data only: a 16 x 16 x 12 grid, anisotropic spacing 0.1 x 0.2 x 0.5 mm
@@ -340,5 +340,19 @@ describe('VR label: default near the line, grab and drag (vr-measure.js)', () =>
     // a new view (as after a reload: the offset comes from the project) puts it at the same place
     v.dispose(); const v2 = createVrMeasure(THREE, scene); v2.update(base);
     expect(scene.children.find(o => o.isMesh && o.renderOrder === 6).position.distanceTo(target)).toBeLessThan(1e-4); v2.dispose();
+  });
+  it('a lit label (laser on it / grabbed) is drawn once with the lit style and grows; the canvas is redrawn only when the lit state changes', () => {
+    pt('p1', 2, 3, 1); pt('p2', 12, 9, 8); const m = addMeasurement('p1', 'p2');
+    const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2)), holder = new THREE.Group();
+    holder.position.set(0, 1.3, -0.6); holder.scale.setScalar(0.05); holder.add(mesh); scene.add(holder); scene.updateMatrixWorld(true);
+    const base = { fingerprint: fp, dims: { columns: 16, rows: 16, slices: 12 }, halfExt: [8, 8, 6], mesh, head: new THREE.Vector3(0, 1.6, 0), spacing: [0.1, 0.2, 0.5], hint: '' };
+    const v = createVrMeasure(THREE, scene); v.update(base);
+    const label = scene.children.find(o => o.isMesh && o.renderOrder === 6), tex = label.material.map, w0 = label.scale.x;
+    const v0 = tex.version; v.update(base); v.update({ ...base, lit: new Set() }); expect(tex.version).toBe(v0); // unchanged: no redraw
+    v.update({ ...base, lit: new Set([m.id]) }); const v1 = tex.version; expect(v1).toBeGreaterThan(v0);
+    expect(label.scale.x).toBeCloseTo(w0 * LABEL_LIT_SCALE, 9);
+    v.update({ ...base, lit: new Set([m.id]) }); v.update({ ...base, lit: new Set([m.id]) }); expect(tex.version).toBe(v1); // still lit: no redraw
+    v.update(base); expect(tex.version).toBeGreaterThan(v1); expect(label.scale.x).toBeCloseTo(w0, 9); // back to normal
+    v.dispose();
   });
 });
