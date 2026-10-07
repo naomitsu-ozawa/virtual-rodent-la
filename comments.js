@@ -2,18 +2,22 @@
 // crosshair in state.js: independent of zoom, pan or 3D rotation) + the series it was written on. Pure data and a small in-memory
 // store, no DOM. They are saved in the project file (project.comments, see gatherProject / applyProject in data-load.js).
 // A loaded project does NOT move any view by itself: a position is only used when the user presses "view this place".
-import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261006-build471';
-import { compareFingerprints } from './project-file.js?v=20261006-build471';
+import { clampVoxel, sliceIndexFor, planePointFromVoxel } from './crosshair.js?v=20261007-build472';
+import { compareFingerprints } from './project-file.js?v=20261007-build472';
+import { normalizeColor, pointColor, pointKey, normalizeAutoKey, textPointNumber } from './point-colors.js?v=20261007-build472';
 
 export const COMMENT_MAX_TEXT=2000;
 const isIdx=n=>Number.isFinite(+n)&&n!==null&&n!==''&&n!==true&&n!==false;
 export const commentVoxel=v=>v&&isIdx(v.i)&&isIdx(v.j)&&isIdx(v.k)?{i:Math.round(+v.i),j:Math.round(+v.j),k:Math.round(+v.k)}:null;
 
 let counter=0;
-export function createComment({text,position,series,now=Date.now(),id}){
+// autoKey (build 472): the stable number the auto colour comes from, fixed when the point is recorded (see point-colors.js pointKey)
+export function createComment({text,position,series,now=Date.now(),id,autoKey}){
  const pos=commentVoxel(position);if(!pos)return null;
- return{id:id||('c'+now.toString(36)+'-'+(++counter)),text:String(text??'').slice(0,COMMENT_MAX_TEXT),createdAt:new Date(now).toISOString(),position:pos,series:series||null};
+ return{id:id||('c'+now.toString(36)+'-'+(++counter)),text:String(text??'').slice(0,COMMENT_MAX_TEXT),createdAt:new Date(now).toISOString(),position:pos,series:series||null,...(normalizeAutoKey(autoKey)!==null?{autoKey}:{})};
 }
+// the next free key for a point added without a number (PC / iPad): one more than the highest key in use (stored keys and 「VR ポイント N」 numbers)
+export const nextAutoKey=list=>1+Math.max(0,...(list||[]).map(c=>normalizeAutoKey(c?.autoKey)??textPointNumber(c?.text)??0));
 // from a project file / anything untrusted: keep valid entries, drop the rest
 export function sanitizeComments(list){
  if(!Array.isArray(list))return[];
@@ -21,7 +25,8 @@ export function sanitizeComments(list){
  for(const c of list){
   const pos=commentVoxel(c?.position);if(!pos||!c||typeof c!=='object')continue;
   let id=typeof c.id==='string'&&c.id?c.id:'c-'+out.length;while(seen.has(id))id+='_';seen.add(id);
-  out.push({id,text:String(c.text??'').slice(0,COMMENT_MAX_TEXT),createdAt:typeof c.createdAt==='string'?c.createdAt:'',position:pos,series:c.series&&typeof c.series==='object'?c.series:null});
+  const autoKey=normalizeAutoKey(c.autoKey),color=normalizeColor(c.color); // build 472: an optional colour chosen by the user; an invalid one is dropped (the point gets its auto colour)
+  out.push({id,text:String(c.text??'').slice(0,COMMENT_MAX_TEXT),createdAt:typeof c.createdAt==='string'?c.createdAt:'',position:pos,series:c.series&&typeof c.series==='object'?c.series:null,...(autoKey!==null?{autoKey}:{}),...(color?{color}:{})});
  }
  return out;
 }
@@ -40,7 +45,7 @@ export function commentMarkers(plane,comments,fingerprint,sliceIdx,dims,near=COM
   const t=commentTarget(c,dims);if(!t)return;
   const delta=sliceIndexFor(plane,t)-Math.round(+sliceIdx);if(!(Math.abs(delta)<=near))return;
   const{fx,fy}=planePointFromVoxel(plane,t,dims);
-  out.push({id:c.id,number:n+1,fx,fy,delta,exact:delta===0});
+  out.push({id:c.id,number:n+1,fx,fy,delta,exact:delta===0,color:pointColor(c)});
  });
  return out;
 }
@@ -55,7 +60,7 @@ export function addComment(c){if(!c)return null;list=[...list,c];emit();return c
 export function updateCommentText(id,text){
  const t=String(text??'').slice(0,COMMENT_MAX_TEXT);if(!t.trim())return null;
  const i=list.findIndex(c=>c.id===id);if(i<0)return null;
- if(list[i].text!==t){list=list.map((c,n)=>n===i?{...c,text:t}:c);emit()}
+ if(list[i].text!==t){list=list.map((c,n)=>n===i?{...c,text:t,autoKey:pointKey(c)}:c);emit()} // the key is stored first, so the colour does not follow the new text
  return getComments()[i];
 }
 // move a point: the position only (id, text, createdAt and series stay). An invalid voxel or unknown id gives null, an unchanged position is not a change.
@@ -64,6 +69,15 @@ export function updateCommentPosition(id,position){
  const i=list.findIndex(c=>c.id===id);if(i<0)return null;
  const o=list[i].position;
  if(o.i!==pos.i||o.j!==pos.j||o.k!==pos.k){list=list.map((c,n)=>n===i?{...c,position:pos}:c);emit()}
+ return getComments()[i];
+}
+// set / clear the colour of a point (build 472): a valid "#rrggbb" sets it, null / '' goes back to the auto colour; anything else is refused (null).
+// Text, position, createdAt and series stay. An unchanged colour is not a change.
+export function updateCommentColor(id,color){
+ const none=color===null||color===undefined||color==='',col=none?null:normalizeColor(color);
+ if(!none&&!col)return null;
+ const i=list.findIndex(c=>c.id===id);if(i<0)return null;
+ if((list[i].color||null)!==col){list=list.map((c,n)=>{if(n!==i)return c;const{color:_o,...rest}=c;return col?{...rest,color:col}:rest});emit()}
  return getComments()[i];
 }
 export function removeComment(id){const n=list.length;list=list.filter(c=>c.id!==id);if(list.length!==n)emit();return list.length!==n}
@@ -91,7 +105,7 @@ export function loadProjectComments(incoming,fingerprint){
  emit();
 }
 // ---- unsaved changes: what was last written to / read from a project file, against what is in memory now ----
-const sigOf=c=>[c.id,c.text,c.position.i,c.position.j,c.position.k].join('|');
+const sigOf=c=>[c.id,c.text,c.position.i,c.position.j,c.position.k,c.color||'',pointKey(c)].join('|');
 const saved=new Map();
 export function markCommentsSaved(fingerprint,written=commentsForProject(fingerprint)){
  for(const [id,e] of [...saved])if(commentMatchesSeries({series:e.series},fingerprint))saved.delete(id);

@@ -38,6 +38,22 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-07 — claude/point-color (point colours, build 472)
+
+**Agent:** Claude (Sonnet worker, supervised)
+**Task:** Owner's request: colour each position point by its number, changeable later, saved in the project.
+
+### What changed
+- docs/point-colors.js (no imports, shared by VR / 3D overlay / 2D / lists): 8-colour palette that keeps a CIE Lab distance from selection yellow, white, the section colours, the hand colours and the cursor lime (tests/unit/point-colors.test.js). Auto colour = palette[(N-1) % 8] with N from 「VR ポイント N」 (the number given at recording), else a hash of the id; never the list position, so deleting / renumbering does not recolour.
+- Comment gets an optional `color` ("#rrggbb"); sanitizeComments keeps a valid one and drops the rest; `updateCommentColor`; it is part of the unsaved-change signature and of project.comments. Project version unchanged (an older app ignores the field).
+- VR markers: dot / dark body / ghost / perpendicular / chip per colour (cached materials); VR menu list swatch uses the colour, the selected point gets a yellow outline. Point ring (long press): 「色」 opens a swatch ring (自動 + 8 colours, current one dotted; stick to light, release to choose; same haptics). One undo step per change (`{type:'color'}`, 20 steps).
+- PC / iPad: swatch button on each list row opens a palette + 「自動に戻す」; number badge, 2D marks and 3D markers use the colour (per-element CSS variables).
+
+### Follow-up / open questions
+- Colour on a Quest / iPad was not checked on a device. Editing the text of a non-VR point does not change its colour (hash of the id); renaming a 「VR ポイント N」 text to another N would.
+
+---
+
 ## 2026-10-06 — claude/vr-surface-point (one-handed VR redesign, build 468)
 
 **Agent:** Claude (Sonnet worker, supervised)

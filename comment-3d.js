@@ -11,17 +11,18 @@
 // view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
 // (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261006-build471';
-import { tr } from './i18n.js?v=20261006-build471';
-import { datasetFingerprint } from './project-file.js?v=20261006-build471';
-import { voxelToLocal3D } from './crosshair.js?v=20261006-build471';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261006-build471';
-import { request3DRender } from './scene3d.js?v=20261006-build471';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261006-build471';
-import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261006-build471';
-import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261006-build471';
-import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261006-build471';
-import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261006-build471';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build472';
+import { tr } from './i18n.js?v=20261007-build472';
+import { datasetFingerprint } from './project-file.js?v=20261007-build472';
+import { voxelToLocal3D } from './crosshair.js?v=20261007-build472';
+import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build472';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build472';
+import { request3DRender } from './scene3d.js?v=20261007-build472';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build472';
+import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build472';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build472';
+import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build472';
+import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build472';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
 let rels=new Map(),relSig='',svg=null,cuesOn=false;
@@ -62,7 +63,7 @@ function refreshHidden(obj,camera,pts,plane){
  if(!anyShown||!pts.length){const had=hiddenIds.size>0;hiddenIds=new Set();return had}
  if(vrModFailed)return false; // the builder could not be loaded: every point stays exposed
  if(!vrMod){ // the classification builder lives in vr-view.js: loaded once, on the first need; until then the previous judgement stays
-  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261006-build471').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
+  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build472').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
   return false;
  }
  const prep=vrMod.hiddenClsFor(()=>{throttle.reset();refreshSoon()});
@@ -103,7 +104,7 @@ function drawSectionCues(obj,camera,W,H,pts){
   const on=!!r&&r.on;if(m.on!==on){m.on=on;m.el.classList.toggle('is-on-section',on)}
   const want=!!r&&!r.on;
   if(want){
-   if(!m.line){m.line=document.createElementNS('http://www.w3.org/2000/svg','line');svg.appendChild(m.line)}
+   if(!m.line){m.line=document.createElementNS('http://www.w3.org/2000/svg','line');if(m.hex)m.line.style.stroke=m.hex;svg.appendChild(m.line)}
    if(projectPair(obj,camera,W,H,p.local,r.foot,seg4)){m.line.setAttribute('x1',seg4[0].toFixed(1));m.line.setAttribute('y1',seg4[1].toFixed(1));m.line.setAttribute('x2',seg4[2].toFixed(1));m.line.setAttribute('y2',seg4[3].toFixed(1));m.line.style.display=''}
    else m.line.style.display='none';
   }else if(m.line){m.line.remove();m.line=null}
@@ -131,8 +132,10 @@ export function updateComment3dMarkers(){
    const x=(v3.x+1)/2*W,y=(1-v3.y)/2*H,vis=v3.z>-1&&v3.z<1&&x>-12&&x<W+12&&y>-12&&y<H+12;
    keep.add(c.id);
    let m=els.get(c.id);
-   if(!m){const el=document.createElement('div');el.className='comment-marker-3d';el.setAttribute('role','img');layer.appendChild(el);m={el,x:0,y:0,vis:false,no:0,label:'',back:null,on:false,line:null};els.set(c.id,m)}
+   if(!m){const el=document.createElement('div');el.className='comment-marker-3d';el.setAttribute('role','img');layer.appendChild(el);m={el,x:0,y:0,vis:false,no:0,label:'',back:null,on:false,line:null,hex:''};els.set(c.id,m)}
    m.x=x;m.y=y;m.vis=vis;
+   const hex=pointColor(c);if(m.hex!==hex){ // build 472: the point's colour (own or auto) overrides the CSS variables of this one element; the number chip inherits them
+    m.hex=hex;const st=m.el.style,fill='#'+darkFill(hex).toString(16).padStart(6,'0');st.setProperty('--vr-point-dot',hex);st.setProperty('--vr-point-fill',fill);st.setProperty('--vr-point-ink',inkOn(hex));if(m.line)m.line.style.stroke=hex}
    if(m.no!==n+1){m.no=n+1;m.el.textContent='';const sp=document.createElement('span');sp.className='comment-marker-3d-no';sp.textContent=String(n+1);m.el.appendChild(sp)} // the dot is the element (its centre = the point); the number sits beside it
    const label=tr('commentMarker3d')+' '+(n+1);if(m.label!==label){m.label=label;m.el.setAttribute('aria-label',label)}
    m.el.hidden=!vis;
