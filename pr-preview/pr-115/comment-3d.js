@@ -11,21 +11,21 @@
 // view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
 // (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build484';
-import { tr } from './i18n.js?v=20261007-build484';
-import { datasetFingerprint } from './project-file.js?v=20261007-build484';
-import { voxelToLocal3D } from './crosshair.js?v=20261007-build484';
-import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build484';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build484';
-import { getMeasurements, setLabelOffset, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261007-build484';
-import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build484';
-import { request3DRender } from './scene3d.js?v=20261007-build484';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build484';
-import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build484';
-import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build484';
-import { planeLabelPlacement, clampLabelCenter, stepDelta, offsetFromDelta } from './measure-label.js?v=20261007-build484';
-import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build484';
-import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build484';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build485';
+import { tr } from './i18n.js?v=20261007-build485';
+import { datasetFingerprint } from './project-file.js?v=20261007-build485';
+import { voxelToLocal3D } from './crosshair.js?v=20261007-build485';
+import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build485';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build485';
+import { getMeasurements, setLabelOffset, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261007-build485';
+import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build485';
+import { request3DRender } from './scene3d.js?v=20261007-build485';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build485';
+import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build485';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build485';
+import { planeLabelPlacement, clampLabelCenter, stepDelta, offsetFromDelta, createFocusTracker } from './measure-label.js?v=20261007-build485';
+import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build485';
+import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build485';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
 let rels=new Map(),relSig='',svg=null,cuesOn=false;
@@ -66,7 +66,7 @@ function refreshHidden(obj,camera,pts,plane){
  if(!anyShown||!pts.length){const had=hiddenIds.size>0;hiddenIds=new Set();return had}
  if(vrModFailed)return false; // the builder could not be loaded: every point stays exposed
  if(!vrMod){ // the classification builder lives in vr-view.js: loaded once, on the first need; until then the previous judgement stays
-  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build484').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
+  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build485').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
   return false;
  }
  const prep=vrMod.hiddenClsFor(()=>{throttle.reset();refreshSoon()});
@@ -99,6 +99,8 @@ const seg4=[0,0,0,0];
 // build 477: distances. A line between the two points (the SVG layer, clipped at the near plane) and the value at its midpoint (a small label); the start of a
 // distance in the making gets a pulsing ring (.is-measure-start) and a hint next to it. Follows the points live (they are recomputed every frame).
 const measEls=new Map(); // measurement id -> {line,label,text}
+// build 485: the lit label (mouse hover / a drag, touch included): the class is toggled only when the lit label changes
+const labelFocus=createFocusTracker((n,p)=>{measEls.get(p)?.label.classList.remove('is-lit');measEls.get(n)?.label.classList.add('is-lit')});
 let hintEl=null;
 // object-space change per voxel along i / j / k in this view (voxelToLocal3D: the longest side is 3.3 units)
 function voxelStep3d(dims,spacing){const[sx,sy,sz]=spacing||[1,1,1],k=3.3/Math.max(dims.columns*sx,dims.rows*sy,dims.slices*sz,1);return[sx*k,-sy*k,sz*k]}
@@ -113,7 +115,7 @@ function drawMeasures(obj,camera,W,H,pts,keep,dims){
    const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('class','measure-line-3d');svg.appendChild(line);
    const leader=document.createElementNS('http://www.w3.org/2000/svg','line');leader.setAttribute('class','measure-leader-3d');svg.appendChild(leader);
    const label=document.createElement('div');label.className='measure-label-3d';layer.appendChild(label);
-   e={line,leader,label,text:'',w:60,h:16,sx:0,sy:0,ctx:null};measEls.set(m.id,e);
+   if(labelFocus.get()===m.id)label.classList.add('is-lit');e={line,leader,label,text:'',w:60,h:16,sx:0,sy:0,ctx:null};measEls.set(m.id,e);
   }
   const text=measureLabel(measurementMm(m,cs,sp),warn);if(e.text!==text){e.text=text;e.label.textContent=text;if(warn)e.label.title=tr('measureWarn');e.label.hidden=false;e.w=e.label.offsetWidth||60;e.h=e.label.offsetHeight||16}
   const A=byId.get(m.a),B=byId.get(m.b);
@@ -225,6 +227,12 @@ export function updateComment3dMarkers(){
 let lastLabelDown={id:null,t:0,x:0,y:0};
 function labelAt(x,y){for(const [id,e] of measEls)if(!e.label.hidden&&Math.abs(x-e.sx)<=e.w/2+4&&Math.abs(y-e.sy)<=e.h/2+4)return id;return null}
 function installLabelDrag(nearestDot,gate){
+ host.addEventListener('pointermove',ev=>{ // hover (mouse / pen): the label under the pointer lights up
+  if(ev.pointerType==='touch'||ev.buttons)return;
+  if(!gate()||nearestDot(ev.clientX,ev.clientY)!=null){labelFocus.hover(null);return}
+  const r=host.getBoundingClientRect();labelFocus.hover(labelAt(ev.clientX-r.left,ev.clientY-r.top));
+ });
+ host.addEventListener('pointerleave',()=>labelFocus.hover(null));
  host.addEventListener('pointerdown',ev=>{
   if(ev.target?.tagName!=='CANVAS'||(ev.pointerType==='mouse'&&ev.button!==0)||!gate())return;
   if(nearestDot(ev.clientX,ev.clientY)!=null)return; // a point wins
@@ -232,7 +240,7 @@ function installLabelDrag(nearestDot,gate){
   ev.stopPropagation();ev.preventDefault();closeBubble3d();
   if(lastLabelDown.id===id&&ev.timeStamp-lastLabelDown.t<350&&Math.hypot(ev.clientX-lastLabelDown.x,ev.clientY-lastLabelDown.y)<12){lastLabelDown={id:null,t:0,x:0,y:0};setLabelOffset(id,null);return}
   lastLabelDown={id,t:ev.timeStamp,x:ev.clientX,y:ev.clientY};
-  const dx=ev.clientX-r.left-e.sx,dy=ev.clientY-r.top-e.sy,pid=ev.pointerId;e.label.classList.add('is-dragging');
+  const dx=ev.clientX-r.left-e.sx,dy=ev.clientY-r.top-e.sy,pid=ev.pointerId;e.label.classList.add('is-dragging');labelFocus.drag(id);
   const move=m=>{
    if(m.pointerId!==pid||!e.ctx)return;m.stopPropagation();
    const{obj,camera}=sceneState,W=host.clientWidth,H=host.clientHeight;if(!obj||!camera)return;
@@ -240,7 +248,7 @@ function installLabelDrag(nearestDot,gate){
    v3.set((m.clientX-r.left-dx)/W*2-1,1-(m.clientY-r.top-dy)/H*2,e.ctx.ndcZ).unproject(camera);obj.worldToLocal(v3); // the screen point, at the depth of the line's midpoint
    setLabelOffset(id,offsetFromDelta({x:v3.x-e.ctx.ml.x,y:v3.y-e.ctx.ml.y,z:v3.z-e.ctx.ml.z},e.ctx.step));
   };
-  const up=m=>{if(m.pointerId!==pid)return;e.label.classList.remove('is-dragging');document.removeEventListener('pointermove',move,true);document.removeEventListener('pointerup',up,true);document.removeEventListener('pointercancel',up,true)};
+  const up=m=>{if(m.pointerId!==pid)return;e.label.classList.remove('is-dragging');labelFocus.drag(null);document.removeEventListener('pointermove',move,true);document.removeEventListener('pointerup',up,true);document.removeEventListener('pointercancel',up,true)};
   document.addEventListener('pointermove',move,true);document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',up,true);
  },true);
 }

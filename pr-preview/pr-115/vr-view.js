@@ -8,28 +8,28 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build484';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build484';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build484';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build484';
-import { datasetFingerprint } from './project-file.js?v=20261007-build484';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build484';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build484';
-import { buildClsData } from './point-cls.js?v=20261007-build484';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build484';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build484';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build484';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build484';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build484';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build484';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build484';
-import { tr } from './i18n.js?v=20261007-build484';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build484';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build484';
-import { createVrMeasure } from './vr-measure.js?v=20261007-build484';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build484';
-import { APP_BUILD } from './version.js?v=20261007-build484';
-import { wc, ww } from './ui-shell.js?v=20261007-build484';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261007-build485';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261007-build485';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261007-build485';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261007-build485';
+import { datasetFingerprint } from './project-file.js?v=20261007-build485';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261007-build485';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261007-build485';
+import { buildClsData } from './point-cls.js?v=20261007-build485';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261007-build485';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261007-build485';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261007-build485';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261007-build485';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261007-build485';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261007-build485';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261007-build485';
+import { tr } from './i18n.js?v=20261007-build485';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261007-build485';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261007-build485';
+import { createVrMeasure } from './vr-measure.js?v=20261007-build485';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261007-build485';
+import { APP_BUILD } from './version.js?v=20261007-build485';
+import { wc, ww } from './ui-shell.js?v=20261007-build485';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1169,7 +1169,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // the shader variants without VRL_REGIONS, diagAn.noLabels skips the laser's volume march and the labels
  const diagAn={noRegion:false,noLabels:false};
  // VR position points (Issue #88, stage 3; vr-point.js): vrHalfExt / vrDims / vrFp are set when the data is ready (null before)
- let vrHalfExt=null,vrDims=null,vrFp=null,vrSpacing=null;const vpMarkers=createVrPointMarkers(THREE,scene),vpMeasure=createVrMeasure(THREE,scene); // vrSpacing: the series' voxel spacing [x,y,z] mm (the adopted one: z from the slice-spacing check), for the distances
+ let vrHalfExt=null,vrDims=null,vrFp=null,vrSpacing=null;const vpMarkers=createVrPointMarkers(THREE,scene),vpMeasure=createVrMeasure(THREE,scene),lblLit=new Set(); // lblLit: the distance labels lit this frame (laser on them / grabbed). vrSpacing: the series' voxel spacing [x,y,z] mm (the adopted one: z from the slice-spacing check), for the distances
  // build 465: surface mode (vrPointMode, kept while the page lives, default 断面). It is in force except while the 解析 tab is open (the trigger pins labels there)
  const surfaceActive=()=>vrPointMode==='surface'&&!(ui.open&&ui.tab===5),surfCursors=controllers.map(()=>createSurfaceCursor(THREE,scene)),tmpSc=new THREE.Vector3(),tmpSh=new THREE.Vector3(),tmpSs=new THREE.Vector3();
  // build 467: the cursor sits at the CENTRE of the voxel that will be recorded (sf.voxel), as a small dot (build 470: no ring; the same dot in 断面 mode)
@@ -1919,10 +1919,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
   benchTick();
   {const nowH=performance.now();if(nowH-vpHiddenAt>=100)updateHidden(nowH);
    let previewArg=null;for(const x of controllers)if(x.userData.moving){previewArg={id:x.userData.moving.id,voxel:x.userData.placement?.voxel||null};break}
+   lblLit.clear();for(const x of controllers){const r=x.userData.res;if(r&&r.kind==='mlabel'&&r.ref)lblLit.add(r.ref.id);if(x.userData.lblDrag&&x.userData.press)lblLit.add(x.userData.lblDrag.id)} // build 485: the label the laser is on stays lit while it is grabbed
    // the active section = the selected one while sections are on, as the shader's plane (object space, unit normal, same index as planes)
    let secPl=null;if(section.on&&section.selected&&material&&!bench.noSection){const i=planes.indexOf(section.selected);if(i>=0&&i<material.uniforms.planeCount.value){const q=material.uniforms.cutPlanes.value[i];secPl={x:q.x,y:q.y,z:q.z,w:q.w}}}
    vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds,preview:previewArg});
-   vpMeasure.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,spacing:vrSpacing,warn:!!spacingNote(),startId:getMeasureStart(),hint:L.ptDistHint,now:nowH,preview:previewArg})}
+   vpMeasure.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,spacing:vrSpacing,warn:!!spacingNote(),startId:getMeasureStart(),hint:L.ptDistHint,now:nowH,preview:previewArg,lit:lblLit})}
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];
   if(auto){
