@@ -133,39 +133,47 @@ export function createButtonPress({longMs=500}={}){
  };
 }
 
-// ---- drawing (three.js): a square board with the items on a ring, facing the head ----
-// THREE is passed in (no import, no DOM at module level). size: board side in metres (0.16). Canvas 512 x 512; item centres at 0.055/0.16 of the side.
+// ---- drawing (three.js): a square board with the items as annular sectors (a doughnut cut into N equal slices), facing the head ----
+// THREE is passed in (no import, no DOM at module level). size: board side in metres (0.16). Canvas 512 x 512 px.
 export const WHEEL_BOARD_M=0.16,WHEEL_RADIUS_M=0.055;
+const RING_OUT_PX=236,RING_IN_PX=Math.round(RING_OUT_PX*0.4),GAP_DEG=4,HL_GROW=6,DISC_PX=RING_OUT_PX+14; // outer / inner radius of the sectors, gap between sectors, lit sector grows, the base disc
+const rad=th=>(th-90)*Math.PI/180; // wheel angle (0 = up, clockwise) -> canvas angle
 export function createRingMenu(THREE,{size=WHEEL_BOARD_M}={}){
- const N=512,Rpx=WHEEL_RADIUS_M/WHEEL_BOARD_M*N,canvas=document.createElement('canvas');canvas.width=N;canvas.height=N;
+ const N=512,canvas=document.createElement('canvas');canvas.width=N;canvas.height=N;
  const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(size,size),new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
  mesh.renderOrder=7;mesh.frustumCulled=false;mesh.visible=false;
  let labels=[],enabled=[],on=[],hl=null;
- // build 472: an item is a name (string) or a colour swatch {color,name} (a narrower box so nine fit on the ring; the lit one shows its name in the centre)
- const isSw=t=>!!t&&typeof t==='object',itemW=t=>isSw(t)?100:160;
+ const isSw=t=>!!t&&typeof t==='object',C=N/2,MID=(RING_IN_PX+RING_OUT_PX)/2;
+ const sector=(a0,a1,ro)=>{ctx.beginPath();ctx.arc(C,C,ro,rad(a0),rad(a1));ctx.arc(C,C,RING_IN_PX,rad(a1),rad(a0),true);ctx.closePath()};
  const draw=()=>{
   ctx.clearRect(0,0,N,N);
-  const n=labels.length,ang=wheelAngles(n);
-  ctx.fillStyle='rgba(14,20,27,.55)';ctx.beginPath();ctx.arc(N/2,N/2,Rpx+110,0,Math.PI*2);ctx.fill();
+  const n=labels.length,ang=wheelAngles(n),half=n?180/n:180;
+  ctx.fillStyle='rgba(10,15,22,.62)';ctx.beginPath();ctx.arc(C,C,DISC_PX,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=3;ctx.stroke();
+  ctx.fillStyle='rgba(10,15,22,.5)';ctx.beginPath();ctx.arc(C,C,RING_IN_PX-8,0,Math.PI*2);ctx.fill();
   ctx.textAlign='center';ctx.textBaseline='middle';
+  let centre='';
   labels.forEach((t,k)=>{
-   const a=ang[k]*Math.PI/180,cx=N/2+Math.sin(a)*Rpx,cy=N/2-Math.cos(a)*Rpx,w=itemW(t),h=72,x=cx-w/2,y=cy-h/2;
-   ctx.beginPath();ctx.roundRect(x,y,w,h,16);
+   const a0=ang[k]-half+GAP_DEG/2,a1=ang[k]+half-GAP_DEG/2,lit=k===hl,ro=RING_OUT_PX+(lit?HL_GROW:0),am=ang[k]*Math.PI/180,cx=C+Math.sin(am)*MID,cy=C-Math.cos(am)*MID;
+   sector(a0,a1,ro);
+   if(t===null||t===undefined){ctx.setLineDash([8,8]);ctx.strokeStyle='rgba(159,179,195,.45)';ctx.lineWidth=3;ctx.stroke();ctx.setLineDash([]);return}
    if(isSw(t)){
-    ctx.fillStyle=t.color;ctx.fill();ctx.strokeStyle=k===hl?'#ffd23d':'rgba(255,255,255,.35)';ctx.lineWidth=k===hl?9:2;ctx.stroke();
-    if(t.text){ctx.fillStyle='#fff';ctx.font='bold 28px system-ui,sans-serif';ctx.fillText(t.text,cx,cy+(on[k]?-16:1))} // a text swatch (the 自動 item)
-    if(on[k]){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(cx,t.text?cy+18:cy,9,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=3;ctx.stroke()} // the current colour
-    if(k===hl&&t.name&&!t.text){ctx.fillStyle='#fff';ctx.font='bold 34px system-ui,sans-serif';ctx.fillText(t.name,N/2,N/2+1)}
+    ctx.fillStyle=t.color;ctx.fill();ctx.strokeStyle=lit?'#fff':'rgba(255,255,255,.3)';ctx.lineWidth=lit?6:2;ctx.stroke();
+    if(lit)centre=t.name||t.text||'';
+    if(t.text){ctx.fillStyle='#fff';ctx.font='bold 28px system-ui,sans-serif';ctx.fillText(t.text,cx,cy+(on[k]?-14:1))} // a text swatch (the 自動 sector)
+    if(on[k]){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(cx,t.text?cy+20:cy,10,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=3;ctx.stroke()} // the current colour
     return;
    }
-   if(t===null||t===undefined){ctx.setLineDash([8,8]);ctx.strokeStyle='rgba(159,179,195,.6)';ctx.lineWidth=3;ctx.stroke();ctx.setLineDash([]);return}
-   const ok=!!enabled[k];ctx.fillStyle=k===hl?'#ffd23d':!ok?'#1a2129':on[k]?'#2d6cdf':'#26313b';ctx.fill();
-   ctx.strokeStyle=k===hl?'#fff':'rgba(255,255,255,.35)';ctx.lineWidth=k===hl?5:2;ctx.stroke();
-   ctx.fillStyle=k===hl?'#111':!ok?'#6b7885':'#fff';ctx.font='bold 28px system-ui,sans-serif';
+   const ok=!!enabled[k];ctx.fillStyle=lit?'#ffe27a':!ok?'#141a21':on[k]?'#2d6cdf':'#26313b';ctx.fill();
+   ctx.strokeStyle=lit?'#fff':'rgba(255,255,255,.3)';ctx.lineWidth=lit?5:2;ctx.stroke();
+   if(lit)centre=t;
+   ctx.fillStyle=lit?'#111':!ok?'#6b7885':'#fff';ctx.font='bold 28px system-ui,sans-serif';
    // two lines when the name is long (split at the middle)
-   if(t.length>6){const m=Math.ceil(t.length/2);ctx.font='bold 25px system-ui,sans-serif';ctx.fillText(t.slice(0,m),cx,cy-14);ctx.fillText(t.slice(m),cx,cy+14)}else ctx.fillText(t,cx,cy+1);
+   const lim=n>6?4:6;
+   if(t.length>lim){const m=Math.ceil(t.length/2);ctx.font='bold 25px system-ui,sans-serif';ctx.fillText(t.slice(0,m),cx,cy-14);ctx.fillText(t.slice(m),cx,cy+14)}else ctx.fillText(t,cx,cy+1);
   });
+  if(centre){ctx.fillStyle='#fff';ctx.font='bold '+(centre.length>5?26:32)+'px system-ui,sans-serif';ctx.fillText(centre,C,C+1)}
   tex.needsUpdate=true;
  };
  return{
@@ -173,20 +181,19 @@ export function createRingMenu(THREE,{size=WHEEL_BOARD_M}={}){
   // labels: names (null = empty slot), enabled: usable, on: shown as "on" (e.g. the current mode)
   setItems(l,e,o){labels=l;enabled=e;on=o||[];draw()},
   setHighlight(k){if(k!==hl){hl=k;draw()}},
-  // the slot under a uv of the board (the raycaster's), or null
-  // only inside the label rect of a filled, usable item (160 x 72 px, a swatch 100 x 72, of the 512 px canvas); empty / disabled slots and the gaps are null
+  // build 474: the slot under a uv of the board: an annular sector (RING_IN_PX..RING_OUT_PX, within its angular share minus the gap) of a filled, usable item; else null
   slotFromUv(uv){
-   const px=uv.x*N,py=(1-uv.y)*N,ang=wheelAngles(labels.length);
-   for(let k=0;k<labels.length;k++){
-    if(labels[k]===null||labels[k]===undefined||!enabled[k])continue;
-    const a=ang[k]*Math.PI/180,cx=N/2+Math.sin(a)*Rpx,cy=N/2-Math.cos(a)*Rpx;
-    if(Math.abs(px-cx)<=itemW(labels[k])/2&&Math.abs(py-cy)<=36)return k;
-   }
-   return null;
+   const dx=uv.x*N-N/2,dy=(1-uv.y)*N-N/2,r=Math.hypot(dx,dy),n=labels.length;
+   if(!n||r<RING_IN_PX||r>RING_OUT_PX+HL_GROW)return null;
+   const th=toTheta(dx,-dy),ang=wheelAngles(n),half=180/n;
+   let k=-1,best=Infinity;for(let i=0;i<n;i++){const d=angDiff(th,ang[i]);if(d<best){best=d;k=i}}
+   if(k<0||best>half-GAP_DEG/2||labels[k]===null||labels[k]===undefined||!enabled[k])return null;
+   return k;
   },
-  // build 474: a uv inside the dark disc behind the items (the ring owner's own laser stops there too; blank space is not an item)
-  inDisk(uv){return Math.hypot(uv.x*N-N/2,(1-uv.y)*N-N/2)<=Rpx+110},
-  placeAt(center,head){mesh.position.set(center.x,center.y,center.z);if(head)mesh.lookAt(head.x,head.y,head.z)},
+  // a uv inside everything drawn (the dark base disc incl. the centre and the gaps): every hand's laser stops here
+  inDisk(uv){return Math.hypot(uv.x*N-N/2,(1-uv.y)*N-N/2)<=DISC_PX},
+  // matrixWorld is refreshed here: the hit test runs before the next render, and used to see the ring one frame late (at the origin in the frame it opened)
+  placeAt(center,head){mesh.position.set(center.x,center.y,center.z);if(head)mesh.lookAt(head.x,head.y,head.z);mesh.updateMatrixWorld(true)},
   dispose(){tex.dispose();mesh.geometry.dispose();mesh.material.dispose()},
  };
 }
