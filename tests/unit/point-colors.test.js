@@ -167,7 +167,7 @@ describe('the auto colour is fixed when the point is recorded (autoKey)', () => 
     updateCommentText(r3.id, '腫瘍');
     expect(pointColor(getComments().find(c => c.id === r3.id))).toBe(c3);
     // a PC-added point gets the next free key; typing 「VR ポイント 2」 as its text changes nothing
-    const pc = addComment(createComment({ text: 'memo', position: { i: 2, j: 2, k: 2 }, series: fp, autoKey: nextAutoKey(getComments()) }));
+    const pc = addComment(createComment({ id: 'pc-1', text: 'memo', position: { i: 2, j: 2, k: 2 }, series: fp, autoKey: nextAutoKey(getComments()) }));
     expect(pc.autoKey).toBe(4);
     const before = pointColor(pc);
     updateCommentText(pc.id, 'VR ポイント 2');
