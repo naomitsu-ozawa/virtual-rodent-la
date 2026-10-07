@@ -32,7 +32,7 @@ describe('point palette', () => {
     for (const a of POINT_PALETTE) for (const b of POINT_PALETTE) if (a !== b) expect(dE(a.hex, b.hex), a.hex + ' vs ' + b.hex).toBeGreaterThan(24);
   });
   it('derived dark fill and ink', () => {
-    expect(darkFill('#ffffff')).toBe(0x737373);
+    expect(darkFill('#ffffff')).toBe(0xcccccc);
     expect(inkOn('#ffffff')).toBe('#04202a');
     expect(inkOn('#1e88ff') === '#04202a' || inkOn('#1e88ff') === '#ffffff').toBe(true);
   });
@@ -153,5 +153,45 @@ describe('the point ring offers 色 (static check of vr-view.js)', () => {
     expect(src).toContain("const COLOR_IDS=['auto',...POINT_PALETTE.map(p=>p.hex)]");
     expect(src).toContain("undo.push({type:'color'");
     expect(src).toContain('updateCommentPosition,updateCommentColor}');
+  });
+});
+
+describe('the auto colour is fixed when the point is recorded (autoKey)', () => {
+  beforeEach(() => { setComments([]); resetCommentsSaved() });
+  it('editing the text of a VR point keeps its colour; typing another number does not adopt that colour', async () => {
+    const { updateCommentText, nextAutoKey } = await import('../../docs/comments.js');
+    const store = { getComments, addComment };
+    const r3 = [1, 2, 3].map(() => recordVrPoint({ voxel: { i: 1, j: 1, k: 1 }, series: fp, store }))[2];
+    expect(r3.autoKey).toBe(3);
+    const c3 = pointColor(r3);
+    updateCommentText(r3.id, '腫瘍');
+    expect(pointColor(getComments().find(c => c.id === r3.id))).toBe(c3);
+    // a PC-added point gets the next free key; typing 「VR ポイント 2」 as its text changes nothing
+    const pc = addComment(createComment({ text: 'memo', position: { i: 2, j: 2, k: 2 }, series: fp, autoKey: nextAutoKey(getComments()) }));
+    expect(pc.autoKey).toBe(4);
+    const before = pointColor(pc);
+    updateCommentText(pc.id, 'VR ポイント 2');
+    expect(pointColor(getComments().find(c => c.id === pc.id))).toBe(before);
+    expect(before).toBe(POINT_PALETTE[3].hex);
+  });
+  it('a legacy point (no autoKey) keeps its colour after an edit; the key is stored then', async () => {
+    const { updateCommentText } = await import('../../docs/comments.js');
+    const legacy = [
+      { id: 'a', text: 'VR ポイント 2', position: { i: 1, j: 1, k: 1 }, series: fp, createdAt: '' },
+      { id: 'b', text: 'note', position: { i: 1, j: 1, k: 1 }, series: fp, createdAt: '' },
+    ];
+    setComments(legacy);
+    const want = getComments().map(pointColor);
+    updateCommentText('a', 'xyz'); updateCommentText('b', 'VR ポイント 7');
+    expect(getComments().map(pointColor)).toEqual(want);
+    expect(getComments().map(c => c.autoKey)).toEqual([2, expect.any(Number)]);
+  });
+  it('sanitize keeps a valid autoKey, drops invalid ones; it round-trips and is part of the dirty signature', () => {
+    const b = { text: 't', position: { i: 1, j: 1, k: 1 }, series: fp };
+    const out = sanitizeComments([{ id: 'a', ...b, autoKey: 5 }, { id: 'b', ...b, autoKey: -1 }, { id: 'c', ...b, autoKey: 1.5 }, { id: 'd', ...b, autoKey: '3' }, { id: 'e', ...b, autoKey: 0 }]);
+    expect(out.map(c => c.autoKey)).toEqual([5, undefined, undefined, undefined, 0]);
+    setComments(out);
+    expect(sanitizeComments(JSON.parse(JSON.stringify(commentsForProject(fp)))).map(c => c.autoKey)).toEqual([5, undefined, undefined, undefined, 0]);
+    markCommentsSaved(fp); expect(hasUnsavedComments()).toBe(false);
   });
 });

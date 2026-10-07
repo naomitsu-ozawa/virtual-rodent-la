@@ -69,8 +69,8 @@ export function nextVrPointNumber(comments,fingerprint){
 // store: the comment store to use (the app's by default; a test passes its own, as the module URLs carry a ?v= build tag)
 export function recordVrPoint({voxel,series,language='ja',now=Date.now(),store={getComments,addComment}}){
  if(!voxel||!series)return null;
- const text=vrPointText(nextVrPointNumber(store.getComments(),series),language);
- return store.addComment(createComment({text,position:voxel,series,now}));
+ const n=nextVrPointNumber(store.getComments(),series),text=vrPointText(n,language);
+ return store.addComment(createComment({text,position:voxel,series,now,autoKey:n})); // autoKey: the number given now, which fixes the auto colour (build 472)
 }
 
 // ---- thumbstick gate (build 464) ----
