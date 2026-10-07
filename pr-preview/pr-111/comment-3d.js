@@ -11,20 +11,21 @@
 // view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
 // (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build479';
-import { tr } from './i18n.js?v=20261007-build479';
-import { datasetFingerprint } from './project-file.js?v=20261007-build479';
-import { voxelToLocal3D } from './crosshair.js?v=20261007-build479';
-import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build479';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build479';
-import { getMeasurements, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261007-build479';
-import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build479';
-import { request3DRender } from './scene3d.js?v=20261007-build479';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build479';
-import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build479';
-import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build479';
-import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build479';
-import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build479';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261007-build480';
+import { tr } from './i18n.js?v=20261007-build480';
+import { datasetFingerprint } from './project-file.js?v=20261007-build480';
+import { voxelToLocal3D } from './crosshair.js?v=20261007-build480';
+import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261007-build480';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261007-build480';
+import { getMeasurements, setLabelOffset, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261007-build480';
+import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261007-build480';
+import { request3DRender } from './scene3d.js?v=20261007-build480';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261007-build480';
+import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261007-build480';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261007-build480';
+import { planeLabelPlacement, stepDelta, offsetFromDelta } from './measure-label.js?v=20261007-build480';
+import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261007-build480';
+import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261007-build480';
 
 let host=null,layer=null,bubble=null,bubbleId=null,bubbleTimer=0;
 let rels=new Map(),relSig='',svg=null,cuesOn=false;
@@ -65,7 +66,7 @@ function refreshHidden(obj,camera,pts,plane){
  if(!anyShown||!pts.length){const had=hiddenIds.size>0;hiddenIds=new Set();return had}
  if(vrModFailed)return false; // the builder could not be loaded: every point stays exposed
  if(!vrMod){ // the classification builder lives in vr-view.js: loaded once, on the first need; until then the previous judgement stays
-  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build479').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
+  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261007-build480').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
   return false;
  }
  const prep=vrMod.hiddenClsFor(()=>{throttle.reset();refreshSoon()});
@@ -99,26 +100,68 @@ const seg4=[0,0,0,0];
 // distance in the making gets a pulsing ring (.is-measure-start) and a hint next to it. Follows the points live (they are recomputed every frame).
 const measEls=new Map(); // measurement id -> {line,label,text}
 let hintEl=null;
-function drawMeasures(obj,camera,W,H,pts,keep){
+// object-space change per voxel along i / j / k in this view (voxelToLocal3D: the longest side is 3.3 units)
+function voxelStep3d(dims,spacing){const[sx,sy,sz]=spacing||[1,1,1],k=3.3/Math.max(dims.columns*sx,dims.rows*sy,dims.slices*sz,1);return[sx*k,-sy*k,sz*k]}
+// build 480: the label can be dragged (mouse / touch / pen) at any time: the new place is stored as labelOffset (voxel units from the midpoint, measurements.js), so it is the
+// same in VR and the 2D views and is saved in the project. The drag only touches the label (the 3D view's own handlers and the dot taps never see it).
+function installLabelDrag(label,id,e){
+ let g=null;
+ label.addEventListener('pointerdown',ev=>{
+  if(ev.pointerType==='mouse'&&ev.button!==0)return;
+  ev.stopPropagation();ev.preventDefault();closeBubble3d();
+  try{label.setPointerCapture(ev.pointerId)}catch{/* not capturable: the move events still arrive while over it */}
+  const r=host.getBoundingClientRect();g={id:ev.pointerId,dx:ev.clientX-r.left-e.sx,dy:ev.clientY-r.top-e.sy};label.classList.add('is-dragging');
+ });
+ label.addEventListener('pointermove',ev=>{
+  if(!g||g.id!==ev.pointerId||!e.ctx)return;
+  ev.stopPropagation();
+  const r=host.getBoundingClientRect(),{obj,camera}=sceneState,W=host.clientWidth,H=host.clientHeight;if(!obj||!camera)return;
+  const x=ev.clientX-r.left-g.dx,y=ev.clientY-r.top-g.dy;
+  obj.updateMatrixWorld(true);camera.updateMatrixWorld(true);
+  v3.set(x/W*2-1,1-y/H*2,e.ctx.ndcZ).unproject(camera);obj.worldToLocal(v3);   // the screen point, at the depth of the line's midpoint
+  setLabelOffset(id,offsetFromDelta({x:v3.x-e.ctx.ml.x,y:v3.y-e.ctx.ml.y,z:v3.z-e.ctx.ml.z},e.ctx.step));
+ });
+ const end=ev=>{if(!g||g.id!==ev.pointerId)return;g=null;label.classList.remove('is-dragging');try{label.releasePointerCapture(ev.pointerId)}catch{/* already released */}};
+ label.addEventListener('pointerup',end);label.addEventListener('pointercancel',end);
+ label.addEventListener('contextmenu',ev=>ev.preventDefault());
+}
+function drawMeasures(obj,camera,W,H,pts,keep,dims){
  const byId=new Map(pts.map(p=>[p.id,p])),ms=getMeasurements().filter(m=>byId.has(m.a)&&byId.has(m.b));
  if(!ms.length)return;
  ensureSvg();svg.setAttribute('width',W);svg.setAttribute('height',H);
- const cs=getComments(),sp=seriesSpacing(activeSeries),warn=spacingLevel(activeSeries)==='warn';
+ const cs=getComments(),sp=seriesSpacing(activeSeries),warn=spacingLevel(activeSeries)==='warn',step=voxelStep3d(dims,volume.spacing);
  for(const m of ms){
   keep.add(m.id);let e=measEls.get(m.id);
   if(!e){
    const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('class','measure-line-3d');svg.appendChild(line);
+   const leader=document.createElementNS('http://www.w3.org/2000/svg','line');leader.setAttribute('class','measure-leader-3d');svg.appendChild(leader);
    const label=document.createElement('div');label.className='measure-label-3d';layer.appendChild(label);
-   e={line,label,text:''};measEls.set(m.id,e);
+   e={line,leader,label,text:'',w:60,h:16,sx:0,sy:0,ctx:null};installLabelDrag(label,m.id,e);measEls.set(m.id,e);
   }
-  const text=measureLabel(measurementMm(m,cs,sp),warn);if(e.text!==text){e.text=text;e.label.textContent=text;if(warn)e.label.title=tr('measureWarn')}
-  if(projectPair(obj,camera,W,H,byId.get(m.a).local,byId.get(m.b).local,seg4)){
+  const text=measureLabel(measurementMm(m,cs,sp),warn);if(e.text!==text){e.text=text;e.label.textContent=text;if(warn)e.label.title=tr('measureWarn');e.label.hidden=false;e.w=e.label.offsetWidth||60;e.h=e.label.offsetHeight||16}
+  const A=byId.get(m.a),B=byId.get(m.b);
+  if(projectPair(obj,camera,W,H,A.local,B.local,seg4)){
    e.line.setAttribute('x1',seg4[0].toFixed(1));e.line.setAttribute('y1',seg4[1].toFixed(1));e.line.setAttribute('x2',seg4[2].toFixed(1));e.line.setAttribute('y2',seg4[3].toFixed(1));e.line.style.display='';
-   e.label.hidden=false;e.label.style.transform='translate('+((seg4[0]+seg4[2])/2).toFixed(1)+'px,'+((seg4[1]+seg4[3])/2).toFixed(1)+'px) translate(-50%,-50%)';
-  }else{e.line.style.display='none';e.label.hidden=true}
+   const mx=(seg4[0]+seg4[2])/2,my=(seg4[1]+seg4[3])/2;
+   // the midpoint in object space (voxel units: the mean of the two voxels) and its depth: what a drag of the label works from
+   const ml=voxelToLocal3D({i:(A.vox.i+B.vox.i)/2,j:(A.vox.j+B.vox.j)/2,k:(A.vox.k+B.vox.k)/2},dims,volume.spacing);
+   v3.set(ml.x,ml.y,ml.z).applyMatrix4(obj.matrixWorld).project(camera);e.ctx={ml,step,ndcZ:v3.z};
+   let lx,ly;
+   if(m.labelOffset){ // where the user left it
+    const d=stepDelta(m.labelOffset,step);v3.set(ml.x+d.x,ml.y+d.y,ml.z+d.z).applyMatrix4(obj.matrixWorld).project(camera);
+    lx=(v3.x+1)/2*W;ly=(1-v3.y)/2*H;
+   }else{ // by default NEAR the line: beside it (perpendicular, the upper side), inside the view
+    const pl=planeLabelPlacement({x:seg4[0],y:seg4[1]},{x:seg4[2],y:seg4[3]},{w:e.w,h:e.h,gap:4,x0:0,y0:0,iw:W,ih:H});lx=pl.x;ly=pl.y;
+   }
+   if(Number.isFinite(lx)&&Number.isFinite(ly)){
+    e.sx=lx;e.sy=ly;e.label.hidden=false;
+    e.label.style.transform='translate('+lx.toFixed(1)+'px,'+ly.toFixed(1)+'px) translate(-50%,-50%)';
+    e.leader.setAttribute('x1',mx.toFixed(1));e.leader.setAttribute('y1',my.toFixed(1));e.leader.setAttribute('x2',lx.toFixed(1));e.leader.setAttribute('y2',ly.toFixed(1));e.leader.style.display='';
+   }else{e.leader.style.display='none';e.label.hidden=true}
+  }else{e.line.style.display='none';e.leader.style.display='none';e.label.hidden=true}
  }
 }
-function pruneMeasures(keep){for(const [id,e] of [...measEls])if(!keep.has(id)){e.line.remove();e.label.remove();measEls.delete(id)}}
+function pruneMeasures(keep){for(const [id,e] of [...measEls])if(!keep.has(id)){e.line.remove();e.leader.remove();e.label.remove();measEls.delete(id)}}
 function placeHint(){
  const id=getMeasureStart(),m=id?els.get(id):null;
  if(!id||!m||!m.vis||!layer){if(hintEl)hintEl.hidden=true;return}
@@ -159,7 +202,7 @@ export function updateComment3dMarkers(){
    if(!commentMatchesSeries(c,fp))return;
    const t=commentTarget(c,dims);if(!t)return;
    const l=voxelToLocal3D(t,dims,volume.spacing);
-   pts.push({id:c.id,local:{x:l.x,y:l.y,z:l.z}});
+   pts.push({id:c.id,local:{x:l.x,y:l.y,z:l.z},vox:t});
    v3.set(l.x,l.y,l.z).applyMatrix4(obj.matrixWorld);
    v3.project(camera);
    const x=(v3.x+1)/2*W,y=(1-v3.y)/2*H,vis=v3.z>-1&&v3.z<1&&x>-12&&x<W+12&&y>-12&&y<H+12;
@@ -187,7 +230,7 @@ export function updateComment3dMarkers(){
   const rsig=(plane?[plane.x,plane.y,plane.z,plane.w].join(','):'')+'|'+pts.map(p=>p.id+':'+p.local.x+','+p.local.y+','+p.local.z).join(';');
   if(rsig!==relSig){relSig=rsig;rels=planeRelations(pts,plane,boxHalfExtent(dims,volume.spacing),dims)}
   drawSectionCues(obj,camera,W,H,pts);
-  drawMeasures(obj,camera,W,H,pts,keepM);
+  drawMeasures(obj,camera,W,H,pts,keepM,dims);
  }
  pruneMeasures(keepM);
  if(!list.length){clearTimeout(hiddenTimer);hiddenTimer=0}
