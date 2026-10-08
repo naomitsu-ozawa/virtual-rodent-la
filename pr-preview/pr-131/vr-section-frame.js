@@ -37,43 +37,75 @@ export function sectionPage(count, page = 0, per = SECTION_ROWS_PER_PAGE) {
 export const pageOfPlane = (i, per = SECTION_ROWS_PER_PAGE) => Math.max(0, Math.floor(i / per));
 
 // ---- build 521: delete a section by throwing it away, with a few seconds of 「元に戻す」 ----
-// Fling = release the trigger while the hand that drags a section frame moves fast AWAY from the volume. Pure helpers: no three.js, no DOM (vr-view.js samples the hand and applies the result).
-// Thresholds (named so they can be tuned on the headset):
-//   FLING_SPEED_MPS  1.5 m/s mean hand speed over the last FLING_WINDOW_MS (a careful drag is 0.2-0.8 m/s, a deliberate throw is 2-4 m/s)
-//   FLING_COS        0.5 = the velocity must be within 60 degrees of the outward axis (volume centre -> hand): a sideways swipe across the volume or a push into it never deletes
-//   FLING_MIN_RADIUS_M  a hand closer than this to the volume centre has no usable outward axis: the head -> hand direction (away from the viewer) is used instead
-export const FLING_SPEED_MPS = 1.5, FLING_WINDOW_MS = 100, FLING_MIN_SPAN_MS = 30, FLING_STALE_MS = 50, FLING_COS = 0.5, FLING_MIN_RADIUS_M = 0.03;
+// Fling = release the trigger while the dragged section frame moves fast AWAY from the volume. Pure helpers: no three.js, no DOM (vr-view.js samples and applies the result).
+// build 522 (owner, Quest 3: 「投げても消えない」): what is measured is the FRAME (its centre in world metres), not the controller. A section is dragged by the laser and follows
+// the hand rigidly with the hand as the pivot (vr-point.js sectionFollowStep), usually 0.4-1 m down the laser: a throw is mostly a wrist flick, the controller itself moves
+// < 1 m/s while the frame sweeps at 3-6 m/s. And the outward axis starts at the volume centre and goes to the FRAME: the hand is between the viewer and the volume, so
+// "centre -> hand" pointed back at the viewer and every forward / sideways throw read as 'inward'.
+// Thresholds (named so they can be tuned on the headset; ?debug shows the measured values at each release):
+//   FLING_SPEED_MPS  1.5 m/s peak frame speed in the last FLING_WINDOW_MS (a careful drag moves the frame at 0.2-1 m/s, a throw at 2-6 m/s)
+//   FLING_WINDOW_MS  150 ms before the release: the trigger is usually let go 50-100 ms after the fastest part of the flick
+//   FLING_MIN_SPAN_MS  30 ms: each speed is taken over at least this long (2-3 frames at 72-90 Hz) so one jittery frame cannot make a throw
+//   FLING_STALE_MS   120 ms: no frame sample this close to the release = no estimate (the release event comes one frame after the last sample; a heavy frame on Quest can take 30-60 ms)
+//   FLING_COS        0.5 = the velocity must be within 60 degrees of the outward axis (volume centre -> the frame at the release): a push into the volume never deletes
+//   FLING_MIN_RADIUS_M  a frame closer than this to the volume centre has no usable outward axis: the head -> frame direction (away from the viewer) is used instead
+export const FLING_SPEED_MPS = 1.5, FLING_WINDOW_MS = 150, FLING_MIN_SPAN_MS = 30, FLING_STALE_MS = 120, FLING_COS = 0.5, FLING_MIN_RADIUS_M = 0.03;
 export const FLING_FADE_S = 0.3, FLING_MAX_FLY_MPS = 4, FLING_UNDO_MS = 5000; // fly-off / fade time, speed cap of the flying frame, how long 「元に戻す」 stays
-// Hand velocity over the last windowMs: push(t ms, {x,y,z}); velocity(now) = {x,y,z (m/s), speed} from the oldest to the newest sample in the window, or null when there is no usable
-// motion estimate (fewer than 2 samples, span < FLING_MIN_SPAN_MS, or the newest sample is older than FLING_STALE_MS: a hand that paused before the release is not moving).
-export function createVelocityTracker({ windowMs = FLING_WINDOW_MS } = {}) {
+export const FLING_DEBUG_MS = 8000; // ?debug / デバッグモード: how long the measured values of the last release stay on screen
+// Velocity of a sampled point (the dragged frame): push(t ms, {x,y,z} world m) once per frame. measure(now) looks at the samples of the last windowMs before `now` (the release) and
+// returns the FASTEST velocity over any pair of them at least FLING_MIN_SPAN_MS apart: {v: {x,y,z (m/s), speed} | null, n, spanMs, ageMs, why}. v is null (why says which) for
+// fewer than 2 samples ('samples'), the newest older than FLING_STALE_MS ('stale'), or no pair far enough apart ('span'). A frame that stood still for the whole window reads ~0.
+// velocity(now) = measure(now).v
+export function createVelocityTracker({ windowMs = FLING_WINDOW_MS, minSpanMs = FLING_MIN_SPAN_MS, staleMs = FLING_STALE_MS } = {}) {
   let s = [];
+  const measure = now => {
+    const w = s.filter(q => q.t >= now - windowMs && q.t <= now), n = w.length, ageMs = n ? now - w[n - 1].t : null;
+    if (n < 2) return { v: null, n, spanMs: 0, ageMs, why: 'samples' };
+    if (ageMs > staleMs) return { v: null, n, spanMs: 0, ageMs, why: 'stale' };
+    let best = null, bestSpan = 0;
+    for (let j = 1; j < n; j++) {
+      let i = j - 1; while (i > 0 && w[j].t - w[i].t < minSpanMs) i--;
+      const a = w[i], b = w[j], span = b.t - a.t; if (span < minSpanMs) continue;
+      const k = 1000 / span, x = (b.x - a.x) * k, y = (b.y - a.y) * k, z = (b.z - a.z) * k, speed = Math.hypot(x, y, z);
+      if (!best || speed > best.speed) { best = { x, y, z, speed }; bestSpan = span; }
+    }
+    return best ? { v: best, n, spanMs: bestSpan, ageMs, why: null } : { v: null, n, spanMs: w[n - 1].t - w[0].t, ageMs, why: 'span' };
+  };
   return {
     push(t, p) { s.push({ t, x: p.x, y: p.y, z: p.z }); const keep = t - 3 * windowMs; while (s.length > 2 && s[0].t < keep) s.shift(); },
-    velocity(now) {
-      const w = s.filter(q => q.t >= now - windowMs);
-      if (w.length < 2) return null;
-      const a = w[0], b = w[w.length - 1], span = b.t - a.t;
-      if (span < FLING_MIN_SPAN_MS || now - b.t > FLING_STALE_MS) return null;
-      const k = 1000 / span, x = (b.x - a.x) * k, y = (b.y - a.y) * k, z = (b.z - a.z) * k;
-      return { x, y, z, speed: Math.hypot(x, y, z) };
-    },
+    measure,
+    velocity(now) { return measure(now).v; },
     reset() { s = []; },
     get size() { return s.length; },
   };
 }
-// Is the release a throw? v: {x,y,z} (m/s, world) or null; from: the hand at the release; center: the volume centre; head: the viewer (used only when the hand is on the centre);
-// blocked: a two-hand / grip gesture moved or scaled the volume during the drag. -> {fling, reason, speed, cos}
+// Is the release a throw? v: {x,y,z} (m/s, world) or null: the frame's velocity; from: the frame's centre at the release (world); center: the volume centre; head: the viewer
+// (used only when the frame is on the centre); blocked: a two-hand / grip gesture moved or scaled the volume during the drag. -> {fling, reason, speed, cos}
 export function flingDecision({ v, from, center, head = null, blocked = false, minSpeed = FLING_SPEED_MPS, minCos = FLING_COS } = {}) {
-  if (blocked) return { fling: false, reason: 'volume-gesture', speed: 0, cos: 0 };
+  if (blocked) return { fling: false, reason: 'volume-gesture', speed: v ? Math.hypot(v.x, v.y, v.z) : 0, cos: 0 };
   if (!v || !from) return { fling: false, reason: 'no-velocity', speed: 0, cos: 0 };
   const speed = Math.hypot(v.x, v.y, v.z);
-  if (!(speed >= minSpeed)) return { fling: false, reason: 'slow', speed, cos: 0 };
   let ax = from.x - (center?.x ?? 0), ay = from.y - (center?.y ?? 0), az = from.z - (center?.z ?? 0), r = Math.hypot(ax, ay, az);
-  if (!center || r < FLING_MIN_RADIUS_M) { if (!head) return { fling: false, reason: 'no-axis', speed, cos: 0 }; ax = from.x - head.x; ay = from.y - head.y; az = from.z - head.z; r = Math.hypot(ax, ay, az); }
-  if (!(r > 1e-6)) return { fling: false, reason: 'no-axis', speed, cos: 0 };
-  const cos = (v.x * ax + v.y * ay + v.z * az) / (speed * r);
+  if (!center || r < FLING_MIN_RADIUS_M) { if (head) { ax = from.x - head.x; ay = from.y - head.y; az = from.z - head.z; r = Math.hypot(ax, ay, az); } else r = 0; }
+  const axis = r > 1e-6, cos = axis && speed > 1e-9 ? (v.x * ax + v.y * ay + v.z * az) / (speed * r) : 0; // cos is reported even for a slow release (the ?debug readout)
+  if (!(speed >= minSpeed)) return { fling: false, reason: 'slow', speed, cos };
+  if (!axis) return { fling: false, reason: 'no-axis', speed, cos: 0 };
   return cos >= minCos ? { fling: true, reason: 'fling', speed, cos } : { fling: false, reason: 'inward', speed, cos };
+}
+// ?debug readout of the last section release (vr-view.js shows it for FLING_DEBUG_MS): d = flingDecision's result + the tracker's {n, spanMs, ageMs, why} + hand (controller
+// peak speed, m/s, or null). -> lines of text (the first one is the verdict).
+const FLING_WHY = { ja: { fling: '削除した', slow: '遅い', inward: '外向きでない', 'volume-gesture': 'グリップ／両手操作あり', 'no-velocity': '速さを測れず', 'no-axis': '方向が決まらない' },
+  en: { fling: 'deleted', slow: 'too slow', inward: 'not outward', 'volume-gesture': 'grip / two-hand used', 'no-velocity': 'no speed estimate', 'no-axis': 'no direction' } };
+const FLING_WHY_V = { ja: { samples: 'サンプル不足', stale: '最後のサンプルが古い', span: '区間が短い' }, en: { samples: 'too few samples', stale: 'last sample too old', span: 'span too short' } };
+export function flingDebugLines(d, ja = true) {
+  const L = ja ? 'ja' : 'en', f2 = x => (Number.isFinite(x) ? x.toFixed(2) : '-'), why = FLING_WHY[L][d.reason] || d.reason, wv = d.why ? (FLING_WHY_V[L][d.why] || d.why) : '';
+  const head = d.fling ? (ja ? '投げ判定: 削除した' : 'Throw: deleted') : (ja ? '投げ判定: 削除しない（' : 'Throw: kept (') + why + (wv ? ' / ' + wv : '') + (ja ? '）' : ')');
+  return [
+    head,
+    (ja ? '枠の速さ ' : 'frame speed ') + f2(d.speed) + ' m/s (≥ ' + FLING_SPEED_MPS + ')' + (d.hand != null ? (ja ? '  手 ' : '  hand ') + f2(d.hand) + ' m/s' : ''),
+    (ja ? '方向 cos ' : 'direction cos ') + f2(d.cos) + ' (≥ ' + FLING_COS + ')',
+    (ja ? 'サンプル ' : 'samples ') + (d.n ?? 0) + (ja ? ' / 区間 ' : ' / span ') + Math.round(d.spanMs || 0) + ' ms' + (ja ? ' / 離すまで ' : ' / to release ') + (d.ageMs == null ? '-' : Math.round(d.ageMs)) + ' ms',
+  ];
 }
 // fly-off of the deleted frame: one step of dt seconds. f = {pos, v, age}; opacity fades linearly 1 -> 0 over FLING_FADE_S; done at the end. capVelocity limits the throw to FLING_MAX_FLY_MPS.
 export function capVelocity(v, maxMps = FLING_MAX_FLY_MPS) { const s = Math.hypot(v.x, v.y, v.z); if (!(s > maxMps)) return { x: v.x, y: v.y, z: v.z }; const k = maxMps / s; return { x: v.x * k, y: v.y * k, z: v.z * k }; }
