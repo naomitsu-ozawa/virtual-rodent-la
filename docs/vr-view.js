@@ -1266,7 +1266,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const updateHidden=now=>{
   vpHiddenAt=now;
   // build 493: the distance lines / labels are judged by the same rule (vpMeasure.probes(): 9 samples of every line + a dragged label) and drawn faint when hidden (vr-measure.js)
-  const gpuOcc=occlusionGpu(),vp=volPick,pts=gpuOcc?[]:vpMarkers.centres(),mps=gpuOcc?[]:vpMeasure.probes(); // build 497: with the GPU depth occlusion the distances' probes are not needed at all; build 501: nor are the point markers' (their depth test + ghost do it)
+  const gpuOcc=occlusionGpu(),vp=volPick,pts=gpuOcc?[]:vpMarkers.centres(),mps=gpuOcc?[]:vpMeasure.probes(); // build 497: with the GPU depth occlusion the distances' probes are not needed at all; build 502: nor are the point markers' (their depth test + ghost do it)
   if(!vp||!mesh?.parent||!material||(!pts.length&&!mps.length)){if(vpHidden.size)vpHidden=new Set();if(vpMeasHidden.size)vpMeasHidden=new Set();measGate.reset();return}
   const mask=shownMask(),chs=[];for(let i=0;i<4;i++)if(mask>>i&1&&vp.cls.chan[i]>=0)chs.push(vp.cls.chan[i]);
   const cams=renderer.xr.getCamera().cameras;
@@ -1317,7 +1317,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const canvas=document.createElement('canvas');canvas.width=512;canvas.height=154;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
   const m=new THREE.Mesh(new THREE.PlaneGeometry(LABEL_W,LABEL_H),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,depthTest:false,depthWrite:false}));m.renderOrder=5;m.visible=false;
   const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,depthTest:false,depthWrite:false}));line.frustumCulled=false;line.renderOrder=5;line.visible=false;
-  // build 501: a PINNED label (a result's label left at its point) gets a ghost child of the card and of the leader (GreaterDepth, GHOST_ALPHA), used while the GPU depth occlusion is on (pinOcclusion)
+  // build 502: a PINNED label (a result's label left at its point) gets a ghost child of the card and of the leader (GreaterDepth, GHOST_ALPHA), used while the GPU depth occlusion is on (pinOcclusion)
   let mg=null,lg=null;
   if(pin){
    mg=new THREE.Mesh(m.geometry,Object.assign(m.material.clone(),{depthFunc:THREE.GreaterDepth,depthTest:true,depthWrite:false}));mg.renderOrder=m.renderOrder;mg.frustumCulled=false;mg.visible=false;m.add(mg);
@@ -1325,7 +1325,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }
   scene.add(m);scene.add(line);return{m,line,mg,lg,ctx:canvas.getContext('2d'),tex,key:null,anchor:new THREE.Vector3(),world:new THREE.Vector3()};
  };
- // build 501: pinned labels follow the 「ラベルの隠れ方」 setting like the distance labels: 実際に隠す = depth tested + faint ghost behind the tissue; otherwise as before (always drawn)
+ // build 502: pinned labels follow the 「ラベルの隠れ方」 setting like the distance labels: 実際に隠す = depth tested + faint ghost behind the tissue; otherwise as before (always drawn)
  const pinOcclusion=lb=>{
   const occ=occludedPass(occlusionGpu(),false);
   lb.m.material.depthTest=occ;lb.line.material.depthTest=occ;lb.mg.visible=occ;lb.lg.visible=occ;

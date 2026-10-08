@@ -10,7 +10,7 @@ export const normalizeLabelHide = v => (v === 0 || v === '0' || v === false) ? L
 export const gpuOcclusionActive = (setting, caps) => normalizeLabelHide(setting) === LABEL_HIDE_REAL && !!caps && !caps.logarithmicDepthBuffer && !caps.reversedDepthBuffer;
 
 // the ghost pass: opacity factor of a part that is behind the tissue (the normal pass keeps the part in front). One constant for every ghosted object
-// (distance lines / leaders / labels, point markers + number chips, pinned labels). build 501: 0.3 -> 0.15 (owner: fainter).
+// (distance lines / leaders / labels, point markers + number chips, pinned labels). build 502: 0.3 -> 0.15 (owner: fainter).
 export const GHOST_ALPHA = 0.15;
 // which pass an object gets: true = depth tested + a ghost (GreaterDepth, GHOST_ALPHA) child; false = drawn on top without a depth test and without a ghost.
 // occlusion = gpuOcclusionActive(); lit = the object is operable right now (laser on it, grabbed, selected, being moved) and must stay fully visible.

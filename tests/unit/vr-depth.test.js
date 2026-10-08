@@ -33,7 +33,7 @@ describe('the setting 「ラベルの隠れ方」', () => {
   });
   it('vr-view.js: the CPU probes of the distances are skipped while the GPU occlusion is on', () => {
     expect(has(src, 'mps=gpuOcc?[]:vpMeasure.probes()')).toBe(true);
-    expect(has(src, 'pts=gpuOcc?[]:vpMarkers.centres()')).toBe(true); // build 501: nor the point markers' (their depth test + ghost do it)
+    expect(has(src, 'pts=gpuOcc?[]:vpMarkers.centres()')).toBe(true); // build 502: nor the point markers' (their depth test + ghost do it)
     expect(has(src, 'preview:previewArg,occlusion:occlusionGpu()})')).toBe(true); // the markers get the same switch
     expect(has(src, 'if(!mps.length){if(vpMeasHidden.size)vpMeasHidden=new Set();measGate.reset();return}')).toBe(true);
     expect(has(src, 'occlusion:occlusionGpu()})')).toBe(true);
@@ -139,7 +139,7 @@ describe('collateral: what lies inside the volume stays visible (source checks)'
     expect(has(src, 'new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));let widgets=[]')).toBe(true); // the boards: a board BEHIND the volume must stay covered by it
     expect(has(src, "{const top=!!rh||res.kind==='point'||res.kind==='mlabel'||res.kind==='section';ray.renderOrder=dot.renderOrder=top?8:0;")).toBe(true); // the laser ends on a point / label / frame inside the volume: drawn on top
   });
-  it('the cursors, rings and the scale tag already have no depth test (the point markers do since build 501, only with the GPU occlusion: see vr-point-markers.test.js)', () => {
+  it('the cursors, rings and the scale tag already have no depth test (the point markers do since build 502, only with the GPU occlusion: see vr-point-markers.test.js)', () => {
     for (const f of ['vr-ring', 'vr-real-scale']) {
       const t = readFileSync(new URL('../../docs/' + f + '.js', import.meta.url), 'utf8');
       expect(t.includes('depthTest:false') || t.includes('depthTest: false'), f).toBe(true);
@@ -199,7 +199,7 @@ describe('vr-measure.js: depth test + ghost, lit on top, fade mode unchanged', (
   });
 });
 
-describe('GHOST_ALPHA and the pass rule (build 501)', () => {
+describe('GHOST_ALPHA and the pass rule (build 502)', () => {
   it('the ghost is 0.15 (fainter than build 497-500: 0.3); one constant, every ghosted object takes it', async () => {
     expect(GHOST_ALPHA).toBe(0.15);
     const { occludedPass } = await load('vr-depth');
@@ -214,7 +214,7 @@ describe('GHOST_ALPHA and the pass rule (build 501)', () => {
   });
 });
 
-describe('vr-point-markers.js: depth test + ghost, lit on top, fade mode unchanged (build 501)', () => {
+describe('vr-point-markers.js: depth test + ghost, lit on top, fade mode unchanged (build 502)', () => {
   const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true } });
   beforeEach(() => { vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) }); setComments([]); setMarkersShown(true) });
   afterEach(() => vi.unstubAllGlobals());

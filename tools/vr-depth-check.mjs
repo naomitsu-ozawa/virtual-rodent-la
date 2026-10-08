@@ -68,7 +68,7 @@ for (const job of ['f100', 'f50']) {
 // spacing (here 5 : 1, like 0.1 / 0.1 / 0.5 mm) that centre can lie far behind the surface, and a line between two surface points would be depth tested against the written depth and drawn
 // as a ghost. For every hit pixel the centre of the voxel that contains the hit point must lie IN FRONT of (or on) the written depth. The old bias (2 * voxelMin) must fail on the anisotropic
 // case (the test has teeth) while the current one passes there and on the isotropic phantom.
-// build 501: the same holds for the point MARKERS (sphere + number chip drawn at the recorded voxel centre, depth tested + ghost) and for a point recorded on the CUT FACE of a section: the
+// build 502: the same holds for the point MARKERS (sphere + number chip drawn at the recorded voxel centre, depth tested + ghost) and for a point recorded on the CUT FACE of a section: the
 // centre of the voxel that contains the first hit (the surface, or the cut face with the capped section) must not lie behind the written depth, otherwise the marker would be ghosted.
 const cutPl = (() => { const n = [0.6, 0.3, 0.74], l = Math.hypot(...n); return [-n[0] / l, -n[1] / l, -n[2] / l, 0.05]; })(); // the half towards the camera is removed (as tools/vr-render-golden.mjs combined-section)
 const cutBase = { name: 'surface', defines: ['VRL_NO_GENERAL', 'VRL_OPAQUE'], u: { segA: allOpaque, cutPlanes: [cutPl, [0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 1, 0]], planeCount: 1, planeCut: 1, capOn: 1, sliceOpacity: 0.7 } };

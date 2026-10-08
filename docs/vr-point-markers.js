@@ -10,7 +10,7 @@
 //    (the perpendicular) down to the section; no active section: no line.
 //  - laser on a point: a white halo; the selected point: a yellow halo (kept until it is deselected or deleted).
 // Spheres are drawn after the volume without a depth test, so a hidden point is still visible (as the small dot).
-// build 501 (GPU occlusion, update({occlusion:true}), vr-depth.js): the sphere, its rim, the chip (number) and the perpendicular are drawn with a real depth test (clipped at the tissue outline) plus a faint
+// build 502 (GPU occlusion, update({occlusion:true}), vr-depth.js): the sphere, its rim, the chip (number) and the perpendicular are drawn with a real depth test (clipped at the tissue outline) plus a faint
 // ghost child (depthFunc GreaterDepth, GHOST_ALPHA), and the CPU "hidden" look (small dot) is not used. A hovered / selected / moved point (and its chip) stays fully on top, so it can be operated.
 // With occlusion off (「薄くする」, or no usable GPU depth) nothing changes: no depth test, the CPU hidden look.
 import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261008-build502';
@@ -37,13 +37,13 @@ export function markerStyle({hidden=false,section=null,selected=false,hover=fals
 export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersShown}){
  const geo=new THREE.SphereGeometry(1,16,12);
  const mk=(color,extra={})=>new THREE.MeshBasicMaterial({color,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,...extra});
- // build 501: the occlusion variants of a material: D = depth tested (the part in front of the tissue), G = the ghost pass (only where the volume's depth is nearer: GreaterDepth, GHOST_ALPHA)
+ // build 502: the occlusion variants of a material: D = depth tested (the part in front of the tissue), G = the ghost pass (only where the volume's depth is nearer: GreaterDepth, GHOST_ALPHA)
  const depthOf=m=>{const c=m.clone();c.depthTest=true;c.depthWrite=false;return c};
  const ghostOf=m=>{const c=m.clone();c.depthFunc=THREE.GreaterDepth;c.depthTest=true;c.depthWrite=false;c.opacity=m.opacity*GHOST_ALPHA;return c};
  const mats={rim:mk(VR_RIM_COLOR,{side:THREE.BackSide}),hover:mk(VR_HALO_HOVER,{side:THREE.BackSide,opacity:0.9}),selected:mk(VR_HALO_SELECTED,{side:THREE.BackSide,opacity:0.95})};
  mats.rimD=depthOf(mats.rim);mats.rimG=ghostOf(mats.rim);
  // per-colour materials (build 472): dot = the colour, solid = its dark body, ghost = the faint copy while moving, line = the perpendicular; made on first use.
- // build 501: ...D = depth tested, ...G = the ghost pass (see depthOf / ghostOf)
+ // build 502: ...D = depth tested, ...G = the ghost pass (see depthOf / ghostOf)
  const byColor=new Map();
  const colored=hex=>{
   let m=byColor.get(hex);
@@ -71,7 +71,7 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
   const halo=new THREE.Mesh(geo,mats.hover);halo.renderOrder=2;halo.frustumCulled=false;halo.visible=false;
   const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),colored('#19d3ee').line);line.renderOrder=3;line.frustumCulled=false;line.visible=false;
   const chip=new THREE.Mesh(chipGeo,new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));chip.renderOrder=5;chip.frustumCulled=false;
-  // build 501: the ghost pass of each part is a child (shares the geometry, moves / scales / hides with it); shown only while the part is depth tested (occlusion on, not lit)
+  // build 502: the ghost pass of each part is a child (shares the geometry, moves / scales / hides with it); shown only while the part is depth tested (occlusion on, not lit)
   const kid=(parent,o)=>{o.renderOrder=parent.renderOrder;o.frustumCulled=false;o.visible=false;parent.add(o);return o};
   const sphereG=kid(sphere,new THREE.Mesh(geo,colored('#19d3ee').solidG));
   const rimG=kid(rim,new THREE.Mesh(geo,mats.rimG));
@@ -86,7 +86,7 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
   // hidden: Set of comment ids that are hidden behind tissue (vr-view.js, ~10 Hz); section: the active section's plane in object space
   // ({x,y,z,w}, unit normal) or null; selectedId; hover: Set of ids a laser points at.
   // preview (build 468): {id, voxel} - the point is drawn at that voxel while it is being moved; voxel null = at its old place, faint (opacity 0.35)
-  // occlusion (build 501): true = the volume's depth hides the points (see the top of this file; hidden is then not used)
+  // occlusion (build 502): true = the volume's depth hides the points (see the top of this file; hidden is then not used)
   update({fingerprint,dims,halfExt,mesh,head,hidden=null,section=null,selectedId=null,hover=null,preview=null,occlusion=false}){
    const all=fingerprint&&dims&&halfExt&&mesh&&deps.getMarkersShown()?deps.getComments():[],keep=new Set();
    if(all.length){
@@ -98,7 +98,7 @@ export function createVrPointMarkers(THREE,scene,deps={getComments,getMarkersSho
      const hex=pointColor(c),col=colored(hex);
      if(it.no!==n+1||it.hex!==hex)drawChip(it,n+1,hex);
      const pv=preview&&preview.id===c.id?preview:null,ghost=!!pv&&!pv.voxel,l=voxelToLocal(pv&&pv.voxel?pv.voxel:t,halfExt,dims),rel=section?sectionRelation(l,section,halfExt,dims):null;
-     const lit=c.id===selectedId||!!hover?.has(c.id)||!!pv, // build 501: selected / laser on it / being moved: fully on top (operable), never ghosted
+     const lit=c.id===selectedId||!!hover?.has(c.id)||!!pv, // build 502: selected / laser on it / being moved: fully on top (operable), never ghosted
       deep=occludedPass(occlusion,lit); // depth tested + ghost
      const st=markerStyle({hidden:!occlusion&&!!hidden?.has(c.id),section:rel?(rel.onSection?'on':'off'):null,selected:c.id===selectedId,hover:!!hover?.has(c.id)}); // with the GPU depth the CPU judgement is not used
      v.set(l.x,l.y,l.z);mesh.localToWorld(v);
