@@ -1,13 +1,12 @@
 // GPU info tab of the settings dialog (build 503): GPU preference (Linux / Windows only), a diagnostics report that can
 // be copied without any terminal, and short GUI-only hints. Opened from the settings dialog or by clicking the GPU status bar.
-import { settings } from './app-settings.js?v=20261008-build504';
-import { gpuFilterRuntime, gpuLastAdapterRequest, requestVrlGpuAdapter, vrlGpuPreference, gpuAdapterInfo } from './gpu-compute.js?v=20261008-build504';
-import { gpuPlatformOs, gpuPreferenceSupported, gpuAdapterKind, gpuPreferenceNote, buildGpuReport, getGpuErrorLog } from './gpu-diagnostics.js?v=20261008-build504';
-import { tr } from './i18n.js?v=20261008-build504';
-import { APP_BUILD } from './version.js?v=20261008-build504';
+import { settings } from './app-settings.js?v=20261008-build505';
+import { gpuFilterRuntime, gpuLastAdapterRequest, requestVrlGpuAdapter, vrlGpuPreference, gpuAdapterInfo } from './gpu-compute.js?v=20261008-build505';
+import { gpuPlatformOs, gpuPreferenceSupported, gpuAdapterKind, gpuPreferenceNote, buildGpuReport, getGpuErrorLog, gpuBrowserDisabled } from './gpu-diagnostics.js?v=20261008-build505';
+import { tr } from './i18n.js?v=20261008-build505';
+import { APP_BUILD } from './version.js?v=20261008-build505';
 
 const LIMIT_KEYS = ['maxTextureDimension2D', 'maxTextureDimension3D', 'maxBufferSize', 'maxStorageBufferBindingSize', 'maxComputeWorkgroupStorageSize', 'maxComputeInvocationsPerWorkgroup', 'maxComputeWorkgroupSizeX', 'maxStorageBuffersPerShaderStage'];
-const CHROME_TEXT = 'chrome://gpu';
 
 export async function collectGpuDiagnostics() {
   const nav = globalThis.navigator || {};
@@ -55,8 +54,9 @@ export function initGpuDiagnosticsUi() {
     if (hintEl) {
       const lines = [];
       if (d.hint) lines.push(d.hint);
+      if (gpuBrowserDisabled(d)) lines.push(tr('gpuBrowserOff'));
       if (d.os === 'linux' && d.kind) {
-        lines.push(d.kind === 'software' ? tr('gpuHintSw') : tr('gpuHintInt'), tr('gpuHintStep1'), tr('gpuHintStep2') + CHROME_TEXT);
+        lines.push(d.kind === 'software' ? tr('gpuHintSw') : tr('gpuHintInt'));
       }
       hintEl.hidden = !lines.length; hintEl.textContent = lines.join('\n'); hintEl.style.whiteSpace = 'pre-wrap';
     }

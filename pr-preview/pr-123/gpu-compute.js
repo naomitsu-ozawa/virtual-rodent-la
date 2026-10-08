@@ -1,16 +1,16 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261008-build504';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build504';
+import { installGpuLedger } from './mem-ledger.js?v=20261008-build505';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build505';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build504';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build504';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build504';
-import { runsSliceToMask } from './run-length.js?v=20261008-build504';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build504';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build504';
-import { tr } from './i18n.js?v=20261008-build504';
-import { gpuAdapterRequestOptions, gpuEffectivePreference, logGpuError } from './gpu-diagnostics.js?v=20261008-build504';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build505';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build505';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build505';
+import { runsSliceToMask } from './run-length.js?v=20261008-build505';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build505';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build505';
+import { tr } from './i18n.js?v=20261008-build505';
+import { gpuAdapterRequestOptions, gpuEffectivePreference, logGpuError, gpuPlatformOs } from './gpu-diagnostics.js?v=20261008-build505';
 export { gpuAdapterRequestOptions };
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 // adapter.info (current) or the info stashed from the older async requestAdapterInfo(); missing fields are fine
@@ -38,7 +38,7 @@ export function gpuComputeWorkgroupSize(device=gpuFilterRuntime.device){
  const a=Number(device?.limits?.maxComputeInvocationsPerWorkgroup)||128,b=Number(device?.limits?.maxComputeWorkgroupSizeX)||a;
  const cap=Math.max(1,Math.min(256,a,b));return cap>=256?256:cap>=128?128:cap>=64?64:Math.max(1,cap);
 }
-// build 440 (owner, Linux / Chrome 154, NVIDIA RTX 4070 Ti, X11): chrome://gpu lists one WebGPU adapter, "OpenGLES backend
+// build 440 (owner, Linux / Chrome 154, NVIDIA RTX 4070 Ti, X11): the browser's GPU page lists one WebGPU adapter, "OpenGLES backend
 // … (Compatibility Mode)"; the core-only requests got none, so filters, segmentation and the 3D view ran on the CPU /
 // WebGL. A compatibility adapter is now the fallback; such a device starts at the compatibility defaults (e.g. fewer
 // storage buffers per stage), so it asks for every limit the adapter offers. ?gpucompat (or localStorage
@@ -66,6 +66,7 @@ export async function requestVrlGpuAdapter(){
   try{adapter=await(opt?navigator.gpu.requestAdapter(opt):navigator.gpu.requestAdapter())}catch(e){logGpuError('requestAdapter '+JSON.stringify(opt??null),e)}
   if(adapter){Object.assign(gpuLastAdapterRequest,{option:opt,optionIndex:i});break}
  }
+ gpuFilterRuntime.noAdapter=!adapter;
  if(!adapter)logGpuError('requestAdapter','no adapter returned for any option set');
  // older Chromium: info only via the async requestAdapterInfo()
  if(adapter&&!adapter.info&&typeof adapter.requestAdapterInfo==='function'){try{adapter.__vrlInfo=await adapter.requestAdapterInfo()}catch{}}
@@ -84,7 +85,8 @@ export function updateGpuStatus(){
  const adapter=gpuFilterRuntime.adapterLabel?(' · '+gpuFilterRuntime.adapterLabel):'';
  const failed=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError,noGpu=typeof navigator!=='undefined'&&!('gpu' in navigator);
  // a failed WebGPU start shows a friendly pointer to the GPU info tab; the raw message stays in the tooltip and that tab
- const failure=failed?(' · '+tr('gpuFriendly')):noGpu?(' · '+tr('gpuFriendlyNone')):'';
+ const browserOff=!failed&&!noGpu&&gpuFilterRuntime.noAdapter===true&&!gpuFilterRuntime.device&&gpuPlatformOs()==='linux';
+ const failure=failed?(' · '+tr('gpuFriendly')):noGpu?(' · '+tr('gpuFriendlyNone')):browserOff?(' · '+tr('gpuFriendlyBrowserOff')):'';
  status.removeAttribute('data-i18n');
  status.textContent='Render '+render+' · Compute '+compute+failure+adapter;
  const computeGpu=compute.startsWith('WEBGPU'),gpuActive=render==='WEBGPU'||computeGpu;

@@ -2405,7 +2405,7 @@ the frame rate. Result decides: WebGPU renderer straight into VR, or a WebGL2
 volume path for VR only.
 Also noted: on dual-GPU Windows laptops Chrome uses the integrated GPU
 (powerPreference is ignored); set Chrome to "High performance" in Windows
-Settings > System > Display > Graphics (chrome://flags may be blocked by policy).
+Settings > System > Display > Graphics (browser flags may be blocked by policy).
 Owner's RTX laptop: Full 28 ms after the switch (Intel: 202 ms).
 
 Result (owner, borrowed Meta Quest, /xr/ page): no XRGPUBinding (WebGPU cannot
@@ -4700,7 +4700,7 @@ progress-modal, edit-consistency, plane-sync.
   lookups); the interpolated sampling path is unchanged. After: 5,418,876
   on the GPU, 0 slices apart.
 - Owner (Linux, Chrome 154, NVIDIA RTX 4070 Ti, Chrome started with
-  --ozone-platform=x11, Vulkan disabled): chrome://gpu shows only "OpenGLES
+  --ozone-platform=x11, Vulkan disabled): the browser GPU page shows only "OpenGLES
   backend … (Compatibility Mode)"; the app asked for core adapters only, so
   compute ran on the CPU and the 3D view on WebGL. gpu-compute.js now falls
   back to featureLevel 'compatibility' and, on such a device, requests every
