@@ -31,6 +31,7 @@ async function openSample(page) {
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('/');
   await page.locator('#sample-demo-button').click();
+  await page.locator('[data-sample-set="sample1"]').click();
   await expect(page.locator('.ready-badge').first()).toContainText(/ready/i, { timeout: 60_000 });
   return errors;
 }
