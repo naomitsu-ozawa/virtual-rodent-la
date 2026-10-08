@@ -68,10 +68,14 @@ for (const job of ['f100', 'f50']) {
 // spacing (here 5 : 1, like 0.1 / 0.1 / 0.5 mm) that centre can lie far behind the surface, and a line between two surface points would be depth tested against the written depth and drawn
 // as a ghost. For every hit pixel the centre of the voxel that contains the hit point must lie IN FRONT of (or on) the written depth. The old bias (2 * voxelMin) must fail on the anisotropic
 // case (the test has teeth) while the current one passes there and on the isotropic phantom.
-for (const [name, he] of [['isotropic voxels', [1.3, 1.3, 1.3]], ['anisotropic 5:1 (z)', [0.3, 0.3, 1.5]]]) {
+// build 501: the same holds for the point MARKERS (sphere + number chip drawn at the recorded voxel centre, depth tested + ghost) and for a point recorded on the CUT FACE of a section: the
+// centre of the voxel that contains the first hit (the surface, or the cut face with the capped section) must not lie behind the written depth, otherwise the marker would be ghosted.
+const cutPl = (() => { const n = [0.6, 0.3, 0.74], l = Math.hypot(...n); return [-n[0] / l, -n[1] / l, -n[2] / l, 0.05]; })(); // the half towards the camera is removed (as tools/vr-render-golden.mjs combined-section)
+const cutBase = { name: 'surface', defines: ['VRL_NO_GENERAL', 'VRL_OPAQUE'], u: { segA: allOpaque, cutPlanes: [cutPl, [0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 1, 0]], planeCount: 1, planeCut: 1, capOn: 1, sliceOpacity: 0.7 } };
+for (const [name, he, bs] of [['isotropic voxels', [1.3, 1.3, 1.3], base], ['anisotropic 5:1 (z)', [0.3, 0.3, 1.5], base], ['isotropic voxels, section cut face', [1.3, 1.3, 1.3], cutBase], ['anisotropic 5:1 (z), section cut face', [0.3, 0.3, 1.5], cutBase]]) {
   const r = await withPage(async (pg, info) => {
     const common = { sh, N, halfExt: he, scene: sceneArgs(scene), filter: 'linear', W, H };
-    const d = await runBatch(pg, { ...common, mode: 'depth', cases: [{ ...base, name: 'f100', f: 1 }] }), h = await runBatch(pg, { ...common, mode: 'hit', cases: [base] });
+    const d = await runBatch(pg, { ...common, mode: 'depth', cases: [{ ...bs, name: 'f100', f: 1 }] }), h = await runBatch(pg, { ...common, mode: 'hit', cases: [bs] });
     if (d.glError || h.glError || info.problems.length) throw new Error('GL error ' + [d.glError, h.glError] + ' ' + info.problems.join('; '));
     const f32 = b => new Float32Array(new Uint8Array(b).buffer); return { z: f32(d.out.f100), hit: f32(h.out.surface), rays: h.raysBuf };
   });
