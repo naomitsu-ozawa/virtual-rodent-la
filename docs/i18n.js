@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { currentLanguage, setCurrentLanguage } from './state.js?v=20261007-build492';
+import { currentLanguage, setCurrentLanguage } from './state.js?v=20261008-build495';
 export const I18N={
  ja:{
   subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
@@ -24,7 +24,7 @@ export const I18N={
   footer:'元のキャリブレーション済みCT値は保持されます。',
   slices:'スライス',matrix:'マトリクス',voxel:'ボクセル',stored:'保存形式',
   estimated:'推定展開サイズ',decoding:'CTボリュームを展開中…',ready:'CTボリューム準備完了',
-  vrView:'VRで見る',arView:'ARで見る',vrFailed:'VRを開始できませんでした',sampleDemo:'練習データ（512³）',sampleLoading:'練習データ（512×512×512、約260MB）を取得中…',sampleDone:'練習データを読み込みました',sampleCached:'キャッシュから',
+  vrView:'VRで見る',arView:'ARで見る',vrFailed:'VRを開始できませんでした',sampleDemo:'練習データ',sampleChoose:'練習データを選ぶ',sampleMouse:'マウス（約260MB）',sampleRat:'ラット（約260MB）',sampleLoading:'練習データ（512×512×512、約260MB）を取得中…',sampleDone:'練習データを読み込みました',sampleCached:'キャッシュから',
   demoLoading:'公開マウスPET/CTを取得中…',demoSize:'約20.8MBの公開データです。',
   demoFailed:'公開デモを読み込めませんでした',dicomChecking:'DICOMを確認中…',
   pixelDeferred:'Pixel Dataはまだ展開しません。',noSeries:'DICOMシリーズを検出できませんでした',
@@ -54,7 +54,7 @@ export const I18N={
   footer:'Original calibrated CT values are preserved.',
   slices:'Slices',matrix:'Matrix',voxel:'Voxel',stored:'Stored',
   estimated:'Estimated decoded size',decoding:'Decoding CT volume…',ready:'CT volume ready',
-  vrView:'View in VR',arView:'View in AR',vrFailed:'Could not start VR',sampleDemo:'Practice data (512³)',sampleLoading:'Loading practice data (512×512×512, about 260 MB)…',sampleDone:'Practice data loaded',sampleCached:'from cache',
+  vrView:'View in VR',arView:'View in AR',vrFailed:'Could not start VR',sampleDemo:'Practice data',sampleChoose:'Choose practice data',sampleMouse:'Mouse (about 260 MB)',sampleRat:'Rat (about 260 MB)',sampleLoading:'Loading practice data (512×512×512, about 260 MB)…',sampleDone:'Practice data loaded',sampleCached:'from cache',
   demoLoading:'Loading public mouse PET/CT…',demoSize:'Approximately 20.8 MB of public data.',
   demoFailed:'Could not load the public demo',dicomChecking:'Checking DICOM…',
   pixelDeferred:'Pixel Data has not been expanded yet.',noSeries:'No DICOM Series detected',

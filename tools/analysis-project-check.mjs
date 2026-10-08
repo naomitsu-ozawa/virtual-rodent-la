@@ -29,7 +29,7 @@ await pg.route(/^https:\/\//,async rt=>{const u=rt.request().url(),f=map(u);
  if(u.includes('three-mesh-bvh')||u.includes('cornerstone'))return rt.fulfill({status:200,contentType:'text/javascript',body:'export const MeshBVH=class{};export const acceleratedRaycast=()=>{};export const computeBoundsTree=()=>{};export const disposeBoundsTree=()=>{};export default {};'});
  return rt.abort()});
 await pg.goto('http://localhost:8765/index.html');await pg.waitForTimeout(3000);
-await pg.click('#sample-demo-button');
+await pg.click('#sample-demo-button');await pg.click('[data-sample-set="sample1"]');
 const t0=Date.now();while(Date.now()-t0<180000){const s=await pg.evaluate(()=>window.__vrlBusyModal?.()||{});if(!s.active&&Date.now()-t0>5000)break;await pg.waitForTimeout(250)}
 const r=await pg.evaluate(async(FILTER)=>{
  const v=new URL(document.querySelector('script[src*="app.js"]').src).search,im=f=>import('./'+f+v);
