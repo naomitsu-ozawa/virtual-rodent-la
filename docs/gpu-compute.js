@@ -76,6 +76,16 @@ export async function requestVrlGpuAdapter(){
  if(!adapter)try{adapter=await navigator.gpu.requestAdapter({featureLevel:'compatibility'})}catch{}
  return adapter;
 }
+// resolves with the device.lost info when the device was lost within the creation window, else null. One round trip to the
+// GPU process first (a loss reported at creation arrives before it), then a short settle for the promise itself.
+export async function gpuLostAtCreation(device,settleMs=20){
+ if(!device?.lost)return null;
+ try{await device.queue?.onSubmittedWorkDone?.()}catch{}
+ let timer=0;
+ const info=await Promise.race([device.lost.then(i=>i||{},()=>null),new Promise(r=>{timer=setTimeout(()=>r(null),settleMs)})]);
+ clearTimeout(timer);
+ return info;
+}
 export async function requestVrlGpuDevice(){
  // build 508: a refused request is retried with the next lower buffer-limit cap; an adapter serves
  // one request only, so each attempt asks for it again (same adapter order as before)
@@ -85,11 +95,17 @@ export async function requestVrlGpuDevice(){
   const descriptor=gpuDeviceRequestDescriptor(adapter,cap),capText=cap>0?Math.round(cap/2**20)+'MB':'default';
   try{
    const device=await adapter.requestDevice(descriptor);
+   // build 514: a device that is already lost at / right after creation (Chrome resolves requestDevice with a device
+   // whose lost promise settles at once, e.g. "Device failed at creation" / VK_ERROR_OUT_OF_DEVICE_MEMORY) counts as a
+   // failed request too: destroy it and take the next cap. Only this window is checked; later failures (the GPU
+   // self-verification, device loss during use) never lower the cap.
+   const lostAtCreation=await gpuLostAtCreation(device);
+   if(lostAtCreation){try{device.destroy?.()}catch{};throw new Error('device lost at creation'+(lostAtCreation.reason?' ('+lostAtCreation.reason+')':'')+(lostAtCreation.message?': '+lostAtCreation.message:''))}
    gpuFilterRuntime.limitInfo=gpuLimitInfoText(adapter,descriptor,retries);console.info('VRL WebGPU device: '+gpuFilterRuntime.limitInfo);
    return{adapter,device};
   }catch(e){
-   lastError=e;retries.push(capText+' failed: '+String(e?.message||e).slice(0,80));
-   console.warn('WebGPU device request failed with buffer-limit cap '+capText+'; retrying lower.',e);
+   lastError=e;retries.push(capText+' failed: '+String(e?.message||e).slice(0,140));
+   console.warn('WebGPU device request failed (rejected or lost at creation) with buffer-limit cap '+capText+'; retrying lower.',e);
   }
  }
  gpuFilterRuntime.limitInfo='device request failed · retry '+retries.join(' → ');

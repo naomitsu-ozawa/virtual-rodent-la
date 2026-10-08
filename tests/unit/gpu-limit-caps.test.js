@@ -13,8 +13,8 @@ const fnSrc = (src, name) => grab(src, new RegExp('export (async )?function ' + 
 const capsSrc = grab(gpuSrc, /export const GPU_BUFFER_LIMIT_CAPS=[^\n]*\n/);
 const build = (forceCompat = false) => new Function('gpuForceCompat', 'navigator', 'gpuFilterRuntime', 'console',
   capsSrc + fnSrc(gpuSrc, 'capGpuBufferLimits') + fnSrc(gpuSrc, 'gpuLimitInfoText') + fnSrc(gpuSrc, 'gpuDeviceRequestDescriptor') +
-  fnSrc(gpuSrc, 'requestVrlGpuAdapter') + fnSrc(gpuSrc, 'requestVrlGpuDevice') + grab(gpuSrc, /export function gpuLostText[^\n]*\n/) +
-  '\nreturn{GPU_BUFFER_LIMIT_CAPS,capGpuBufferLimits,gpuLimitInfoText,gpuDeviceRequestDescriptor,requestVrlGpuDevice,gpuLostText}');
+  fnSrc(gpuSrc, 'requestVrlGpuAdapter') + fnSrc(gpuSrc, 'gpuLostAtCreation') + fnSrc(gpuSrc, 'requestVrlGpuDevice') + grab(gpuSrc, /export function gpuLostText[^\n]*\n/) +
+  '\nreturn{gpuLostAtCreation,GPU_BUFFER_LIMIT_CAPS,capGpuBufferLimits,gpuLimitInfoText,gpuDeviceRequestDescriptor,requestVrlGpuDevice,gpuLostText}');
 const quiet = { info() {}, warn() {} };
 const api = (forceCompat = false, navigator = {}, runtime = {}) => build()(forceCompat, navigator, runtime, quiet);
 
@@ -214,6 +214,60 @@ describe('device request retries with lower caps when refused', () => {
     expect(r.device.limits.maxBufferSize).toBeUndefined();
     expect(r.device.limits.maxComputeInvocationsPerWorkgroup).toBe(256);
     expect(rt.limitInfo).toContain('limits buf default/bind default');
+  });
+  // a device that requestDevice resolves but that is already lost (Chrome: "Device failed at creation")
+  const lostFake = (limits, lostAbove, lostInfo, extra = {}) => {
+    const log = [], destroyed = [];
+    return {
+      log, destroyed, gpu: {
+        async requestAdapter() {
+          return { features: new Set(['core-features-and-limits']), limits: { ...limits }, info: {},
+            async requestDevice(desc) {
+              const b = desc.requiredLimits.maxBufferSize; log.push('device ' + (b === undefined ? 'default' : b / MiB + 'MB'));
+              const lost = b !== undefined && b > lostAbove;
+              const d = { limits: desc.requiredLimits, queue: { onSubmittedWorkDone: async () => {} }, lost: lost ? Promise.resolve(lostInfo) : new Promise(() => {}), destroy() { destroyed.push(b); } };
+              return { ...d, ...extra };
+            } };
+        },
+      },
+    };
+  };
+  const OOM = { reason: 'unknown', message: 'Device failed at creation: VK_ERROR_OUT_OF_DEVICE_MEMORY' };
+  it('a device lost at creation counts as a failed request: destroyed, next cap taken, error text in the status', async () => {
+    const f = lostFake(nv8, 2 * GiB, OOM), rt = {};
+    const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
+    expect(f.log).toEqual(['device 4096MB', 'device 2048MB']);
+    expect(f.destroyed).toEqual([4 * GiB]);
+    expect(r.device.limits).toMatchObject({ maxBufferSize: 2 * GiB, maxStorageBufferBindingSize: 2 * GiB - 4 });
+    expect(rt.limitInfo).toMatch(/^limits buf 2048MB\/bind 2048MB \(adapter 8192MB\/8192MB\) · retry 4096MB failed: device lost at creation \(unknown\): Device failed at creation: VK_ERROR_OUT_OF_DEVICE_MEMORY$/);
+  });
+  it('owner NVIDIA: 4 GiB - 4 lost at creation -> 2 GiB; further down to 1 GiB and defaults when those are lost too', async () => {
+    const f = lostFake(nv, 512 * MiB, OOM), rt = {};
+    const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
+    expect(f.log).toEqual(['device 4095.9999961853027MB', 'device 2048MB', 'device 1024MB', 'device default']);
+    expect(f.destroyed).toEqual([4 * GiB - 4, 2 * GiB, 1 * GiB]);
+    expect(r.device.limits.maxBufferSize).toBeUndefined();
+    expect(rt.limitInfo).toMatch(/^limits buf default\/bind default .* · retry 4096MB failed: device lost at creation .* → 2048MB failed: device lost at creation .* → 1024MB failed: device lost at creation /);
+  });
+  it('lost at creation on every cap: throws, status lists every attempt', async () => {
+    const f = lostFake(nv8, -1, OOM), rt = {};
+    f.gpu.requestAdapter = (orig => async o => { const a = await orig(o); const rd = a.requestDevice; a.requestDevice = async d => { const dev = await rd(d); dev.lost = Promise.resolve(OOM); return dev; }; return a; })(f.gpu.requestAdapter.bind(f.gpu));
+    await expect(api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice()).rejects.toThrow('device lost at creation');
+    expect(rt.limitInfo).toMatch(/^device request failed · retry 4096MB failed: .* → 2048MB failed: .* → 1024MB failed: .* → default failed: device lost at creation/);
+  });
+  it('a healthy device (lost never settles) is kept at the first cap; a loss after creation does not lower the cap', async () => {
+    const f = lostFake(nv8, Infinity, OOM), rt = {};
+    const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
+    expect(f.log).toEqual(['device 4096MB']);
+    expect(f.destroyed).toEqual([]);
+    expect(r.device.limits.maxBufferSize).toBe(4 * GiB);
+  });
+  it('gpuLostAtCreation: null for a healthy / lost-less device, info for an immediate loss, tolerates a rejecting queue', async () => {
+    const { gpuLostAtCreation } = api();
+    expect(await gpuLostAtCreation({ lost: new Promise(() => {}) }, 5)).toBeNull();
+    expect(await gpuLostAtCreation({}, 5)).toBeNull();
+    expect(await gpuLostAtCreation({ lost: Promise.resolve({ reason: 'destroyed', message: 'x' }) }, 5)).toEqual({ reason: 'destroyed', message: 'x' });
+    expect(await gpuLostAtCreation({ lost: Promise.resolve(undefined), queue: { onSubmittedWorkDone: () => Promise.reject(new Error('q')) } }, 5)).toEqual({});
   });
   it('throws the last error when every cap is refused (the caller falls back to CPU / WebGL as before)', async () => {
     const f = fakeGpu(nv, -1), rt = {};
