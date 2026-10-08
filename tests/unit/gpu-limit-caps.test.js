@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
-// build 508: the WebGPU device request caps maxBufferSize / maxStorageBufferBindingSize at Dawn's 2 GiB tier
-// (owner's NVIDIA RTX 4070 Ti on Linux/Vulkan failed with VK_ERROR_OUT_OF_DEVICE_MEMORY). The modules need a DOM to
+// build 508 / 514: the WebGPU device request caps maxBufferSize / maxStorageBufferBindingSize (owner's NVIDIA RTX 4070 Ti on
+// Linux/Vulkan failed with VK_ERROR_OUT_OF_DEVICE_MEMORY). Build 514: the primary cap is 4 GiB (whole-body ~3.5 GB datasets
+// must load; owner's decision), retried 2 GiB -> 1 GiB -> defaults only when requestDevice rejects. The modules need a DOM to
 // import, so the functions are cut out of the sources and evaluated here (as in gpu-check-sync.test.js).
 const read = p => readFileSync(p, 'utf8');
 const gpuSrc = read('docs/gpu-compute.js');
@@ -43,21 +44,48 @@ const PROFILES = {
   'Linux OpenGL ES (compat)': { core: false, limits: { maxBufferSize: 4 * GiB - 4, maxStorageBufferBindingSize: 4 * GiB - 4, maxComputeInvocationsPerWorkgroup: 256, maxComputeWorkgroupSizeX: 256, maxStorageBuffersPerShaderStage: 8, maxTextureDimension3D: 2048 } },
 };
 const adapterOf = p => ({ features: new Set(p.core ? ['core-features-and-limits'] : []), limits: { ...p.limits } });
-const over2G = p => p.limits.maxBufferSize > 2 * GiB || p.limits.maxStorageBufferBindingSize > 2 * GiB - 4;
+const over4G = p => p.limits.maxBufferSize > 4 * GiB || p.limits.maxStorageBufferBindingSize > 4 * GiB - 4;
+const big = (b, s) => ({ core: true, limits: { maxBufferSize: b, maxStorageBufferBindingSize: s, maxComputeInvocationsPerWorkgroup: 1024, maxComputeWorkgroupSizeX: 1024, maxComputeWorkgroupStorageSize: 32768, maxTextureDimension3D: 2048 } });
 
-describe('device request: buffer limits capped at the 2 GiB tier', () => {
+describe('device request: buffer limits capped at 4 GiB (min(adapter, cap))', () => {
   const { gpuDeviceRequestDescriptor } = api();
   for (const [name, p] of Object.entries(PROFILES)) {
     it(name, () => {
       const now = gpuDeviceRequestDescriptor(adapterOf(p)), before = oldDescriptor(adapterOf(p));
-      if (!over2G(p)) { expect(now).toEqual(before); return; }
-      // above the cap: only the two byte limits change, to the 2 GiB tier
-      expect(now.requiredFeatures).toEqual(before.requiredFeatures);
-      expect(now.requiredLimits).toEqual({ ...before.requiredLimits, maxBufferSize: 2 * GiB, maxStorageBufferBindingSize: 2 * GiB - 4 });
+      // every profile reports <= 4 GiB - 4, so the request is exactly the adapter's (as before build 508)
+      expect(over4G(p)).toBe(false);
+      expect(now).toEqual(before);
     });
   }
-  it('every Dawn tier at or below 2 GiB requests exactly what it did before (core and compat)', () => {
-    const bufs = [256 * MiB, 1 * GiB, 2 * GiB], binds = [128 * MiB, 256 * MiB, 512 * MiB, 1 * GiB, 2 * GiB - 4];
+  it('NVIDIA 4 GiB - 4: requested unchanged (the adapter max)', () => {
+    const l = gpuDeviceRequestDescriptor(adapterOf(PROFILES['NVIDIA RTX 4070 Ti (Vulkan)'])).requiredLimits;
+    expect(l.maxBufferSize).toBe(4 * GiB - 4);
+    expect(l.maxStorageBufferBindingSize).toBe(4 * GiB - 4);
+  });
+  it('adapter 8 GiB: capped at 4 GiB buffer / 4 GiB - 4 binding (u32-safe, multiple of 4); nothing else changes', () => {
+    for (const core of [true, false]) {
+      const p = { ...big(8 * GiB, 8 * GiB), core };
+      const now = gpuDeviceRequestDescriptor(adapterOf(p)), before = oldDescriptor(adapterOf(p));
+      expect(now.requiredFeatures).toEqual(before.requiredFeatures);
+      expect(now.requiredLimits).toEqual({ ...before.requiredLimits, maxBufferSize: 4 * GiB, maxStorageBufferBindingSize: 4 * GiB - 4 });
+      expect(now.requiredLimits.maxStorageBufferBindingSize).toBeLessThan(2 ** 32);
+      expect(now.requiredLimits.maxStorageBufferBindingSize % 4).toBe(0);
+    }
+  });
+  it('adapter reporting exactly 4 GiB / 6 GiB mixes: min per limit', () => {
+    const l1 = gpuDeviceRequestDescriptor(adapterOf(big(4 * GiB, 4 * GiB))).requiredLimits;
+    expect([l1.maxBufferSize, l1.maxStorageBufferBindingSize]).toEqual([4 * GiB, 4 * GiB - 4]);
+    const l2 = gpuDeviceRequestDescriptor(adapterOf(big(6 * GiB, 3 * GiB))).requiredLimits;
+    expect([l2.maxBufferSize, l2.maxStorageBufferBindingSize]).toEqual([4 * GiB, 3 * GiB]);
+  });
+  it('adapter <= 2 GiB (iPad / Mac / Intel / Quest tiers) is unchanged', () => {
+    for (const k of ['Intel UHD 770 (Vulkan)', 'Apple M-series (Metal, 2 GiB tier)', 'iPad (Metal)', 'Quest (Adreno, Vulkan)']) {
+      const a = adapterOf(PROFILES[k]);
+      expect(gpuDeviceRequestDescriptor(a)).toEqual(oldDescriptor(a));
+    }
+  });
+  it('every Dawn tier up to 4 GiB - 4 requests exactly what it did before (core and compat)', () => {
+    const bufs = [256 * MiB, 1 * GiB, 2 * GiB, 4 * GiB - 4], binds = [128 * MiB, 256 * MiB, 512 * MiB, 1 * GiB, 2 * GiB - 4, 4 * GiB - 4];
     for (const core of [true, false]) for (const b of bufs) for (const s of binds) {
       const a = adapterOf({ core, limits: { maxBufferSize: b, maxStorageBufferBindingSize: s, maxComputeInvocationsPerWorkgroup: 256, maxComputeWorkgroupSizeX: 256 } });
       expect(gpuDeviceRequestDescriptor(a)).toEqual(oldDescriptor(a));
@@ -65,19 +93,21 @@ describe('device request: buffer limits capped at the 2 GiB tier', () => {
   });
   it('the requested binding size stays a multiple of 4 and <= maxBufferSize at every cap', () => {
     const { GPU_BUFFER_LIMIT_CAPS } = api();
-    expect(GPU_BUFFER_LIMIT_CAPS).toEqual([2 * GiB, 1 * GiB, 0]);
+    expect(GPU_BUFFER_LIMIT_CAPS).toEqual([4 * GiB, 2 * GiB, 1 * GiB, 0]);
     for (const cap of GPU_BUFFER_LIMIT_CAPS) {
-      const l = gpuDeviceRequestDescriptor(adapterOf(PROFILES['NVIDIA RTX 4070 Ti (Vulkan)']), cap).requiredLimits;
+      const l = gpuDeviceRequestDescriptor(adapterOf(big(8 * GiB, 8 * GiB)), cap).requiredLimits;
       if (cap === 0) { expect(l.maxBufferSize).toBeUndefined(); expect(l.maxStorageBufferBindingSize).toBeUndefined(); continue; }
       expect(l.maxStorageBufferBindingSize % 4).toBe(0);
+      expect(l.maxStorageBufferBindingSize).toBeLessThan(2 ** 32);
       expect(l.maxStorageBufferBindingSize).toBeLessThanOrEqual(l.maxBufferSize);
       expect(l.maxBufferSize).toBeLessThanOrEqual(cap);
     }
   });
-  it('the forced compatibility device (?gpucompat) is capped the same way', () => {
-    const forced = build()(true, {}, {}, quiet).gpuDeviceRequestDescriptor(adapterOf(PROFILES['NVIDIA RTX 4070 Ti (Vulkan)']));
+  it('the forced compatibility device (?gpucompat) is capped the same way (8 GiB adapter -> 4 GiB)', () => {
+    const forced = build()(true, {}, {}, quiet).gpuDeviceRequestDescriptor(adapterOf(big(8 * GiB, 8 * GiB)));
     expect(forced.requiredFeatures).toEqual([]);
-    expect(forced.requiredLimits.maxBufferSize).toBe(2 * GiB);
+    expect(forced.requiredLimits.maxBufferSize).toBe(4 * GiB);
+    expect(forced.requiredLimits.maxStorageBufferBindingSize).toBe(4 * GiB - 4);
     expect(forced.requiredLimits.maxComputeWorkgroupStorageSize).toBe(32768);
   });
 });
@@ -107,8 +137,8 @@ describe('sizes derived from the device limits are unchanged on every profile', 
       for (const [desktop, touch] of [[true, 0], [false, 0], [false, 5]]) expect(derived(req, desktop, touch)).toEqual(derived(old, desktop, touch));
     });
   }
-  it('the one size that shrinks: 4096x4096 slices on a 4 GiB-tier adapter (opening / air-layer block depth)', () => {
-    // core = min(32, floor(binding / (plane*4)) - 2*halo - 1): 4 GiB -> 64 - 2h - 1, 2 GiB -> 32 - 2h - 1.
+  it('opening / air-layer block depth follows the binding limit (4 GiB - 4 gives the pre-508 depth, 2 GiB - 4 thinner blocks)', () => {
+    // core = min(32, floor(binding / (plane*4)) - 2*halo - 1): 4 GiB -> 64 - 2h - 1, 2 GiB -> 32 - 2h - 1 (retry rung).
     // Blocks are exact (halo covers the filter), so the result is identical; only the blocks get thinner.
     const open = new Function('device', 'plane', 'halo', grab(gpuSrc, /const limit=Number\(device\.limits\?\.maxStorageBufferBindingSize\)\|\|134217728,core=[^;]*;/) + 'return core;');
     expect(open({ limits: { maxStorageBufferBindingSize: 4 * GiB - 4 } }, 4096 * 4096, 2)).toBe(32);
@@ -141,24 +171,46 @@ describe('device request retries with lower caps when refused', () => {
     };
   };
   const nv = PROFILES['NVIDIA RTX 4070 Ti (Vulkan)'].limits;
-  it('first attempt succeeds: one adapter, one device request at the 2 GiB cap (no extra work)', async () => {
+  const nv8 = big(8 * GiB, 8 * GiB).limits;
+  it('first attempt succeeds: one adapter, one device request with the adapter max (NVIDIA 4 GiB - 4), no extra work', async () => {
     const f = fakeGpu(nv, Infinity), rt = {};
     const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
-    expect(f.log).toEqual(['adapter core', 'device 2048MB']);
-    expect(r.device.limits.maxBufferSize).toBe(2 * GiB);
-    expect(rt.limitInfo).toBe('limits buf 2048MB/bind 2048MB (adapter 4096MB/4096MB)');
+    expect(f.log).toEqual(['adapter core', 'device ' + (4 * GiB - 4) / MiB + 'MB']);
+    expect(r.device.limits.maxBufferSize).toBe(4 * GiB - 4);
+    expect(rt.limitInfo).toBe('limits buf 4096MB/bind 4096MB (adapter 4096MB/4096MB)');
   });
-  it('a refused 2 GiB request is retried with 1 GiB, on a fresh adapter', async () => {
-    const f = fakeGpu(nv, 1 * GiB), rt = {};
+  it('an 8 GiB adapter is asked for 4 GiB', async () => {
+    const f = fakeGpu(nv8, Infinity), rt = {};
     const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
-    expect(f.log).toEqual(['adapter core', 'device 2048MB', 'adapter core', 'device 1024MB']);
+    expect(f.log).toEqual(['adapter core', 'device 4096MB']);
+    expect(r.device.limits).toMatchObject({ maxBufferSize: 4 * GiB, maxStorageBufferBindingSize: 4 * GiB - 4 });
+    expect(rt.limitInfo).toBe('limits buf 4096MB/bind 4096MB (adapter 8192MB/8192MB)');
+  });
+  it('a refused 4 GiB request is retried with 2 GiB, on a fresh adapter', async () => {
+    const f = fakeGpu(nv8, 2 * GiB), rt = {};
+    const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
+    expect(f.log).toEqual(['adapter core', 'device 4096MB', 'adapter core', 'device 2048MB']);
+    expect(r.device.limits).toMatchObject({ maxBufferSize: 2 * GiB, maxStorageBufferBindingSize: 2 * GiB - 4 });
+    expect(rt.limitInfo).toMatch(/^limits buf 2048MB\/bind 2048MB \(adapter 8192MB\/8192MB\) · retry 4096MB failed: Failed to create device: VK_ERROR_OUT_OF_DEVICE_MEMORY$/);
+  });
+  it('owner NVIDIA (4 GiB - 4, Vulkan refused the adapter max): the first request is the old one, the retry gets 2 GiB', async () => {
+    const f = fakeGpu(nv, 2 * GiB), rt = {};
+    const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
+    expect(f.log).toEqual(['adapter core', 'device ' + (4 * GiB - 4) / MiB + 'MB', 'adapter core', 'device 2048MB']);
+    expect(r.device.limits).toMatchObject({ maxBufferSize: 2 * GiB, maxStorageBufferBindingSize: 2 * GiB - 4 });
+    expect(rt.limitInfo).toMatch(/^limits buf 2048MB\/bind 2048MB \(adapter 4096MB\/4096MB\) · retry 4096MB failed: /);
+  });
+  it('then 1 GiB', async () => {
+    const f = fakeGpu(nv8, 1 * GiB), rt = {};
+    const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
+    expect(f.log.filter(l => l.startsWith('device'))).toEqual(['device 4096MB', 'device 2048MB', 'device 1024MB']);
     expect(r.device.limits).toMatchObject({ maxBufferSize: 1 * GiB, maxStorageBufferBindingSize: 1 * GiB });
-    expect(rt.limitInfo).toMatch(/^limits buf 1024MB\/bind 1024MB \(adapter 4096MB\/4096MB\) · retry 2048MB failed: Failed to create device: VK_ERROR_OUT_OF_DEVICE_MEMORY$/);
+    expect(rt.limitInfo).toMatch(/^limits buf 1024MB\/bind 1024MB \(adapter 8192MB\/8192MB\) · retry 4096MB failed: .* → 2048MB failed: /);
   });
   it('then with the WebGPU default buffer limits', async () => {
-    const f = fakeGpu(nv, 512 * MiB), rt = {};
+    const f = fakeGpu(nv8, 512 * MiB), rt = {};
     const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
-    expect(f.log.filter(l => l.startsWith('device'))).toEqual(['device 2048MB', 'device 1024MB', 'device default']);
+    expect(f.log.filter(l => l.startsWith('device'))).toEqual(['device 4096MB', 'device 2048MB', 'device 1024MB', 'device default']);
     expect(r.device.limits.maxBufferSize).toBeUndefined();
     expect(r.device.limits.maxComputeInvocationsPerWorkgroup).toBe(256);
     expect(rt.limitInfo).toContain('limits buf default/bind default');
@@ -168,7 +220,7 @@ describe('device request retries with lower caps when refused', () => {
     // the default rung has no maxBufferSize; make that one fail too
     f.gpu.requestAdapter = (orig => async o => { const a = await orig(o); const rd = a.requestDevice; a.requestDevice = async d => { if (d.requiredLimits.maxBufferSize === undefined) throw new Error('still refused'); return rd(d); }; return a; })(f.gpu.requestAdapter.bind(f.gpu));
     await expect(api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice()).rejects.toThrow('still refused');
-    expect(rt.limitInfo).toMatch(/^device request failed · retry 2048MB failed: .* → 1024MB failed: .* → default failed: still refused$/);
+    expect(rt.limitInfo).toMatch(/^device request failed · retry 4096MB failed: .* → 2048MB failed: .* → 1024MB failed: .* → default failed: still refused$/);
   });
   it('no adapter: same error as before', async () => {
     await expect(api(false, { gpu: { async requestAdapter() { return null; } } }, {}).requestVrlGpuDevice()).rejects.toThrow('WebGPU adapter unavailable (core and compatibility)');

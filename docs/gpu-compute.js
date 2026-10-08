@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261008-build508';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build508';
+import { installGpuLedger } from './mem-ledger.js?v=20261008-build514';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build514';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build508';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build508';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build508';
-import { runsSliceToMask } from './run-length.js?v=20261008-build508';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build508';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build508';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build514';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build514';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build514';
+import { runsSliceToMask } from './run-length.js?v=20261008-build514';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build514';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build514';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -31,15 +31,19 @@ export function gpuComputeWorkgroupSize(device=gpuFilterRuntime.device){
 export const gpuForceCompat=(()=>{try{return /[?&]gpucompat\b/.test(globalThis.location?.search||'')||globalThis.localStorage?.getItem('vrl.gpucompat')==='1'}catch{return false}})();
 // build 508 (owner, Ubuntu Wayland / Chrome 155 with Vulkan, Optimus: Intel UHD 770 + NVIDIA RTX 4070 Ti): on the
 // NVIDIA adapter the device request failed with VK_ERROR_OUT_OF_DEVICE_MEMORY; the Intel adapter worked. The request
-// asked for the adapter's own maxBufferSize / maxStorageBufferBindingSize with no upper bound (Dawn's top tier is
-// 4 GiB - 4). No buffer the app makes comes near that (blocks <= 96 MB, tiles <= 32 MB, pool <= 256 MB, every other
-// size is min(limit, small)), so the two limits are now capped at Dawn's 2 GiB tier; an adapter that reports 2 GiB or
-// less gets exactly the request it got before. Should the request still be refused, it is retried with 1 GiB and then
-// with no buffer limits (the WebGPU defaults, 256 MB / 128 MB) before the CPU / WebGL fallback.
-export const GPU_BUFFER_LIMIT_CAPS=[2*1024**3,1024**3,0];
+// asked for the adapter's own maxBufferSize / maxStorageBufferBindingSize with no upper bound.
+// build 514 (owner): the primary cap is 4 GiB, not 2 GiB. Since build 253 the request has asked for the adapter's maximum
+// (NVIDIA reports 4 GiB - 4) on purpose: whole-body datasets of about 3.5 GB must load, which the 2 GiB cap of build 508 would have prevented.
+// 4 GiB cap: whole-body ~3.5 GB datasets must load; do not lower without the owner.
+// requested = min(adapter limit, cap): maxBufferSize <= 4 GiB, maxStorageBufferBindingSize <= 4 GiB - 4 (a multiple of 4
+// that fits a u32 byte size, as Dawn's / Vulkan's top tier does), so an adapter that reports 4 GiB - 4 or less gets exactly
+// its own limits, as before build 508. No buffer the app allocates scales with these limits (blocks <= 96 MB, tiles <= 32 MB,
+// pool <= 256 MB); they only decide what is allowed. The ladder is walked only when requestDevice rejects:
+// 4 GiB -> 2 GiB -> 1 GiB -> no buffer limits (the WebGPU defaults, 256 MB / 128 MB) before the CPU / WebGL fallback.
+export const GPU_BUFFER_LIMIT_CAPS=[4*1024**3,2*1024**3,1024**3,0];
 export function capGpuBufferLimits(limits,cap){
  if(!(cap>0)){delete limits.maxBufferSize;delete limits.maxStorageBufferBindingSize;return limits}
- // binding cap: Dawn's tier value (2 GiB - 4), a multiple of 4 and <= the buffer cap
+ // binding cap: Dawn's tier value (cap - 4: 4 GiB - 4 / 2 GiB - 4), a multiple of 4, fits a u32 and is <= the buffer cap
  const bindingCap=cap>=2*1024**3?cap-4:cap;
  if(limits.maxBufferSize>cap)limits.maxBufferSize=cap;
  if(limits.maxStorageBufferBindingSize>bindingCap)limits.maxStorageBufferBindingSize=bindingCap;
