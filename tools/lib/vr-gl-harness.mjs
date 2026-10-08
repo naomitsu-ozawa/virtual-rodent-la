@@ -123,7 +123,12 @@ export async function renderBatch(args) {
       draw(mkMat(c, true, true), rt, [0, 0, 0], 0); out[c.name] = b64f(read(rt, Float32Array)); rt.dispose();
     } else if (!(c.f < 1)) {
       const rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true, ...(mode === 'depth' ? { depthTexture: new THREE.DepthTexture(W, H) } : {}) }); // build 497: the volume writes depth (gl_FragDepth), as in the app
-      draw(mkMat(c, false, false), rt, BG, 1); out[c.name] = mode === 'depth' ? b64f(readDepth(rt)) : b64f(read(rt, Uint8Array)); rt.dispose();
+      draw(mkMat(c, false, false), rt, BG, 1);
+      if (c.arrow && mode !== 'depth') { // build 511: an optional overlay drawn after the volume into the same target (LineSegments, pure green, never writes depth), as the app draws the section arrow: c.arrow = {pts: [[x,y,z],...] segment end points (object space), depthTest}
+        const g = new THREE.BufferGeometry().setFromPoints(c.arrow.pts.map(p => new THREE.Vector3(...p))), lm = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, depthTest: !!c.arrow.depthTest, depthWrite: false, toneMapped: false }), ls = new THREE.LineSegments(g, lm), osc = new THREE.Scene();
+        ls.frustumCulled = false; ls.renderOrder = 2; osc.add(ls); renderer.setRenderTarget(rt); renderer.autoClear = false; renderer.render(osc, cam); renderer.autoClear = true; g.dispose(); lm.dispose();
+      }
+      out[c.name] = mode === 'depth' ? b64f(readDepth(rt)) : b64f(read(rt, Uint8Array)); rt.dispose();
     } else {
       // the low-resolution path of vr-view.js: the ray material into a small target (cleared to transparent), then the composite pass over the background
       const f = c.f, tw = Math.max(1, Math.ceil(W * f)), th = Math.max(1, Math.ceil(H * f));

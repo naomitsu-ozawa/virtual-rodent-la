@@ -95,5 +95,35 @@ for (const [name, he, bs] of [['isotropic voxels', [1.3, 1.3, 1.3], base], ['ani
   console.log((okNew && teeth ? 'ok   ' : 'FAIL ') + 'no ghost, ' + name + ': hit pixels ' + hits + ', voxel centres behind the written depth: ' + behindNew + ' (build 500 bias), ' + behindOld + ' (build 497 bias 2 * voxelMin, worst ' + worstOld.toExponential(1) + ')' + (teeth ? '' : ' <- the old bias should fail here'));
   if (!(okNew && teeth)) failed = true;
 }
+// 6) build 511 (owner: the section ARROW must hide behind tissue like the frame). The arrow is a LineSegments sharing the frame's material (vr-view.js makePlane), so with the depth test on it is drawn
+// only where it is IN FRONT of the written depth. One-side cut (the removed half is the arrow side), cap on, opaque phantom, the section at the same place; the arrow (shaft + barbs, as makePlane) starts at the
+// plane point and runs into the removed half:
+//  - the eye on the KEPT side (the arrow lies behind the kept tissue): with the depth test no arrow pixel may be drawn; without it (the pre-509 state) the same arrow is drawn (the check has teeth)
+//  - the eye on the REMOVED side (the arrow points at the eye over the cap): it is in front of the cut face, drawn (a depth test can only hide what lies behind tissue)
+{
+  const n0 = [0.6, 0.3, 0.74], l0 = Math.hypot(...n0), nh = n0.map(v => v / l0), p0 = nh.map(v => -0.05 * v); // the plane point (-nh . x = 0.05), nh points at the camera
+  const dirs = { removedSide: nh, keptSide: nh.map(v => -v) }; // removedSide: the arrow points at the camera (it lies in the removed half = the half towards the camera)
+  const planes = { removedSide: [-nh[0], -nh[1], -nh[2], 0.05], keptSide: [nh[0], nh[1], nh[2], -0.05] }; // the plane vector (unit n, offset); the removed half = the side of -n
+  const up = Math.abs(nh[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0], cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const nrm = v => { const l = Math.hypot(...v); return v.map(x => x / l); }, u1 = nrm(cr(nh, up)), u2 = nrm(cr(nh, u1)), L = 0.9;
+  const arrowPts = d => { const tip = p0.map((v, i) => v + d[i] * L), back = (u, s) => tip.map((v, i) => v - d[i] * 0.28 * L + u[i] * s * 0.22 * L); return [p0, tip, tip, back(u1, 1), tip, back(u1, -1), tip, back(u2, 1), tip, back(u2, -1)]; };
+  const countGreen = px => { let c = 0; for (let i = 0; i < px.length; i += 4) if (px[i + 1] >= 200 && px[i] <= 60 && px[i + 2] <= 60) c++; return c; };
+  const res = {};
+  await withPage(async (pg, info) => {
+    const common = { sh, N, halfExt: HALF_EXT, scene: sceneArgs(scene), filter: 'linear', W, H, mode: 'color' };
+    for (const side of ['removedSide', 'keptSide']) for (const dt of [true, false]) {
+      const c = { name: 'surface', defines: ['VRL_NO_GENERAL', 'VRL_OPAQUE'], u: { segA: allOpaque, cutPlanes: [planes[side], [0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 1, 0]], planeCount: 1, planeCut: 1, capOn: 1, sliceOpacity: 0.7 }, arrow: { pts: arrowPts(dirs[side]), depthTest: dt } };
+      const r = await runBatch(pg, { ...common, cases: [c] }); if (r.glError || info.problems.length) throw new Error('GL error ' + r.glError + ' ' + info.problems.join('; '));
+      res[side + (dt ? ' depth test' : ' no depth test')] = countGreen(new Uint8Array(r.out.surface));
+    }
+  });
+  console.log('arrow pixels (green): ' + Object.keys(res).map(k => k + ' ' + res[k] + ' px').join(', '));
+  const okHidden = res['keptSide depth test'] === 0 && res['keptSide no depth test'] > 20;
+  console.log((okHidden ? 'ok   ' : 'FAIL ') + 'section arrow behind the kept tissue: ' + res['keptSide depth test'] + ' px drawn with the depth test (the same arrow without it: ' + res['keptSide no depth test'] + ' px)');
+  if (!okHidden) failed = true;
+  const okFront = res['removedSide depth test'] > 20;
+  console.log((okFront ? 'ok   ' : 'FAIL ') + 'section arrow pointing at the eye over the cut face is drawn with the depth test (' + res['removedSide depth test'] + ' px): a depth test cannot hide what lies in front of the tissue');
+  if (!okFront) failed = true;
+}
 if (failed) { console.error('vr-depth-check FAILED'); process.exit(1); }
 console.log('vr-depth-check OK');
