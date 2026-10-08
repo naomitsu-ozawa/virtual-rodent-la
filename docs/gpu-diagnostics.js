@@ -1,6 +1,6 @@
-// GPU diagnostics (build 520): the data of the debug-only 「GPU情報」 tab and its copyable report. Pure, no imports, so unit tests
-// load it without a DOM. Nothing here reads the GPU: gpu-diagnostics-ui.js gathers the values from gpuFilterRuntime and passes
-// them in as plain data; this module only formats them (and keeps a small in-memory error log).
+// GPU diagnostics (build 520): the data of the debug-only 「GPU情報」 tab and its copyable report. No DOM and no GPU access (its only imports are the
+// pure gpu-preference.js / gpu-split.js), so unit tests load it as is. gpu-diagnostics-ui.js gathers the values from gpuFilterRuntime and passes them
+// in as plain data; this module only formats them (and keeps a small in-memory error log).
 // The tab is shown, and anything that probes the GPU runs, only in debug mode (settings > デバッグ, or ?debug).
 
 import { gpuPlatformOs } from './gpu-preference.js?v=20261008-build520';
