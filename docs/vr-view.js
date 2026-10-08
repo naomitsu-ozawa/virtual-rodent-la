@@ -8,32 +8,32 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build498';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build498';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build498';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build498';
-import { datasetFingerprint } from './project-file.js?v=20261008-build498';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build498';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build498';
-import { buildClsData } from './point-cls.js?v=20261008-build498';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build498';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build498';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build498';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build498';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build498';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build498';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build498';
-import { tr } from './i18n.js?v=20261008-build498';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build498';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build498';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build498';
-import { createVrMeasure } from './vr-measure.js?v=20261008-build498';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive } from './vr-depth.js?v=20261008-build498';
-import { createProbeGate } from './measure-label.js?v=20261008-build498';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build498';
-import { APP_BUILD } from './version.js?v=20261008-build498';
-import { wc, ww } from './ui-shell.js?v=20261008-build498';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build498';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build499';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build499';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build499';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build499';
+import { datasetFingerprint } from './project-file.js?v=20261008-build499';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build499';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build499';
+import { buildClsData } from './point-cls.js?v=20261008-build499';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build499';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build499';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build499';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build499';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build499';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build499';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build499';
+import { tr } from './i18n.js?v=20261008-build499';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build499';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build499';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build499';
+import { createVrMeasure } from './vr-measure.js?v=20261008-build499';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive } from './vr-depth.js?v=20261008-build499';
+import { createProbeGate } from './measure-label.js?v=20261008-build499';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build499';
+import { APP_BUILD } from './version.js?v=20261008-build499';
+import { wc, ww } from './ui-shell.js?v=20261008-build499';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build499';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -612,9 +612,9 @@ async function buildVolumeData(maxDim,onProgress,{noBricks=false}={}){
 // VR settings kept per browser (resolution only applies when a session starts)
 const SETTINGS_KEY='vrl-vr-settings-5',OLD_KEYS=['vrl-vr-settings-4','vrl-vr-settings-3']; // v5: slice opacity defaults to 70 % (owner, build 362)
 // menuMode 0 follows the head lazily, 1 stays where it is (build 468: no setting for how a section is held; sections are moved with the trigger)
-const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,wheel:[...DEFAULT_WHEEL],cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,autoMin:0,foveation:2,rate:0,help:1,refine:1,labelSize:0,labelHide:LABEL_HIDE_DEFAULT}; // labelHide (build 497, vr-depth.js): 1 = distance labels / lines hidden for real behind the tissue (GPU depth), 0 = faded (CPU probes, build 493)
+const DEFAULTS={cap:1,sliceAir:-500,sliceTint:0.5,menuMode:0,wheel:[...DEFAULT_WHEEL],wheelMig:0,cut:1,sliceOpacity:0.7,data:1,quality:0,vres:0,autoMin:0,foveation:2,rate:0,help:1,refine:1,labelSize:0,labelHide:LABEL_HIDE_DEFAULT}; // labelHide (build 497, vr-depth.js): 1 = distance labels / lines hidden for real behind the tissue (GPU depth), 0 = faded (CPU probes, build 493)
 // an older key is migrated once, with the slice opacity reset to the new default
-function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);const v={...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})};v.wheel=normalizeWheelItems(v.wheel);return v}catch{return{...DEFAULTS,wheel:[...DEFAULT_WHEEL]}}}
+function loadSettings(){try{const n=localStorage.getItem(SETTINGS_KEY),o=n==null&&OLD_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);const v={...DEFAULTS,...JSON.parse(n||o||'{}'),...(o?{sliceOpacity:DEFAULTS.sliceOpacity}:{})};v.wheel=normalizeWheelItems(v.wheel);const m=migrateWheelSectionFlip(v);v.wheel=m.wheel;v.wheelMig=m.wheelMig;if(m.changed)saveSettings(v);return v}catch{return{...DEFAULTS,wheel:[...DEFAULT_WHEEL]}}}
 function saveSettings(v){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(v))}catch{}}
 // VRES: the ray-marched volume is drawn into an offscreen target this much
 // smaller per axis and scaled up where the volume box covers the view. Owner,
@@ -932,7 +932,7 @@ let running=null;
 // Quest, no background drawn and the clear is transparent
 // build 465: where the trigger records a VR point: 'section' (the face of a section, default) or 'surface' (the first tissue surface); remembered
 // while the page lives, not saved
-let vrPointMode='section';
+let vrPointMode='surface'; // build 496: default 表面 (not persisted; kept while the page lives)
 // build 468: the point menu's 「コメント」 (a hidden text field; the Quest system keyboard in an immersive session is unverified): off unless localStorage vrl-vr-point-comment is '1'
 const VR_POINT_COMMENT=(()=>{try{return localStorage.getItem('vrl-vr-point-comment')==='1'}catch{return false}})();
 export async function startVrView({language='ja',mode='vr'}={}){
@@ -1195,7 +1195,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const diagAn={noRegion:false,noLabels:false};
  // VR position points (Issue #88, stage 3; vr-point.js): vrHalfExt / vrDims / vrFp are set when the data is ready (null before)
  let vrHalfExt=null,vrDims=null,vrFp=null,vrSpacing=null;const vpMarkers=createVrPointMarkers(THREE,scene),vpMeasure=createVrMeasure(THREE,scene),lblLit=new Set(); // lblLit: the distance labels lit this frame (laser on them / grabbed). vrSpacing: the series' voxel spacing [x,y,z] mm (the adopted one: z from the slice-spacing check), for the distances
- // build 465: surface mode (vrPointMode, kept while the page lives, default 断面). It is in force except while the 解析 tab is open (the trigger pins labels there)
+ // build 465: surface mode (vrPointMode, kept while the page lives, default 表面 since build 496). It is in force except while the 解析 tab is open (the trigger pins labels there)
  const surfaceActive=()=>vrPointMode==='surface'&&!(ui.open&&ui.tab===5),surfCursors=controllers.map(()=>createSurfaceCursor(THREE,scene)),tmpSc=new THREE.Vector3(),tmpSh=new THREE.Vector3(),tmpSs=new THREE.Vector3();
  // build 467: the cursor sits at the CENTRE of the voxel that will be recorded (sf.voxel), as a small dot (build 470: no ring; the same dot in 断面 mode)
  const placeSurfCursor=(c,sf)=>{
@@ -1440,6 +1440,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // ===== build 468: ring menus =====
  const itemOf=id=>WHEEL_ITEMS.find(i=>i.id===id),itemName=id=>id?(ja?itemOf(id).ja:itemOf(id).en):null;
  const nextSection=()=>{if(planes.length<2)return;const i=planes.indexOf(section.selected);section.selected=planes[(i+1)%planes.length];menu.refresh()};
+ const canFlipPlane=pl=>!!pl&&pl.cut&&settings.cut===2; // the 向きを反転 button of the 断面 tab is shown under the same condition
+ const flipPlane=pl=>{if(canFlipPlane(pl))pl.side=-pl.side};
  const wheelAvail=id=>{
   switch(id){
    case'undo':return undo.size>0;
@@ -1447,6 +1449,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    case'point-delete':return!!vpSel;
    case'section-next':return planes.length>=2;
    case'snap-axial':case'snap-coronal':case'snap-sagittal':case'section-clip':return!!section.selected;
+   case'section-flip':return canFlipPlane(section.selected);
    default:return true;
   }
  };
@@ -1459,7 +1462,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const closePointWheel=()=>{if(!pw)return;lockStick(pw.c);pw=null;pointWheel.mesh.visible=false};
  // build 476: the quick ring is placed ONCE where it is opened and stays there (world-fixed, facing the head at that moment): WHEEL_FRONT_M in front of the hand
  // along its laser, so the same hand can point at any sector (about 16 degrees to the ring's edge) and pull the trigger; it no longer follows the hand
- const WHEEL_FRONT_M=0.28; // distance in front of the hand (m) where the quick ring is fixed when it opens
+ const WHEEL_FRONT_M=0.20; // build 496: 0.28 -> 0.20 (-29%); // distance in front of the hand (m) where the quick ring is fixed when it opens
  const openWheel=c=>{closeWheel();closePointWheel();wheelOwner=c;c.userData.stick.reset();c.userData.laserHl=null;refreshWheel();wheel.setHighlight(null);
   readHead();setRay(c);tmpRc.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction,WHEEL_FRONT_M);wheel.placeAt(tmpRc,head);wheel.mesh.visible=true};
  // build 472: the point ring has 「色」; choosing it turns the ring into a palette ring (自動 + the 8 palette colours; the current one is dotted)
@@ -1506,6 +1509,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    case'snap-coronal':snapPlane(section.selected,1);break;
    case'snap-sagittal':snapPlane(section.selected,2);break;
    case'section-clip':{const sp=section.selected;if(sp){sp.cut=!sp.cut;if(sp.cut&&settings.cut===2)chooseSide(sp);menu.refresh()}break}
+   case'section-flip':flipPlane(section.selected);break;
    case'home':bringVolumeFront();placeMenuNow();placeHelpNow();break;
    case'screenshot':shotRequested=true;break;
    case'menu':setMenuOpen(!ui.open);break;
@@ -1690,7 +1694,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     // build 364: the name is a button that selects the plane (thumbstick target)
     btn(X,y,190,L.planeN+(i+1),pl===section.selected,()=>{section.selected=pl},{color:col,size:26});
     btn(250,y,190,pl.cut?L.clipOn:L.clipOff,pl.cut,()=>{pl.cut=!pl.cut;if(pl.cut&&settings.cut===2)chooseSide(pl)},{color:col,size:26});
-    if(settings.cut===2&&pl.cut)btn(452,y,170,L.flip,false,()=>{pl.side=-pl.side},{size:26});
+    if(canFlipPlane(pl))btn(452,y,170,L.flip,false,()=>flipPlane(pl),{size:26});
     btn(640,y,150,L.remove,false,()=>removePlane(pl),{size:26});
    });
    const yb2=y0+86+MAX_PLANES*76;
