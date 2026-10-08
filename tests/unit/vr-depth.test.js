@@ -93,7 +93,7 @@ describe('collateral: what lies inside the volume stays visible (source checks)'
     expect(src).toContain('frameLine.renderOrder=2'); expect(src).toContain('arrow.renderOrder=2'); expect(src).toContain('glow.renderOrder=3');
     expect(src).toMatch(/MeshBasicMaterial\(\{color:0xffffff,transparent:true,opacity:0\.95,side:THREE\.DoubleSide,depthTest:false,depthWrite:false/);
     expect(src).toContain('new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));\n let widgets=[]'); // the boards: a board BEHIND the volume must stay covered by it
-    expect(src).toContain('{const top=!!rh;ray.renderOrder=dot.renderOrder=top?8:0;');
+    expect(src).toContain("{const top=!!rh||res.kind==='point'||res.kind==='mlabel'||res.kind==='section';ray.renderOrder=dot.renderOrder=top?8:0;"); // the laser ends on a point / label / frame inside the volume: drawn on top
   });
   it('the point markers, cursors, rings and the scale tag already have no depth test', () => {
     for (const f of ['vr-point-markers', 'vr-ring', 'vr-real-scale']) {

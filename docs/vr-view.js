@@ -1899,7 +1899,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const hc=handColor(c),dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=dist!=null&&!cur&&!busy;
    // build 474: a ring is drawn without depth (depthTest:false, renderOrder 7) after the laser, so it covered the laser's last part and its end dot:
    // the laser looked as if it went on behind the ring. While this laser ends on a ring, the laser and the dot are drawn after it, on top.
-   {const top=!!rh;ray.renderOrder=dot.renderOrder=top?8:0;ray.material.depthTest=dot.material.depthTest=!top}
+   // build 497: the volume writes depth now, so a laser that ends on something drawn without a depth test INSIDE the volume (a point, a distance label, a section frame) would be cut at the tissue surface: those are on top too
+   {const top=!!rh||res.kind==='point'||res.kind==='mlabel'||res.kind==='section';ray.renderOrder=dot.renderOrder=top?8:0;ray.material.depthTest=dot.material.depthTest=!top}
    if(dist!=null){ray.scale.z=dist;ray.material.opacity=1;setRay(c);raycaster.ray.at(dist,dot.position);if(h){const i=menu.hit(h.uv);if(i>=0)hover=i}}
    else{ray.scale.z=0.6;ray.material.opacity=0.35}
    if(curSurf)placeSurfCursor(c,ref);else if(curSec)placeSecCursor(c,ref);else surfCursors[controllers.indexOf(c)].set(null);
