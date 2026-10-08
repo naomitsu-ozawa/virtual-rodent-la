@@ -251,7 +251,7 @@ describe('build 496: flip-cut ring item, point mode default, ring distance (stat
     expect(src).toContain("case'section-flip':return canFlipPlane(section.selected)");
     expect(src).toContain("case'section-flip':flipPlane(section.selected);break");
     expect(src).toContain('L.flip,false,()=>flipPlane(pl)');
-    expect(src).toContain('const flipPlane=pl=>{if(canFlipPlane(pl))pl.side=-pl.side}');
+    expect(src).toContain('const flipPlane=pl=>{if(canFlipPlane(pl)){pl.side=-pl.side;pl.aFlash=performance.now()+ARROW_FLASH_MS}}'); // build 511: the flip also shows the arrow for a moment
   });
 });
 
