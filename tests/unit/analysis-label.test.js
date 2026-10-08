@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeAnalysisLabel, hasOffset, leaderVisible, withOffset, labelLocal, offsetForLocal, voxelFromLocalVr, voxelFromLocal3d, clampVoxel, setRegionLabel, setRegionLabelOffset, onAnalysisLabelsChange, labelForProject, sameLabel, ANALYSIS_LABEL_MAX } from '../../docs/analysis-label.js';
+import { readFileSync } from 'node:fs';
+import { rectEdgePoint, vrVoxelStep, pcVoxelStep, normalizeAnalysisLabel, hasOffset, leaderVisible, withOffset, labelLocal, offsetForLocal, voxelFromLocalVr, voxelFromLocal3d, clampVoxel, setRegionLabel, setRegionLabelOffset, onAnalysisLabelsChange, labelForProject, sameLabel, ANALYSIS_LABEL_MAX } from '../../docs/analysis-label.js';
 import { voxelToLocal } from '../../docs/vr-point.js';
 import { voxelToLocal3D } from '../../docs/crosshair.js';
 import { packProject, unpackProject } from '../../docs/project-file.js';
 import { stepDelta } from '../../docs/measure-label.js';
 
 const dims = { columns: 120, rows: 80, slices: 200 }, spacing = [0.1, 0.1, 0.25], halfExt = [0.6, 0.4, 1.4];
-const vrStep = [2 * halfExt[0] / dims.columns, -2 * halfExt[1] / dims.rows, 2 * halfExt[2] / dims.slices];
-const pcStep = (() => { const k = 3.3 / Math.max(dims.columns * spacing[0], dims.rows * spacing[1], dims.slices * spacing[2]); return [spacing[0] * k, -spacing[1] * k, spacing[2] * k]; })();
+const vrStep = vrVoxelStep(halfExt, dims);
+const pcStep = pcVoxelStep(dims, spacing);
 
 describe('analysis label model', () => {
   it('normalizes: anchor required, offset optional, junk dropped, numbers rounded', () => {
@@ -117,5 +118,40 @@ describe('project file roundtrip (project.analysis.regions[].label)', () => {
     const un = unpackProject(packProject({ analysis: { regions: [region(), region({ label: { anchor: 'x' } }), region({ label: 5 })] } }, {}));
     expect(un.project.version).toBe(1); // optional field, no version bump (like comments / measurements)
     expect(un.project.analysis.regions.map(load)).toEqual([null, null, null]);
+  });
+});
+
+describe('leader line end on the card edge', () => {
+  it('rectEdgePoint: on the rectangle boundary, towards the anchor', () => {
+    expect(rectEdgePoint(100, 0, 10, 4)).toEqual({ x: 10, y: 0 });
+    expect(rectEdgePoint(-100, 0, 10, 4)).toEqual({ x: -10, y: 0 });
+    expect(rectEdgePoint(0, -50, 10, 4)).toEqual({ x: 0, y: -4 });
+    const e = rectEdgePoint(30, -30, 10, 4); expect(e.x).toBeCloseTo(4, 9); expect(e.y).toBeCloseTo(-4, 9);
+    const f = rectEdgePoint(3, 1, 10, 4); expect(Math.abs(f.x)).toBeCloseTo(10, 9); expect(f.y).toBeCloseTo(10 / 3, 9); // keeps the direction
+    expect(rectEdgePoint(0, 0, 10, 4)).toEqual({ x: 0, y: -4 }); // no direction: the bottom edge
+  });
+  it('steps: a flipped j axis, anisotropic spacing', () => {
+    expect(vrStep[1]).toBeLessThan(0); expect(pcStep[1]).toBeLessThan(0);
+    expect(pcStep[2] / pcStep[0]).toBeCloseTo(spacing[2] / spacing[0], 9);
+    expect(vrStep[0]).toBeCloseTo(2 * halfExt[0] / dims.columns, 12);
+  });
+});
+
+describe('wiring (static): VR pins and the PC chips use the shared region.label', () => {
+  const read = f => readFileSync(new URL('../../docs/' + f, import.meta.url), 'utf8');
+  it('VR: pins are rebuilt from region.label every frame, can be grabbed (pin ref), long press resets, lit pins draw on top; the project carries the label', () => {
+    const vr = read('vr-view.js');
+    expect(vr).toContain('const syncPins=()=>'); expect(vr).toContain('syncPins();for(const lb of pins.values()){lb.lit=pinLit.has(lb.rid);placeLabel(lb);pinOcclusion(lb,lb.lit)}');
+    expect(vr).toContain('nearerLabel(vpMeasure.pickLabel('); expect(vr).toContain('if(ld.pin){'); expect(vr).toContain('resetPin(c)');
+    expect(vr).toContain('occludedPass(occlusionGpu(),lit)');
+    expect(vr).toContain('rid:r.id');
+    const ops = read('analysis-ops.js'); expect(ops).toContain('label:labelForProject(r)'); expect(ops).toContain('normalizeAnalysisLabel(e.label)');
+    expect(read('data-load.js')).toContain('label:normalizeAnalysisLabel(e.label)||undefined');
+  });
+  it('PC: the chips are drawn in the comment layer, moved by the capture-phase drag, the leader only when moved, hidden-behind judged for moved labels only', () => {
+    const d3 = read('comment-3d.js');
+    expect(d3).toContain('function drawAnalysisLabels('); expect(d3).toContain('analysisProbes(als,dims)'); expect(d3).toContain('if(moved&&aOk)');
+    expect(d3).toContain('setRegionLabelOffset(regionOf(h.id),off)'); expect(d3).toContain('onAnalysisLabelsChange(again)');
+    expect(d3).toContain("const analysisGate=()=>analysisEditTool==='select';"); // movable in the analysis mode too, not while an edit tool owns the pointer
   });
 });
