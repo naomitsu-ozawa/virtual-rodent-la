@@ -24,6 +24,7 @@ import { buildDistanceBytes, combineClassificationDistance } from './distance-fi
 import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build502';
 import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build502';
 import { tr } from './i18n.js?v=20261008-build502';
+import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261008-build502';
 import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build502';
 import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build502';
 import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build502';
@@ -956,6 +957,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  running={session};
  const scene=new THREE.Scene();scene.background=ar?null:BG.clone();
  const background=makeBackground();if(ar){background.visible=false;renderer.setClearColor(0x000000,0)}else scene.add(background);
+ // AR only: in-session switch passthrough <-> "VR view" (opaque background drawn instead of the transparent clear; nothing else is touched). A new session starts as passthrough.
+ const vt=createViewToggle(ar),applyView=()=>{if(!vt.canToggle)return;const on=vt.vrView;scene.background=on?BG.clone():null;background.visible=on;if(on)scene.add(background);else scene.remove(background);renderer.setClearColor(on?BG:0x000000,on?1:0)};
  const camera=new THREE.PerspectiveCamera(70,1,0.01,50);
  const L=ja?{ptT:'位置コメント（VR ポイント）',ptMode:'記録する場所',ptModeV:['断面','表面'],ptHelpSurf:['トリガーを短く押す：レーザーが最初に当たる組織の表面に記録／点に当てて選択','表面＝表示中のセグメントの境界（不透明度は無視。断面で切った面も表面）','記録は押した瞬間の場所。0.5秒以上押すと記録しません','スティックを動かした直後0.3秒は記録しません（その手のみ）','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptDone:'記録しました：',ptHelp:['トリガーを短く押す：選んだ断面に当てて記録（空気の所も可）／点に当てて選択（長押し：移動・削除・色・距離）／押して2cm動かすと断面を動かす','記録は押した瞬間の場所。0.5秒以上押すと記録しません','スティックを動かした直後0.3秒は記録しません（その手のみ）','「VR ポイント N」で保存（2D画面の一覧に出ます。本文は「編集」で変えられます）'],ptDel:'この点を削除',ptUndo:'元に戻す',ptSel:'選択中の点：',ptNoSel:'点にレーザーを当ててトリガーで選択',ptDeleted:'点を削除しました（「元に戻す」で戻せます）',ptRestored:'点を元に戻しました',ptList:'位置コメント一覧',ptNone:'まだありません',realSize:'実寸（1倍）にする',realSizeNo:'実寸にできません（30cm超）',title:'Virtual Rodent Lab',tabs:['表示','断面','スライス','画質','詳細','解析','位置'],anT:'解析結果（体積）',anNone:'解析結果はありません（2D/3D画面の体積解析で作成し、表示中のものがVRに入ります）',anTotal:'合計',anPage:'ページ',lbSize:'ラベルの大きさ',lbSizeV:['小','中','大'],lbHide:'ラベルの隠れ方',lbHideV:['実際に隠す','薄くする'],win:'断面に映すCT画像の設定（アプリ側の値は変わりません）',winHelp:'スライダーは10 HU単位、−／＋は10 HUずつ',airL:'透明にするCT値',airHelp:'この値以下のスライスは透明（−500：空気／−50：脂肪まで）',wcL:'ウィンドウ中心',wwL:'ウィンドウ幅',pApp:'アプリの値',pFull:'全範囲',pBone:'骨',pSoft:'軟部',follow:'ついて来る',fixed:'固定',menuPos:'メニューの位置',menuKey:'A/X：短く＝よく使う（リング）、長押し＝メニューの開閉',menuGrab:'メニューや操作方法の板を指してグリップ＝つかんで移動（位置は固定に）',helpT:'操作方法',helpModes:['非表示','ついて来る','固定'],helpBasic:['グリップ：ボリュームをつかんで動かす・向きを変える','両手でグリップ：拡大・縮小','トリガー（短く）：点を記録／点を選択（点を長押し：移動・削除・色・距離）','A／X：短く＝よく使う（リング）、長押し＝メニュー','B／Y：断面を出す（長押しで追加）','メニューを指してグリップ：メニューを移動'],helpSec:['枠の細い線・番号札：トリガーで選択／押したまま動かして移動・回転','スティック上下：選んだ断面をスクロール','点を長押し：移動・削除・色・距離のリング','B／Y：断面の表示／非表示（長押しで追加）','トリガー（短く）：断面や組織に点を記録／点に当てて選択','A／X：短く＝よく使う（リング）、長押し＝メニュー'],helpMenu:'トリガー：メニューのボタン・スライダー',close:'閉じる',badge:'X：よく使う／長押し：メニュー',wheelEdit:'よく使う（リング）を設定',wheelT:'よく使う（リング）の項目',wheelHelp:'1＝上、時計回り。スロットを選んでから項目を押す',wheelEmpty:'空き',wheelPrev:'◀ 前へ',wheelNext:'次へ ▶',wheelClear:'空にする',wheelReset:'既定に戻す',back:'戻る',wheelNoMode:'断面モード／表面モードがありません（切り替えられません）',ptMove:'移動',ptDelete:'削除',ptComment:'コメント',modeNow:'記録する場所：',modeHint:'（A/X のリングで切り替え）',undoDone:'元に戻しました',undoFail:'元に戻せませんでした',undoNone:'戻す操作はありません',ptMoved:'点を移動しました（「元に戻す」で戻せます）',ptMoveHint:'移動中：置きたい所でトリガー（A/X で取り消し）',ptDist:'距離',ptDistHint:'終点のポイントを選んでください',ptDistStart:'始点を選びました：',ptDistDone:'距離を追加しました（「元に戻す」で戻せます）',ptDistExists:'この2点の距離はすでにあります',ptDistCancel:'距離の測定をやめました',ptDistSame:'始点とは別のポイントを選んでください',ptDistRefused:'これ以上距離を追加できません',ptDistOther:'別のシリーズのポイントとは測れません',
    seg:'セグメント',segModes:['通常','簡易','非表示'],noSeg:'表示中のセグメントがありません（アプリで閾値を設定）',home:'正面に戻す',clsD:'事前計算（診断）',distD:'距離場（診断）',bench:'ベンチ（約 35 秒）',anBench:'解析の重さ（約 12 秒）',benchRun:'ベンチ中 ',benchHelp:'断面を動かし回転させながら、16.5/30 cm × 表示中／骨＋脂肪／骨のみ × 100%／50% の fps。終了後、VR を出た画面に結果が出ます',samples:'サンプル数／画素 ',samplesNote:'（覆う画素の平均、48×48で計測）',refineL:'表面の探索',refineV:['高速','精密'],editD:'加工マスク（診断）',editDv:['なめらか','ボクセル','オフ'],shot:'スクリーンショット',exit:'終了',
@@ -1456,7 +1459,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
   });
  }
  // ===== build 468: ring menus =====
- const itemOf=id=>WHEEL_ITEMS.find(i=>i.id===id),itemName=id=>id?(ja?itemOf(id).ja:itemOf(id).en):null;
+ const itemOf=id=>WHEEL_ITEMS.find(i=>i.id===id),itemName=id=>id===VIEW_TOGGLE_ID?tr(vt.vrView?'vrToggleToAr':'vrToggleToVr'):id?(ja?itemOf(id).ja:itemOf(id).en):null;
+ const ringIds=()=>ringIdsFor(settings.wheel,ar); // AR: the view toggle takes an empty slot of the saved layout, else a last slot (the saved layout itself is not changed)
+ const toggleView=c=>{vt.toggle();applyView();if(c)pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);flashMsg(tr(vt.vrView?'vrToggleNowVr':'vrToggleNowAr'),3500);menu.refresh()};
  const nextSection=()=>{if(planes.length<2)return;const i=planes.indexOf(section.selected);section.selected=planes[(i+1)%planes.length];menu.refresh()};
  const canFlipPlane=pl=>!!pl&&pl.cut&&settings.cut===2; // the 向きを反転 button of the 断面 tab is shown under the same condition
  const flipPlane=pl=>{if(canFlipPlane(pl))pl.side=-pl.side};
@@ -1471,10 +1476,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
    default:return true;
   }
  };
- const wheelOn=id=>id==='mode-section'?vrPointMode==='section':id==='mode-surface'?vrPointMode==='surface':id==='section-toggle'?section.on:false;
+ const wheelOn=id=>id==='mode-section'?vrPointMode==='section':id==='mode-surface'?vrPointMode==='surface':id==='section-toggle'?section.on:id===VIEW_TOGGLE_ID?vt.vrView:false;
  let wheelKey='';
- const wheelKeyNow=()=>settings.wheel.map(id=>id?id+(wheelAvail(id)?1:0)+(wheelOn(id)?1:0):'-').join(',');
- const refreshWheel=()=>{const ids=settings.wheel;wheel.setItems(ids.map(itemName),ids.map(id=>!!id&&wheelAvail(id)),ids.map(id=>!!id&&wheelOn(id)));wheelKey=wheelKeyNow()};
+ const wheelKeyNow=()=>ringIds().map(id=>id?id+(wheelAvail(id)?1:0)+(wheelOn(id)?1:0):'-').join(',');
+ const refreshWheel=()=>{const ids=ringIds();wheel.setItems(ids.map(itemName),ids.map(id=>!!id&&wheelAvail(id)),ids.map(id=>!!id&&wheelOn(id)));wheelKey=wheelKeyNow()};
  const lockStick=c=>{c.userData.stickLock=true}; // the thumbstick does not scroll the section until it is back at the centre
  const closeWheel=()=>{if(!wheelOwner)return;lockStick(wheelOwner);wheelOwner=null;wheel.mesh.visible=false};
  const closePointWheel=()=>{if(!pw)return;lockStick(pw.c);pw=null;pointWheel.mesh.visible=false};
@@ -1531,10 +1536,11 @@ export async function startVrView({language='ja',mode='vr'}={}){
    case'home':bringVolumeFront();placeMenuNow();placeHelpNow();break;
    case'screenshot':shotRequested=true;break;
    case'menu':setMenuOpen(!ui.open);break;
+   case VIEW_TOGGLE_ID:toggleView(null);break; // confirmWheel already pulsed
   }
   menu.refresh();
  };
- const confirmWheel=(k,c)=>{const id=settings.wheel[k];if(!id||!wheelAvail(id))return false;closeWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);wheelDo(id,c);return true};
+ const confirmWheel=(k,c)=>{const id=ringIds()[k];if(!id||!wheelAvail(id))return false;closeWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);wheelDo(id,c);return true};
  const confirmPoint=(k,c)=>{
   const key=pwIds()[k],id=pw?.id;if(!key||!id)return false;
   if(pw.mode==='color'){closePointWheel();pulse(c,HAPTIC.ringConfirm.amp,HAPTIC.ringConfirm.ms);changePointColor(id,key==='auto'?null:key);return true}
@@ -1586,7 +1592,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const isW=wheelOwner===c,isP=pw?.c===c;c.userData.ringHl=null;
   if(isW){
    const k=wheelKeyNow();if(k!==wheelKey)refreshWheel();
-   const r=c.userData.stick.update(ax,ay,settings.wheel.map(id=>!!id&&wheelAvail(id)));
+   const r=c.userData.stick.update(ax,ay,ringIds().map(id=>!!id&&wheelAvail(id)));
    const lh=laserLit(c,bd?.wheel),hlk=r.highlight!==null?r.highlight:lh; // the stick wins while it is tilted, else the sector under this hand's laser
    wheel.setHighlight(hlk);c.userData.ringHl=hlk;
    if(r.changed||lh!==c.userData.laserHl&&lh!==null)pulse(c,HAPTIC.ringHighlight.amp,HAPTIC.ringHighlight.ms);c.userData.laserHl=lh;
@@ -1838,13 +1844,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const v=sub.viewport,W=1600,H=Math.max(1,Math.round(W*v.w/Math.max(1,v.z)));
   const rt=new THREE.WebGLRenderTarget(W,H),prev=renderer.getRenderTarget(),hidden=[menu.mesh,badge,help.mesh,wheel.mesh,pointWheel.mesh,...controllers.map(c=>c.userData.ray)].filter(o=>o.visible);
   hidden.forEach(o=>{o.visible=false});const matBefore=mesh.material;mesh.material=material;
-  renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.setClearColor(ar?0x000000:BG,ar?0:1);renderer.clear();renderer.render(scene,sub);
+  renderer.xr.enabled=false;renderer.setRenderTarget(rt);renderer.setClearColor(vt.passthrough?0x000000:BG,vt.passthrough?0:1);renderer.clear();renderer.render(scene,sub);
   const px=new Uint8Array(W*H*4);renderer.readRenderTargetPixels(rt,0,0,W,H,px);
   renderer.setRenderTarget(prev);renderer.xr.enabled=true;mesh.material=matBefore;hidden.forEach(o=>{o.visible=true});rt.dispose();
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;const cx=cv.getContext('2d'),img=cx.createImageData(W,H);
   for(let y=0;y<H;y++)img.data.set(px.subarray((H-1-y)*W*4,(H-y)*W*4),y*W*4);
   cx.putImageData(img,0,0);
-  const d=new Date(),pad=n=>String(n).padStart(2,'0'),name='vrl-'+(ar?'ar':'vr')+'-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+'.png';
+  const d=new Date(),pad=n=>String(n).padStart(2,'0'),name='vrl-'+(vt.passthrough?'ar':'vr')+'-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+'.png';
   cv.toBlob(b=>{if(b)shots.push({name,url:URL.createObjectURL(b)})},'image/png');
   ui.flash=L.shotDone+' ('+(shots.length+1)+')';ui.flashUntil=performance.now()+3000;menu.refresh();for(const c of controllers)pulse(c,0.5,40);
  };
@@ -1933,6 +1939,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const bt=c.userData.source?.gamepad?.buttons;
    const axEv=(c.userData.axPress||=createButtonPress()).update(!!bt?.[4]?.pressed,nowF);
    if(axEv==='short')onAxShort(c);else if(axEv==='long')onAxLong(c);
+   if(vt.canToggle&&(c.userData.vtDbl||=createDoublePress()).update(!!bt?.[VIEW_TOGGLE_BUTTON]?.pressed,nowF))toggleView(c); // AR: double press of the thumbstick click (button 3)
    updateRings(c,nowF,bd);
    // build 464: the thumbstick (axes 2 / 3) only feeds the recording gate; its click (button 3) is unused again
    c.userData.gate.update(c.userData.source?.gamepad?.axes?.[2]||0,ay,performance.now());
@@ -2035,7 +2042,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
      renderer.setRenderTarget(lowTarget);renderer.render(volScene,sub);
     }});
     sizes=(ja?'縮小描画 ':'low ')+Math.round(f*100)+'% '+Math.ceil(w*f)+'×'+Math.ceil(h*f)+' / XR '+w+'×'+h+' ('+xrCam.cameras.length+(ja?'眼':' eyes')+')';
-    lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(ar?0x000000:BG,ar?0:1);
+    lowTarget.scissorTest=false;renderer.setRenderTarget(xrTarget);renderer.xr.enabled=true;renderer.setClearColor(vt.passthrough?0x000000:BG,vt.passthrough?0:1);
     compMaterial.uniforms.img.value=lowTarget.texture;compMaterial.uniforms.depthImg.value=lowTarget.depthTexture;compMaterial.uniforms.invSize.value.set(f/tw,f/th);
     mesh.material=compMaterial;
    }else{mesh.material=(diagAn.noRegion?plainSets().vars:variants)[variantKey()];const t=renderer.getRenderTarget();sizes=(ja?'直接描画 ':'direct ')+'XR '+(t?.width||0)+'×'+(t?.height||0)}
