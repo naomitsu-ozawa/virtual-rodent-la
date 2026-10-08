@@ -38,6 +38,25 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-08 — claude/webgpu-nvidia-oom (build 516: GPU split for the Intel-display / NVIDIA-compute hybrid, Linux only)
+
+**Agent:** Claude (Opus 5.5 worker)
+**Task:** On the owner's Linux hybrid (Intel UHD 770 drives the display, NVIDIA RTX 4070 Ti computes, WebGPU interop on) the status showed "COMPUTE FAIL · verify [anisotropic] … Requested allocation size (10407936) is smaller than the image requires". Give compute its own NVIDIA device and render on the display GPU, for that case only.
+
+### What changed
+- `docs/gpu-split.js` (new, pure): vendor keys from adapter.info / WebGL unmasked strings, `gpuSplitDecision` (split only when os = linux, compute adapter = nvidia, WebGL display GPU = intel and the low-power adapter = intel), `webglDisplayGpu` (throwaway WebGL context, released at once), status wording.
+- `docs/gpu-compute.js`: `requestVrlSplitRenderDevice` (second device on the low-power Intel adapter, same 4 GiB -> 2 -> 1 -> default ladder and lost-at-creation retry; own `renderLimitInfo` / `renderAdapterRequest` records so the compute device's status data is not overwritten), `adoptSplitGpuDevices`, `installGpuErrorListener(device,'render')` (render-device errors become "Render error", never a compute FAIL), `ensureGpuFilterDevice` does not adopt the renderer's device in split mode (it takes the handed-over NVIDIA device; after a loss it requests a new NVIDIA one). The status line shows "Render WEBGPU intel (display) · Compute … nvidia (split)" and the last error is no longer cut at 96 characters.
+- `docs/scene-view.js` `create3DRenderer`: split renderer on the render device; if that device or its `init()` fails the render device is destroyed and the code is the build-515 path (one shared NVIDIA device, then WebGL).
+- `tests/unit/gpu-split.test.js`.
+
+### Why
+- Chrome 155 on Linux allocates WebGPU shared images (canvas `getCurrentTexture`, `copyExternalImageToTexture` from a canvas / ImageBitmap such as three.js `CanvasTexture`, `importExternalTexture`) with Chrome's own VkDevice, which is the display GPU, and imports them into Dawn's device by opaque FD. On an NVIDIA Dawn device the import fails Dawn's size check (MemoryServiceImplementationOpaqueFD.cpp). `createTexture` / `createBuffer` / `writeTexture` / `writeBuffer` / compute do not take that path. Compute and the three.js renderer shared one device, so the verify error scope picked up the render import error and mislabelled compute. Chrome developers recommend the integrated GPU for presenting on Linux hybrids.
+- Owner's instruction: handle ONLY this combination; single-GPU machines, Mac and iPad keep exactly the old single-device path. Every gate runs before any extra work (no second requestAdapter, no WebGL context) and any uncertainty (WebGL unreadable, software renderer, display NVIDIA, AMD iGPU, low-power adapter is the NVIDIA one) means no split. Linux only: the cause is Vulkan opaque-FD import; the Windows / D3D12 sharing mechanism was not verified.
+- In split mode GPU-resident meshes are off: `createGpuResidentFloat3Attribute` returns null when the compute device is not the renderer's, so meshes come back through the existing CPU readback path. The volume renderer (`MedicalVolumeRenderer`) uses the render (Intel) device with CPU arrays only.
+
+### Follow-up / open questions
+- Needs a real hybrid machine to confirm (the headless checks run on SwiftShader, one adapter, and only prove that the no-split path is unchanged). Volume raycast / pick / MPR now run on the Intel device (slower, shares system memory); VRAM is used on two devices.
+
 ## 2026-10-07 — claude/vr-render-guards (automated VR render guards, no app change)
 
 **Agent:** Claude (Opus 5.5 worker)

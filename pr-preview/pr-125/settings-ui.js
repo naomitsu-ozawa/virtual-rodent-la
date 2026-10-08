@@ -1,12 +1,12 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20261008-build515';
-import { request3DRender } from './scene3d.js?v=20261008-build515';
-import { updateGpuStatus } from './gpu-compute.js?v=20261008-build515';
-import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build515';
-import { tr } from './i18n.js?v=20261008-build515';
-import { fmt } from './utils.js?v=20261008-build515';
-import { gpuPreferenceSupported, gpuEffectivePreference } from './gpu-preference.js?v=20261008-build515';
+import { settings } from './app-settings.js?v=20261008-build516';
+import { request3DRender } from './scene3d.js?v=20261008-build516';
+import { updateGpuStatus } from './gpu-compute.js?v=20261008-build516';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build516';
+import { tr } from './i18n.js?v=20261008-build516';
+import { fmt } from './utils.js?v=20261008-build516';
+import { gpuPreferenceSupported, gpuEffectivePreference } from './gpu-preference.js?v=20261008-build516';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
