@@ -8,33 +8,33 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build509';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build509';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build509';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build509';
-import { datasetFingerprint } from './project-file.js?v=20261008-build509';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build509';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build509';
-import { buildClsData } from './point-cls.js?v=20261008-build509';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build509';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build509';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build509';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build509';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build509';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build509';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build509';
-import { tr } from './i18n.js?v=20261008-build509';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build509';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build509';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build509';
-import { createVrMeasure } from './vr-measure.js?v=20261008-build509';
-import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE } from './vr-section-frame.js?v=20261008-build509';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build509';
-import { createProbeGate } from './measure-label.js?v=20261008-build509';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build509';
-import { APP_BUILD } from './version.js?v=20261008-build509';
-import { wc, ww } from './ui-shell.js?v=20261008-build509';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build509';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build511';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build511';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build511';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build511';
+import { datasetFingerprint } from './project-file.js?v=20261008-build511';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build511';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build511';
+import { buildClsData } from './point-cls.js?v=20261008-build511';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build511';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build511';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build511';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build511';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build511';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build511';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build511';
+import { tr } from './i18n.js?v=20261008-build511';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build511';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build511';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build511';
+import { createVrMeasure } from './vr-measure.js?v=20261008-build511';
+import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE } from './vr-section-frame.js?v=20261008-build511';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build511';
+import { createProbeGate } from './measure-label.js?v=20261008-build511';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build511';
+import { APP_BUILD } from './version.js?v=20261008-build511';
+import { wc, ww } from './ui-shell.js?v=20261008-build511';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build511';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1089,12 +1089,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const handle=new THREE.Mesh(new THREE.PlaneGeometry(HANDLE,HANDLE),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,side:THREE.DoubleSide,depthTest:false,depthWrite:false}));
   handle.rotation.y=Math.PI/2;handle.renderOrder=3;handle.userData.ctx=canvas.getContext('2d');obj.add(handle);
   // one-side mode (build 346): side picks the kept half along local X; the
-  // arrow points at the removed half
-  const arrow=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,0.02,0),new THREE.Vector3(0.09,0,0),new THREE.Vector3(0.065,-0.02,0)]),mat);
+  // arrow points at the removed half. build 511: shown only while the plane is lit / grabbed (the glow loop in the frame update), short (ARROW_LEN), own material (it fades; no depth test: it is on top whenever it is drawn)
+  const aL=ARROW_LEN,amat=new THREE.LineBasicMaterial({color,transparent:true,opacity:0,depthTest:false,depthWrite:false});
+  const arrow=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(aL,0,0),new THREE.Vector3(aL,0,0),new THREE.Vector3(0.72*aL,0.22*aL,0),new THREE.Vector3(aL,0,0),new THREE.Vector3(0.72*aL,-0.22*aL,0)]),amat);
   arrow.renderOrder=2;arrow.visible=false;obj.add(arrow);
-  return{obj,mat,arrow,glow,handle,h,color,cut,side:1,hand:null};
+  return{obj,mat,arrow,amat,aOp:0,aFlash:0,glow,handle,h,color,cut,side:1,hand:null};
  };
- const disposePlane=pl=>{pl.obj.removeFromParent();pl.obj.traverse(o=>{o.geometry?.dispose()});pl.mat.dispose();pl.glow.material.dispose();pl.handle.material.map.dispose();pl.handle.material.dispose()};
+ const disposePlane=pl=>{pl.obj.removeFromParent();pl.obj.traverse(o=>{o.geometry?.dispose()});pl.mat.dispose();pl.amat.dispose();pl.glow.material.dispose();pl.handle.material.map.dispose();pl.handle.material.dispose()};
  // number + corner of every handle from the plane's index (after add / remove, not per frame)
  // build 397: under the number, the hand that holds or last held the plane (右 / 左)
  const drawHandle=(pl,i)=>{
@@ -1461,7 +1462,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const itemOf=id=>WHEEL_ITEMS.find(i=>i.id===id),itemName=id=>id?(ja?itemOf(id).ja:itemOf(id).en):null;
  const nextSection=()=>{if(planes.length<2)return;const i=planes.indexOf(section.selected);section.selected=planes[(i+1)%planes.length];menu.refresh()};
  const canFlipPlane=pl=>!!pl&&pl.cut&&settings.cut===2; // the 向きを反転 button of the 断面 tab is shown under the same condition
- const flipPlane=pl=>{if(canFlipPlane(pl))pl.side=-pl.side};
+ const flipPlane=pl=>{if(canFlipPlane(pl)){pl.side=-pl.side;pl.aFlash=performance.now()+ARROW_FLASH_MS}}; // build 511: the arrow shows for a moment after 「切り口反転」 (the laser is on the menu then, so the plane is not lit)
  const wheelAvail=id=>{
   switch(id){
    case'undo':return undo.size>0;
@@ -1971,7 +1972,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // frame: own colour; a glow band in the hand's colour while that hand points at its band / tag or drags it
   if(section.on){const glowBy=new Map();for(const c of controllers){const rr=c.userData.press?.res||c.userData.res,pl=c.userData.drag?.pl||(rr?.kind==='section'?rr.ref.pl:null);if(pl&&!glowBy.has(pl))glowBy.set(pl,handColor(c))}const occF=occlusionGpu();for(const pl of planes){const gc=glowBy.get(pl);pl.glow.visible=gc!==undefined;if(gc!==undefined)pl.glow.material.color.setHex(gc);
    // build 509: under 「実際に隠す」 the part of the frame (outline, arrow, tag) behind tissue is not drawn (no ghost); lit = the laser is on its band / tag, or it is held (the glow shows): then all of it is on top
-   const dt=frameDepthTest(occF,gc!==undefined);pl.mat.depthTest=dt;pl.handle.material.depthTest=dt}}
+   const dTest=frameDepthTest(occF,gc!==undefined);pl.mat.depthTest=dTest;pl.handle.material.depthTest=dTest;
+   pl.aOp=arrowFade(pl.aOp,gc!==undefined||performance.now()<pl.aFlash,dt);pl.amat.opacity=pl.aOp}} // build 511: the arrow fades in while the plane is lit / grabbed (gc), out otherwise
   const st=section.on?(controllers.some(c=>c.userData.drag)?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}
   if(material){
@@ -1985,7 +1987,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
      pl.obj.getWorldPosition(tmpP);tmpN.set(1,0,0).transformDirection(pl.obj.matrixWorld);
      tmpQ.copy(tmpP).add(tmpN);mesh.worldToLocal(tmpP);mesh.worldToLocal(tmpQ);tmpN.subVectors(tmpQ,tmpP).normalize();
      if(settings.cut===2){if(pl.side<0)tmpN.negate()}else if(tmpN.dot(tmpE)-tmpN.dot(tmpP)>0)tmpN.negate();
-     pl.arrow.visible=settings.cut===2&&pl.cut;pl.arrow.scale.x=-pl.side;
+     pl.arrow.visible=arrowShown(settings.cut,pl.cut,pl.aOp);pl.arrow.scale.x=-pl.side;
      u.cutPlanes.value[n].set(tmpN.x,tmpN.y,tmpN.z,tmpN.dot(tmpP));if(pl.cut&&settings.cut)cutBits|=1<<n;n++;
     }}
    if(bench.noSection){n=0;cutBits=0}

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 // (2) the section limit is 10 (was 4). vr-section-frame.js is pure; vr-view.js (WebXR) and its shader are checked on the source, the run in the XR stub (see the PR).
 const ver = JSON.parse(readFileSync(new URL('../../docs/version.json', import.meta.url), 'utf8')).version, tag = '?v=' + ver.replace(/\./g, '').replace(/-(\d+)$/, '-build$1');
 const load = f => import(/* @vite-ignore */ '../../docs/' + f + '.js' + tag);
-const { MAX_SECTION_PLANES, PLANE_COLORS, nextPlaneColor, frameDepthTest, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE } = await load('vr-section-frame');
+const { MAX_SECTION_PLANES, PLANE_COLORS, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FADE_S, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE } = await load('vr-section-frame');
 const { gpuOcclusionActive, occludedPass } = await load('vr-depth');
 const read = f => readFileSync(new URL('../../docs/' + f, import.meta.url), 'utf8');
 const src = read('vr-view.js');
@@ -102,13 +102,36 @@ describe('the section frame under the depth occlusion', () => {
   });
   it('vr-view.js: the outline + arrow (one material) and the number tag are switched per frame from the same lit set as the glow; the glow and the other materials never write depth', () => {
     expect(has(src, 'const occF=occlusionGpu();for(const pl of planes){const gc=glowBy.get(pl);')).toBe(true);
-    expect(has(src, 'const dt=frameDepthTest(occF,gc!==undefined);pl.mat.depthTest=dt;pl.handle.material.depthTest=dt')).toBe(true);
+    expect(has(src, 'const dTest=frameDepthTest(occF,gc!==undefined);pl.mat.depthTest=dTest;pl.handle.material.depthTest=dTest')).toBe(true);
     // the glow (shown only while lit) is always on top
     expect(src).toMatch(/MeshBasicMaterial\(\{color:0xffffff,transparent:true,opacity:0\.95,side:THREE\.DoubleSide,depthTest:false,depthWrite:false/);
     // a thin frame / tag must not write depth: with the test on they would clip the labels drawn after them
     expect(has(src, 'new THREE.LineBasicMaterial({color,transparent:true,depthTest:false,depthWrite:false}),h=0.12')).toBe(true);
     expect(has(src, 'side:THREE.DoubleSide,depthTest:false,depthWrite:false}));\n  handle.rotation.y')).toBe(true);
-    expect(has(src, 'arrow=new THREE.LineSegments(')).toBe(true); expect(has(src, '0.065,-0.02,0)]),mat);')).toBe(true); // the arrow shares mat
+    expect(has(src, 'arrow=new THREE.LineSegments(')).toBe(true); // build 511: the arrow has its own material (it fades), never depth tested, so it is not in the lines above
+  });
+  it('build 511 arrow: short, own material without depth test, visible only while lit / grabbed (fade), shown for a moment after the flip, not pickable', () => {
+    expect(ARROW_LEN).toBeGreaterThanOrEqual(0.03); expect(ARROW_LEN).toBeLessThanOrEqual(0.04); // was 0.09; the frame is 0.24 wide
+    expect(has(src, 'const aL=ARROW_LEN,amat=new THREE.LineBasicMaterial({color,transparent:true,opacity:0,depthTest:false,depthWrite:false});')).toBe(true);
+    expect(has(src, 'new THREE.Vector3(aL,0,0),new THREE.Vector3(0.72*aL,-0.22*aL,0)]),amat);')).toBe(true);
+    expect(has(src, 'pl.aOp=arrowFade(pl.aOp,gc!==undefined||performance.now()<pl.aFlash,dt);pl.amat.opacity=pl.aOp')).toBe(true); // gc = lit (laser on the band / tag) or grabbed (the glow set)
+    expect(has(src, 'pl.arrow.visible=arrowShown(settings.cut,pl.cut,pl.aOp);pl.arrow.scale.x=-pl.side;')).toBe(true); // the flip (side) still turns it
+    expect(has(src, 'pl.side=-pl.side;pl.aFlash=performance.now()+ARROW_FLASH_MS')).toBe(true);
+    expect(has(src, 'pl.mat.dispose();pl.amat.dispose();')).toBe(true);
+    expect(src.includes('arrow.visible=settings.cut===2&&pl.cut')).toBe(false); // the old always-on condition is gone
+    // not pickable: only the number tags (tabHit) and the frame band (maths on the plane) are hit-tested; the arrow is never in a raycast list
+    expect(has(src, 'for(const p of list)tabList.push(p.handle)')).toBe(true);
+    expect(/intersectObjects?\([^)]*arrow/.test(src)).toBe(false);
+  });
+  it('arrowFade / arrowShown: hidden when not lit or grabbed, visible when lit or grabbed, fades over ARROW_FADE_S, only in the one-side cut of a clipping plane', () => {
+    expect(arrowShown(2, true, 0)).toBe(false); // not lit, not grabbed: opacity 0 -> hidden
+    let op = 0; for (let i = 0; i < 3; i++) op = arrowFade(op, false, 0.05); expect(op).toBe(0); // stays hidden
+    op = arrowFade(0, true, 0.05); expect(op).toBeGreaterThan(0); expect(op).toBeLessThan(1); expect(arrowShown(2, true, op)).toBe(true); // lit / grabbed: appears at once, fading in
+    expect(arrowFade(0, true, ARROW_FADE_S)).toBe(1); expect(arrowFade(1, true, 1)).toBe(1); // full after the fade time, clamped
+    expect(arrowFade(1, false, ARROW_FADE_S)).toBe(0); expect(arrowShown(2, true, arrowFade(1, false, ARROW_FADE_S))).toBe(false); // un-lit: gone after the fade time
+    expect(arrowFade(0.5, true, 0)).toBe(0.5); expect(arrowFade(0.5, false, -1)).toBe(0.5); // dt 0 (first frame) / negative: unchanged
+    expect(arrowShown(1, true, 1)).toBe(false); expect(arrowShown(0, true, 1)).toBe(false); expect(arrowShown(2, false, 1)).toBe(false); expect(arrowShown(2, true, 1)).toBe(true); // 近い側 / off / a non-clipping plane: no arrow
+    expect(ARROW_FLASH_MS).toBeGreaterThan(0); expect(ARROW_FLASH_MS).toBeLessThanOrEqual(2000);
   });
   it('the frame needs no extra bias on the cut face: the volume writes the cut face depth pushed behind the plane; a slice writes none', () => {
     expect(has(fs, 'gl_FragDepth=clamp(cp.z/cp.w*0.5+0.5,0.0,1.0)')).toBe(true);

@@ -132,7 +132,7 @@ describe('the fragment shader writes depth (source checks)', () => {
 });
 
 describe('collateral: what lies inside the volume stays visible (source checks)', () => {
-  it('the section frame (+ arrow) starts without a depth test (build 509: switched per frame, see vr-section-frame.test.js) and never writes depth; the glow has no depth test; all are drawn after the volume; the boards (menu / help), the hand cue and the laser keep the depth test (they are outside the volume)', () => {
+  it('the section frame starts without a depth test (build 509: switched per frame, see vr-section-frame.test.js) and never writes depth; the glow has no depth test; all are drawn after the volume; the boards (menu / help), the hand cue and the laser keep the depth test (they are outside the volume)', () => {
     expect(has(src, "new THREE.LineBasicMaterial({color,transparent:true,depthTest:false,depthWrite:false}),h=0.12")).toBe(true);
     expect(has(src, 'frameLine.renderOrder=2')).toBe(true); expect(has(src, 'arrow.renderOrder=2')).toBe(true); expect(has(src, 'glow.renderOrder=3')).toBe(true);
     expect(src).toMatch(/MeshBasicMaterial\(\{color:0xffffff,transparent:true,opacity:0\.95,side:THREE\.DoubleSide,depthTest:false,depthWrite:false/);
