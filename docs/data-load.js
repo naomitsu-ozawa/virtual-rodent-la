@@ -6,6 +6,7 @@ import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-st
 import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20261008-build522';
 import { footer, resetFilterBtn, wc, ww, surfaceSmoothEnabled, surfaceSmoothStrength, planes, spikeHoleStrength, spikeHoleThreshold, nlmStrength, nlmSearchRadius, nlmPatchRadius, anisotropicStrength, anisotropicIterations, smoothingType, gaussianStrength, spatialPasses, sigmoidStrength, sigmoidCenter, sigmoidWidth, bilateralStrength, bilateralSpatial, bilateralIntensity, bilateralPasses, tvWeight, tvIterations, unsharpRadius, unsharpAmount, unsharpThreshold, projectSaveBtn, list, selected, prog, volumeAnalysisToggle, threeLabel, state, renderModeToggle, gaussianBtn, spikeHoleBtn, nlmBtn, anisotropicBtn, sigmoidBtn, bilateralBtn, tvBtn, unsharpBtn, filterAddSelect, filterAddButton, ctRangeAuto, ctRangeFull, $, folderBtn, demoBtn, progLabel, bar, anisotropicKappa, tvEps } from './ui-shell.js?v=20261008-build522';
 import { commentsForProject, loadProjectComments, markCommentsSaved } from './comments.js?v=20261008-build522';
+import { normalizeAnalysisLabel } from './analysis-label.js?v=20261008-build522';
 import { measurementsForProject, loadProjectMeasurements, markMeasurementsSaved } from './measurements.js?v=20261008-build522';
 import { compareFingerprints, resolveProjectMatch, legacySpacingUpgrade, projectMismatchReason, datasetFingerprint, decodeRuns, packProject, PROJECT_EXTENSION, encodeRuns } from './project-file.js?v=20261008-build522';
 import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentNeedsVoxelMask, segmentEditGen, segmentExclusive, applyExclusiveRanges, commitExclusiveRanges } from './segments.js?v=20261008-build522';
@@ -444,7 +445,7 @@ export async function applyProject({project,files}){
  for(const e of project.analysis?.regions||[]){
   const keys=(e.segmentKeys||[]).filter(k=>SEGMENT_PRESET_ORDER.includes(k));if(!keys.length)continue;
   const bytes=files[e.runs];if(!bytes)throw new Error('missing '+e.runs);
-  analysis.push({key:e.key,segmentKeys:keys,color:Number(e.color),visible:e.visible!==false,selected:e.selected===true,merged:!!e.merged,groupId:e.groupId||null,runsBySlice:decodeRuns(bytes,dims)});
+  analysis.push({key:e.key,segmentKeys:keys,color:Number(e.color),visible:e.visible!==false,selected:e.selected===true,merged:!!e.merged,groupId:e.groupId||null,label:normalizeAnalysisLabel(e.label)||undefined,runsBySlice:decodeRuns(bytes,dims)}); // build 523: the pinned label (projects before 523 have none)
  }
  // filters (replayed through the filter controls)
  resetFilterBtn.click();

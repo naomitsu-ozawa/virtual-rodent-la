@@ -1,6 +1,7 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
 import { mark3DCurrent, mark3DStale } from './three-state.js?v=20261008-build522';
+import { labelForProject, normalizeAnalysisLabel } from './analysis-label.js?v=20261008-build522';
 import { set3DBusy, set3DBusyLabel } from './three-status.js?v=20261008-build522';
 import { meshSegmentRanges, syncSectionClipParent, applySectionClippingMaterials, refreshEditedSegmentSurface, segmentUsesRunSurface, ensureGpuResidentCpuPositions } from './surface-build.js?v=20261008-build522';
 import { sceneState, setAnalysisFilterSignature, incSourceRenderRevision, sourceRenderRevision, currentLanguage, sectionViewOpen, sectionViewPlane, setAnalysisEditTool, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisCutStroke, setAnalysisCutScreen, setAnalysisPendingCut, current3DVolume, volume, volumeAnalysisMode, analysisRegions, threeRenderMode, threeDDirty, analysisFocusedRegionId, volumeAnalysisBusy, setVolumeAnalysisBusy, setAnalysisRegions, incNextAnalysisRegionId, nextAnalysisColorIndex, incNextAnalysisColorIndex, setNextAnalysisColorIndex, analysisEditTargetKey, sourceVolume, setAnalysisFocusedRegionId, analysisEditTool, analysisEditTargetMode } from './state.js?v=20261008-build522';
@@ -350,6 +351,7 @@ export async function trimAnalysisRegionsAfterEdit(key,refs){
   let runs=ref.runsBySlice;if(st.keepRuns)runs=intersectRunArrays(runs,st.keepRuns,d);if(st.excludeRuns)runs=subtractRunArrays(runs,st.excludeRuns,d);
   const voxels=analysisRunsVoxelCount(runs);if(!voxels)continue;
   const id=incNextAnalysisRegionId(false),region={id,regionId:'r'+id,groupId:ref.groupId||null,key,segmentKeys:[key],runsBySlice:runs,voxels,mm3:voxels*vox,merged:!!ref.merged,selected:!!ref.selected,focused:false,visible:ref.visible!==false,meshGroup:null,color:ref.color};
+  {const lb=normalizeAnalysisLabel(ref.label);if(lb)region.label=lb}
   analysisRegions.push(region);await attachAnalysisRegion(region,v);if(ref.focused&&focusId==null)focusId=id;
  }
  if(focusId!=null)setAnalysisFocusedRegionId(focusId);
@@ -358,13 +360,14 @@ export async function trimAnalysisRegionsAfterEdit(key,refs){
 // build 408: analysis results in the project file (kept like an edit): meta + runs per region
 // build 441: the tick (selection) is saved too; projects saved before 441 load with every result unticked, as before
 export function analysisRegionsForProject(){
- return analysisRegions.filter(r=>r.runsBySlice&&r.voxels>0).map(r=>({key:r.key,segmentKeys:[...(r.segmentKeys||[])],color:Number(r.color??ANALYSIS_REGION_COLORS[0]),visible:r.visible!==false,selected:!!r.selected,merged:!!r.merged,groupId:r.groupId||null,runsBySlice:r.runsBySlice}));
+ return analysisRegions.filter(r=>r.runsBySlice&&r.voxels>0).map(r=>({key:r.key,segmentKeys:[...(r.segmentKeys||[])],color:Number(r.color??ANALYSIS_REGION_COLORS[0]),visible:r.visible!==false,selected:!!r.selected,merged:!!r.merged,groupId:r.groupId||null,label:labelForProject(r),runsBySlice:r.runsBySlice})); // build 523: label = the pinned label {anchor,offset?} (voxel units); omitted when there is none
 }
 export async function restoreAnalysisRegions(list,v=current3DVolume||volume){
  if(!v||!list?.length)return;const vox=v.spacing[0]*v.spacing[1]*v.spacing[2];
  for(const e of list){
   const voxels=analysisRunsVoxelCount(e.runsBySlice);if(!voxels)continue;
   const id=incNextAnalysisRegionId(false),region={id,regionId:'r'+id,groupId:e.groupId||null,key:e.key,segmentKeys:e.segmentKeys,runsBySlice:e.runsBySlice,voxels,mm3:voxels*vox,merged:!!e.merged,selected:!!e.selected,focused:false,visible:e.visible!==false,meshGroup:null,color:e.color};
+  {const lb=normalizeAnalysisLabel(e.label);if(lb)region.label=lb}
   analysisRegions.push(region);await attachAnalysisRegion(region,v);
  }
  // build 428: the project's filters are already replayed: the results belong to them
@@ -374,7 +377,7 @@ export async function restoreAnalysisRegions(list,v=current3DVolume||volume){
 }
 export function snapshotAnalysisRegionsForSegment(key){
  return analysisRegions.filter(r=>r.segmentKeys.length===1&&r.segmentKeys[0]===key).map(r=>({
-  runsBySlice:r.runsBySlice,color:r.color,visible:r.visible,selected:r.selected,focused:r.id===analysisFocusedRegionId,merged:r.merged,groupId:r.groupId||null
+  runsBySlice:r.runsBySlice,color:r.color,visible:r.visible,selected:r.selected,focused:r.id===analysisFocusedRegionId,merged:r.merged,groupId:r.groupId||null,label:labelForProject(r)
  }));
 }
 export function editSnapshot(key){const st=segmentEditState[key];return{keepRuns:st.keepRuns,excludeRuns:st.excludeRuns,cutRuns:st.cutRuns,rawCutSurface:!!st.rawCutSurface,analysisRefs:snapshotAnalysisRegionsForSegment(key)}}
@@ -392,6 +395,7 @@ export async function rebuildEditedAnalysisForSegment(key,referenceRegions=null)
   const primary=matches[0],used=usedRefs.get(primary)||0;usedRefs.set(primary,used+1);
   const id=incNextAnalysisRegionId(false),voxels=comp.voxels,mm3=voxels*v.spacing[0]*v.spacing[1]*v.spacing[2];
   const region={id,regionId:'r'+id,groupId:used===0?primary.groupId:null,key,segmentKeys:[key],runsBySlice:comp.runsBySlice,voxels,mm3,merged:used===0&&!!primary.merged,selected:!!primary.selected,focused:false,visible:primary.visible!==false,meshGroup:null,color:used===0?primary.color:nextAnalysisColor()};
+  if(used===0){const lb=normalizeAnalysisLabel(primary.label);if(lb)region.label=lb} // build 523: the first piece keeps the pinned label
   analysisRegions.push(region);await attachAnalysisRegion(region,v);if(primary.focused&&focusId==null)focusId=id;
   created++;if(created>=64)break;
  }
