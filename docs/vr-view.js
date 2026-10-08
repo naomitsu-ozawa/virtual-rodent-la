@@ -8,35 +8,35 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build519';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build519';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build519';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build519';
-import { datasetFingerprint } from './project-file.js?v=20261008-build519';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build519';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build519';
-import { buildClsData } from './point-cls.js?v=20261008-build519';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build519';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build519';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build519';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build519';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build519';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build519';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build519';
-import { tr } from './i18n.js?v=20261008-build519';
-import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261008-build519';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build519';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261008-build519';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build519';
-import { createVrMeasure } from './vr-measure.js?v=20261008-build519';
-import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE, FLING_UNDO_MS, createVelocityTracker, flingDecision, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace } from './vr-section-frame.js?v=20261008-build519';
-import { createUndoButton } from './vr-undo-button.js?v=20261008-build519';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build519';
-import { createProbeGate } from './measure-label.js?v=20261008-build519';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build519';
-import { APP_BUILD } from './version.js?v=20261008-build519';
-import { wc, ww } from './ui-shell.js?v=20261008-build519';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build519';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build521';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build521';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build521';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build521';
+import { datasetFingerprint } from './project-file.js?v=20261008-build521';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build521';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build521';
+import { buildClsData } from './point-cls.js?v=20261008-build521';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build521';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build521';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build521';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build521';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build521';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build521';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build521';
+import { tr } from './i18n.js?v=20261008-build521';
+import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261008-build521';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build521';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261008-build521';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build521';
+import { createVrMeasure } from './vr-measure.js?v=20261008-build521';
+import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE, FLING_UNDO_MS, createVelocityTracker, flingDecision, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace } from './vr-section-frame.js?v=20261008-build521';
+import { createUndoButton } from './vr-undo-button.js?v=20261008-build521';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build521';
+import { createProbeGate } from './measure-label.js?v=20261008-build521';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build521';
+import { APP_BUILD } from './version.js?v=20261008-build521';
+import { wc, ww } from './ui-shell.js?v=20261008-build521';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build521';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1160,7 +1160,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const hand=c.userData.source?.handedness||null;if(hand!==pl.hand){pl.hand=hand;drawHandle(pl,planes.indexOf(pl))}
   if(section.selected!==pl){section.selected=pl;pulse(c,HAPTIC.select.amp,HAPTIC.select.ms)}
   const fl=sectionFollowStart({p0:hp.p,q0:hp.q,c0,Qp0});
-  c.userData.drag={pl,rel:fl.rel,Qrel:fl.Qrel,volTouched:false};(c.userData.fv||=createVelocityTracker()).reset(); // build 521: hand velocity for the throw
+  c.userData.drag={pl,rel:fl.rel,Qrel:fl.Qrel,volTouched:false}; // build 521: volTouched = a grip / two-hand gesture moved the volume during the drag (no throw then)
   pr.consumed=true; // a press that became a drag never records / selects on release
   menu.refresh();
  };
@@ -1498,7 +1498,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
    // build 480: a distance label under the laser: the press grabs it (it follows the laser at that distance until the release); no point / section action starts
    if(res.kind==='mlabel'){pr.consumed=true;pr.dragPl=null;c.userData.lblDrag={id:res.ref.id,dist:res.ref.distance,grab:{x:res.ref.pos.x-res.ref.hit.x,y:res.ref.pos.y-res.ref.hit.y,z:res.ref.pos.z-res.ref.hit.z}};pulse(c,HAPTIC.select.amp,HAPTIC.select.ms)}
-   pr.tp.press(now);c.userData.press=pr;
+   pr.tp.press(now);c.userData.press=pr;(c.userData.fv||=createVelocityTracker()).reset(); // build 521: a new press starts a new hand-velocity record
    // a frame band or number tag selects its section at the press (the selection never moves it)
    if(res.kind==='section'&&res.ref.pl){section.selected=res.ref.pl;pulse(c,HAPTIC.select.amp,HAPTIC.select.ms);menu.refresh()}
   });
@@ -1994,7 +1994,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
    c.userData.res=res;if(res.kind==='point')hoverIds.add(res.ref.id);
    if(!c.userData.press&&!c.userData.drag){const hpz=c.userData.hoverPulse||=createHoverPulse({debounceMs:HAPTIC.hover.debounceMs});if(hpz.update(res.kind==='point'?res.ref.id:null,nowF))pulse(c,HAPTIC.hover.amp,HAPTIC.hover.ms)}
    updatePress(c,nowF);
-   {const dg=c.userData.drag;if(dg){c.getWorldPosition(tmpFv);(c.userData.fv||=createVelocityTracker()).push(nowF,tmpFv);if(twoHand||grabbing.size)dg.volTouched=true}} // build 521: world position of the dragging hand; a grip / two-hand gesture during the drag rules the throw out
+   // build 521: world position of the pressing / dragging hand (from the press on, so a quick flick right after the drag starts still has samples); a grip / two-hand gesture restarts it and rules the throw out
+   {const dg=c.userData.drag,fv=c.userData.fv||=createVelocityTracker();if(twoHand||grabbing.size){fv.reset();if(dg)dg.volTouched=true}else if(dg||c.userData.press){c.getWorldPosition(tmpFv);fv.push(nowF,tmpFv)}}
    {const ld=c.userData.lblDrag;if(ld&&c.userData.press){setRay(c);const o=raycaster.ray.origin,q=raycaster.ray.direction;tmpRc.set(o.x+q.x*ld.dist+ld.grab.x,o.y+q.y*ld.dist+ld.grab.y,o.z+q.z*ld.dist+ld.grab.z);vpMeasure.dragLabel(ld.id,tmpRc)}} // build 480: the grabbed label follows the laser
    const ref=res.ref,dist=board?board.distance:rh?rh.distance:(ref&&(res.kind==='point'||res.kind==='mlabel'||res.kind==='section'||res.kind==='record'||res.kind==='label'||res.kind==='move'||res.kind==='tissue')?(ref.t??ref.distance):null);
    const busy=!!c.userData.drag,rec=res.kind==='record'||res.kind==='move',cur=!busy&&rec&&!!ref?.voxel,curSurf=cur&&surfaceActive(),curSec=cur&&!surfaceActive();

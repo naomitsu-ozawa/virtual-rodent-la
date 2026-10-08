@@ -209,9 +209,10 @@ describe('vr-view.js wiring (static)', () => {
     expect(t).toContain('flingDecision({v,from:tmpFv,center:tmpFc,head,blocked:!!dg.volTouched||!!twoHand||grabbing.size>0})');
     expect(t).not.toContain('.push('); // no extra sample at the release (the event carries the last frame's pose)
   });
-  it('the hand is sampled per frame while a section is dragged; a grip / two-hand gesture marks the drag as touched; startDrag resets', () => {
-    expect(src).toContain('(c.userData.fv||=createVelocityTracker()).push(nowF,tmpFv);if(twoHand||grabbing.size)dg.volTouched=true');
-    expect(src).toContain('volTouched:false};(c.userData.fv||=createVelocityTracker()).reset()');
+  it('the hand is sampled per frame from the press on; a grip / two-hand gesture restarts the record and marks the drag as touched; a new press resets', () => {
+    expect(src).toContain('if(twoHand||grabbing.size){fv.reset();if(dg)dg.volTouched=true}else if(dg||c.userData.press){c.getWorldPosition(tmpFv);fv.push(nowF,tmpFv)}');
+    expect(src).toContain('volTouched:false}');
+    expect(src).toContain('c.userData.press=pr;(c.userData.fv||=createVelocityTracker()).reset()');
   });
   it('removePlane = detachPlane + disposePlane; a deleted plane leaves the list at once, flies, fades and is disposed (also at cleanup)', () => {
     expect(src).toContain('const removePlane=pl=>{detachPlane(pl);disposePlane(pl)}');
