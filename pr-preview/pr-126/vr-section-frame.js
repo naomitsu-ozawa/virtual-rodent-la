@@ -15,6 +15,13 @@ export const nextPlaneColor = usedColors => { const used = new Set(usedColors); 
 // The frame lies ON the cut plane and the volume writes the cut face depth pushed behind the plane (vr-depth.js depthBias), so the part of the frame on the cut face passes the test.
 export const frameDepthTest = (occlusion, lit) => !!occlusion && !lit;
 
+// build 511 (owner: the one-side arrow floated in front of the cut face and could not be depth-hidden): the arrow is drawn ONLY while its plane is lit (the laser on its band / tag) or grabbed,
+// always on top then (own material, no depth test), and short (ARROW_LEN m, was 0.09: the frame is 0.24 m wide). It fades in / out over ARROW_FADE_S instead of popping. arrowFade: the opacity 0..1 after dt seconds.
+export const ARROW_LEN = 0.04, ARROW_FADE_S = 0.15, ARROW_FLASH_MS = 1000; // ARROW_FLASH_MS: after 「切り口反転」 the arrow shows this long (the laser is on the menu, the plane is not lit)
+export const arrowFade = (op, lit, dt) => Math.min(1, Math.max(0, op + (lit ? 1 : -1) * Math.max(0, dt) / ARROW_FADE_S));
+// drawn when the one-side cut (settings.cut === 2) is on for a clipping plane and the fade has not run out
+export const arrowShown = (cutMode, planeCut, op) => cutMode === 2 && !!planeCut && op > 0;
+
 // the section number tag is picked before anything else (vr-point.js resolveTriggerTarget): when the tissue surface along the same ray is nearer than the tag by more than eps
 // (world metres) and the frame is hidden by the tissue (occlusion on), the tag is not there for the laser. tagDistance / tissueDistance: world metres along the ray (null = none).
 export const tagBehindTissue = (occlusion, tagDistance, tissueDistance, eps = 1e-4) =>
