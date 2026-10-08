@@ -99,12 +99,12 @@ export async function renderBatch(args) {
     if (c.useClsRaw) u.clsTex = { value: clsRaw };
     if (c.noCls) { u.useCls = { value: 0 }; u.distInCls = { value: 0 }; }
     const m = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: sh.vs, fragmentShader: hit ? hitFs(sh.fs) : sh.fs, side: THREE.BackSide, toneMapped: false, uniforms: u, defines: Object.fromEntries((c.defines || []).map(d => [d, ''])) });
-    if (ray || hit) { m.blending = THREE.NoBlending; m.transparent = false; } else { m.transparent = true; m.depthWrite = false; m.blending = THREE.CustomBlending; m.blendSrc = THREE.OneFactor; m.blendDst = THREE.OneMinusSrcAlphaFactor; }
+    if (ray || hit) { m.blending = THREE.NoBlending; m.transparent = false; } else { m.transparent = false; m.depthWrite = true; m.blending = THREE.CustomBlending; m.blendSrc = THREE.OneFactor; m.blendDst = THREE.OneMinusSrcAlphaFactor; }
     return m;
   };
   const draw = (mat, target, clear, alpha) => {
     const sc = new THREE.Scene(), mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false; sc.add(mesh);
-    renderer.setRenderTarget(target); renderer.setClearColor(new THREE.Color(...clear), alpha); renderer.clear(true, false, false); renderer.render(sc, cam); mat.dispose();
+    renderer.setRenderTarget(target); renderer.setClearColor(new THREE.Color(...clear), alpha); renderer.clear(true, true, false); renderer.render(sc, cam); mat.dispose();
   };
   const read = (rt, Type) => { const px = new Type(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px); return px; };
   for (const c of args.cases) {
@@ -112,14 +112,14 @@ export async function renderBatch(args) {
       const rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: false, type: THREE.FloatType, minFilter: NN, magFilter: NN });
       draw(mkMat(c, true, true), rt, [0, 0, 0], 0); out[c.name] = b64f(read(rt, Float32Array)); rt.dispose();
     } else if (!(c.f < 1)) {
-      const rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: false });
+      const rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true }); // build 497: the volume writes depth (gl_FragDepth), as in the app
       draw(mkMat(c, false, false), rt, BG, 1); out[c.name] = b64f(read(rt, Uint8Array)); rt.dispose();
     } else {
       // the low-resolution path of vr-view.js: the ray material into a small target (cleared to transparent), then the composite pass over the background
       const f = c.f, tw = Math.max(1, Math.ceil(W * f)), th = Math.max(1, Math.ceil(H * f));
-      const low = new THREE.WebGLRenderTarget(tw, th, { depthBuffer: false, minFilter: L, magFilter: L }), rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: false });
+      const low = new THREE.WebGLRenderTarget(tw, th, { depthBuffer: true, depthTexture: new THREE.DepthTexture(tw, th), minFilter: L, magFilter: L }), rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true });
       draw(mkMat(c, true, false), low, [0, 0, 0], 0);
-      const comp = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: sh.cvs, fragmentShader: sh.cfs, side: THREE.BackSide, toneMapped: false, depthWrite: false, transparent: true, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, uniforms: { img: { value: low.texture }, invSize: { value: new THREE.Vector2(f / tw, f / th) }, halfExt: { value: half } } });
+      const comp = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: sh.cvs, fragmentShader: sh.cfs, side: THREE.BackSide, toneMapped: false, depthWrite: true, transparent: false, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, uniforms: { img: { value: low.texture }, depthImg: { value: low.depthTexture }, invSize: { value: new THREE.Vector2(f / tw, f / th) }, halfExt: { value: half } } });
       draw(comp, rt, BG, 1); out[c.name] = b64f(read(rt, Uint8Array)); rt.dispose(); low.dispose();
     }
   }
