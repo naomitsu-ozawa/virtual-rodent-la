@@ -1,11 +1,11 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20261008-build502';
-import { request3DRender } from './scene3d.js?v=20261008-build502';
-import { updateGpuStatus } from './gpu-compute.js?v=20261008-build502';
-import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build502';
-import { tr } from './i18n.js?v=20261008-build502';
-import { fmt } from './utils.js?v=20261008-build502';
+import { settings } from './app-settings.js?v=20261008-build508';
+import { request3DRender } from './scene3d.js?v=20261008-build508';
+import { updateGpuStatus } from './gpu-compute.js?v=20261008-build508';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build508';
+import { tr } from './i18n.js?v=20261008-build508';
+import { fmt } from './utils.js?v=20261008-build508';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};

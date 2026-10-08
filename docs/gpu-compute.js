@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261008-build502';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build502';
+import { installGpuLedger } from './mem-ledger.js?v=20261008-build508';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build508';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build502';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build502';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build502';
-import { runsSliceToMask } from './run-length.js?v=20261008-build502';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build502';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build502';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build508';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build508';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build508';
+import { runsSliceToMask } from './run-length.js?v=20261008-build508';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build508';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build508';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -16,6 +16,8 @@ export function gpuAdapterLabel(adapter){
   return [...new Set([info.vendor,info.architecture,info.device,info.description].filter(Boolean).map(v=>String(v).trim()).filter(Boolean))].join(' ');
  }catch{return''}
 }
+// build 508: device.lost reason ('destroyed' / 'unknown') and the browser's message, for the status bar
+export function gpuLostText(info){return 'WebGPU device lost'+(info?.reason?' ('+info.reason+')':'')+(info?.message?': '+info.message:'')}
 export function gpuDeviceMode(device){return device?.features?.has?.('core-features-and-limits')?'CORE':'COMPAT'}
 export function gpuComputeWorkgroupSize(device=gpuFilterRuntime.device){
  const a=Number(device?.limits?.maxComputeInvocationsPerWorkgroup)||128,b=Number(device?.limits?.maxComputeWorkgroupSizeX)||a;
@@ -27,15 +29,36 @@ export function gpuComputeWorkgroupSize(device=gpuFilterRuntime.device){
 // storage buffers per stage), so it asks for every limit the adapter offers. ?gpucompat (or localStorage
 // vrl.gpucompat = 1) forces a compatibility device on any machine, for checks.
 export const gpuForceCompat=(()=>{try{return /[?&]gpucompat\b/.test(globalThis.location?.search||'')||globalThis.localStorage?.getItem('vrl.gpucompat')==='1'}catch{return false}})();
-export function gpuDeviceRequestDescriptor(adapter){
+// build 508 (owner, Ubuntu Wayland / Chrome 155 with Vulkan, Optimus: Intel UHD 770 + NVIDIA RTX 4070 Ti): on the
+// NVIDIA adapter the device request failed with VK_ERROR_OUT_OF_DEVICE_MEMORY; the Intel adapter worked. The request
+// asked for the adapter's own maxBufferSize / maxStorageBufferBindingSize with no upper bound (Dawn's top tier is
+// 4 GiB - 4). No buffer the app makes comes near that (blocks <= 96 MB, tiles <= 32 MB, pool <= 256 MB, every other
+// size is min(limit, small)), so the two limits are now capped at Dawn's 2 GiB tier; an adapter that reports 2 GiB or
+// less gets exactly the request it got before. Should the request still be refused, it is retried with 1 GiB and then
+// with no buffer limits (the WebGPU defaults, 256 MB / 128 MB) before the CPU / WebGL fallback.
+export const GPU_BUFFER_LIMIT_CAPS=[2*1024**3,1024**3,0];
+export function capGpuBufferLimits(limits,cap){
+ if(!(cap>0)){delete limits.maxBufferSize;delete limits.maxStorageBufferBindingSize;return limits}
+ // binding cap: Dawn's tier value (2 GiB - 4), a multiple of 4 and <= the buffer cap
+ const bindingCap=cap>=2*1024**3?cap-4:cap;
+ if(limits.maxBufferSize>cap)limits.maxBufferSize=cap;
+ if(limits.maxStorageBufferBindingSize>bindingCap)limits.maxStorageBufferBindingSize=bindingCap;
+ return limits;
+}
+// one status-bar line: buffer limits asked for / the adapter's, and the retries it took
+export function gpuLimitInfoText(adapter,descriptor,retries=[]){
+ const mb=v=>v>0?Math.round(v/2**20)+'MB':'default',l=descriptor?.requiredLimits||{},a=adapter?.limits||{};
+ return 'limits buf '+mb(l.maxBufferSize)+'/bind '+mb(l.maxStorageBufferBindingSize)+' (adapter '+mb(a.maxBufferSize)+'/'+mb(a.maxStorageBufferBindingSize)+')'+(retries.length?' · retry '+retries.join(' → '):'');
+}
+export function gpuDeviceRequestDescriptor(adapter,cap=GPU_BUFFER_LIMIT_CAPS[0]){
  const requiredFeatures=[];if(!gpuForceCompat&&adapter?.features?.has?.('core-features-and-limits'))requiredFeatures.push('core-features-and-limits');
- if(!requiredFeatures.includes('core-features-and-limits')){const all={};for(const k in adapter?.limits||{}){const v=adapter.limits[k];if(typeof v==='number'&&Number.isFinite(v))all[k]=v}return{requiredFeatures,requiredLimits:all}}
+ if(!requiredFeatures.includes('core-features-and-limits')){const all={};for(const k in adapter?.limits||{}){const v=adapter.limits[k];if(typeof v==='number'&&Number.isFinite(v))all[k]=v}return{requiredFeatures,requiredLimits:capGpuBufferLimits(all,cap)}}
  const requiredLimits={};
  if((adapter?.limits?.maxComputeInvocationsPerWorkgroup||0)>=256)requiredLimits.maxComputeInvocationsPerWorkgroup=256;
  if((adapter?.limits?.maxComputeWorkgroupSizeX||0)>=256)requiredLimits.maxComputeWorkgroupSizeX=256;
  const maxBufferSize=Number(adapter?.limits?.maxBufferSize)||0;if(maxBufferSize>0)requiredLimits.maxBufferSize=maxBufferSize;
  const maxStorageBufferBindingSize=Number(adapter?.limits?.maxStorageBufferBindingSize)||0;if(maxStorageBufferBindingSize>0)requiredLimits.maxStorageBufferBindingSize=maxStorageBufferBindingSize;
- return{requiredFeatures,requiredLimits};
+ return{requiredFeatures,requiredLimits:capGpuBufferLimits(requiredLimits,cap)};
 }
 export async function requestVrlGpuAdapter(){
  let adapter=null;
@@ -50,9 +73,23 @@ export async function requestVrlGpuAdapter(){
  return adapter;
 }
 export async function requestVrlGpuDevice(){
- const adapter=await requestVrlGpuAdapter();if(!adapter)throw new Error('WebGPU adapter unavailable (core and compatibility)');
- const device=await adapter.requestDevice(gpuDeviceRequestDescriptor(adapter));
- return{adapter,device};
+ // build 508: a refused request is retried with the next lower buffer-limit cap; an adapter serves
+ // one request only, so each attempt asks for it again (same adapter order as before)
+ const retries=[];let lastError=null;
+ for(const cap of GPU_BUFFER_LIMIT_CAPS){
+  const adapter=await requestVrlGpuAdapter();if(!adapter)throw lastError||new Error('WebGPU adapter unavailable (core and compatibility)');
+  const descriptor=gpuDeviceRequestDescriptor(adapter,cap),capText=cap>0?Math.round(cap/2**20)+'MB':'default';
+  try{
+   const device=await adapter.requestDevice(descriptor);
+   gpuFilterRuntime.limitInfo=gpuLimitInfoText(adapter,descriptor,retries);console.info('VRL WebGPU device: '+gpuFilterRuntime.limitInfo);
+   return{adapter,device};
+  }catch(e){
+   lastError=e;retries.push(capText+' failed: '+String(e?.message||e).slice(0,80));
+   console.warn('WebGPU device request failed with buffer-limit cap '+capText+'; retrying lower.',e);
+  }
+ }
+ gpuFilterRuntime.limitInfo='device request failed · retry '+retries.join(' → ');
+ throw lastError;
 }
 export function updateGpuStatus(){
  if(!status)return;
@@ -67,7 +104,7 @@ export function updateGpuStatus(){
  status.title=gpuFilterRuntime.lastError||'';
  // the top chip is truncated; the bar under the views shows the full text
  const bar=document.getElementById('gpu-status-bar'),barText=document.getElementById('gpu-status-text');
- if(bar&&barText){barText.textContent=status.textContent+(gpuFilterRuntime.lastError&&!failure?' · '+gpuFilterRuntime.lastError:'');bar.classList.toggle('is-warning',!gpuActive)}
+ if(bar&&barText){barText.textContent=status.textContent+(gpuFilterRuntime.lastError&&!failure?' · '+gpuFilterRuntime.lastError:'')+(gpuFilterRuntime.limitInfo?' · '+gpuFilterRuntime.limitInfo:'');bar.classList.toggle('is-warning',!gpuActive)}
 }
 export function setGpuComputeBackend(label,error=''){
  // an uncaptured WebGPU error leaves 'WEBGPU GPU FAIL' standing: a later success
@@ -205,7 +242,7 @@ export function adoptRendererGpuDevice(renderer,adapter=null,explicitDevice=null
  const device=explicitDevice||renderer?.backend?.device;
  if(!device||typeof device.createBuffer!=='function'||gpuFilterRuntime.device===device)return false;
  clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();gpuFilterRuntime.device=device;gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=true;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.lastBackend='WEBGPU CHECKING';gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);installGpuErrorListener(device);
- try{device.lost.then(()=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);setGpuComputeBackend('GPU DEVICE LOST','WebGPU device lost')}})}catch{}
+ try{device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);setGpuComputeBackend('GPU DEVICE LOST',gpuLostText(info))}})}catch{}
  void verifyGpuComputeDevice(device).then(async ok=>{if(gpuFilterRuntime.device===device&&ok){await verifyGpuPipelineSet();if(gpuFilterRuntime.device===device)setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' FULL VERIFIED · WG'+gpuFilterRuntime.workgroupSize)}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='verify ['+(gpuFilterRuntime.lastShaderKind||'self-test')+']: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
  updateGpuStatus();return true;
 }
@@ -227,7 +264,7 @@ export async function ensureGpuFilterDevice(){
   try{
    const {adapter,device}=await requestVrlGpuDevice();
    gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);installGpuErrorListener(device);setGpuComputeBackend('WEBGPU CHECKING');
-   device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',info?.message||'WebGPU device lost')}});
+   device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',gpuLostText(info))}});
    try{await verifyGpuComputeDevice(device);await verifyGpuPipelineSet();setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' FULL VERIFIED · WG'+gpuFilterRuntime.workgroupSize)}catch(testError){gpuFilterRuntime.lastError='verify ['+(gpuFilterRuntime.lastShaderKind||'self-test')+']: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
    return device;
   }catch(e){
