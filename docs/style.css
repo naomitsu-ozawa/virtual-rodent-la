@@ -1022,3 +1022,7 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .sample-choices{display:grid;gap:10px;margin-top:12px}
 .sample-choice{min-height:44px;font-size:15px;touch-action:manipulation}
 .settings-row[hidden],.settings-panel .hint[hidden]{display:none}
+/* build 520: GPU info tab, debug mode only (the tab button and panel are `hidden` unless debug is on) */
+.settings-tab[hidden]{display:none}
+.gpu-report{width:100%;box-sizing:border-box;margin-top:6px;font:11px/1.4 ui-monospace,Menlo,monospace;resize:vertical}
+.gpu-status-bar.is-debug-link{cursor:pointer}

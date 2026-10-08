@@ -38,6 +38,25 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-08 — claude/gpu-debug-diagnostics (build 520: GPU info tab and diagnostic report, debug mode only)
+
+**Agent:** Claude (Sonnet 5.5 worker)
+**Task:** Port PR #123's in-app GPU info tab and 「診断情報をコピー」 report onto the build 518 code, visible only in debug mode (settings > デバッグ, or ?debug), with the new GPU state (limit ladder, 「使う GPU」, hybrid split, render / compute devices, Linux note).
+
+### What changed
+- `docs/gpu-diagnostics.js` (new, pure, no DOM): report text (`buildGpuReport`, first line `GPU要約 bNNN | WebGPU:… | 要求:… | 取得:… | WebGL:… | 直近エラー:…`), `gatherGpuDiagnostics(env)` (reads `gpuFilterRuntime` etc. through an injected `env`, no logic repeated), `collectWebglInfo` (UNMASKED vendor / renderer, WebGL2, MAX_3D_TEXTURE_SIZE, extensions), the 40-entry in-memory error log `logGpuError`, `gpuDiagnosticsVisible(debugOn)`.
+- `docs/gpu-diagnostics-ui.js` (new): the tab / status-bar wiring. `docs/gpu-diagnostics-collect.js` (new): the only DOM / GPU-bound part (reads gpu-compute, the settings and `linuxWebgpuNoteState()`).
+- `docs/settings-ui.js` calls `initGpuDiagnosticsUi`; `docs/ui-shell.js` has the tab button and panel, both `hidden`; `docs/style.css` has `.settings-tab[hidden]`, `.gpu-report`, `.gpu-status-bar.is-debug-link`; i18n ja / en keys.
+- `docs/gpu-compute.js`: data-only records (`limitInfoLog` / `limitInfoCapUsed`, and the render-device twins), `requestVrlGpuAdapter(…, 'probe')` keeps the tab's own request record in `probeAdapterRequest`, and four `logGpuError` calls (in-memory only). `scene-view.js` / `app.js`: `logGpuError` where a WebGPU init error was only in the console. `linux-webgpu-note.js`: read-only `linuxWebgpuNoteState()`.
+- Not ported on purpose: the 「使う GPU」 setting and its platform helpers (already in main), the launcher script, every chrome:// string, and the long browser-disabled explanation (the build 517 Linux note covers it; the report only states the condition).
+
+### Why
+- Debug mode only (owner: 「デバッグモードに入れておきたい」). With debug off there is no tab, no status-bar role / tabindex / cursor / listener, and nothing in the page calls the collector: no extra requestAdapter, no extra WebGL context, status bar identical to main on every platform. `tools/gpu-diagnostics-check.mjs` loads the page twice (without and with ?debug), counts WebGL / requestAdapter calls, and can print the same start-up counts for an older docs/ copy (DOCS_ROOT + BASELINE_ONLY=1).
+- The error log is always on (an array push, no UI) so an error that happened before the tab was opened still shows in the report.
+
+### Follow-up / open questions
+- Needs a real hybrid machine (Intel display + NVIDIA) to see the report with real values; the headless run only shows the no-adapter case.
+
 ## 2026-10-08 — claude/webgpu-nvidia-oom (build 516: GPU split for the Intel-display / NVIDIA-compute hybrid, Linux only)
 
 **Agent:** Claude (Sonnet 5.5 worker)
