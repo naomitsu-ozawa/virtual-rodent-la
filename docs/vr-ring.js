@@ -7,7 +7,7 @@ export const WHEEL_ITEMS=[
  {id:'mode-surface',ja:'表面モード',en:'Surface mode',when:'always'},
  {id:'undo',ja:'元に戻す',en:'Undo',when:'undo'},
  {id:'section-toggle',ja:'断面の表示／非表示',en:'Show/hide sections',when:'always'},
- {id:'section-add',ja:'断面を追加',en:'Add section',when:'planes<4'},
+ {id:'section-add',ja:'断面を追加',en:'Add section',when:'planes<10'},
  {id:'point-delete',ja:'選んだ点を削除',en:'Delete selected point',when:'point-selected'},
  {id:'section-next',ja:'次の断面を選ぶ',en:'Next section',when:'planes>=2'},
  {id:'snap-axial',ja:'断面を軸位に',en:'Axial',when:'section-selected'},
