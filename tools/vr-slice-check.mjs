@@ -34,7 +34,7 @@ const result=await pg.evaluate(async ({vertexShader,fragmentShader})=>{
  const halfExt=[1.6,0.2,0.2];
  const u={vol:{value:vol},bricks:{value:bricks},halfExt:{value:new THREE.Vector3(...halfExt)},texDims:{value:new THREE.Vector3(...dims)},brickDims:{value:new THREE.Vector3(1,1,1)},
   stepSize:{value:0.02},diag:{value:0},calib:{value:new THREE.Vector3(1,0,0)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
-  cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:1},planeCut:{value:1},capOn:{value:0},sliceTint:{value:0},sliceOpacity:{value:1},sliceWindow:{value:new THREE.Vector2(300,400)},sliceVol:{value:vol},useCls:{value:0},clsTex:{value:dummy},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:dummy}};
+  cutPlanes:{value:Array.from({length:10},()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:1},planeCut:{value:1},capOn:{value:0},sliceTint:{value:0},sliceOpacity:{value:1},sliceWindow:{value:new THREE.Vector2(300,400)},sliceVol:{value:vol},useCls:{value:0},clsTex:{value:dummy},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editTex:{value:dummy}};
  const material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:u});
  material.transparent=true;material.depthWrite=false;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
  const scene=new THREE.Scene();const mesh=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),material);mesh.frustumCulled=false;scene.add(mesh);
