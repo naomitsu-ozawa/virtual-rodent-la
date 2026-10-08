@@ -29,7 +29,7 @@ await pg.route(/^https:\/\//,async rt=>{const u=rt.request().url(),f=map(u);
  return rt.abort()});
 await pg.goto('http://localhost:8765/index.html');await pg.waitForTimeout(3000);
 const st=()=>pg.evaluate(()=>{const s=window.__vrlBusyModal?.()||{},el=document.getElementById('job-modal');return{...s,pe:el?getComputedStyle(el).pointerEvents:'',shown:!!el&&!el.classList.contains('is-hidden')}});
-const t0=Date.now();await pg.click('#sample-demo-button');
+const t0=Date.now();await pg.click('#sample-demo-button');await pg.click('[data-sample-set="sample1"]');
 let seen=0,labels=new Set(),blocked=true,shot=false,idleSince=0,last=null;
 while(Date.now()-t0<180000){
  const s=await st();last=s;
