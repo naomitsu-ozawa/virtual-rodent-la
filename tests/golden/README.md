@@ -9,11 +9,12 @@ real `docs/vr-pick.js` / `docs/point-cls.js` on **synthetic data only** (`tools/
 | Shader compile / link of every variant | `npm run vr-gpu-prepare-check` | job `vr-guards` | yes |
 | Render golden images | `npm run vr-render-golden` | job `vr-guards` | yes |
 | CPU / GPU classification parity | `npm run vr-cls-parity` | job `vr-guards` | yes |
+| Depth read-back (the volume's `gl_FragDepth` at f = 1 and f < 1 vs the hit point pushed back by `depthBias()`) | `npm run vr-depth-check` | job `vr-guards` | yes |
 | Static guard: no `//` comment swallows a statement | `npm test` (`tests/unit/swallowed-statement.test.js`) | job `unit` | no |
 | CPU parity unit test (`buildClsData` vs HU truth, thresholds in the sources, `marchClassificationHitInfo` vs a dense march) | `npm test` (`tests/unit/cls-parity.test.js`) | job `unit` | no |
 
-All three browser checks run on headless Chromium with SwiftShader (software WebGL2). Locally set `PW_CHROMIUM=/opt/pw-browsers/chromium`
-(otherwise Playwright's own Chromium is used); `npm run vr-guards` runs the three in a row (about 25 s).
+All four browser checks run on headless Chromium with SwiftShader (software WebGL2). Locally set `PW_CHROMIUM=/opt/pw-browsers/chromium`
+(otherwise Playwright's own Chromium is used); `npm run vr-guards` runs them in a row (about 30 s).
 
 ## Rule for VR performance PRs
 

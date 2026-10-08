@@ -1,11 +1,15 @@
+// build 497: occlusion by the GPU (update({occlusion:true})): the volume writes depth (vr-depth.js); the line, the leader and the label are drawn with a depth test (the part behind the tissue is clipped at its
+// outline) and again as a faint "ghost" (a child object sharing the geometry, depthFunc GreaterDepth, GHOST_ALPHA) so the hidden part stays findable. A LIT label (the laser on it / grabbed) and its
+// leader are drawn without a depth test, fully on top, so the laser target stays reachable. With occlusion off (setting 「薄くする」) nothing is depth tested and the build 493 fade is used.
 // VR display of the distances between two points (build 477): a line A-B with the value in mm on a label (billboard) at its midpoint, and, while a
 // distance is being made, the START point with a pulsing ring and the hint 「終点のポイントを選んでください」 next to it.
 // vr-view.js calls createVrMeasure(THREE, scene) -> { update, probes, pickLabel, dragLabel, dispose } every frame and does everything else (the flow, haptics, undo) itself; the state is
 // measurements.js (the same for the PC / iPad). The value follows the points: it is recomputed from their voxels each frame (a point being moved included, preview).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261008-build498';
-import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261008-build498';
-import { nearLabelWorld, stepDelta, offsetFromDelta, LINE_SAMPLES, probeKey, fadeAlpha, approachAlpha, OCCLUDED_ALPHA } from './measure-label.js?v=20261008-build498';
-import { voxelToLocal } from './vr-point.js?v=20261008-build498';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261008-build502';
+import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261008-build502';
+import { nearLabelWorld, stepDelta, offsetFromDelta, LINE_SAMPLES, probeKey, fadeAlpha, approachAlpha, OCCLUDED_ALPHA } from './measure-label.js?v=20261008-build502';
+import { voxelToLocal } from './vr-point.js?v=20261008-build502';
+import { GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build502';
 
 export const VR_MEASURE_COLOR=0xffd23d,MEASURE_LABEL_W_M=0.045,MEASURE_LABEL_H_M=0.0132,MEASURE_HINT_W_M=0.2,MEASURE_HINT_H_M=0.026;
 // the label's size factor from the head distance (m): about 1 at arm's length (0.6 m), bigger when far, never tiny
@@ -20,16 +24,22 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
  const planeGeo=new THREE.PlaneGeometry(1,1),sphereGeo=new THREE.SphereGeometry(1,16,12);
  // build 493: the line and the leader carry a per-vertex alpha (vertexColors, RGBA, rgb = 1 so the colour stays the material's): the part of the line that lies behind the
  // visible surface of the volume is drawn faint (measure-label.js "depth cue"; the volume writes no depth, so this is judged on the CPU by vr-view.js, see probes()).
- const lineMat=new THREE.LineBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.95,depthTest:false,toneMapped:false,vertexColors:true});
- const leaderMat=new THREE.LineBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.6,depthTest:false,toneMapped:false,vertexColors:true});
+ const LINE_OPACITY=0.95,LEADER_OPACITY=0.6,lineOpts={color:VR_MEASURE_COLOR,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,vertexColors:true};
+ const lineMat=new THREE.LineBasicMaterial({...lineOpts,opacity:LINE_OPACITY});
+ // the ghost pass: only where something nearer is in the depth buffer (GreaterDepth), faint. Hidden (visible=false) unless occlusion is on.
+ const ghostOf=(m,opacity)=>{const g=m.clone();g.depthFunc=THREE.GreaterDepth;g.depthTest=true;g.depthWrite=false;g.opacity=opacity;g.visible=false;return g};
+ const lineGhost=ghostOf(lineMat,LINE_OPACITY*GHOST_ALPHA);
+ const makeLeaderMat=()=>new THREE.LineBasicMaterial({...lineOpts,opacity:LEADER_OPACITY}); // one per measurement: a lit label puts its own leader on top
+ const addGhost=(obj,mat)=>{const g=obj.isLine?new THREE.Line(obj.geometry,mat):new THREE.Mesh(obj.geometry,mat);g.renderOrder=obj.renderOrder;g.frustumCulled=false;obj.add(g);return g};
  const makeLine=n=>{const g=new THREE.BufferGeometry().setFromPoints(Array.from({length:n},()=>new THREE.Vector3())),c=new Float32Array(n*4).fill(1);g.setAttribute('color',new THREE.BufferAttribute(c,4));return g};
  const pulseMat=new THREE.MeshBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.9,side:THREE.BackSide,depthTest:false,toneMapped:false});
- const makeLabel=(cw,ch,w,h)=>{
+ const makeLabel=(cw,ch,w,h,ghostMesh=false)=>{
   const canvas=document.createElement('canvas');canvas.width=cw;canvas.height=ch;
   const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
-  const mesh=new THREE.Mesh(planeGeo,new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:false,toneMapped:false,side:THREE.DoubleSide}));
+  const mesh=new THREE.Mesh(planeGeo,new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
   mesh.scale.set(w,h,1);mesh.renderOrder=6;mesh.frustumCulled=false;mesh.visible=false;scene.add(mesh);
-  return{mesh,canvas,tex,text:null,lit:false};
+  const ghost=ghostMesh?addGhost(mesh,Object.assign(mesh.material.clone(),{depthFunc:THREE.GreaterDepth,depthTest:true,depthWrite:false,opacity:GHOST_ALPHA,visible:false})):null; // a child of the label: moves, scales and hides with it
+  return{mesh,canvas,tex,text:null,lit:false,ghost};
  };
  const drawText=(lb,text,font,lit=false)=>{
   if(lb.text===text&&lb.lit===lit)return;lb.text=text;lb.lit=lit; // the canvas is redrawn (and re-uploaded) only when the text or the lit state changes
@@ -39,19 +49,19 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
   ctx.fillStyle=lit?'#111111':'#ffffff';ctx.font=font;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,c.width/2,c.height/2+2);
   lb.tex.needsUpdate=true;
  };
- const disposeLabel=lb=>{scene.remove(lb.mesh);lb.tex.dispose();lb.mesh.material.dispose()};
+ const disposeLabel=lb=>{scene.remove(lb.mesh);lb.tex.dispose();lb.mesh.material.dispose();lb.ghost?.material.dispose()};
  const items=new Map(); // measurement id -> {line,leader,label,va,la,t,probes,lprobe}
  const probeList=[]; // the places to judge (hidden behind the volume's surface), rebuilt by update: [{id:probeKey,world:Vector3}]
  let start=null; // {ring,hint}
  const a=new THREE.Vector3(),b=new THREE.Vector3(),mid=new THREE.Vector3(),s=new THREE.Vector3(),lab=new THREE.Vector3(),inv=new THREE.Matrix4(),lo=new THREE.Vector3(),ld=new THREE.Vector3(),hit=new THREE.Vector3();
  const mv={i:0,j:0,k:0};
  const voxelStep=(h,d)=>[2*h[0]/d.columns,-2*h[1]/d.rows,2*h[2]/d.slices]; // object-space change per voxel along i / j / k (vr-point.js voxelToLocal)
- const dropItem=(id,it)=>{scene.remove(it.line);scene.remove(it.leader);it.line.geometry.dispose();it.leader.geometry.dispose();disposeLabel(it.label);items.delete(id)};
+ const dropItem=(id,it)=>{scene.remove(it.line);scene.remove(it.leader);it.line.geometry.dispose();it.leader.geometry.dispose();it.leader.material.dispose();it.leaderGhost.material.dispose();disposeLabel(it.label);items.delete(id)};
  const dropStart=()=>{if(!start)return;scene.remove(start.ring);disposeLabel(start.hint);start=null};
  return{
   // fingerprint / dims / halfExt / mesh: as vpMarkers.update; head: the head's world position; spacing: [sx,sy,sz] mm; warn: the series has a slice-spacing warning;
   // startId: the point a distance starts at (or null); hint: its text; now: ms; preview: {id,voxel} a point being moved (voxel null = still at its place)
-  update({fingerprint,dims,halfExt,mesh,head,spacing,warn=false,startId=null,hint='',now=performance.now(),preview=null,lit=null,hidden=null}){ // lit: a Set of measurement ids whose label is lit (laser on it / grabbed), or null. hidden: a Set of probe keys behind the volume's surface (probes()), or null
+  update({fingerprint,dims,halfExt,mesh,head,spacing,warn=false,startId=null,hint='',now=performance.now(),preview=null,lit=null,hidden=null,occlusion=false}){ // occlusion: true = the volume's depth hides (build 497, see the top of this file; hidden is then not used). lit: a Set of measurement ids whose label is lit (laser on it / grabbed), or null. hidden: a Set of probe keys behind the volume's surface (probes()), or null
    const all=fingerprint&&dims&&halfExt&&mesh&&deps.getMarkersShown()?deps.getComments():[],byId=new Map();
    for(const c of all){
     if(!commentMatchesSeries(c,fingerprint))continue;
@@ -60,15 +70,16 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
     byId.set(c.id,{vox,local:voxelToLocal(vox,halfExt,dims)});
    }
    const keep=new Set();
+   if(occlusion)hidden=null;lineMat.depthTest=occlusion;lineGhost.visible=occlusion; // the line material is shared: depth tested + ghost, or the plain build 493 line
    if(byId.size){
     mesh.updateWorldMatrix(true,false);mesh.getWorldScale(s);const unit=s.x||1,r0=Math.max(0.003,0.045*unit),step=voxelStep(halfExt,dims);
     for(const m of deps.getMeasurements()){
      const A=byId.get(m.a),B=byId.get(m.b);if(!A||!B)continue;
      keep.add(m.id);let it=items.get(m.id);
      if(!it){
-      const line=new THREE.Line(makeLine(LINE_SAMPLES+1),lineMat);line.renderOrder=4;line.frustumCulled=false;scene.add(line);
-      const leader=new THREE.Line(makeLine(2),leaderMat);leader.renderOrder=4;leader.frustumCulled=false;scene.add(leader);
-      it={line,leader,label:makeLabel(256,72,MEASURE_LABEL_W_M,MEASURE_LABEL_H_M),va:new Array(LINE_SAMPLES+1).fill(1),la:1,t:0,dragged:false,probes:Array.from({length:LINE_SAMPLES+1},(_,i)=>({id:probeKey(m.id,i),world:new THREE.Vector3()})),lprobe:{id:probeKey(m.id,'L'),world:new THREE.Vector3()}};items.set(m.id,it);
+      const line=new THREE.Line(makeLine(LINE_SAMPLES+1),lineMat);line.renderOrder=4;line.frustumCulled=false;scene.add(line);addGhost(line,lineGhost);
+      const lm=makeLeaderMat(),leader=new THREE.Line(makeLine(2),lm);leader.renderOrder=4;leader.frustumCulled=false;scene.add(leader);const leaderGhost=addGhost(leader,ghostOf(lm,LEADER_OPACITY*GHOST_ALPHA));
+      it={line,leader,leaderGhost,label:makeLabel(256,72,MEASURE_LABEL_W_M,MEASURE_LABEL_H_M,true),va:new Array(LINE_SAMPLES+1).fill(1),la:1,t:0,dragged:false,probes:Array.from({length:LINE_SAMPLES+1},(_,i)=>({id:probeKey(m.id,i),world:new THREE.Vector3()})),lprobe:{id:probeKey(m.id,'L'),world:new THREE.Vector3()}};items.set(m.id,it);
      }
      a.set(A.local.x,A.local.y,A.local.z);mesh.localToWorld(a);b.set(B.local.x,B.local.y,B.local.z);mesh.localToWorld(b);
      const pos=it.line.geometry.attributes.position;
@@ -93,7 +104,9 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
      for(let i=0;i<=LINE_SAMPLES;i++){const v=approachAlpha(it.va[i],hidden&&hidden.has(it.probes[i].id)?OCCLUDED_ALPHA:1,dt);if(v!==it.va[i]){it.va[i]=v;col.setW(i,v);ch=true}}
      if(ch)col.needsUpdate=true;
      const lh=!!hidden&&hidden.has(m.labelOffset?it.lprobe.id:it.probes[LINE_SAMPLES/2].id),la=approachAlpha(it.la,fadeAlpha(lh,isLit),dt);
-     if(la!==it.la){it.la=la;it.label.mesh.material.opacity=la;const lc=it.leader.geometry.attributes.color;lc.setW(0,la);lc.setW(1,la);lc.needsUpdate=true}
+     // occlusion (build 497): a lit label and its leader are drawn on top (no depth test, no ghost); the others are depth tested + ghost
+     {const top=!occludedPass(occlusion,isLit);it.label.mesh.material.depthTest=!top;it.label.ghost.material.visible=!top;it.leader.material.depthTest=!top;it.leaderGhost.material.visible=!top}
+     if(la!==it.la){it.la=la;it.label.mesh.material.opacity=la;it.label.ghost.material.opacity=la*GHOST_ALPHA;const lc=it.leader.geometry.attributes.color;lc.setW(0,la);lc.setW(1,la);lc.needsUpdate=true}
     }
     const S=startId?byId.get(startId):null;
     if(S){
@@ -133,6 +146,6 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
    lo.set(P.x,P.y,P.z);it.ctx.mesh.worldToLocal(lo);
    return deps.setLabelOffset(id,offsetFromDelta({x:lo.x-it.ctx.ml.x,y:lo.y-it.ctx.ml.y,z:lo.z-it.ctx.ml.z},it.ctx.step));
   },
-  dispose(){for(const [id,it] of [...items])dropItem(id,it);dropStart();planeGeo.dispose();sphereGeo.dispose();lineMat.dispose();leaderMat.dispose();pulseMat.dispose()},
+  dispose(){for(const [id,it] of [...items])dropItem(id,it);dropStart();planeGeo.dispose();sphereGeo.dispose();lineMat.dispose();lineGhost.dispose();pulseMat.dispose()},
  };
 }

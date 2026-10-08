@@ -51,6 +51,8 @@ jobs:
         run: npm run vr-render-golden
       - name: CPU / GPU classification parity (vr-pick.js vs the GLSL march)
         run: npm run vr-cls-parity
+      - name: Depth read-back (gl_FragDepth of the volume at f = 1 and f < 1)
+        run: npm run vr-depth-check
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
