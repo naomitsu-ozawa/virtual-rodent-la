@@ -15,7 +15,8 @@ export const SETTINGS_DEFAULTS={
  debug:false,          // same as ?debug
  cacheAutoPrune:true,  // keep only the current filter setting per dataset + 3D resolution
  cacheLimit:'auto',    // GPU volume cache limit: auto / 0.5 / 1 / 2 / 4 (GB)
- mpr2dAlpha:'0.65'     // build 430: strength of the segment / result colours in the 2D views (× segment opacity)
+ mpr2dAlpha:'0.65',    // build 430: strength of the segment / result colours in the 2D views (× segment opacity)
+ gpuPreference:'auto'  // build 515: GPU for WebGPU: 'auto' (as before) / 'high-performance' / 'low-power'; honoured only on Linux / Windows (gpu-preference.js), applies after a reload
 };
 // pixel budgets (MP) per interaction tier / at rest; 'max' = no budget
 export const DRAG_BUDGETS={low:[0.12e6,0.09e6,0.06e6],standard:[0.25e6,0.18e6,0.12e6],high:[0.45e6,0.32e6,0.22e6],max:[Infinity,Infinity,Infinity]};

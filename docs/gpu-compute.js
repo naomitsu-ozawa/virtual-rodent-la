@@ -1,14 +1,15 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261008-build513';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build513';
+import { installGpuLedger } from './mem-ledger.js?v=20261008-build515';
+import { gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText } from './gpu-preference.js?v=20261008-build515';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build515';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build513';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build513';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build513';
-import { runsSliceToMask } from './run-length.js?v=20261008-build513';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build513';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build513';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build515';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build515';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build515';
+import { runsSliceToMask } from './run-length.js?v=20261008-build515';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build515';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build515';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 export function gpuAdapterLabel(adapter){
  try{
@@ -64,16 +65,21 @@ export function gpuDeviceRequestDescriptor(adapter,cap=GPU_BUFFER_LIMIT_CAPS[0])
  const maxStorageBufferBindingSize=Number(adapter?.limits?.maxStorageBufferBindingSize)||0;if(maxStorageBufferBindingSize>0)requiredLimits.maxStorageBufferBindingSize=maxStorageBufferBindingSize;
  return{requiredFeatures,requiredLimits:capGpuBufferLimits(requiredLimits,cap)};
 }
-export async function requestVrlGpuAdapter(){
+// build 515: the setting 「使う GPU」 (settings > 描画; 'auto' / 'high-performance' / 'low-power'). It is honoured only on
+// Linux / Windows; on Mac, iPad and everything else this is 'auto', the request the app always made. Read once per device
+// request, so every buffer-limit retry (below) asks for the same GPU.
+export const vrlGpuPreference=()=>gpuEffectivePreference(globalThis.__vrlSettings?.get?.('gpuPreference'),navigator);
+// the requestAdapter option sets, in order: 'auto' = {high-performance, core}, {high-performance}, (none), then the
+// compatibility adapters of build 440 (a Linux OpenGL ES backend rather than none); see gpu-preference.js
+export async function requestVrlGpuAdapter(preference=vrlGpuPreference()){
  let adapter=null;
- if(!gpuForceCompat){
-  try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'core'})}catch{}
-  if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'})}catch{}
-  if(!adapter)try{adapter=await navigator.gpu.requestAdapter()}catch{}
+ const opts=gpuAdapterRequestOptions(gpuForceCompat,preference);
+ const request={stored:String(globalThis.__vrlSettings?.get?.('gpuPreference')??'auto'),effective:preference,supported:gpuPreferenceSupported(navigator),option:undefined,optionIndex:-1};
+ for(let i=0;i<opts.length&&!adapter;i++){
+  try{adapter=await(opts[i]?navigator.gpu.requestAdapter(opts[i]):navigator.gpu.requestAdapter())}catch{}
+  if(adapter){request.option=opts[i];request.optionIndex=i}
  }
- // build 440: a compatibility adapter (Linux OpenGL ES backend) rather than none
- if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'compatibility'})}catch{}
- if(!adapter)try{adapter=await navigator.gpu.requestAdapter({featureLevel:'compatibility'})}catch{}
+ gpuFilterRuntime.adapterRequest=request;
  return adapter;
 }
 // resolves with the device.lost info when the device was lost within the creation window, else null. One round trip to the
@@ -90,8 +96,12 @@ export async function requestVrlGpuDevice(){
  // build 508: a refused request is retried with the next lower buffer-limit cap; an adapter serves
  // one request only, so each attempt asks for it again (same adapter order as before)
  const retries=[];let lastError=null;
+ // build 515: the chosen GPU is resolved once and every attempt below asks for it
+ const preference=vrlGpuPreference();
  for(const cap of GPU_BUFFER_LIMIT_CAPS){
-  const adapter=await requestVrlGpuAdapter();if(!adapter)throw lastError||new Error('WebGPU adapter unavailable (core and compatibility)');
+  const adapter=await requestVrlGpuAdapter(preference);
+  gpuFilterRuntime.prefInfo=gpuPreferenceInfoText(gpuFilterRuntime.adapterRequest,adapter);
+  if(!adapter)throw lastError||new Error('WebGPU adapter unavailable (core and compatibility)');
   const descriptor=gpuDeviceRequestDescriptor(adapter,cap),capText=cap>0?Math.round(cap/2**20)+'MB':'default';
   try{
    const device=await adapter.requestDevice(descriptor);
@@ -124,7 +134,7 @@ export function updateGpuStatus(){
  status.title=gpuFilterRuntime.lastError||'';
  // the top chip is truncated; the bar under the views shows the full text
  const bar=document.getElementById('gpu-status-bar'),barText=document.getElementById('gpu-status-text');
- if(bar&&barText){barText.textContent=status.textContent+(gpuFilterRuntime.lastError&&!failure?' · '+gpuFilterRuntime.lastError:'')+(gpuFilterRuntime.limitInfo?' · '+gpuFilterRuntime.limitInfo:'');bar.classList.toggle('is-warning',!gpuActive)}
+ if(bar&&barText){barText.textContent=status.textContent+(gpuFilterRuntime.lastError&&!failure?' · '+gpuFilterRuntime.lastError:'')+(gpuFilterRuntime.prefInfo?' · '+gpuFilterRuntime.prefInfo:'')+(gpuFilterRuntime.limitInfo?' · '+gpuFilterRuntime.limitInfo:'');bar.classList.toggle('is-warning',!gpuActive)}
 }
 export function setGpuComputeBackend(label,error=''){
  // an uncaptured WebGPU error leaves 'WEBGPU GPU FAIL' standing: a later success

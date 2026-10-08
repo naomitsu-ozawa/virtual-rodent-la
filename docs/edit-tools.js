@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20261008-build513';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20261008-build513';
-import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisLassoDeselectButton, analysisDeselectAll, analysisEditDeselectAll, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20261008-build513';
-import { tr } from './i18n.js?v=20261008-build513';
-import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20261008-build513';
-import { request3DRender } from './scene3d.js?v=20261008-build513';
+import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20261008-build515';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20261008-build515';
+import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisLassoDeselectButton, analysisDeselectAll, analysisEditDeselectAll, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20261008-build515';
+import { tr } from './i18n.js?v=20261008-build515';
+import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20261008-build515';
+import { request3DRender } from './scene3d.js?v=20261008-build515';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261008-build513';
-import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20261008-build513';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261008-build515';
+import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20261008-build515';
 export function analysisRegionById(id){return analysisRegions.find(r=>r.id===id)||null}
 export function configureCutControlRanges(v=current3DVolume||volume){
  if(!v||!analysisCutWidth)return;

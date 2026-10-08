@@ -11,12 +11,15 @@ const grab = (src, re) => { const m = src.match(re); if (!m) throw new Error('no
 const fnSrc = (src, name) => grab(src, new RegExp('export (async )?function ' + name + '\\([\\s\\S]*?\\n}\\n'));
 
 const capsSrc = grab(gpuSrc, /export const GPU_BUFFER_LIMIT_CAPS=[^\n]*\n/);
-const build = (forceCompat = false) => new Function('gpuForceCompat', 'navigator', 'gpuFilterRuntime', 'console',
-  capsSrc + fnSrc(gpuSrc, 'capGpuBufferLimits') + fnSrc(gpuSrc, 'gpuLimitInfoText') + fnSrc(gpuSrc, 'gpuDeviceRequestDescriptor') +
+import { gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText } from '../../docs/gpu-preference.js';
+const build = (forceCompat = false) => new Function('gpuForceCompat', 'navigator', 'gpuFilterRuntime', 'console', 'gpuEffectivePreference', 'gpuPreferenceSupported', 'gpuAdapterRequestOptions', 'gpuPreferenceInfoText',
+  capsSrc + fnSrc(gpuSrc, 'capGpuBufferLimits') + fnSrc(gpuSrc, 'gpuLimitInfoText') + fnSrc(gpuSrc, 'gpuDeviceRequestDescriptor') + grab(gpuSrc, /export const vrlGpuPreference=[^\n]*\n/) +
   fnSrc(gpuSrc, 'requestVrlGpuAdapter') + fnSrc(gpuSrc, 'gpuLostAtCreation') + fnSrc(gpuSrc, 'requestVrlGpuDevice') + grab(gpuSrc, /export function gpuLostText[^\n]*\n/) +
-  '\nreturn{gpuLostAtCreation,GPU_BUFFER_LIMIT_CAPS,capGpuBufferLimits,gpuLimitInfoText,gpuDeviceRequestDescriptor,requestVrlGpuDevice,gpuLostText}');
+  '\nreturn{gpuLostAtCreation,GPU_BUFFER_LIMIT_CAPS,capGpuBufferLimits,gpuLimitInfoText,gpuDeviceRequestDescriptor,requestVrlGpuDevice,requestVrlGpuAdapter,vrlGpuPreference,gpuLostText}');
 const quiet = { info() {}, warn() {} };
-const api = (forceCompat = false, navigator = {}, runtime = {}) => build()(forceCompat, navigator, runtime, quiet);
+// build 515: the GPU preference helpers (docs/gpu-preference.js, pure) are the real ones; the module's `navigator` is injected
+const prefDeps = [gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText];
+const api = (forceCompat = false, navigator = {}, runtime = {}) => build()(forceCompat, navigator, runtime, quiet, ...prefDeps);
 
 // the request as it was up to build 502 (verbatim, for the "unchanged below the cap" checks)
 function oldDescriptor(adapter, gpuForceCompat = false) {
@@ -104,7 +107,7 @@ describe('device request: buffer limits capped at 4 GiB (min(adapter, cap))', ()
     }
   });
   it('the forced compatibility device (?gpucompat) is capped the same way (8 GiB adapter -> 4 GiB)', () => {
-    const forced = build()(true, {}, {}, quiet).gpuDeviceRequestDescriptor(adapterOf(big(8 * GiB, 8 * GiB)));
+    const forced = build()(true, {}, {}, quiet, ...prefDeps).gpuDeviceRequestDescriptor(adapterOf(big(8 * GiB, 8 * GiB)));
     expect(forced.requiredFeatures).toEqual([]);
     expect(forced.requiredLimits.maxBufferSize).toBe(4 * GiB);
     expect(forced.requiredLimits.maxStorageBufferBindingSize).toBe(4 * GiB - 4);
@@ -286,5 +289,88 @@ describe('device.lost text', () => {
   it('carries the reason and message', () => {
     expect(gpuLostText({ reason: 'unknown', message: 'VK_ERROR_DEVICE_LOST' })).toBe('WebGPU device lost (unknown): VK_ERROR_DEVICE_LOST');
     expect(gpuLostText(undefined)).toBe('WebGPU device lost');
+  });
+});
+
+// build 515: the setting 「使う GPU」 (gpuPreference) reaches every requestAdapter call of the buffer-limit ladder
+describe('GPU preference through the buffer-limit ladder', () => {
+  const LINUX = { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/155', platform: 'Linux x86_64', maxTouchPoints: 0 };
+  const MAC = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/155', platform: 'MacIntel', maxTouchPoints: 0 };
+  const IPAD = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605', platform: 'MacIntel', maxTouchPoints: 5 };
+  const nvInfo = { vendor: 'nvidia', architecture: 'ada-lovelace' };
+  const withSetting = async (value, fn) => {
+    const prev = globalThis.__vrlSettings;
+    globalThis.__vrlSettings = { get: k => (k === 'gpuPreference' ? value : undefined) };
+    try { return await fn(); } finally { if (prev === undefined) delete globalThis.__vrlSettings; else globalThis.__vrlSettings = prev; }
+  };
+  // every requestAdapter option set is logged; requestDevice refuses every maxBufferSize above `refuseAbove`
+  const fake = (nav, refuseAbove, info = nvInfo, adapterFor = () => true) => {
+    const opts = [];
+    return {
+      opts, navigator: { ...nav, gpu: {
+        async requestAdapter(o) {
+          opts.push(o);
+          if (!adapterFor(o)) return null;
+          return { features: new Set(['core-features-and-limits']), limits: { ...big(8 * GiB, 8 * GiB).limits }, info,
+            async requestDevice(desc) { const b = desc.requiredLimits.maxBufferSize; if (b !== undefined && b > refuseAbove) throw new Error('OOM'); return { limits: desc.requiredLimits }; } };
+        } } },
+    };
+  };
+  it('low-power on Linux: all four ladder attempts ask for low-power (4 GiB, 2 GiB, 1 GiB, defaults)', async () => {
+    const f = fake(LINUX, 512 * MiB), rt = {};
+    await withSetting('low-power', () => api(false, f.navigator, rt).requestVrlGpuDevice());
+    expect(f.opts).toEqual([4, 2, 1, 0].map(() => ({ powerPreference: 'low-power', featureLevel: 'core' })));
+    expect(rt.limitInfo).toContain('retry 4096MB failed');
+  });
+  it('high-performance on Windows: same preference on every retry', async () => {
+    const win = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/155', platform: 'Win32', maxTouchPoints: 0 };
+    const f = fake(win, 1 * GiB);
+    await withSetting('high-performance', () => api(false, f.navigator, {}).requestVrlGpuDevice());
+    expect(f.opts.length).toBe(3);
+    expect(f.opts.every(o => o.powerPreference === 'high-performance' && o.featureLevel === 'core')).toBe(true);
+  });
+  it('the preference is read once: changing the setting mid-ladder does not change later attempts', async () => {
+    const f = fake(LINUX, 1 * GiB), rt = {}, mod = api(false, f.navigator, rt);
+    let n = 0;
+    globalThis.__vrlSettings = { get: () => (n++ === 0 ? 'low-power' : 'high-performance') };
+    try { await mod.requestVrlGpuDevice(); } finally { delete globalThis.__vrlSettings; }
+    expect(f.opts.map(o => o.powerPreference)).toEqual(['low-power', 'low-power', 'low-power']);
+  });
+  it('when the first option sets find no adapter, the preference stays in the later ones', async () => {
+    const f = fake(LINUX, Infinity, nvInfo, o => o?.featureLevel === 'compatibility' && o.powerPreference), rt = {};
+    await withSetting('low-power', () => api(false, f.navigator, rt).requestVrlGpuDevice());
+    expect(f.opts).toEqual([{ powerPreference: 'low-power', featureLevel: 'core' }, { powerPreference: 'low-power' }, undefined, { powerPreference: 'low-power', featureLevel: 'compatibility' }]);
+  });
+  it('Mac / iPad ignore a stored preference: the historical request (high-performance, core), nothing else changes', async () => {
+    for (const nav of [MAC, IPAD]) {
+      const f = fake(nav, 2 * GiB), rt = {};
+      await withSetting('low-power', () => api(false, f.navigator, rt).requestVrlGpuDevice());
+      expect(f.opts).toEqual([{ powerPreference: 'high-performance', featureLevel: 'core' }, { powerPreference: 'high-performance', featureLevel: 'core' }]);
+      expect(rt.prefInfo).toBe('');
+      expect(rt.adapterRequest).toMatchObject({ stored: 'low-power', effective: 'auto', supported: false });
+    }
+  });
+  it('unset / garbage setting is auto (as before)', async () => {
+    for (const v of [undefined, 'auto', 'turbo', null, 3]) {
+      const f = fake(LINUX, Infinity);
+      await withSetting(v, () => api(false, f.navigator, {}).requestVrlGpuDevice());
+      expect(f.opts).toEqual([{ powerPreference: 'high-performance', featureLevel: 'core' }]);
+    }
+  });
+  it('status fragment: requested preference, adapter vendor / architecture and the option index that served it', async () => {
+    const f = fake(LINUX, Infinity, nvInfo, o => !o?.featureLevel), rt = {};
+    await withSetting('high-performance', () => api(false, f.navigator, rt).requestVrlGpuDevice());
+    expect(rt.prefInfo).toBe('GPU pref high-performance → nvidia ada-lovelace (request #2)');
+    expect(rt.adapterRequest).toMatchObject({ stored: 'high-performance', effective: 'high-performance', supported: true, option: { powerPreference: 'high-performance' }, optionIndex: 1 });
+  });
+  it('no adapter: the status says so and the old error is thrown', async () => {
+    const f = fake(LINUX, Infinity, nvInfo, () => false), rt = {};
+    await expect(withSetting('low-power', () => api(false, f.navigator, rt).requestVrlGpuDevice())).rejects.toThrow('WebGPU adapter unavailable (core and compatibility)');
+    expect(rt.prefInfo).toBe('GPU pref low-power → no adapter');
+  });
+  it('the forced compatibility device keeps the preference too', async () => {
+    const f = fake(LINUX, Infinity), rt = {};
+    await withSetting('low-power', () => build()(true, f.navigator, rt, quiet, ...prefDeps).requestVrlGpuDevice());
+    expect(f.opts).toEqual([{ powerPreference: 'low-power', featureLevel: 'compatibility' }]);
   });
 });
