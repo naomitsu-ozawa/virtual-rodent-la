@@ -1,11 +1,12 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20261008-build501';
-import { request3DRender } from './scene3d.js?v=20261008-build501';
-import { updateGpuStatus } from './gpu-compute.js?v=20261008-build501';
-import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build501';
-import { tr } from './i18n.js?v=20261008-build501';
-import { fmt } from './utils.js?v=20261008-build501';
+import { settings } from './app-settings.js?v=20261008-build503';
+import { request3DRender } from './scene3d.js?v=20261008-build503';
+import { updateGpuStatus } from './gpu-compute.js?v=20261008-build503';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build503';
+import { tr } from './i18n.js?v=20261008-build503';
+import { fmt } from './utils.js?v=20261008-build503';
+import { initGpuDiagnosticsUi } from './gpu-diagnostics-ui.js?v=20261008-build503';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
@@ -16,6 +17,7 @@ export function initSettingsDialog(){
   for(const p of dlg.querySelectorAll('[data-settings-panel]'))p.hidden=p.dataset.settingsPanel!==tab.dataset.settingsTab;
   if(tab.dataset.settingsTab==='cache')void renderCacheList();
  };
+ initGpuDiagnosticsUi();
  const bind=(id,key,rerender=true)=>{const el=document.getElementById(id);if(!el)return;el.onchange=()=>{settings.set(key,el.type==='checkbox'?el.checked:el.value);if(rerender)request3DRender();if(key==='debug'||key==='showPerf')updateGpuStatus()}};
  bind('set-drag-quality','dragQuality');bind('set-rest-quality','restQuality');bind('set-step-quality','stepQuality');bind('set-refine','refine');bind('set-interp','interp');bind('set-drag-lowres','dragLowerRes');bind('set-show-perf','showPerf');bind('set-debug','debug');bind('set-cache-autoprune','cacheAutoPrune',false);bind('set-cache-limit','cacheLimit',false);bind('set-mpr-alpha','mpr2dAlpha',false);
  const limitSel=document.getElementById('set-cache-limit'),limitChange=limitSel?.onchange;if(limitSel)limitSel.onchange=async()=>{limitChange?.();await pruneToLimit(true)};

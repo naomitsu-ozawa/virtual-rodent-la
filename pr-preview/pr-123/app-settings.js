@@ -15,6 +15,7 @@ export const SETTINGS_DEFAULTS={
  debug:false,          // same as ?debug
  cacheAutoPrune:true,  // keep only the current filter setting per dataset + 3D resolution
  cacheLimit:'auto',    // GPU volume cache limit: auto / 0.5 / 1 / 2 / 4 (GB)
+ gpuPreference:'auto', // build 503: 'auto' (as before) / 'high-performance' / 'low-power'; honoured only on Linux/Windows desktops
  mpr2dAlpha:'0.65'     // build 430: strength of the segment / result colours in the 2D views (× segment opacity)
 };
 // pixel budgets (MP) per interaction tier / at rest; 'max' = no budget

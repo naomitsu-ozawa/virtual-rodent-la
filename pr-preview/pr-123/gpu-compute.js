@@ -1,19 +1,22 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261008-build501';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build501';
+import { installGpuLedger } from './mem-ledger.js?v=20261008-build503';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build503';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build501';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build501';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build501';
-import { runsSliceToMask } from './run-length.js?v=20261008-build501';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build501';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build501';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build503';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build503';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build503';
+import { runsSliceToMask } from './run-length.js?v=20261008-build503';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build503';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build503';
+import { tr } from './i18n.js?v=20261008-build503';
+import { gpuAdapterRequestOptions, gpuEffectivePreference, logGpuError } from './gpu-diagnostics.js?v=20261008-build503';
+export { gpuAdapterRequestOptions };
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 // adapter.info (current) or the info stashed from the older async requestAdapterInfo(); missing fields are fine
 export function gpuAdapterInfo(adapter){try{return adapter?.info||adapter?.__vrlInfo||null}catch{return null}}
 // A short hint when the chosen adapter looks software-rendered or integrated (so the user can check the GPU
-// selection; on Linux see tools/linux/launch-webgpu.sh). '' when it looks like a discrete/unknown GPU.
+// selection; the GPU settings tab explains the options). '' when it looks like a discrete/unknown GPU.
 export function gpuAdapterHint(info){
  if(!info)return'';
  const t=[info.vendor,info.architecture,info.device,info.description].filter(Boolean).join(' ').toLowerCase();
@@ -21,11 +24,6 @@ export function gpuAdapterHint(info){
  if(/swiftshader|llvmpipe|softpipe|lavapipe|software|basic render/.test(t))return'software renderer? (not using a GPU)';
  if(/intel|\bgen-?\d|xe-?lp|uhd|iris/.test(t)&&!/arc\b|nvidia|amd|radeon|geforce/.test(t))return'integrated GPU? (check discrete GPU setting)';
  return'';
-}
-// requestAdapter option sets, tried in order; high-performance first, then no options, then compatibility mode
-export function gpuAdapterRequestOptions(forceCompat=false){
- const hp={powerPreference:'high-performance'};
- return[...(forceCompat?[]:[{...hp,featureLevel:'core'},hp,undefined]),{...hp,featureLevel:'compatibility'},{featureLevel:'compatibility'}];
 }
 export function gpuAdapterLabel(adapter){
  try{
@@ -56,19 +54,27 @@ export function gpuDeviceRequestDescriptor(adapter){
  const maxStorageBufferBindingSize=Number(adapter?.limits?.maxStorageBufferBindingSize)||0;if(maxStorageBufferBindingSize>0)requiredLimits.maxStorageBufferBindingSize=maxStorageBufferBindingSize;
  return{requiredFeatures,requiredLimits};
 }
+// What the user's GPU setting resolves to here ('auto' always on Mac / iPad / phones: their behaviour is unchanged)
+export const vrlGpuPreference=()=>gpuEffectivePreference(globalThis.__vrlSettings?.get?.('gpuPreference'));
+export const gpuLastAdapterRequest={stored:'',effective:'auto',option:undefined,optionIndex:-1};
 export async function requestVrlGpuAdapter(){
  let adapter=null;
- for(const opt of gpuAdapterRequestOptions(gpuForceCompat)){
-  try{adapter=await(opt?navigator.gpu.requestAdapter(opt):navigator.gpu.requestAdapter())}catch{}
-  if(adapter)break;
+ const effective=vrlGpuPreference(),opts=gpuAdapterRequestOptions(gpuForceCompat,effective);
+ Object.assign(gpuLastAdapterRequest,{stored:String(globalThis.__vrlSettings?.get?.('gpuPreference')??'auto'),effective,option:undefined,optionIndex:-1});
+ for(let i=0;i<opts.length;i++){
+  const opt=opts[i];
+  try{adapter=await(opt?navigator.gpu.requestAdapter(opt):navigator.gpu.requestAdapter())}catch(e){logGpuError('requestAdapter '+JSON.stringify(opt??null),e)}
+  if(adapter){Object.assign(gpuLastAdapterRequest,{option:opt,optionIndex:i});break}
  }
+ if(!adapter)logGpuError('requestAdapter','no adapter returned for any option set');
  // older Chromium: info only via the async requestAdapterInfo()
  if(adapter&&!adapter.info&&typeof adapter.requestAdapterInfo==='function'){try{adapter.__vrlInfo=await adapter.requestAdapterInfo()}catch{}}
  return adapter;
 }
 export async function requestVrlGpuDevice(){
  const adapter=await requestVrlGpuAdapter();if(!adapter)throw new Error('WebGPU adapter unavailable (core and compatibility)');
- const device=await adapter.requestDevice(gpuDeviceRequestDescriptor(adapter));
+ let device;try{device=await adapter.requestDevice(gpuDeviceRequestDescriptor(adapter))}catch(e){logGpuError('requestDevice',e);throw e}
+ try{device.lost?.then(info=>logGpuError('device.lost ('+(info?.reason||'?')+')',info?.message||'device lost'))}catch{}
  return{adapter,device};
 }
 export function updateGpuStatus(){
@@ -76,7 +82,9 @@ export function updateGpuStatus(){
  const render=sceneState?.backend||'INIT';
  const compute=gpuFilterRuntime.lastBackend||(gpuFilterRuntime.device?'WEBGPU READY':'CPU');
  const adapter=gpuFilterRuntime.adapterLabel?(' · '+gpuFilterRuntime.adapterLabel):'';
- const failure=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError.slice(0,96)):'';
+ const failed=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError,noGpu=typeof navigator!=='undefined'&&!('gpu' in navigator);
+ // a failed WebGPU start shows a friendly pointer to the GPU info tab; the raw message stays in the tooltip and that tab
+ const failure=failed?(' · '+tr('gpuFriendly')):noGpu?(' · '+tr('gpuFriendlyNone')):'';
  status.removeAttribute('data-i18n');
  status.textContent='Render '+render+' · Compute '+compute+failure+adapter;
  const computeGpu=compute.startsWith('WEBGPU'),gpuActive=render==='WEBGPU'||computeGpu;
@@ -110,7 +118,7 @@ export function installGpuErrorListener(device){
    return create(desc);
   };
   device.addEventListener?.('uncapturederror',event=>{
-   const message=String(event?.error?.message||event?.message||'uncaptured WebGPU error'),kind=gpuFilterRuntime.lastShaderKind?(' ['+gpuFilterRuntime.lastShaderKind+']'):'';
+   const message=String(event?.error?.message||event?.message||'uncaptured WebGPU error');logGpuError('uncapturederror',event?.error||message);const kind=gpuFilterRuntime.lastShaderKind?(' ['+gpuFilterRuntime.lastShaderKind+']'):'';
    gpuFilterRuntime.lastError='uncaptured'+kind+': '+message+(/zero/i.test(message)&&gpuFilterRuntime.zeroTexture?' ['+gpuFilterRuntime.zeroTexture+']':'');
    setGpuComputeBackend('WEBGPU GPU FAIL',gpuFilterRuntime.lastError);
    console.error('Virtual Rodent Lab WebGPU error:',event?.error||event);
