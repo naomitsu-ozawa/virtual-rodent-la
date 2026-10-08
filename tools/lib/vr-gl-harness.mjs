@@ -84,7 +84,7 @@ export async function renderBatch(args) {
     vol: { value: vol }, bricks: { value: bricks }, halfExt: { value: half }, texDims: { value: new THREE.Vector3(N, N, N) }, brickDims: { value: new THREE.Vector3(bx, bx, bx) },
     stepSize: { value: voxelMin * 0.85 }, diag: { value: 0 }, calib: { value: new THREE.Vector3(1, -1024, 0) },
     segA: { value: [V4(300, 3000, 1, 1), V4(-200, 299, 0.35, 1), V4(-250, -50, 1, 1), V4()] }, segC: { value: [V4(0.91, 0.86, 0.72, 0), V4(0.85, 0.55, 0.42, 0), V4(0.95, 0.85, 0.35, 0), V4()] },
-    cutPlanes: { value: [0, 1, 2, 3].map(() => V4(0, 0, 1, 0)) }, planeCount: { value: 0 }, planeCut: { value: 0 }, capOn: { value: 1 }, sliceTint: { value: 0.5 }, sliceOpacity: { value: 0 },
+    cutPlanes: { value: Array.from({ length: 10 }, () => V4(0, 0, 1, 0)) }, planeCount: { value: 0 }, planeCut: { value: 0 }, capOn: { value: 1 }, sliceTint: { value: 0.5 }, sliceOpacity: { value: 0 },
     sliceWindow: { value: new THREE.Vector2(40, 400) }, sliceAir: { value: -500 }, sliceVol: { value: vol }, refine: { value: 1 }, useCls: { value: 1 }, clsTex: { value: combo }, clsChan: { value: V4(0, 1, 2, -1) },
     editMask: { value: 0 }, editMaskOnly: { value: 0 }, editTex: { value: dummy }, useDist: { value: 0 }, distInCls: { value: 1 }, distTex: { value: dummy }, voxelMin: { value: voxelMin }, voxelSize: { value: new THREE.Vector3(2 * he[0] / N, 2 * he[1] / N, 2 * he[2] / N) },
     regionTex: { value: regionTex }, regionC: { value: Array.from({ length: 14 }, (_, i) => new THREE.Vector3(...(i ? [1, 1, 1] : [0, 0.85, 1]))) }, regionSeg: { value: Array.from({ length: 14 }, () => 15) },
@@ -95,7 +95,7 @@ export async function renderBatch(args) {
   const hitFs = src => { const a = ' float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);hitEnd=true;'.trim(), i = src.indexOf(a); if (i < 0) throw new Error('parity anchor (the hit shading of the tight loop) not found in the fragment shader'); return src.replace(a, 'outColor=vec4(hp,float(idx)+1.0);return;'); };
   const mkMat = (c, ray, hit) => {
     const u = baseUniforms();
-    for (const [k, v] of Object.entries(c.u || {})) { if (Array.isArray(v) && v.length && typeof v[0] === 'object') u[k] = { value: v.map(a => V4(...a)) }; else if (Array.isArray(v)) u[k] = { value: v.length === 4 ? V4(...v) : new THREE.Vector3(...v) }; else u[k] = { value: v }; }
+    for (const [k, v] of Object.entries(c.u || {})) { if (Array.isArray(v) && v.length && typeof v[0] === 'object') { const arr = v.map(a => V4(...a)); if (k === 'cutPlanes') while (arr.length < 10) arr.push(V4(0, 0, 1, 0)); /* build 509: the uniform array has 10 entries (three.js reads all of them) */ u[k] = { value: arr }; } else if (Array.isArray(v)) u[k] = { value: v.length === 4 ? V4(...v) : new THREE.Vector3(...v) }; else u[k] = { value: v }; }
     if (c.useClsRaw) u.clsTex = { value: clsRaw };
     if (c.noCls) { u.useCls = { value: 0 }; u.distInCls = { value: 0 }; }
     const m = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: sh.vs, fragmentShader: hit ? hitFs(sh.fs) : sh.fs, side: THREE.BackSide, toneMapped: false, uniforms: u, defines: Object.fromEntries((c.defines || []).map(d => [d, ''])) });
@@ -123,7 +123,12 @@ export async function renderBatch(args) {
       draw(mkMat(c, true, true), rt, [0, 0, 0], 0); out[c.name] = b64f(read(rt, Float32Array)); rt.dispose();
     } else if (!(c.f < 1)) {
       const rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true, ...(mode === 'depth' ? { depthTexture: new THREE.DepthTexture(W, H) } : {}) }); // build 497: the volume writes depth (gl_FragDepth), as in the app
-      draw(mkMat(c, false, false), rt, BG, 1); out[c.name] = mode === 'depth' ? b64f(readDepth(rt)) : b64f(read(rt, Uint8Array)); rt.dispose();
+      draw(mkMat(c, false, false), rt, BG, 1);
+      if (c.arrow && mode !== 'depth') { // build 511: an optional overlay drawn after the volume into the same target (LineSegments, pure green, never writes depth), as the app draws the section arrow: c.arrow = {pts: [[x,y,z],...] segment end points (object space), depthTest}
+        const g = new THREE.BufferGeometry().setFromPoints(c.arrow.pts.map(p => new THREE.Vector3(...p))), lm = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, depthTest: !!c.arrow.depthTest, depthWrite: false, toneMapped: false }), ls = new THREE.LineSegments(g, lm), osc = new THREE.Scene();
+        ls.frustumCulled = false; ls.renderOrder = 2; osc.add(ls); renderer.setRenderTarget(rt); renderer.autoClear = false; renderer.render(osc, cam); renderer.autoClear = true; g.dispose(); lm.dispose();
+      }
+      out[c.name] = mode === 'depth' ? b64f(readDepth(rt)) : b64f(read(rt, Uint8Array)); rt.dispose();
     } else {
       // the low-resolution path of vr-view.js: the ray material into a small target (cleared to transparent), then the composite pass over the background
       const f = c.f, tw = Math.max(1, Math.ceil(W * f)), th = Math.max(1, Math.ceil(H * f));

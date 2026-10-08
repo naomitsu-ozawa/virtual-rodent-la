@@ -114,7 +114,7 @@ describe('the fragment shader writes depth (source checks)', () => {
     expect(has(fs, 'uniform mat4 projectionMatrix;')).toBe(true); expect(has(fs, 'uniform mat4 modelViewMatrix;')).toBe(true);
     expect(has(fs, 'projectionMatrix*(modelViewMatrix*vec4(o+dir*(gDepthT+depthBias(dir)),1.0))')).toBe(true);
     expect(has(fs, 'if(acc.a<0.004)discard;')).toBe(true);
-    expect((fs.match(/depthMark\(/g) || []).length).toBe(1 + 5 + 1); // the function + 3 non-opaque hits + 2 cut faces + the post-loop hit
+    expect((fs.match(/depthMark\(/g) || []).length).toBe(1 + 5 + 1); // the function + 3 non-opaque hits + 2 cut faces + the post-loop hit (a slice writes no depth: the section frame lies in front of what is behind it, see vr-section-frame.test.js)
     expect(fs.indexOf('if(acc.a<0.004)discard;')).toBeLessThan(fs.indexOf('gl_FragDepth=clamp('));
   });
   it('the parity anchor of the harness (the post-loop hit shading) is intact', () => {
@@ -132,8 +132,8 @@ describe('the fragment shader writes depth (source checks)', () => {
 });
 
 describe('collateral: what lies inside the volume stays visible (source checks)', () => {
-  it('the section frame (+ arrow) and its glow have no depth test and are drawn after the volume; the boards (menu / help), the hand cue and the laser keep the depth test (they are outside the volume)', () => {
-    expect(has(src, "new THREE.LineBasicMaterial({color,transparent:true,depthTest:false}),h=0.12")).toBe(true);
+  it('the section frame starts without a depth test (build 509: switched per frame, see vr-section-frame.test.js) and never writes depth; the glow has no depth test; all are drawn after the volume; the boards (menu / help), the hand cue and the laser keep the depth test (they are outside the volume)', () => {
+    expect(has(src, "new THREE.LineBasicMaterial({color,transparent:true,depthTest:false,depthWrite:false}),h=0.12")).toBe(true);
     expect(has(src, 'frameLine.renderOrder=2')).toBe(true); expect(has(src, 'arrow.renderOrder=2')).toBe(true); expect(has(src, 'glow.renderOrder=3')).toBe(true);
     expect(src).toMatch(/MeshBasicMaterial\(\{color:0xffffff,transparent:true,opacity:0\.95,side:THREE\.DoubleSide,depthTest:false,depthWrite:false/);
     expect(has(src, 'new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));let widgets=[]')).toBe(true); // the boards: a board BEHIND the volume must stay covered by it
