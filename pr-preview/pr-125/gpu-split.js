@@ -14,7 +14,7 @@
 //
 // Owner's rule: handle only this combination (display = Intel, compute = NVIDIA, different GPUs). A single GPU, Mac, iPad,
 // Windows, or any uncertainty keeps the single shared device, i.e. the behaviour of builds up to 515.
-import { gpuPlatformOs } from './gpu-preference.js?v=20261008-build516';
+import { gpuPlatformOs } from './gpu-preference.js?v=20261008-build518';
 
 // 'nvidia' | 'intel' | 'amd' | 'apple' | 'software' | 'other' | '' (unknown). `parts` are the strings that name the GPU:
 // adapter.info.vendor / architecture / device / description, or the WebGL UNMASKED_VENDOR / UNMASKED_RENDERER.
@@ -58,10 +58,45 @@ export function gpuSplitCandidate(nav, computeAdapter) {
   return gpuPlatformOs(nav) === 'linux' && gpuAdapterVendorKey(computeAdapter) === 'nvidia';
 }
 
-// The status-line wording. '' parts when not split, so the single-GPU line is unchanged.
-export function gpuSplitStatusParts(split) {
-  if (!split?.active) return { render: '', compute: '' };
-  return { render: ' ' + split.renderVendor + ' (display)', compute: ' ' + split.computeVendor + ' (split)' };
+// A compute label that really names the volume renderer (WEBGPU VOLUME RESIDENT / RAYCAST / PICK / <profile> VOLUME · LINEAR):
+// that work runs on the render device, never on the compute device. Failure labels are not volume labels.
+export function gpuIsVolumeLabel(label) {
+  const s = String(label || '');
+  return /^WEBGPU\b/.test(s) && /\bVOLUME\b/.test(s) && !/FAIL|ERROR|LOST/.test(s);
+}
+
+// The status-line wording. Empty parts when not split, so the single-GPU line is unchanged.
+//   split          gpuFilterRuntime.split ({active, renderVendor, computeVendor})
+//   computeLabel   the backend label (gpuFilterRuntime.lastBackend)
+//   primaryVendor  build 517: vendor of the one GPU in the 'primary' hybrid mode ('' otherwise)
+// In split mode a volume label is on the display GPU: "Volume WEBGPU RESIDENT intel (display)", not "Compute ... nvidia (split)".
+export function gpuSplitStatusParts(split, computeLabel = '', primaryVendor = '') {
+  const same = { computeName: 'Compute', computeLabel };
+  if (primaryVendor && !split?.active) return { render: ' ' + primaryVendor + ' (primary)', compute: ' ' + primaryVendor + ' (primary)', ...same };
+  if (!split?.active) return { render: '', compute: '', ...same };
+  const render = ' ' + split.renderVendor + ' (display)';
+  if (gpuIsVolumeLabel(computeLabel)) return { render, compute: ' ' + split.renderVendor + ' (display)', computeName: 'Volume', computeLabel: String(computeLabel).replace(/ VOLUME\b/, '') };
+  return { render, compute: ' ' + split.computeVendor + ' (split)', ...same };
+}
+
+// The hybrid-mode sentence of the bar under the views ('' when the machine is not a detected hybrid).
+export function gpuHybridStatusText(rt) {
+  if (rt?.hybridMode === 'primary') return 'hybrid mode: primary GPU only (display + compute on ' + (rt.hybridVendor || 'the display GPU') + ')';
+  if (rt?.split?.active) return 'hybrid mode: hybrid (display ' + rt.split.renderVendor + ' · compute ' + rt.split.computeVendor + ')';
+  return '';
+}
+
+// Whether the status shows the extra diagnostics (limits, GPU preference, split / hybrid notes, the long error). Only when
+// something out of the ordinary happened: a buffer-limit retry, a detected hybrid (split active, the display-Intel /
+// compute-NVIDIA pre-check passed, or the primary-GPU mode), an explicit GPU preference, or debug mode. A Mac / iPad /
+// single-GPU machine in its normal state keeps exactly the status text of builds up to 515.
+export function gpuStatusDetailed(rt, debug = false) {
+  if (debug) return true;
+  if (!rt) return false;
+  if ((rt.limitRetries || 0) > 0 || (rt.renderLimitRetries || 0) > 0) return true;
+  if (rt.split?.active || rt.hybridSeen || rt.hybridMode) return true;
+  const req = rt.adapterRequest;
+  return !!(req?.supported && req.effective && req.effective !== 'auto');
 }
 
 // The display GPU as WebGL sees it: a throwaway WebGL2 context, read once, then released. null when it cannot be read.

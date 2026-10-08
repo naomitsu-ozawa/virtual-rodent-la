@@ -16,6 +16,7 @@ export const SETTINGS_DEFAULTS={
  cacheAutoPrune:true,  // keep only the current filter setting per dataset + 3D resolution
  cacheLimit:'auto',    // GPU volume cache limit: auto / 0.5 / 1 / 2 / 4 (GB)
  mpr2dAlpha:'0.65',    // build 430: strength of the segment / result colours in the 2D views (× segment opacity)
+ gpuHybridMode:'hybrid', // build 517: Linux hybrid (display Intel / NVIDIA) only: 'hybrid' (display Intel, compute NVIDIA; the build 516 split) / 'primary' (everything on the display GPU); ignored off Linux, applies after a reload
  gpuPreference:'auto'  // build 515: GPU for WebGPU: 'auto' (as before) / 'high-performance' / 'low-power'; honoured only on Linux / Windows (gpu-preference.js), applies after a reload
 };
 // pixel budgets (MP) per interaction tier / at rest; 'max' = no budget
