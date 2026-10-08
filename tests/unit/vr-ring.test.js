@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  WHEEL_SLOTS, WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, serializeWheelItems, parseWheelItems, setWheelItem, moveWheelItem, clearWheelItem,
+  WHEEL_SLOTS, WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, serializeWheelItems, parseWheelItems, setWheelItem, moveWheelItem, clearWheelItem, migrateWheelSectionFlip,
   wheelAngles, wheelSlotFromAngle, wheelSlotFromLocal, createWheelStick, createButtonPress,
 } from '../../docs/vr-ring.js';
 
@@ -252,5 +252,36 @@ describe('build 496: flip-cut ring item, point mode default, ring distance (stat
     expect(src).toContain("case'section-flip':flipPlane(section.selected);break");
     expect(src).toContain('L.flip,false,()=>flipPlane(pl)');
     expect(src).toContain('const flipPlane=pl=>{if(canFlipPlane(pl))pl.side=-pl.side}');
+  });
+});
+
+describe('migrateWheelSectionFlip (one-time)', () => {
+  it('fills the first empty slot of a saved layout', () => {
+    const r = migrateWheelSectionFlip({ wheel: ['home', null, 'undo', null, null, 'menu'] });
+    expect(r.wheel).toEqual(['home', 'section-flip', 'undo', null, null, 'menu']);
+    expect(r.wheelMig).toBe(1);
+    expect(r.changed).toBe(true);
+  });
+  it('leaves a full layout unchanged but records the migration', () => {
+    const full = ['home', 'undo', 'menu', 'screenshot', 'section-toggle', 'section-add'];
+    const r = migrateWheelSectionFlip({ wheel: full });
+    expect(r.wheel).toEqual(full);
+    expect(r.wheelMig).toBe(1);
+  });
+  it('does nothing when section-flip is already present', () => {
+    const w = ['home', null, 'section-flip', null, null, null];
+    expect(migrateWheelSectionFlip({ wheel: w }).wheel).toEqual(w);
+  });
+  it('does not re-add it after the user removed it', () => {
+    const r1 = migrateWheelSectionFlip({ wheel: ['home', null, null, null, null, null] });
+    const removed = clearWheelItem(r1.wheel, r1.wheel.indexOf('section-flip'));
+    const r2 = migrateWheelSectionFlip({ wheel: removed, wheelMig: r1.wheelMig });
+    expect(r2.wheel).toEqual(removed);
+    expect(r2.wheel).not.toContain('section-flip');
+    expect(r2.changed).toBe(false);
+  });
+  it('a full layout is not filled later either (flag already set)', () => {
+    const r = migrateWheelSectionFlip({ wheel: ['home', null, null, null, null, null], wheelMig: 1 });
+    expect(r.wheel).not.toContain('section-flip');
   });
 });

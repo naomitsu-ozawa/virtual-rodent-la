@@ -51,6 +51,16 @@ export function setWheelItem(items,slot,id){
  if(at>=0)a[at]=a[slot];
  a[slot]=id;return a;
 }
+// One-time migration (build 498): a layout saved before 切り口反転 existed never shows it. settings = the stored VR settings ({wheel, wheelMig}).
+// When wheelMig < 1: set it to 1 and, if 'section-flip' is not in the ring and a slot is empty (null), put it in the first empty slot.
+// No empty slot: the layout stays as it is. Once wheelMig >= 1 nothing is ever added again (a user who removed it keeps it removed).
+export const WHEEL_MIGRATION=1;
+export function migrateWheelSectionFlip(settings){
+ const wheel=normalizeWheelItems(settings?.wheel),mig=Number(settings?.wheelMig)||0;
+ if(mig>=WHEEL_MIGRATION)return{wheel,wheelMig:mig,changed:false};
+ if(!wheel.includes('section-flip')){const e=wheel.indexOf(null);if(e>=0)wheel[e]='section-flip'}
+ return{wheel,wheelMig:WHEEL_MIGRATION,changed:true};
+}
 // swap the slot with its neighbour (dir +1 / -1), wrapping round at the ends
 export function moveWheelItem(items,from,dir){
  const a=normalizeWheelItems(items);
