@@ -5,11 +5,11 @@
 // distance is being made, the START point with a pulsing ring and the hint 「終点のポイントを選んでください」 next to it.
 // vr-view.js calls createVrMeasure(THREE, scene) -> { update, probes, pickLabel, dragLabel, dispose } every frame and does everything else (the flow, haptics, undo) itself; the state is
 // measurements.js (the same for the PC / iPad). The value follows the points: it is recomputed from their voxels each frame (a point being moved included, preview).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261008-build500';
-import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261008-build500';
-import { nearLabelWorld, stepDelta, offsetFromDelta, LINE_SAMPLES, probeKey, fadeAlpha, approachAlpha, OCCLUDED_ALPHA } from './measure-label.js?v=20261008-build500';
-import { voxelToLocal } from './vr-point.js?v=20261008-build500';
-import { GHOST_ALPHA } from './vr-depth.js?v=20261008-build500';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261008-build502';
+import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261008-build502';
+import { nearLabelWorld, stepDelta, offsetFromDelta, LINE_SAMPLES, probeKey, fadeAlpha, approachAlpha, OCCLUDED_ALPHA } from './measure-label.js?v=20261008-build502';
+import { voxelToLocal } from './vr-point.js?v=20261008-build502';
+import { GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build502';
 
 export const VR_MEASURE_COLOR=0xffd23d,MEASURE_LABEL_W_M=0.045,MEASURE_LABEL_H_M=0.0132,MEASURE_HINT_W_M=0.2,MEASURE_HINT_H_M=0.026;
 // the label's size factor from the head distance (m): about 1 at arm's length (0.6 m), bigger when far, never tiny
@@ -105,7 +105,7 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
      if(ch)col.needsUpdate=true;
      const lh=!!hidden&&hidden.has(m.labelOffset?it.lprobe.id:it.probes[LINE_SAMPLES/2].id),la=approachAlpha(it.la,fadeAlpha(lh,isLit),dt);
      // occlusion (build 497): a lit label and its leader are drawn on top (no depth test, no ghost); the others are depth tested + ghost
-     {const top=!occlusion||isLit;it.label.mesh.material.depthTest=!top;it.label.ghost.material.visible=!top;it.leader.material.depthTest=!top;it.leaderGhost.material.visible=!top}
+     {const top=!occludedPass(occlusion,isLit);it.label.mesh.material.depthTest=!top;it.label.ghost.material.visible=!top;it.leader.material.depthTest=!top;it.leaderGhost.material.visible=!top}
      if(la!==it.la){it.la=la;it.label.mesh.material.opacity=la;it.label.ghost.material.opacity=la*GHOST_ALPHA;const lc=it.leader.geometry.attributes.color;lc.setW(0,la);lc.setW(1,la);lc.needsUpdate=true}
     }
     const S=startId?byId.get(startId):null;
