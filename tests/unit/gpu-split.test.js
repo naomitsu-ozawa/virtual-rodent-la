@@ -184,7 +184,7 @@ const buildCompute = (navigator, runtime = {}, extra = {}) => {
   const deps = {
     gpuForceCompat: false, navigator, gpuFilterRuntime: runtime, console: { info() {}, warn() {}, error() {} },
     gpuSplitCandidate, gpuSplitDecision, gpuVendorKey, gpuAdapterVendorKey, gpuSplitStatusParts, gpuHybridStatusText, gpuStatusDetailed, webglDisplayGpu, gpuPlatformOs, gpuEffectiveHybridMode,
-    gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText,
+    gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText, logGpuError() {},
     sceneState: { backend: 'WEBGPU', renderer: { backend: { device: null, set() {} } } },
     THREE: { Float32BufferAttribute: class { constructor(a) { this.array = a; } } },
     status: { removeAttribute() {}, textContent: '', className: '', title: '' }, document: { getElementById: () => null },
@@ -338,8 +338,8 @@ describe('split mode: devices and cross-device resources', () => {
     const listenerSrc = fnSrc(gpuSrc, 'installGpuErrorListener');
     const handlers = {}, runtime = rt(), backendCalls = [];
     const device = { addEventListener: (n, h) => { handlers[n] = h; }, createTexture: () => ({}) };
-    new Function('deps', 'const {installGpuLedger,gpuFilterRuntime,setGpuComputeBackend,updateGpuStatus,console}=deps;' + listenerSrc + 'installGpuErrorListener(deps.device,deps.role);')(
-      { installGpuLedger() {}, gpuFilterRuntime: runtime, setGpuComputeBackend: l => backendCalls.push(l), updateGpuStatus() {}, console: { error() {}, warn() {} }, device, role: 'render' });
+    new Function('deps', 'const {installGpuLedger,gpuFilterRuntime,setGpuComputeBackend,updateGpuStatus,console,logGpuError}=deps;' + listenerSrc + 'installGpuErrorListener(deps.device,deps.role);')(
+      { installGpuLedger() {}, logGpuError() {}, gpuFilterRuntime: runtime, setGpuComputeBackend: l => backendCalls.push(l), updateGpuStatus() {}, console: { error() {}, warn() {} }, device, role: 'render' });
     handlers.uncapturederror({ error: { message: 'Requested allocation size (10407936) is smaller than the image requires (11000000).' } });
     expect(backendCalls).toEqual([]);
     expect(runtime.lastError).toBe('');
@@ -404,7 +404,7 @@ describe('create3DRenderer: split, fallback, unchanged single-device path', () =
       resetSplitGpuDevices: note => events.push('reset ' + note),
       requestVrlGpuDevice: async () => { events.push('default-request'); return core; }, requestVrlSplitRenderDevice: async o => { events.push('split-request ' + o.computeAdapter.info.vendor); return split ? render : null; },
       adoptSplitGpuDevices: () => { events.push('adopt-split'); if (adoptThrows) throw new Error('adopt boom'); }, adoptRendererGpuDevice: (r, a, d) => events.push('adopt-shared ' + d.name),
-      canvasBackground3d: () => null, onCanvasThemeChange() {}, request3DRender() {},
+      canvasBackground3d: () => null, onCanvasThemeChange() {}, request3DRender() {}, logGpuError() {},
     };
     const fn = new Function('deps', 'const {' + Object.keys(deps).join(',') + '}=deps;' + src + 'return create3DRenderer;')(deps);
     return { fn, events };

@@ -1,12 +1,14 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20261008-build519';
-import { request3DRender } from './scene3d.js?v=20261008-build519';
-import { updateGpuStatus } from './gpu-compute.js?v=20261008-build519';
-import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build519';
-import { tr } from './i18n.js?v=20261008-build519';
-import { fmt } from './utils.js?v=20261008-build519';
-import { gpuPreferenceSupported, gpuEffectivePreference, gpuHybridModeSupported, gpuEffectiveHybridMode } from './gpu-preference.js?v=20261008-build519';
+import { settings } from './app-settings.js?v=20261008-build520';
+import { request3DRender } from './scene3d.js?v=20261008-build520';
+import { updateGpuStatus } from './gpu-compute.js?v=20261008-build520';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build520';
+import { tr } from './i18n.js?v=20261008-build520';
+import { fmt } from './utils.js?v=20261008-build520';
+import { gpuPreferenceSupported, gpuEffectivePreference, gpuHybridModeSupported, gpuEffectiveHybridMode } from './gpu-preference.js?v=20261008-build520';
+import { initGpuDiagnosticsUi } from './gpu-diagnostics-ui.js?v=20261008-build520';
+import { collectGpuDiagnostics } from './gpu-diagnostics-collect.js?v=20261008-build520';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
@@ -35,6 +37,8 @@ export function initSettingsDialog(){
   hybSel.onchange=()=>{settings.set('gpuHybridMode',hybSel.value);if(hybReload)hybReload.hidden=hybSel.value===loadedHybrid};
   const hybReloadBtn=document.getElementById('gpu-hybrid-reload-btn');if(hybReloadBtn)hybReloadBtn.onclick=()=>location.reload();
  }
+ // build 520: the GPU info tab (adapter / limit ladder / hybrid split / copyable report) exists only in debug mode (gpu-diagnostics-ui.js)
+ initGpuDiagnosticsUi({collect:collectGpuDiagnostics});
  const limitSel=document.getElementById('set-cache-limit'),limitChange=limitSel?.onchange;if(limitSel)limitSel.onchange=async()=>{limitChange?.();await pruneToLimit(true)};
  const pruneBtn=document.getElementById('set-cache-prune');if(pruneBtn)pruneBtn.onclick=()=>pruneToLimit(false);
  const clearBtn=document.getElementById('set-cache-clear');if(clearBtn)clearBtn.onclick=async()=>{if(!confirm(tr('volumeCacheConfirm')))return;const c=await volumeCache();if(c)await c.clear();void updateVolumeCacheControl();void renderCacheList()};

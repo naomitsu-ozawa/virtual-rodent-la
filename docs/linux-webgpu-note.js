@@ -2,13 +2,17 @@
 // reports it as hardware accelerated, unless Chrome is launched with --enable-features=ForceEnableWebGpuInterop
 // (Wayland only; X11 is unsupported). This module shows a short note + expandable explanation under the GPU status
 // bar, only on Linux and only when WebGPU is unavailable. Self-contained: one call from updateGpuStatus().
-import { tr } from './i18n.js?v=20261008-build519';
+import { tr } from './i18n.js?v=20261008-build520';
 
 export const isLinuxUserAgent=ua=>/Linux/i.test(ua||'')&&!/Android|CrOS/i.test(ua||'');
 // pure decision: show only on Linux, and only when WebGPU is unavailable
 export const shouldShowLinuxWebgpuNote=({ua,hasGpu,adapterNull})=>isLinuxUserAgent(ua)&&(!hasGpu||adapterNull===true);
 
 let probed=null; // null = not probed, 'pending', or boolean adapterNull
+// build 520: read-only status for the debug-mode GPU info tab (reads state, probes nothing)
+export function linuxWebgpuNoteState(){
+ try{return{linux:isLinuxUserAgent(globalThis.navigator?.userAgent),probed,shown:!!document.getElementById('linux-webgpu-note-btn')}}catch{return{linux:false,probed,shown:false}}
+}
 async function probeAdapterNull(gpu){
  const tries=[{powerPreference:'high-performance',featureLevel:'core'},{powerPreference:'high-performance'},undefined,{powerPreference:'high-performance',featureLevel:'compatibility'},{featureLevel:'compatibility'}];
  for(const o of tries){try{if(await gpu.requestAdapter(o))return false}catch{}}

@@ -12,13 +12,13 @@ const fnSrc = (src, name) => grab(src, new RegExp('export (async )?function ' + 
 
 const capsSrc = grab(gpuSrc, /export const GPU_BUFFER_LIMIT_CAPS=[^\n]*\n/);
 import { gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText } from '../../docs/gpu-preference.js';
-const build = (forceCompat = false) => new Function('gpuForceCompat', 'navigator', 'gpuFilterRuntime', 'console', 'gpuEffectivePreference', 'gpuPreferenceSupported', 'gpuAdapterRequestOptions', 'gpuPreferenceInfoText',
+const build = (forceCompat = false) => new Function('gpuForceCompat', 'navigator', 'gpuFilterRuntime', 'console', 'gpuEffectivePreference', 'gpuPreferenceSupported', 'gpuAdapterRequestOptions', 'gpuPreferenceInfoText', 'logGpuError',
   capsSrc + fnSrc(gpuSrc, 'capGpuBufferLimits') + fnSrc(gpuSrc, 'gpuLimitInfoText') + fnSrc(gpuSrc, 'gpuDeviceRequestDescriptor') + grab(gpuSrc, /export const vrlGpuPreference=[^\n]*\n/) +
   fnSrc(gpuSrc, 'requestVrlGpuAdapter') + fnSrc(gpuSrc, 'gpuLostAtCreation') + fnSrc(gpuSrc, 'requestVrlGpuDevice') + grab(gpuSrc, /export function gpuLostText[^\n]*\n/) +
   '\nreturn{gpuLostAtCreation,GPU_BUFFER_LIMIT_CAPS,capGpuBufferLimits,gpuLimitInfoText,gpuDeviceRequestDescriptor,requestVrlGpuDevice,requestVrlGpuAdapter,vrlGpuPreference,gpuLostText}');
 const quiet = { info() {}, warn() {} };
 // build 515: the GPU preference helpers (docs/gpu-preference.js, pure) are the real ones; the module's `navigator` is injected
-const prefDeps = [gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText];
+const prefDeps = [gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText, () => {}]; // the last one: logGpuError (build 520, in-memory log, not under test here)
 const api = (forceCompat = false, navigator = {}, runtime = {}) => build()(forceCompat, navigator, runtime, quiet, ...prefDeps);
 
 // the request as it was up to build 502 (verbatim, for the "unchanged below the cap" checks)
@@ -209,6 +209,16 @@ describe('device request retries with lower caps when refused', () => {
     expect(f.log.filter(l => l.startsWith('device'))).toEqual(['device 4096MB', 'device 2048MB', 'device 1024MB']);
     expect(r.device.limits).toMatchObject({ maxBufferSize: 1 * GiB, maxStorageBufferBindingSize: 1 * GiB });
     expect(rt.limitInfo).toMatch(/^limits buf 1024MB\/bind 1024MB \(adapter 8192MB\/8192MB\) · retry 4096MB failed: .* → 2048MB failed: /);
+  });
+  it('build 520: the retries and the cap that worked are recorded as data for the debug-mode GPU info tab', async () => {
+    const f = fakeGpu(nv8, 1 * GiB), rt = {};
+    await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
+    expect(rt.limitInfoLog).toHaveLength(2);
+    expect(rt.limitInfoLog[0]).toMatch(/^4096MB failed: /); expect(rt.limitInfoLog[1]).toMatch(/^2048MB failed: /);
+    expect(rt.limitInfoCapUsed).toBe('1024MB');
+    const g = fakeGpu(nv, Infinity), r2 = {};
+    await api(false, { gpu: g.gpu }, r2).requestVrlGpuDevice();
+    expect(r2.limitInfoLog).toEqual([]); expect(r2.limitInfoCapUsed).toBe('4096MB');
   });
   it('then with the WebGPU default buffer limits', async () => {
     const f = fakeGpu(nv8, 512 * MiB), rt = {};
