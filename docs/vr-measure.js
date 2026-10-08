@@ -1,11 +1,11 @@
 // VR display of the distances between two points (build 477): a line A-B with the value in mm on a label (billboard) at its midpoint, and, while a
 // distance is being made, the START point with a pulsing ring and the hint 「終点のポイントを選んでください」 next to it.
-// vr-view.js calls createVrMeasure(THREE, scene) -> { update, pickLabel, dragLabel, dispose } every frame and does everything else (the flow, haptics, undo) itself; the state is
+// vr-view.js calls createVrMeasure(THREE, scene) -> { update, probes, pickLabel, dragLabel, dispose } every frame and does everything else (the flow, haptics, undo) itself; the state is
 // measurements.js (the same for the PC / iPad). The value follows the points: it is recomputed from their voxels each frame (a point being moved included, preview).
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build488';
-import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261007-build488';
-import { nearLabelWorld, stepDelta, offsetFromDelta } from './measure-label.js?v=20261007-build488';
-import { voxelToLocal } from './vr-point.js?v=20261007-build488';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261007-build493';
+import { getMeasurements, setLabelOffset, distanceMm, measureLabel } from './measurements.js?v=20261007-build493';
+import { nearLabelWorld, stepDelta, offsetFromDelta, LINE_SAMPLES, probeKey, fadeAlpha, approachAlpha, OCCLUDED_ALPHA } from './measure-label.js?v=20261007-build493';
+import { voxelToLocal } from './vr-point.js?v=20261007-build493';
 
 export const VR_MEASURE_COLOR=0xffd23d,MEASURE_LABEL_W_M=0.045,MEASURE_LABEL_H_M=0.0132,MEASURE_HINT_W_M=0.2,MEASURE_HINT_H_M=0.026;
 // the label's size factor from the head distance (m): about 1 at arm's length (0.6 m), bigger when far, never tiny
@@ -18,8 +18,11 @@ export const pulsePhase=nowMs=>0.5+0.5*Math.sin((+nowMs||0)/1200*Math.PI*2);
 
 export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,getMeasurements,setLabelOffset}){
  const planeGeo=new THREE.PlaneGeometry(1,1),sphereGeo=new THREE.SphereGeometry(1,16,12);
- const lineMat=new THREE.LineBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.95,depthTest:false,toneMapped:false});
- const leaderMat=new THREE.LineBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.6,depthTest:false,toneMapped:false});
+ // build 493: the line and the leader carry a per-vertex alpha (vertexColors, RGBA, rgb = 1 so the colour stays the material's): the part of the line that lies behind the
+ // visible surface of the volume is drawn faint (measure-label.js "depth cue"; the volume writes no depth, so this is judged on the CPU by vr-view.js, see probes()).
+ const lineMat=new THREE.LineBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.95,depthTest:false,toneMapped:false,vertexColors:true});
+ const leaderMat=new THREE.LineBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.6,depthTest:false,toneMapped:false,vertexColors:true});
+ const makeLine=n=>{const g=new THREE.BufferGeometry().setFromPoints(Array.from({length:n},()=>new THREE.Vector3())),c=new Float32Array(n*4).fill(1);g.setAttribute('color',new THREE.BufferAttribute(c,4));return g};
  const pulseMat=new THREE.MeshBasicMaterial({color:VR_MEASURE_COLOR,transparent:true,opacity:0.9,side:THREE.BackSide,depthTest:false,toneMapped:false});
  const makeLabel=(cw,ch,w,h)=>{
   const canvas=document.createElement('canvas');canvas.width=cw;canvas.height=ch;
@@ -37,7 +40,8 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
   lb.tex.needsUpdate=true;
  };
  const disposeLabel=lb=>{scene.remove(lb.mesh);lb.tex.dispose();lb.mesh.material.dispose()};
- const items=new Map(); // measurement id -> {line,label}
+ const items=new Map(); // measurement id -> {line,leader,label,va,la,t,probes,lprobe}
+ const probeList=[]; // the places to judge (hidden behind the volume's surface), rebuilt by update: [{id:probeKey,world:Vector3}]
  let start=null; // {ring,hint}
  const a=new THREE.Vector3(),b=new THREE.Vector3(),mid=new THREE.Vector3(),s=new THREE.Vector3(),lab=new THREE.Vector3(),inv=new THREE.Matrix4(),lo=new THREE.Vector3(),ld=new THREE.Vector3(),hit=new THREE.Vector3();
  const mv={i:0,j:0,k:0};
@@ -47,7 +51,7 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
  return{
   // fingerprint / dims / halfExt / mesh: as vpMarkers.update; head: the head's world position; spacing: [sx,sy,sz] mm; warn: the series has a slice-spacing warning;
   // startId: the point a distance starts at (or null); hint: its text; now: ms; preview: {id,voxel} a point being moved (voxel null = still at its place)
-  update({fingerprint,dims,halfExt,mesh,head,spacing,warn=false,startId=null,hint='',now=performance.now(),preview=null,lit=null}){ // lit: a Set of measurement ids whose label is lit (laser on it / grabbed), or null
+  update({fingerprint,dims,halfExt,mesh,head,spacing,warn=false,startId=null,hint='',now=performance.now(),preview=null,lit=null,hidden=null}){ // lit: a Set of measurement ids whose label is lit (laser on it / grabbed), or null. hidden: a Set of probe keys behind the volume's surface (probes()), or null
    const all=fingerprint&&dims&&halfExt&&mesh&&deps.getMarkersShown()?deps.getComments():[],byId=new Map();
    for(const c of all){
     if(!commentMatchesSeries(c,fingerprint))continue;
@@ -62,12 +66,14 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
      const A=byId.get(m.a),B=byId.get(m.b);if(!A||!B)continue;
      keep.add(m.id);let it=items.get(m.id);
      if(!it){
-      const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),lineMat);line.renderOrder=4;line.frustumCulled=false;scene.add(line);
-      const leader=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),leaderMat);leader.renderOrder=4;leader.frustumCulled=false;scene.add(leader);
-      it={line,leader,label:makeLabel(256,72,MEASURE_LABEL_W_M,MEASURE_LABEL_H_M)};items.set(m.id,it);
+      const line=new THREE.Line(makeLine(LINE_SAMPLES+1),lineMat);line.renderOrder=4;line.frustumCulled=false;scene.add(line);
+      const leader=new THREE.Line(makeLine(2),leaderMat);leader.renderOrder=4;leader.frustumCulled=false;scene.add(leader);
+      it={line,leader,label:makeLabel(256,72,MEASURE_LABEL_W_M,MEASURE_LABEL_H_M),va:new Array(LINE_SAMPLES+1).fill(1),la:1,t:0,dragged:false,probes:Array.from({length:LINE_SAMPLES+1},(_,i)=>({id:probeKey(m.id,i),world:new THREE.Vector3()})),lprobe:{id:probeKey(m.id,'L'),world:new THREE.Vector3()}};items.set(m.id,it);
      }
      a.set(A.local.x,A.local.y,A.local.z);mesh.localToWorld(a);b.set(B.local.x,B.local.y,B.local.z);mesh.localToWorld(b);
-     const pos=it.line.geometry.attributes.position;pos.setXYZ(0,a.x,a.y,a.z);pos.setXYZ(1,b.x,b.y,b.z);pos.needsUpdate=true;
+     const pos=it.line.geometry.attributes.position;
+     for(let i=0;i<=LINE_SAMPLES;i++){const f=i/LINE_SAMPLES,pr=it.probes[i].world;pr.set(a.x+(b.x-a.x)*f,a.y+(b.y-a.y)*f,a.z+(b.z-a.z)*f);pos.setXYZ(i,pr.x,pr.y,pr.z)}
+     pos.needsUpdate=true;
      const isLit=!!lit&&lit.has(m.id);drawText(it.label,measureLabel(distanceMm(A.vox,B.vox,spacing),warn),'bold 40px system-ui,sans-serif',isLit);
      // the label (60 % size, scaled with the head distance): where the user left it (labelOffset: voxel units from the midpoint) or, by default, NEAR the line
      // (beside it as seen from the head); a thin leader joins it to the midpoint
@@ -79,6 +85,15 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
      else{const p=nearLabelWorld(a,b,head||{x:mid.x,y:mid.y+1,z:mid.z+1},(MEASURE_LABEL_W_M*0.35+0.008)*k);lab.set(p.x,p.y,p.z)}
      it.label.mesh.position.copy(lab);it.label.mesh.scale.set(MEASURE_LABEL_W_M*k,MEASURE_LABEL_H_M*k,1);if(head)it.label.mesh.lookAt(head);it.label.mesh.visible=true;it.label.mesh.updateMatrixWorld(true);
      const lg=it.leader.geometry.attributes.position;lg.setXYZ(0,mid.x,mid.y,mid.z);lg.setXYZ(1,lab.x,lab.y,lab.z);lg.needsUpdate=true;
+     it.lprobe.world.copy(lab);it.dragged=!!m.labelOffset;
+     // depth cue (build 493): the parts behind the surface fade towards OCCLUDED_ALPHA (smoothly: the judgement is ~10 Hz); the label and its leader follow the dragged label's own
+     // place, or (not dragged) the line's midpoint; a LIT label (laser on it / grabbed) stays fully visible so it can still be used
+     const dt=it.t?Math.min(250,now-it.t):0;it.t=now;
+     const col=it.line.geometry.attributes.color;let ch=false;
+     for(let i=0;i<=LINE_SAMPLES;i++){const v=approachAlpha(it.va[i],hidden&&hidden.has(it.probes[i].id)?OCCLUDED_ALPHA:1,dt);if(v!==it.va[i]){it.va[i]=v;col.setW(i,v);ch=true}}
+     if(ch)col.needsUpdate=true;
+     const lh=!!hidden&&hidden.has(m.labelOffset?it.lprobe.id:it.probes[LINE_SAMPLES/2].id),la=approachAlpha(it.la,fadeAlpha(lh,isLit),dt);
+     if(la!==it.la){it.la=la;it.label.mesh.material.opacity=la;const lc=it.leader.geometry.attributes.color;lc.setW(0,la);lc.setW(1,la);lc.needsUpdate=true}
     }
     const S=startId?byId.get(startId):null;
     if(S){
@@ -93,7 +108,11 @@ export function createVrMeasure(THREE,scene,deps={getComments,getMarkersShown,ge
     }else dropStart();
    }else dropStart();
    for(const [id,it] of [...items])if(!keep.has(id))dropItem(id,it);
+   probeList.length=0;for(const it of items.values()){for(const p of it.probes)probeList.push(p);if(it.dragged)probeList.push(it.lprobe)}
   },
+  // the places whose "hidden behind the volume" is judged by vr-view.js (about 10 times a second, vr-point.js pointIsHidden): the 9 samples of every line and the label that was dragged.
+  // [{id:probeKey,world:Vector3}] of the last update (the list is reused: read it, do not keep it)
+  probes:()=>probeList,
   // the label a ray (world origin o, unit direction d) points at: {id,distance,hit,pos} (hit / pos: world points) or null (as of the last update)
   pickLabel(o,d){
    let best=null;

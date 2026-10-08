@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clampLabelCenter, planeLabelPlacement, planeVoxelDelta, stepDelta, offsetFromDelta, nearLabelWorld, createFocusTracker } from '../../docs/measure-label.js';
+import { clampLabelCenter, planeLabelPlacement, planeVoxelDelta, stepDelta, offsetFromDelta, nearLabelWorld, createFocusTracker, OCCLUDED_ALPHA, LINE_SAMPLES, LABEL_MID, probeKey, labelPart, lineSamplePoints, fadeAlpha, lineAlphas, approachAlpha } from '../../docs/measure-label.js';
 import { planePointFromVoxel } from '../../docs/crosshair.js';
 
 
@@ -62,5 +62,31 @@ describe('createFocusTracker (the lit distance label)', () => {
     f.hover(null); expect(f.get()).toBe('a'); expect(calls.length).toBe(1); // still dragged
     f.drag(null); expect(f.get()).toBeNull(); expect(calls[calls.length - 1]).toEqual([null, 'a']);
     f.drag('b'); f.hover('c'); expect(f.get()).toBe('b'); // the drag wins over the hover
+  });
+});
+
+describe('depth cue helpers (build 493)', () => {
+  it('fadeAlpha: faint only when hidden and not lit', () => {
+    expect(fadeAlpha(false, false)).toBe(1); expect(fadeAlpha(true, false)).toBe(OCCLUDED_ALPHA); expect(fadeAlpha(true, true)).toBe(1); expect(fadeAlpha(false, true)).toBe(1);
+    expect(OCCLUDED_ALPHA).toBeGreaterThanOrEqual(0.25); expect(OCCLUDED_ALPHA).toBeLessThanOrEqual(0.35);
+  });
+  it('probe keys: a not dragged label follows the line midpoint, a dragged one its own place', () => {
+    expect(labelPart(null)).toBe(LABEL_MID); expect(labelPart(undefined)).toBe(LABEL_MID); expect(labelPart({ i: 1, j: 0, k: 0 })).toBe('L');
+    expect(probeKey('m1', LABEL_MID)).toBe('m1|4'); expect(probeKey('m1', 'L')).toBe('m1|L');
+  });
+  it('lineSamplePoints: n + 1 points from a to b, evenly; the middle one is the midpoint', () => {
+    const p = lineSamplePoints({ x: 0, y: 2, z: -4 }, { x: 8, y: 2, z: 4 });
+    expect(p).toHaveLength(LINE_SAMPLES + 1); expect(p[0]).toEqual({ x: 0, y: 2, z: -4 }); expect(p[LINE_SAMPLES]).toEqual({ x: 8, y: 2, z: 4 }); expect(p[LABEL_MID]).toEqual({ x: 4, y: 2, z: 0 });
+  });
+  it('lineAlphas: faint exactly at the hidden samples', () => {
+    expect(lineAlphas('m', null)).toEqual(Array(LINE_SAMPLES + 1).fill(1));
+    const a = lineAlphas('m', new Set([probeKey('m', 0), probeKey('m', 5), probeKey('x', 1)]));
+    expect(a.map(v => v < 1 ? 'h' : '.').join('')).toBe('h....h...');
+  });
+  it('approachAlpha: moves towards the target, never overshoots, snaps, does not move without time', () => {
+    expect(approachAlpha(1, 0.3, 0)).toBe(1);
+    const a = approachAlpha(1, 0.3, 35); expect(a).toBeLessThan(1); expect(a).toBeGreaterThan(0.3);
+    let v = 1; for (let i = 0; i < 40; i++) v = approachAlpha(v, 0.3, 16); expect(v).toBe(0.3);
+    let w = 0.3; for (let i = 0; i < 40; i++) w = approachAlpha(w, 1, 16); expect(w).toBe(1);
   });
 });

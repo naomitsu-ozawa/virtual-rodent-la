@@ -49,3 +49,27 @@ export function nearLabelWorld(a,b,head,dist){
  n=n.map(x=>x/l);if(n[1]<0||(n[1]===0&&n[0]<0))n=n.map(x=>-x);
  return{x:mid.x+n[0]*dist,y:mid.y+n[1]*dist,z:mid.z+n[2]*dist};
 }
+
+// ---- depth cue (build 493) ----
+// The distance line, its leader and its label are drawn over the volume without a depth test (the volume writes no depth), so what lies BEHIND the visible surface of
+// the volume looked as if it floated in front of it. The surface is judged on the CPU, with the rule the point markers already use (vr-point.js pointIsHidden: march
+// from the thing towards the eye over the classification of the shown segments), and a hidden part is drawn FAINT ("x-ray"), never removed, so it stays findable.
+// The thing judged is a probe: {id:probeKey(measurementId,part),pos}. part = a sample index 0..LINE_SAMPLES along the line (A -> B), or 'L' for a label the user dragged.
+// A label that was not dragged stays with its line: it follows the midpoint sample (LABEL_MID).
+export const OCCLUDED_ALPHA=0.3,LINE_SAMPLES=8,LABEL_MID=LINE_SAMPLES/2;
+export const probeKey=(id,part)=>id+'|'+part;
+export const labelPart=labelOffset=>labelOffset?'L':LABEL_MID;
+// the sample points a->b (n segments, n+1 points) of any {x,y,z}
+export function lineSamplePoints(a,b,n=LINE_SAMPLES){
+ const out=[];for(let i=0;i<=n;i++){const t=i/n;out.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t})}
+ return out;
+}
+// the opacity factor of a label / leader: faint when hidden, but a lit one (the laser on it / grabbed / hovered / dragged) stays fully visible so it can still be used
+export const fadeAlpha=(hidden,lit=false)=>hidden&&!lit?OCCLUDED_ALPHA:1;
+// the per-sample opacity factors of the line: hidden:Set of probe keys (null = nothing hidden)
+export const lineAlphas=(id,hidden,n=LINE_SAMPLES)=>{const out=[];for(let i=0;i<=n;i++)out.push(hidden&&hidden.has(probeKey(id,i))?OCCLUDED_ALPHA:1);return out};
+// a smooth step towards the target (so the 10 Hz judgement fades in / out instead of flickering); dtMs = time since the last call; snaps when almost there
+export function approachAlpha(cur,target,dtMs){
+ const k=1-Math.exp(-Math.max(0,+dtMs||0)/70),n=cur+(target-cur)*k;
+ return Math.abs(target-n)<0.01?target:n;
+}

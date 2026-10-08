@@ -1005,6 +1005,11 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .measure-label-3d.is-lit,.measure-label-3d.is-dragging{background:#ffe27a;color:#111;border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.9),0 0 10px 2px rgba(255,210,61,.85)}
 .vrl-ipad-ui .measure-label-3d,.vrl-ipad-ui .measure-hint-3d{font-size:12px;line-height:15px}
 .measure-leader-3d{stroke:#ffd23d;stroke-width:1;stroke-opacity:.8}
+/* build 493: behind the volume's surface (the points' rule, see comment-3d.js depthCue) = faint, like an x-ray, so a label does not float in front of tissue it lies behind; a lit / dragged label stays fully visible to be used */
+.measure-label-3d,.measure-leader-3d{transition:opacity .15s}
+.measure-label-3d.is-behind,.measure-leader-3d.is-behind{opacity:.3}
+.measure-label-3d.is-behind.is-lit,.measure-label-3d.is-behind.is-dragging,.measure-leader-3d.is-behind.is-lit{opacity:1}
+@media (prefers-reduced-motion:reduce){.measure-label-3d,.measure-leader-3d{transition:none}}
 .comment-marker-3d.is-measure-start{box-shadow:0 0 0 3px #ffd23d,0 0 0 4px rgba(0,0,0,.6);animation:vrl-measure-pulse 1.2s ease-in-out infinite}
 @keyframes vrl-measure-pulse{0%,100%{box-shadow:0 0 0 2px #ffd23d,0 0 0 3px rgba(0,0,0,.6)}50%{box-shadow:0 0 0 7px rgba(255,210,61,.7),0 0 0 8px rgba(0,0,0,.5)}}
 @media (prefers-reduced-motion:reduce){.comment-marker-3d.is-measure-start{animation:none}}
