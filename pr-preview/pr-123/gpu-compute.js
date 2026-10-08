@@ -1,16 +1,16 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261008-build503';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build503';
+import { installGpuLedger } from './mem-ledger.js?v=20261008-build504';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build504';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build503';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build503';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build503';
-import { runsSliceToMask } from './run-length.js?v=20261008-build503';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build503';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build503';
-import { tr } from './i18n.js?v=20261008-build503';
-import { gpuAdapterRequestOptions, gpuEffectivePreference, logGpuError } from './gpu-diagnostics.js?v=20261008-build503';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build504';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build504';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build504';
+import { runsSliceToMask } from './run-length.js?v=20261008-build504';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build504';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build504';
+import { tr } from './i18n.js?v=20261008-build504';
+import { gpuAdapterRequestOptions, gpuEffectivePreference, logGpuError } from './gpu-diagnostics.js?v=20261008-build504';
 export { gpuAdapterRequestOptions };
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
 // adapter.info (current) or the info stashed from the older async requestAdapterInfo(); missing fields are fine

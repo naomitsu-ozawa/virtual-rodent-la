@@ -67,8 +67,17 @@ export function gpuPreferenceNote(preference, info) {
 const val = v => (v === undefined || v === null || v === '' ? '-' : String(v));
 // data: {navigatorGpu, platform, userAgent, os, requested:{stored,effective,option,optionIndex}, adapter:{info,isFallback,limits,features}|null,
 // mode, backend, errors:[{time,source,message,stack}], lastError, hint}. t: key -> label. Returns plain text.
+const clip = (v, n) => { const s = String(v ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+// One-line essentials (no UA) so a truncated paste still keeps the key facts. Always < 180 chars.
+export function buildGpuSummary(data) {
+  const r = data.requested || {}, a = data.adapter, i = a?.info || {};
+  const dev = clip(i.device || i.description || i.architecture, 32);
+  const got = a ? (clip(i.vendor, 14) || '-') + (dev ? ' ' + dev : '') + ' fallback:' + (a.isFallback === undefined ? '?' : a.isFallback ? 'yes' : 'no') : 'なし';
+  const err = data.lastError ? clip(data.lastError, 40) : 'なし';
+  return ('GPU要約 b' + clip(data.build ?? '-', 8) + ' | WebGPU:' + (data.navigatorGpu ? '有' : '無') + ' | 要求:' + clip(r.effective || '-', 16) + ' | 取得:' + got + ' | 直近エラー:' + err).slice(0, 179);
+}
 export function buildGpuReport(data, t = k => k) {
-  const L = [], add = (k, v) => L.push(t(k) + ': ' + val(v));
+  const L = [buildGpuSummary(data)], add = (k, v) => L.push(t(k) + ': ' + val(v));
   L.push('Virtual Rodent Lab - ' + t('gpuReportTitle'));
   add('gpuRepTime', data.time || new Date().toISOString());
   add('gpuRepBuild', data.build);
