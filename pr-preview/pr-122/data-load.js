@@ -1,5 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
+import { SAMPLE_CACHE, DEFAULT_SAMPLE, sampleIndexUrl, sampleSliceUrl, sampleCacheKey } from './sample-sets.js?v=20261008-build496';
 import { mark3DStale, mark3DCurrent } from './three-state.js?v=20261008-build496';
 import { updateVolumeFilterBadge, set3DBusy, gpuVolumeRefresh } from './three-status.js?v=20261008-build496';
 import { currentLanguage, current3DVolume, volume, activeSeries, threeRenderMode, sceneState, sourceVolume, setActiveId, setActiveSeries, activeId, setSourceVolume, setVolume, setThreeRenderMode, ipadGpuTargetSide, setResidentGpuUploadSeriesId, setResidentMprReadbackDisabled, residentGpuUploadSeriesId, gpuPrewarmScheduled, gpuPrewarmIndex, setGpuPrewarmScheduled, incGpuPrewarmIndex, setFilterOrder, setCtRangeMode, setCtRangeProfile, ctRangeProfile, incSourceRenderRevision, setThreeDCancelRequested, setCurrent3DVolume, setMemoryGpuPreviewActive, incResidentMprEpoch, ctRangeMode, filterOrder, threeDDirty } from './state.js?v=20261008-build496';
@@ -172,10 +173,9 @@ export async function loadDemo(){
 // build 335: practice dataset hosted on this site (docs/demo/sample1, 512 DICOM slices
 // listed in index.json). Same-origin, so it also opens on a Meta Quest without typing a
 // URL or picking a folder. The browser HTTP cache keeps it for the next visit.
-export const SAMPLE_DEMO_BASE='demo/sample1/',SAMPLE_CACHE='virtual-rodent-sample-v1';
-export async function loadSampleDemo(){
+export async function loadSampleDemo(setId=DEFAULT_SAMPLE){
  loadPhase('練習データを取得中','practice data');progLabel.textContent='接続中…';bar.style.width='0%';
- const r=await fetch(SAMPLE_DEMO_BASE+'index.json',{credentials:'omit'});
+ const r=await fetch(sampleIndexUrl(setId),{credentials:'omit'});
  if(!r.ok)throw new Error('Sample index: HTTP '+r.status);
  const names=(await r.json()).files||[];if(!names.length)throw new Error('Sample index is empty');
  // build 352: slices kept in Cache Storage (like the public demo), so a
@@ -186,7 +186,7 @@ export async function loadSampleDemo(){
  // build 355: the cache key does not contain the page path, so main and the
  // PR previews (same origin) share one copy; the write runs beside the read
  const puts=[];
- const lane=async()=>{while(next<names.length){const i=next++,url=new URL(SAMPLE_DEMO_BASE+encodeURIComponent(names[i]),location.href).href,key=location.origin+'/__vrl-sample/v1/'+encodeURIComponent(names[i]);
+ const lane=async()=>{while(next<names.length){const i=next++,url=new URL(sampleSliceUrl(setId,names[i]),location.href).href,key=sampleCacheKey(location.origin,setId,names[i]);
   let res=null;try{res=cache?await cache.match(key):null}catch{res=null}
   if(res)cached++;
   else{res=await fetch(url,{credentials:'omit'});if(!res.ok)throw new Error(names[i]+': HTTP '+res.status);if(cache)puts.push(cache.put(key,res.clone()).catch(()=>{}))}
