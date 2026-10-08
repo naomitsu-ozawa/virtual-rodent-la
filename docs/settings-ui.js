@@ -6,7 +6,7 @@ import { updateGpuStatus } from './gpu-compute.js?v=20261008-build516';
 import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261008-build516';
 import { tr } from './i18n.js?v=20261008-build516';
 import { fmt } from './utils.js?v=20261008-build516';
-import { gpuPreferenceSupported, gpuEffectivePreference } from './gpu-preference.js?v=20261008-build516';
+import { gpuPreferenceSupported, gpuEffectivePreference, gpuHybridModeSupported, gpuEffectiveHybridMode } from './gpu-preference.js?v=20261008-build516';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
@@ -27,12 +27,20 @@ export function initSettingsDialog(){
   gpuSel.onchange=()=>{settings.set('gpuPreference',gpuSel.value);if(gpuReload)gpuReload.hidden=gpuSel.value===loadedGpuPref};
   const gpuReloadBtn=document.getElementById('gpu-pref-reload-btn');if(gpuReloadBtn)gpuReloadBtn.onclick=()=>location.reload();
  }
+ // build 517: 「ハイブリッド環境での処理」, shown on Linux only (the stored value is ignored elsewhere); like 「使う GPU」 it applies after a reload
+ const hybRow=document.getElementById('gpu-hybrid-row'),hybSel=document.getElementById('set-gpu-hybrid'),hybHint=document.getElementById('gpu-hybrid-hint'),hybReload=document.getElementById('gpu-hybrid-reload');
+ if(hybRow&&hybSel){
+  const loadedHybrid=gpuEffectiveHybridMode(settings.get('gpuHybridMode'));
+  const hybOn=gpuHybridModeSupported();hybRow.hidden=!hybOn;if(hybHint)hybHint.hidden=!hybOn;
+  hybSel.onchange=()=>{settings.set('gpuHybridMode',hybSel.value);if(hybReload)hybReload.hidden=hybSel.value===loadedHybrid};
+  const hybReloadBtn=document.getElementById('gpu-hybrid-reload-btn');if(hybReloadBtn)hybReloadBtn.onclick=()=>location.reload();
+ }
  const limitSel=document.getElementById('set-cache-limit'),limitChange=limitSel?.onchange;if(limitSel)limitSel.onchange=async()=>{limitChange?.();await pruneToLimit(true)};
  const pruneBtn=document.getElementById('set-cache-prune');if(pruneBtn)pruneBtn.onclick=()=>pruneToLimit(false);
  const clearBtn=document.getElementById('set-cache-clear');if(clearBtn)clearBtn.onclick=async()=>{if(!confirm(tr('volumeCacheConfirm')))return;const c=await volumeCache();if(c)await c.clear();void updateVolumeCacheControl();void renderCacheList()};
  function sync(){
   const v=settings.all(),put=(id,val)=>{const el=document.getElementById(id);if(!el)return;if(el.type==='checkbox')el.checked=!!val;else el.value=String(val)};
-  put('set-drag-quality',v.dragQuality);put('set-rest-quality',v.restQuality);put('set-step-quality',v.stepQuality);put('set-refine',v.refine);put('set-interp',v.interp);put('set-drag-lowres',v.dragLowerRes);put('set-show-perf',v.showPerf);put('set-debug',v.debug);put('set-cache-autoprune',v.cacheAutoPrune);put('set-cache-limit',v.cacheLimit);put('set-mpr-alpha',v.mpr2dAlpha);put('set-gpu-preference',gpuEffectivePreference(v.gpuPreference));
+  put('set-drag-quality',v.dragQuality);put('set-rest-quality',v.restQuality);put('set-step-quality',v.stepQuality);put('set-refine',v.refine);put('set-interp',v.interp);put('set-drag-lowres',v.dragLowerRes);put('set-show-perf',v.showPerf);put('set-debug',v.debug);put('set-cache-autoprune',v.cacheAutoPrune);put('set-cache-limit',v.cacheLimit);put('set-mpr-alpha',v.mpr2dAlpha);put('set-gpu-preference',gpuEffectivePreference(v.gpuPreference));put('set-gpu-hybrid',gpuEffectiveHybridMode(v.gpuHybridMode));
  }
 }
 

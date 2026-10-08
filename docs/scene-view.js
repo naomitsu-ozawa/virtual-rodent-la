@@ -7,7 +7,7 @@ import { frameYield } from './utils.js?v=20261008-build516';
 import { tr } from './i18n.js?v=20261008-build516';
 import { analysisCutScreen, analysisEditTargetMode, analysisEditTool, current3DVolume, sceneState, sectionViewOpen, sectionViewPlane, setAnalysisCutScreen, setAnalysisEditTargetKey, threeRenderMode, volume } from './state.js?v=20261008-build516';
 import { planes, sectionPosition, threeEditOverlay, viewport } from './ui-shell.js?v=20261008-build516';
-import { adoptRendererGpuDevice, adoptSplitGpuDevices, requestVrlGpuDevice, requestVrlSplitRenderDevice } from './gpu-compute.js?v=20261008-build516';
+import { adoptRendererGpuDevice, adoptSplitGpuDevices, requestVrlGpuDevice, requestVrlPrimaryGpuDevice, requestVrlSplitRenderDevice, resetSplitGpuDevices } from './gpu-compute.js?v=20261008-build516';
 import { request3DRender } from './scene3d.js?v=20261008-build516';
 import { canvasBackground3d, onCanvasThemeChange } from './canvas-theme.js?v=20261008-build516';
 import { updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261008-build516';
@@ -35,7 +35,9 @@ export async function create3DRenderer(){
  let renderer,backend='WEBGL';
  if('gpu' in navigator){
   try{
-   const core=await requestVrlGpuDevice();
+   // build 517: 「ハイブリッド環境での処理」 = primary GPU only (Linux hybrid): the display GPU creates the one device, no NVIDIA
+   // device; null (not Linux / not that hybrid / setting 'hybrid') leaves the request exactly as before
+   const core=await requestVrlPrimaryGpuDevice()||await requestVrlGpuDevice();
    // build 516: Linux hybrid (display Intel / compute NVIDIA) only: the renderer gets its own device on the display adapter and
    // compute keeps the NVIDIA device (gpu-split.js). Everywhere else this returns null at once and the code below is the old path.
    const split=await requestVrlSplitRenderDevice({computeAdapter:core.adapter});
@@ -44,8 +46,10 @@ export async function create3DRenderer(){
      const splitRenderer=new THREE.WebGPURenderer({antialias:true,alpha:true,device:split.device});splitRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await splitRenderer.init();
      adoptSplitGpuDevices(splitRenderer,core,split);renderer=splitRenderer;backend='WEBGPU';
     }catch(splitError){
-     // the render device is unusable: back to one shared device (the NVIDIA one), as before build 516
+     // the render device is unusable: back to one shared device (the NVIDIA one), as before build 516. build 517: whatever the
+     // split had recorded (also after a half-done adoptSplitGpuDevices) is reset and the reason is shown in the status.
      console.warn('GPU split render device failed; using one shared device.',splitError);try{split.device.destroy?.()}catch{}
+     resetSplitGpuDevices('render device init failed: '+String(splitError?.message||splitError).slice(0,160));
      renderer=null;backend='WEBGL';
     }
    }

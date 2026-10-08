@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { gpuVendorKey, gpuAdapterVendorKey, gpuSplitDecision, gpuSplitCandidate, gpuSplitStatusParts, webglDisplayGpu } from '../../docs/gpu-split.js';
-import { gpuPlatformOs, gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText } from '../../docs/gpu-preference.js';
+import { gpuVendorKey, gpuAdapterVendorKey, gpuSplitDecision, gpuSplitCandidate, gpuSplitStatusParts, gpuIsVolumeLabel, gpuHybridStatusText, gpuStatusDetailed, webglDisplayGpu } from '../../docs/gpu-split.js';
+import { gpuPlatformOs, gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText, gpuEffectiveHybridMode, gpuHybridModeSupported } from '../../docs/gpu-preference.js';
 
 // build 516: GPU split (display Intel / compute NVIDIA hybrid on Linux only). Chrome 155 Linux allocates WebGPU shared images
 // (canvas, copyExternalImageToTexture, importExternalTexture) on the display GPU's VkDevice and imports them into Dawn's device
@@ -103,11 +103,43 @@ describe('WebGL display probe', () => {
 
 describe('status parts', () => {
   it('empty when not split (single-GPU line unchanged)', () => {
-    expect(gpuSplitStatusParts(null)).toEqual({ render: '', compute: '' });
-    expect(gpuSplitStatusParts({ active: false })).toEqual({ render: '', compute: '' });
+    expect(gpuSplitStatusParts(null, 'WEBGPU VOLUME RESIDENT')).toEqual({ render: '', compute: '', computeName: 'Compute', computeLabel: 'WEBGPU VOLUME RESIDENT' });
+    expect(gpuSplitStatusParts({ active: false }, 'WEBGPU')).toEqual({ render: '', compute: '', computeName: 'Compute', computeLabel: 'WEBGPU' });
   });
+  const SPLIT = { active: true, renderVendor: 'intel', computeVendor: 'nvidia' };
   it('split wording', () => {
-    expect(gpuSplitStatusParts({ active: true, renderVendor: 'intel', computeVendor: 'nvidia' })).toEqual({ render: ' intel (display)', compute: ' nvidia (split)' });
+    expect(gpuSplitStatusParts(SPLIT, 'WEBGPU CORE FULL VERIFIED · WG256')).toEqual({ render: ' intel (display)', compute: ' nvidia (split)', computeName: 'Compute', computeLabel: 'WEBGPU CORE FULL VERIFIED · WG256' });
+  });
+  it('S4: in split mode the volume is named as on the render (display) GPU, not "Compute ... nvidia (split)"', () => {
+    expect(gpuSplitStatusParts(SPLIT, 'WEBGPU VOLUME RESIDENT')).toEqual({ render: ' intel (display)', compute: ' intel (display)', computeName: 'Volume', computeLabel: 'WEBGPU RESIDENT' });
+    expect(gpuSplitStatusParts(SPLIT, 'WEBGPU VOLUME RAYCAST').computeLabel).toBe('WEBGPU RAYCAST');
+    expect(gpuSplitStatusParts(SPLIT, 'WEBGPU REDUCED VOLUME · LINEAR').computeLabel).toBe('WEBGPU REDUCED · LINEAR');
+    // failures and the filter labels stay on compute
+    for (const l of ['GPU VOLUME FALLBACK', 'GPU VOLUME ERROR', 'WEBGPU COMPUTE FAIL', 'WEBGPU CORE FULL VERIFIED · WG256']) expect(gpuSplitStatusParts(SPLIT, l).computeName).toBe('Compute');
+    expect(['WEBGPU VOLUME PICK', 'WEBGPU VOLUME RESIDENT'].map(gpuIsVolumeLabel)).toEqual([true, true]);
+    expect(['GPU VOLUME FALLBACK', 'WEBGPU GPU FAIL', '', undefined].map(gpuIsVolumeLabel)).toEqual([false, false, false, false]);
+  });
+  it('primary-GPU-only mode names the one GPU', () => {
+    expect(gpuSplitStatusParts(null, 'WEBGPU', 'intel')).toMatchObject({ render: ' intel (primary)', compute: ' intel (primary)', computeName: 'Compute' });
+  });
+  it('hybrid mode sentence of the bar', () => {
+    expect(gpuHybridStatusText({ hybridMode: 'primary', hybridVendor: 'intel' })).toBe('hybrid mode: primary GPU only (display + compute on intel)');
+    expect(gpuHybridStatusText({ split: SPLIT, hybridMode: 'hybrid' })).toBe('hybrid mode: hybrid (display intel · compute nvidia)');
+    expect(gpuHybridStatusText({})).toBe('');
+    expect(gpuHybridStatusText(null)).toBe('');
+  });
+  it('the extra diagnostics appear only when something out of the ordinary happened', () => {
+    expect(gpuStatusDetailed({ limitRetries: 0, adapterRequest: { supported: false, effective: 'auto' } })).toBe(false);
+    expect(gpuStatusDetailed({ adapterRequest: { supported: true, effective: 'auto' } })).toBe(false);
+    expect(gpuStatusDetailed(null)).toBe(false);
+    expect(gpuStatusDetailed({}, true)).toBe(true);
+    expect(gpuStatusDetailed({ limitRetries: 1 })).toBe(true);
+    expect(gpuStatusDetailed({ renderLimitRetries: 2 })).toBe(true);
+    expect(gpuStatusDetailed({ split: SPLIT })).toBe(true);
+    expect(gpuStatusDetailed({ hybridSeen: true })).toBe(true);
+    expect(gpuStatusDetailed({ hybridMode: 'primary' })).toBe(true);
+    expect(gpuStatusDetailed({ adapterRequest: { supported: true, effective: 'low-power' } })).toBe(true);
+    expect(gpuStatusDetailed({ adapterRequest: { supported: false, effective: 'low-power' } })).toBe(false);
   });
 });
 
@@ -145,13 +177,13 @@ const ONLY_INTEL = [{ info: INTEL_INFO }];
 const buildCompute = (navigator, runtime = {}, extra = {}) => {
   const src = constSrc(gpuSrc, 'GPU_BUFFER_LIMIT_CAPS') + fnSrc(gpuSrc, 'gpuAdapterLabel') + fnSrc(gpuSrc, 'capGpuBufferLimits') + fnSrc(gpuSrc, 'gpuLimitInfoText') + fnSrc(gpuSrc, 'gpuDeviceRequestDescriptor') +
     constSrc(gpuSrc, 'vrlGpuPreference') + fnSrc(gpuSrc, 'requestVrlGpuAdapter') + fnSrc(gpuSrc, 'gpuLostAtCreation') + fnSrc(gpuSrc, 'requestVrlGpuDevice') + grab(gpuSrc, /export function gpuLostText[^\n]*\n/) +
-    fnSrc(gpuSrc, 'requestVrlSplitRenderDevice') + fnSrc(gpuSrc, 'adoptSplitGpuDevices') + fnSrc(gpuSrc, 'createGpuResidentFloat3Attribute') + fnSrc(gpuSrc, 'destroyGpuResidentAttribute') + fnSrc(gpuSrc, 'ensureGpuFilterDevice') +
+    constSrc(gpuSrc, 'vrlHybridMode') + fnSrc(gpuSrc, 'requestVrlSplitRenderDevice') + fnSrc(gpuSrc, 'requestVrlPrimaryGpuDevice') + fnSrc(gpuSrc, 'adoptSplitGpuDevices') + fnSrc(gpuSrc, 'resetSplitGpuDevices') + fnSrc(gpuSrc, 'createGpuResidentFloat3Attribute') + fnSrc(gpuSrc, 'destroyGpuResidentAttribute') + fnSrc(gpuSrc, 'ensureGpuFilterDevice') +
     fnSrc(gpuSrc, 'updateGpuStatus') + fnSrc(gpuSrc, 'setGpuComputeBackend') +
-    '\nreturn{requestVrlGpuDevice,requestVrlSplitRenderDevice,adoptSplitGpuDevices,createGpuResidentFloat3Attribute,ensureGpuFilterDevice,updateGpuStatus,setGpuComputeBackend}';
+    '\nreturn{requestVrlGpuDevice,requestVrlSplitRenderDevice,requestVrlPrimaryGpuDevice,vrlHybridMode,resetSplitGpuDevices,adoptSplitGpuDevices,createGpuResidentFloat3Attribute,ensureGpuFilterDevice,updateGpuStatus,setGpuComputeBackend}';
   const calls = [];
   const deps = {
     gpuForceCompat: false, navigator, gpuFilterRuntime: runtime, console: { info() {}, warn() {}, error() {} },
-    gpuSplitCandidate, gpuSplitDecision, gpuVendorKey, gpuAdapterVendorKey, gpuSplitStatusParts, webglDisplayGpu, gpuPlatformOs,
+    gpuSplitCandidate, gpuSplitDecision, gpuVendorKey, gpuAdapterVendorKey, gpuSplitStatusParts, gpuHybridStatusText, gpuStatusDetailed, webglDisplayGpu, gpuPlatformOs, gpuEffectiveHybridMode,
     gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText,
     sceneState: { backend: 'WEBGPU', renderer: { backend: { device: null, set() {} } } },
     THREE: { Float32BufferAttribute: class { constructor(a) { this.array = a; } } },
@@ -333,13 +365,17 @@ describe('status line', () => {
     const long = 'verify [anisotropic]: pipeline anisotropic: Requested allocation size (10407936) is smaller than the image requires (11280384). - While calling [Device].CreateTexture() with a long tail ' + 'x'.repeat(200);
     const bar = { classList: { toggle() {} } }, barText = { textContent: '' };
     const doc = { getElementById: id => (id === 'gpu-status-bar' ? bar : id === 'gpu-status-text' ? barText : null) };
-    const runtime = { ...rt(), device: {}, lastBackend: 'WEBGPU COMPUTE FAIL', lastError: long };
+    // build 517: the 160-character chip / full bar belong to the detailed status (retry, detected hybrid, debug); the plain
+    // status keeps the 96 characters of builds up to 515
+    const runtime = { ...rt(), device: {}, lastBackend: 'WEBGPU COMPUTE FAIL', lastError: long, limitRetries: 1 };
     const { api, deps } = buildCompute(LINUX, runtime, { document: doc });
     api.updateGpuStatus();
     expect(deps.status.textContent.length).toBeLessThan(220);
     expect(deps.status.textContent).toContain(long.slice(0, 160));
     expect(deps.status.title).toBe(long);
-    expect(barText.textContent.endsWith(' · ' + long)).toBe(true);
+    // N3: the error is printed once in the bar, in full (not truncated + full)
+    expect(barText.textContent.split('verify [anisotropic]').length).toBe(2);
+    expect(barText.textContent).toContain(long);
     // a short error is shown once, in the chip, and the bar does not repeat it
     runtime.lastError = 'short error';
     api.updateGpuStatus();
@@ -354,7 +390,7 @@ describe('status line', () => {
 });
 
 describe('create3DRenderer: split, fallback, unchanged single-device path', () => {
-  const build = ({ split, splitInitFails = false, sharedInitFails = false }) => {
+  const build = ({ split, splitInitFails = false, sharedInitFails = false, adoptThrows = false, primary = false }) => {
     const events = [];
     class Renderer { constructor(o) { this.o = o; events.push('new ' + o.device.name); } setPixelRatio() {} async init() { if ((this.o.device.name === 'render' && splitInitFails) || (this.o.device.name === 'core' && sharedInitFails)) throw new Error('init failed'); events.push('init ' + this.o.device.name); } }
     class WebGL { constructor() { events.push('webgl'); } setPixelRatio() {} setClearColor() {} }
@@ -364,8 +400,10 @@ describe('create3DRenderer: split, fallback, unchanged single-device path', () =
     const deps = {
       navigator: { gpu: {} }, devicePixelRatio: 1, console: { warn() {} },
       THREE: { WebGPURenderer: Renderer, Color: class {} }, WebGLRenderer: WebGL,
-      requestVrlGpuDevice: async () => core, requestVrlSplitRenderDevice: async o => { events.push('split-request ' + o.computeAdapter.info.vendor); return split ? render : null; },
-      adoptSplitGpuDevices: () => events.push('adopt-split'), adoptRendererGpuDevice: (r, a, d) => events.push('adopt-shared ' + d.name),
+      requestVrlPrimaryGpuDevice: async () => { if (!primary) return null; events.push('primary-request'); return { adapter: { info: INTEL_INFO }, device: { name: 'core', destroy() {} } }; },
+      resetSplitGpuDevices: note => events.push('reset ' + note),
+      requestVrlGpuDevice: async () => { events.push('default-request'); return core; }, requestVrlSplitRenderDevice: async o => { events.push('split-request ' + o.computeAdapter.info.vendor); return split ? render : null; },
+      adoptSplitGpuDevices: () => { events.push('adopt-split'); if (adoptThrows) throw new Error('adopt boom'); }, adoptRendererGpuDevice: (r, a, d) => events.push('adopt-shared ' + d.name),
       canvasBackground3d: () => null, onCanvasThemeChange() {}, request3DRender() {},
     };
     const fn = new Function('deps', 'const {' + Object.keys(deps).join(',') + '}=deps;' + src + 'return create3DRenderer;')(deps);
@@ -375,24 +413,283 @@ describe('create3DRenderer: split, fallback, unchanged single-device path', () =
     const { fn, events } = build({ split: false });
     const r = await fn();
     expect(r.backend).toBe('WEBGPU');
-    expect(events).toEqual(['split-request nvidia', 'new core', 'init core', 'adopt-shared core']);
+    expect(events).toEqual(['default-request', 'split-request nvidia', 'new core', 'init core', 'adopt-shared core']);
   });
   it('split: renderer on the render device, compute device handed over', async () => {
     const { fn, events } = build({ split: true });
     const r = await fn();
     expect(r.backend).toBe('WEBGPU');
-    expect(events).toEqual(['split-request nvidia', 'new render', 'init render', 'adopt-split']);
+    expect(events).toEqual(['default-request', 'split-request nvidia', 'new render', 'init render', 'adopt-split']);
   });
   it('split render init fails: render device destroyed, one shared device as before', async () => {
     const { fn, events } = build({ split: true, splitInitFails: true });
     const r = await fn();
     expect(r.backend).toBe('WEBGPU');
-    expect(events).toEqual(['split-request nvidia', 'new render', 'destroy render', 'new core', 'init core', 'adopt-shared core']);
+    expect(events).toEqual(['default-request', 'split-request nvidia', 'new render', 'destroy render', 'reset render device init failed: init failed', 'new core', 'init core', 'adopt-shared core']);
   });
   it('split render fails and the shared device fails too: WebGL, as before', async () => {
     const { fn, events } = build({ split: true, splitInitFails: true, sharedInitFails: true });
     const r = await fn();
     expect(r.backend).toBe('WEBGL');
     expect(events[events.length - 1]).toBe('webgl');
+  });
+  it('N2: adoptSplitGpuDevices throwing half-way resets the split state and names the reason; one shared device follows', async () => {
+    const { fn, events } = build({ split: true, adoptThrows: true });
+    const r = await fn();
+    expect(r.backend).toBe('WEBGPU');
+    expect(events).toEqual(['default-request', 'split-request nvidia', 'new render', 'init render', 'adopt-split', 'destroy render', 'reset render device init failed: adopt boom', 'new core', 'init core', 'adopt-shared core']);
+  });
+  it('primary-GPU-only: the primary device is the one device; the default request is never made', async () => {
+    const { fn, events } = build({ split: false, primary: true });
+    const r = await fn();
+    expect(r.backend).toBe('WEBGPU');
+    expect(events).toEqual(['primary-request', 'split-request intel', 'new core', 'init core', 'adopt-shared core']);
+    expect(events).not.toContain('default-request');
+  });
+});
+
+// ---- build 517: supervisor findings S1 / S2 / N2 / S4 / N3 and the hybrid-mode setting ----
+describe('S2: single-GPU / Mac / iPad status equals the status of builds up to 515 (main)', () => {
+  // main's updateGpuStatus text, verbatim, as the reference
+  const mainStatus = rtm => {
+    const render = rtm.render || 'INIT', compute = rtm.lastBackend || (rtm.device ? 'WEBGPU READY' : 'CPU');
+    const adapter = rtm.adapterLabel ? ' · ' + rtm.adapterLabel : '';
+    const failure = /FAIL|ERROR|LOST/.test(compute) && rtm.lastError ? ' · ' + rtm.lastError.slice(0, 96) : '';
+    const chip = 'Render ' + render + ' · Compute ' + compute + failure + adapter;
+    return { chip, bar: chip + (rtm.lastError && !failure ? ' · ' + rtm.lastError : ''), title: rtm.lastError || '' };
+  };
+  const run = (n, runtime) => {
+    const bar = { classList: { toggle() {} } }, barText = { textContent: '' };
+    const doc = { getElementById: id => (id === 'gpu-status-bar' ? bar : id === 'gpu-status-text' ? barText : null) };
+    const { api, deps } = buildCompute(n, runtime, { document: doc, sceneState: { backend: 'WEBGPU' } });
+    api.updateGpuStatus();
+    return { chip: deps.status.textContent, bar: barText.textContent, title: deps.status.title };
+  };
+  const LIMIT_INFO = 'limits buf 4096MB/bind 4096MB (adapter 4096MB/4096MB)';
+  const healthy = extra => ({ ...rt(), device: {}, lastBackend: 'WEBGPU CORE FULL VERIFIED · WG256', adapterLabel: 'apple metal-3', limitInfo: LIMIT_INFO, limitRetries: 0, ...extra });
+  it('Mac: the exact string (limitInfo is recorded but not shown)', () => {
+    const r = run(MAC, healthy({ adapterRequest: { stored: 'auto', effective: 'auto', supported: false, optionIndex: 0 } }));
+    expect(r.chip).toBe('Render WEBGPU · Compute WEBGPU CORE FULL VERIFIED · WG256 · apple metal-3');
+    expect(r.bar).toBe('Render WEBGPU · Compute WEBGPU CORE FULL VERIFIED · WG256 · apple metal-3');
+    expect(r.title).toBe('');
+  });
+  it('iPad: the exact string', () => {
+    const r = run(IPAD, healthy({ adapterLabel: 'apple metal-3', adapterRequest: { effective: 'auto', supported: false } }));
+    expect(r.bar).toBe('Render WEBGPU · Compute WEBGPU CORE FULL VERIFIED · WG256 · apple metal-3');
+    expect(r.chip).toBe(r.bar);
+  });
+  it('Linux single NVIDIA (splitNote recorded by the pre-check, no retry): no split note, no limits, no preference', () => {
+    const r = run(LINUX, healthy({ adapterLabel: 'nvidia ada NVIDIA GeForce RTX 4070 Ti', splitNote: 'display nvidia, compute nvidia', prefInfo: 'GPU pref auto → nvidia ada (request #1)', adapterRequest: { stored: 'auto', effective: 'auto', supported: true, optionIndex: 0 } }));
+    expect(r.bar).toBe('Render WEBGPU · Compute WEBGPU CORE FULL VERIFIED · WG256 · nvidia ada NVIDIA GeForce RTX 4070 Ti');
+    expect(r.bar).not.toMatch(/GPU split|limits buf|GPU pref/);
+    expect(r.chip).toBe(r.bar);
+  });
+  it('Windows with the default preference: unchanged too', () => {
+    const r = run(WIN, healthy({ prefInfo: 'GPU pref auto → nvidia (request #1)', adapterRequest: { effective: 'auto', supported: true } }));
+    expect(r.bar).toBe('Render WEBGPU · Compute WEBGPU CORE FULL VERIFIED · WG256 · apple metal-3');
+  });
+  it('equals the reference (main) text over healthy / short-error / long-error / CPU states', () => {
+    const states = [
+      healthy({}), healthy({ lastBackend: 'CPU COMPUTE · GPU ERROR', lastError: 'boom' }), healthy({ lastBackend: 'WEBGPU COMPUTE FAIL', lastError: 'e'.repeat(120) }),
+      healthy({ lastBackend: 'CPU', device: null, lastError: 'navigator.gpu is unavailable', adapterLabel: '' }), healthy({ lastBackend: 'WEBGPU GPU FAIL', lastError: 'uncaptured: x'.repeat(30) }),
+    ];
+    for (const n of [MAC, IPAD, LINUX, WIN]) for (const st of states) {
+      const got = run(n, { ...st, adapterRequest: { effective: 'auto', supported: n === LINUX || n === WIN } }), want = mainStatus({ ...st, render: 'WEBGPU' });
+      expect(got).toEqual(want);
+    }
+  });
+  it('a retry shows the limits line (and the 160-character error, once, in the bar)', () => {
+    const long = 'x'.repeat(300);
+    const r = run(LINUX, healthy({ limitRetries: 1, limitInfo: LIMIT_INFO + ' · retry 4096MB failed: boom', lastBackend: 'WEBGPU COMPUTE FAIL', lastError: long }));
+    expect(r.bar).toContain('retry 4096MB failed: boom');
+    expect(r.chip).toContain('x'.repeat(160) + '…');
+    expect(r.bar.split('x'.repeat(160)).length).toBe(2); // the error only once
+    expect(r.bar).toContain(long);
+  });
+  it('a non-default 「使う GPU」 shows its line; ?debug shows everything', () => {
+    const r = run(LINUX, healthy({ prefInfo: 'GPU pref low-power → intel gen-12lp (request #1)', adapterRequest: { effective: 'low-power', supported: true } }));
+    expect(r.bar).toContain(' · GPU pref low-power → intel gen-12lp (request #1) · limits buf');
+    globalThis.__vrlSettings = { debugOn: () => true };
+    try { expect(run(MAC, healthy({ splitNote: 'display nvidia, compute nvidia' })).bar).toContain('limits buf 4096MB'); } finally { delete globalThis.__vrlSettings; }
+  });
+  it('a hybrid that was detected (display Intel, compute NVIDIA) but not split shows why', () => {
+    const r = run(LINUX, healthy({ hybridSeen: true, splitNote: 'split not used: render device boom' }));
+    expect(r.bar).toContain(' · GPU split: split not used: render device boom');
+    expect(r.chip).not.toContain('GPU split');
+  });
+  it('split mode: the volume is on the display GPU; filters stay on compute; the bar names the mode', () => {
+    const split = { active: true, renderVendor: 'intel', computeVendor: 'nvidia' };
+    const v = run(LINUX, healthy({ split, hybridMode: 'hybrid', lastBackend: 'WEBGPU VOLUME RESIDENT', adapterLabel: '' }));
+    expect(v.chip).toBe('Render WEBGPU intel (display) · Volume WEBGPU RESIDENT intel (display)');
+    expect(v.bar).toContain('hybrid mode: hybrid (display intel · compute nvidia)');
+    const c = run(LINUX, healthy({ split, hybridMode: 'hybrid', adapterLabel: '' }));
+    expect(c.chip).toBe('Render WEBGPU intel (display) · Compute WEBGPU CORE FULL VERIFIED · WG256 nvidia (split)');
+  });
+  it('primary-GPU-only mode: chip and bar say so', () => {
+    const r = run(LINUX, healthy({ hybridMode: 'primary', hybridVendor: 'intel', hybridSeen: true, adapterLabel: 'intel gen-12lp', splitNote: 'primary GPU only: intel for display and compute (no nvidia device)' }));
+    expect(r.chip).toBe('Render WEBGPU intel (primary) · Compute WEBGPU CORE FULL VERIFIED · WG256 intel (primary) · intel gen-12lp');
+    expect(r.bar).toContain('hybrid mode: primary GPU only (display + compute on intel)');
+    expect(r.bar).toContain('GPU split: primary GPU only: intel for display and compute');
+  });
+});
+
+describe('S1: a compute device that fails its verification is released and leaves nothing behind', () => {
+  const failing = { verifyGpuComputeDevice: async () => { throw new Error('verify boom'); } };
+  it('pipelines, pool and prewarm are reset and the device destroyed', async () => {
+    const m = fakeMachine(ONLY_INTEL), runtime = rt(), log = [];
+    runtime.pipelines.set('gaussian', { fromFailedDevice: true });
+    const built = buildCompute({ ...LINUX, gpu: m.gpu }, runtime, { ...failing, clearGpuBufferPool: () => log.push('pool'), setGpuPrewarmIndex: n => log.push('idx ' + n), setGpuPrewarmScheduled: b => log.push('sched ' + b) });
+    expect(await built.api.ensureGpuFilterDevice()).toBe(null);
+    expect(runtime.pipelines.size).toBe(0);
+    expect(m.devices.length).toBe(1);
+    expect(m.devices[0].destroyed).toBe(true);
+    expect(runtime.device).toBe(null);
+    expect(log).toEqual(['pool', 'idx 0', 'sched false']);
+    expect(runtime.lastBackend).toBe('CPU COMPUTE · GPU ERROR');
+  });
+  it("the renderer's own device is never destroyed", async () => {
+    const m = fakeMachine(ONLY_INTEL), runtime = rt(), shared = { vendor: 'x', destroyed: false, destroy() { this.destroyed = true; }, lost: new Promise(() => {}) };
+    runtime.split = { active: true }; runtime.pendingCompute = { adapter: { info: INTEL_INFO }, device: shared };
+    const built = buildCompute({ ...LINUX, gpu: m.gpu }, runtime, { ...failing, sceneState: { backend: 'WEBGPU', renderer: { backend: { device: shared } } } });
+    expect(await built.api.ensureGpuFilterDevice()).toBe(null);
+    expect(shared.destroyed).toBe(false);
+  });
+  it('a new device does not inherit pipelines of another one', async () => {
+    const m = fakeMachine(ONLY_INTEL), runtime = rt();
+    runtime.pipelines.set('stale', {});
+    const built = buildCompute({ ...LINUX, gpu: m.gpu }, runtime);
+    const device = await built.api.ensureGpuFilterDevice();
+    expect(device).toBe(m.devices[0]);
+    expect(runtime.pipelines.has('stale')).toBe(false);
+  });
+});
+
+describe('N2: resetSplitGpuDevices', () => {
+  it('forgets the split, the render device and the pending compute device and records the reason', () => {
+    const runtime = { ...rt(), split: { active: true, renderVendor: 'intel', computeVendor: 'nvidia' }, hybridMode: 'hybrid', renderDevice: {}, pendingCompute: { device: {} }, renderError: 'x', renderInfo: 'y', renderAdapterLabel: 'z' };
+    const { api } = buildCompute(LINUX, runtime);
+    api.resetSplitGpuDevices('render device init failed: boom');
+    expect(runtime).toMatchObject({ split: null, hybridMode: '', renderDevice: null, pendingCompute: null, renderError: '', renderInfo: '', renderAdapterLabel: '', splitNote: 'render device init failed: boom' });
+  });
+  it('a render device destroyed after the reset does not leave a "lost" error', async () => {
+    const m = fakeMachine(HYBRID), runtime = rt(), built = buildCompute({ ...LINUX, gpu: m.gpu }, runtime);
+    const compute = await built.api.requestVrlGpuDevice();
+    const render = await built.api.requestVrlSplitRenderDevice({ nav: LINUX, computeAdapter: compute.adapter, probe: probeOf(WEBGL_INTEL) });
+    let lose; render.device.lost = new Promise(r => { lose = r; });
+    built.api.adoptSplitGpuDevices(built.deps.sceneState.renderer, compute, render);
+    expect(runtime.hybridMode).toBe('hybrid');
+    built.api.resetSplitGpuDevices('render device init failed: x');
+    lose({ reason: 'destroyed', message: 'gone' }); await Promise.resolve(); await Promise.resolve();
+    expect(runtime.renderError).toBe('');
+  });
+});
+
+describe('「ハイブリッド環境での処理」 (gpuHybridMode): Linux hybrid only', () => {
+  const settings = v => { globalThis.__vrlSettings = { get: k => (k === 'gpuHybridMode' ? v : undefined) }; };
+  afterEach(() => { delete globalThis.__vrlSettings; });
+  const primary = async (n, adapters, g, opts = {}) => {
+    const m = fakeMachine(adapters, opts.machine), runtime = rt(), built = buildCompute({ ...n, gpu: m.gpu }, runtime);
+    const got = await built.api.requestVrlPrimaryGpuDevice({ nav: n, probe: probeOf(g), ...opts.args });
+    return { m, runtime, got, built };
+  };
+  it('the mode resolves to hybrid everywhere but Linux', () => {
+    for (const n of [MAC, IPAD, WIN, ANDROID, CROS, {}]) { expect(gpuHybridModeSupported(n)).toBe(false); expect(gpuEffectiveHybridMode('primary', n)).toBe('hybrid'); }
+    expect(gpuHybridModeSupported(LINUX)).toBe(true);
+    expect(gpuEffectiveHybridMode('primary', LINUX)).toBe('primary');
+    for (const v of ['hybrid', 'auto', undefined, null, '', 1]) expect(gpuEffectiveHybridMode(v, LINUX)).toBe('hybrid');
+  });
+  it("'primary' on the hybrid: one device on the low-power Intel adapter, no NVIDIA device is created", async () => {
+    settings('primary');
+    const { m, runtime, got, built } = await primary(LINUX, HYBRID, WEBGL_INTEL);
+    expect(got.device.vendor).toBe('intel');
+    expect(m.devices.map(d => d.vendor)).toEqual(['intel']);
+    expect(m.log.filter(l => l.startsWith('device'))).toEqual(['device intel ' + (4 * GiB - 4) / MiB + 'MB']);
+    expect(runtime).toMatchObject({ hybridMode: 'primary', hybridVendor: 'intel', hybridSeen: true });
+    // the renderer's split step then returns at once (the compute adapter is Intel): no second device, no extra request
+    const before = [...m.log];
+    expect(await built.api.requestVrlSplitRenderDevice({ nav: LINUX, computeAdapter: got.adapter, probe: probeOf(WEBGL_INTEL) })).toBe(null);
+    expect(m.log).toEqual(before);
+  });
+  it("'primary' keeps the limit ladder of the Intel device and never touches NVIDIA", async () => {
+    settings('primary');
+    const { m, got } = await primary(LINUX, HYBRID, WEBGL_INTEL, { machine: { deviceFails: v => v === 'intel' } });
+    expect(got).toBe(null);
+    expect(m.log.filter(l => l.startsWith('device nvidia')).length).toBe(0);
+    expect(m.log.filter(l => l.startsWith('device intel')).length).toBe(4);
+  });
+  it("'hybrid' (default): nothing happens here; the split of build 516 is as before", async () => {
+    for (const v of ['hybrid', undefined]) {
+      settings(v);
+      const { m, got } = await primary(LINUX, HYBRID, WEBGL_INTEL);
+      expect(got).toBe(null);
+      expect(m.log).toEqual([]);
+    }
+    settings('hybrid');
+    const m = fakeMachine(HYBRID), built = buildCompute({ ...LINUX, gpu: m.gpu }, rt());
+    const compute = await built.api.requestVrlGpuDevice();
+    const split = await built.api.requestVrlSplitRenderDevice({ nav: LINUX, computeAdapter: compute.adapter, probe: probeOf(WEBGL_INTEL) });
+    expect([compute.device.vendor, split.device.vendor]).toEqual(['nvidia', 'intel']);
+    expect(split.split.active).toBe(true);
+  });
+  it("the setting is ignored off Linux (value 'primary' stored): no adapter request at all", async () => {
+    settings('primary');
+    for (const [n, adapters] of [[MAC, [{ info: APPLE_INFO }]], [IPAD, [{ info: APPLE_INFO }]], [WIN, HYBRID], [ANDROID, [{ info: { vendor: 'qualcomm' } }]], [CROS, HYBRID]]) {
+      const { m, got } = await primary(n, adapters, WEBGL_INTEL);
+      expect(got).toBe(null);
+      expect(m.log).toEqual([]);
+    }
+  });
+  it("'primary' on a machine that is not that hybrid is ignored (no device created, the default path follows)", async () => {
+    settings('primary');
+    const cases = [
+      ['single NVIDIA, display NVIDIA', ONLY_NV, WEBGL_NV], ['monitor on the NVIDIA port of a hybrid', HYBRID, WEBGL_NV], ['single Intel', ONLY_INTEL, WEBGL_INTEL],
+      ['AMD', [{ info: AMD_INFO }], WEBGL_INTEL], ['display unreadable', HYBRID, null], ['software renderer', HYBRID, WEBGL_SW], ['no second GPU (low-power answers NVIDIA)', ONLY_NV, WEBGL_INTEL],
+    ];
+    for (const [name, adapters, g] of cases) {
+      const { m, got } = await primary(LINUX, adapters, g);
+      expect(got, name).toBe(null);
+      expect(m.devices.length, name).toBe(0);
+    }
+  });
+  it('「使う GPU」 low-power already puts compute on the Intel GPU: nothing to decide', async () => {
+    settings('primary');
+    const { m, got } = await primary(LINUX, HYBRID, WEBGL_INTEL, { args: { preference: 'low-power' } });
+    expect(got).toBe(null);
+    expect(m.log).toEqual([]);
+  });
+  it("compute started later (no renderer device) in 'primary' goes to the primary GPU too", async () => {
+    settings('primary');
+    const m = fakeMachine(HYBRID), runtime = rt();
+    const built = buildCompute({ ...LINUX, gpu: m.gpu }, runtime, { webglDisplayGpu: probeOf(WEBGL_INTEL), sceneState: { backend: 'WEBGL', renderer: null } });
+    const device = await built.api.ensureGpuFilterDevice();
+    expect(device.vendor).toBe('intel');
+    expect(m.devices.map(d => d.vendor)).toEqual(['intel']);
+  });
+});
+
+describe('settings dialog: the hybrid-mode row', () => {
+  const shell = readFileSync('docs/ui-shell.js', 'utf8'), i18n = readFileSync('docs/i18n.js', 'utf8'), ui = readFileSync('docs/settings-ui.js', 'utf8'), defaults = readFileSync('docs/app-settings.js', 'utf8');
+  it('the row exists in the render panel, hidden until shown; two choices', () => {
+    expect(shell).toMatch(/<label id="gpu-hybrid-row" class="settings-row" hidden>/);
+    expect(shell).toMatch(/<select id="set-gpu-hybrid"[^>]*><option value="hybrid" data-i18n="gpuHybridSplit"><\/option><option value="primary" data-i18n="gpuHybridPrimary"><\/option><\/select>/);
+    expect(shell).toMatch(/<p id="gpu-hybrid-hint" class="hint" data-i18n="gpuHybridHint" hidden>/);
+    expect(shell).toMatch(/<p id="gpu-hybrid-reload" class="hint" hidden>/);
+    const render = shell.slice(shell.indexOf('data-settings-panel="render"'), shell.indexOf('data-settings-panel="cache"'));
+    expect(render).toContain('id="set-gpu-hybrid"');
+  });
+  it('i18n: ja and en for every key', () => {
+    for (const k of ['gpuHybridLabel', 'gpuHybridSplit', 'gpuHybridPrimary', 'gpuHybridHint']) expect([...i18n.matchAll(new RegExp('[{,\\s]' + k + ':', 'g'))].length).toBe(2);
+    expect(i18n).toContain("gpuHybridLabel:'ハイブリッド環境での処理'");
+    expect(i18n).toContain("gpuHybridSplit:'ハイブリッド（表示 Intel・計算 NVIDIA）'");
+    expect(i18n).toContain("gpuHybridPrimary:'プライマリ GPU のみ（表示中の GPU で全部）'");
+    for (const m of shell.matchAll(/data-i18n="(gpuHybrid[A-Za-z]*)"/g)) expect(i18n).toContain(m[1] + ':');
+  });
+  it('shown on Linux only, saved with the other settings, reload note on a change', () => {
+    expect(ui).toContain('gpuHybridModeSupported()');
+    expect(ui).toContain('hybRow.hidden=!hybOn');
+    expect(ui).toContain("settings.set('gpuHybridMode',hybSel.value)");
+    expect(ui).toContain('hybReload.hidden=hybSel.value===loadedHybrid');
+    expect(ui).toContain("put('set-gpu-hybrid',gpuEffectiveHybridMode(v.gpuHybridMode))");
+    expect(defaults).toMatch(/gpuHybridMode:'hybrid'/);
   });
 });

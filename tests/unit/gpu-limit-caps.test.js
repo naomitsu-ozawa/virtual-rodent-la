@@ -279,6 +279,44 @@ describe('device request retries with lower caps when refused', () => {
     await expect(api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice()).rejects.toThrow('still refused');
     expect(rt.limitInfo).toMatch(/^device request failed · retry 4096MB failed: .* → 2048MB failed: .* → 1024MB failed: .* → default failed: still refused$/);
   });
+  it('S3a: rungs that would repeat the previous request are skipped (adapter limits at or below the next cap)', async () => {
+    const small = big(1 * GiB, 1 * GiB).limits, f = fakeGpu(small, -1), rt = {};
+    const r = await api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice();
+    // 4 GiB / 2 GiB / 1 GiB all ask for exactly 1 GiB: one request, then the defaults
+    expect(f.log).toEqual(['adapter core', 'device 1024MB', 'adapter core', 'device default']);
+    expect(r.device.limits.maxBufferSize).toBeUndefined();
+    expect(rt.limitInfo).toMatch(/^limits buf default\/bind default .* · retry 4096MB failed: [^→]*$/);
+    expect(rt.limitRetries).toBe(1);
+  });
+  it('S3a: every request refused on a small adapter: the error lists each distinct request once', async () => {
+    const small = big(1 * GiB, 1 * GiB).limits, f = fakeGpu(small, -1), rt = {};
+    f.gpu.requestAdapter = (orig => async o => { const a = await orig(o); const rd = a.requestDevice; a.requestDevice = async d => { if (d.requiredLimits.maxBufferSize === undefined) throw new Error('still refused'); return rd(d); }; return a; })(f.gpu.requestAdapter.bind(f.gpu));
+    await expect(api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice()).rejects.toThrow('still refused');
+    // (the wrapper throws for the default rung before the fake logs it)
+    expect(f.log.filter(l => l.startsWith('device'))).toEqual(['device 1024MB']);
+    expect(rt.limitInfo).toMatch(/^device request failed · retry 4096MB failed: .* → default failed: still refused$/);
+    expect(rt.limitInfo).not.toMatch(/2048MB|1024MB failed/);
+    expect(rt.limitRetries).toBe(2);
+  });
+  it('S3a: an adapter above every cap still walks all four rungs', async () => {
+    const f = fakeGpu(nv8, -1), rt = {};
+    f.gpu.requestAdapter = (orig => async o => { const a = await orig(o); const rd = a.requestDevice; a.requestDevice = async d => { if (d.requiredLimits.maxBufferSize === undefined) throw new Error('still refused'); return rd(d); }; return a; })(f.gpu.requestAdapter.bind(f.gpu));
+    await expect(api(false, { gpu: f.gpu }, rt).requestVrlGpuDevice()).rejects.toThrow('still refused');
+    expect(f.log.filter(l => l.startsWith('device'))).toEqual(['device 4096MB', 'device 2048MB', 'device 1024MB']);
+    expect(rt.limitInfo).toMatch(/^device request failed · retry 4096MB failed: .* → 2048MB failed: .* → 1024MB failed: .* → default failed: still refused$/);
+  });
+  it('S3b: a queue that never answers does not stall the start-up (500 ms bound; 30 ms here)', async () => {
+    const { gpuLostAtCreation } = api();
+    const never = () => new Promise(() => {});
+    const t0 = Date.now();
+    expect(await gpuLostAtCreation({ lost: never(), queue: { onSubmittedWorkDone: never } }, 5, 30)).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(400);
+    // a loss that is reported anyway is still seen
+    expect(await gpuLostAtCreation({ lost: Promise.resolve({ reason: 'unknown', message: 'm' }), queue: { onSubmittedWorkDone: never } }, 5, 30)).toEqual({ reason: 'unknown', message: 'm' });
+  });
+  it('S3b: the default bound is 500 ms', () => {
+    expect(gpuSrc).toMatch(/gpuLostAtCreation\(device,settleMs=20,workMs=500\)/);
+  });
   it('no adapter: same error as before', async () => {
     await expect(api(false, { gpu: { async requestAdapter() { return null; } } }, {}).requestVrlGpuDevice()).rejects.toThrow('WebGPU adapter unavailable (core and compatibility)');
   });
