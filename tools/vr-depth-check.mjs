@@ -64,5 +64,32 @@ for (const job of ['f100', 'f50']) {
   let ok = 0, hits = 0, worst = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const e = expected(job, x, y), err = Math.abs(at(x, y) - e.biased); if (e.hit) hits++; worst = Math.max(worst, err); if (err <= TOL) ok++; }
   const agree = ok / (W * H); console.log((agree >= MIN_AGREE && hits > W * H * 0.05 ? 'ok   ' : 'FAIL ') + label + 'all pixels: ' + (agree * 100).toFixed(2) + ' % within tolerance (hit pixels ' + hits + ', worst error ' + worst.toExponential(1) + ')'); if (!(agree >= MIN_AGREE && hits > W * H * 0.05)) failed = true;
 }
+// 5) "no ghost": the distance points are recorded at the CENTRE of a surface voxel (vr-point.js voxelToLocal), up to half a voxel inside the surface along the ray. With an anisotropic
+// spacing (here 5 : 1, like 0.1 / 0.1 / 0.5 mm) that centre can lie far behind the surface, and a line between two surface points would be depth tested against the written depth and drawn
+// as a ghost. For every hit pixel the centre of the voxel that contains the hit point must lie IN FRONT of (or on) the written depth. The old bias (2 * voxelMin) must fail on the anisotropic
+// case (the test has teeth) while the current one passes there and on the isotropic phantom.
+for (const [name, he] of [['isotropic voxels', [1.3, 1.3, 1.3]], ['anisotropic 5:1 (z)', [0.3, 0.3, 1.5]]]) {
+  const r = await withPage(async (pg, info) => {
+    const common = { sh, N, halfExt: he, scene: sceneArgs(scene), filter: 'linear', W, H };
+    const d = await runBatch(pg, { ...common, mode: 'depth', cases: [{ ...base, name: 'f100', f: 1 }] }), h = await runBatch(pg, { ...common, mode: 'hit', cases: [base] });
+    if (d.glError || h.glError || info.problems.length) throw new Error('GL error ' + [d.glError, h.glError] + ' ' + info.problems.join('; '));
+    const f32 = b => new Float32Array(new Uint8Array(b).buffer); return { z: f32(d.out.f100), hit: f32(h.out.surface), rays: h.raysBuf };
+  });
+  const vs = he.map(v => 2 * v / N), vm = Math.min(...vs); let hits = 0, behindNew = 0, behindOld = 0, worstNew = 0, worstOld = 0;
+  for (let i = 0; i < W * H; i++) {
+    if (r.hit[i * 4 + 3] < 0.5) continue; hits++;
+    const d = [r.rays[i * 3], r.rays[i * 3 + 1], r.rays[i * 3 + 2]], p = [r.hit[i * 4] + d[0] * 1e-3 * vm, r.hit[i * 4 + 1] + d[1] * 1e-3 * vm, r.hit[i * 4 + 2] + d[2] * 1e-3 * vm];
+    const vi = Math.min(N - 1, Math.max(0, Math.floor((p[0] / (2 * he[0]) + 0.5) * N))), vj = Math.min(N - 1, Math.max(0, Math.floor((0.5 - p[1] / (2 * he[1])) * N))), vk = Math.min(N - 1, Math.max(0, Math.floor((p[2] / (2 * he[2]) + 0.5) * N)));
+    const c = [((vi + 0.5) / N - 0.5) * 2 * he[0], (0.5 - (vj + 0.5) / N) * 2 * he[1], ((vk + 0.5) / N - 0.5) * 2 * he[2]];
+    const dc = clipDepth(mv, proj, c), written = r.z[i], hp = [r.hit[i * 4], r.hit[i * 4 + 1], r.hit[i * 4 + 2]];
+    // the unbiased surface depth is what the old bias is added to; the old build 497 depth = the hit point pushed back by 2 * voxelMin
+    const old = clipDepth(mv, proj, hp.map((v, k) => v + d[k] * 2 * vm));
+    if (dc > written + 1e-7) { behindNew++; worstNew = Math.max(worstNew, dc - written); }
+    if (dc > old + 1e-7) { behindOld++; worstOld = Math.max(worstOld, dc - old); }
+  }
+  const okNew = behindNew === 0 && hits > W * H * 0.03, teeth = name.startsWith('iso') || behindOld > 0;
+  console.log((okNew && teeth ? 'ok   ' : 'FAIL ') + 'no ghost, ' + name + ': hit pixels ' + hits + ', voxel centres behind the written depth: ' + behindNew + ' (build 500 bias), ' + behindOld + ' (build 497 bias 2 * voxelMin, worst ' + worstOld.toExponential(1) + ')' + (teeth ? '' : ' <- the old bias should fail here'));
+  if (!(okNew && teeth)) failed = true;
+}
 if (failed) { console.error('vr-depth-check FAILED'); process.exit(1); }
 console.log('vr-depth-check OK');
