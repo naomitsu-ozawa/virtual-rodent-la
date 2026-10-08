@@ -9,6 +9,10 @@ export const isLinuxUserAgent=ua=>/Linux/i.test(ua||'')&&!/Android|CrOS/i.test(u
 export const shouldShowLinuxWebgpuNote=({ua,hasGpu,adapterNull})=>isLinuxUserAgent(ua)&&(!hasGpu||adapterNull===true);
 
 let probed=null; // null = not probed, 'pending', or boolean adapterNull
+// build 520: read-only status for the debug-mode GPU info tab (reads state, probes nothing)
+export function linuxWebgpuNoteState(){
+ try{return{linux:isLinuxUserAgent(globalThis.navigator?.userAgent),probed,shown:!!document.getElementById('linux-webgpu-note-btn')}}catch{return{linux:false,probed,shown:false}}
+}
 async function probeAdapterNull(gpu){
  const tries=[{powerPreference:'high-performance',featureLevel:'core'},{powerPreference:'high-performance'},undefined,{powerPreference:'high-performance',featureLevel:'compatibility'},{featureLevel:'compatibility'}];
  for(const o of tries){try{if(await gpu.requestAdapter(o))return false}catch{}}

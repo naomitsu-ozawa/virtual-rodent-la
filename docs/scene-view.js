@@ -9,6 +9,7 @@ import { analysisCutScreen, analysisEditTargetMode, analysisEditTool, current3DV
 import { planes, sectionPosition, threeEditOverlay, viewport } from './ui-shell.js?v=20261008-build520';
 import { adoptRendererGpuDevice, adoptSplitGpuDevices, requestVrlGpuDevice, requestVrlPrimaryGpuDevice, requestVrlSplitRenderDevice, resetSplitGpuDevices } from './gpu-compute.js?v=20261008-build520';
 import { request3DRender } from './scene3d.js?v=20261008-build520';
+import { logGpuError } from './gpu-diagnostics.js?v=20261008-build520';
 import { canvasBackground3d, onCanvasThemeChange } from './canvas-theme.js?v=20261008-build520';
 import { updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261008-build520';
 import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261008-build520';
@@ -48,7 +49,7 @@ export async function create3DRenderer(){
     }catch(splitError){
      // the render device is unusable: back to one shared device (the NVIDIA one), as before build 516. build 517: whatever the
      // split had recorded (also after a half-done adoptSplitGpuDevices) is reset and the reason is shown in the status.
-     console.warn('GPU split render device failed; using one shared device.',splitError);try{split.device.destroy?.()}catch{}
+     console.warn('GPU split render device failed; using one shared device.',splitError);logGpuError('GPU split render device init',splitError);try{split.device.destroy?.()}catch{}
      resetSplitGpuDevices('render device init failed: '+String(splitError?.message||splitError).slice(0,160));
      renderer=null;backend='WEBGL';
     }
@@ -57,7 +58,7 @@ export async function create3DRenderer(){
     const gpuRenderer=new THREE.WebGPURenderer({antialias:true,alpha:true,device:core.device});gpuRenderer.setPixelRatio(Math.min(devicePixelRatio,2));await gpuRenderer.init();renderer=gpuRenderer;backend='WEBGPU';adoptRendererGpuDevice(gpuRenderer,core.adapter,core.device);
    }
   }catch(error){
-   console.warn('WebGPU core init failed; falling back to WebGL.',error);
+   console.warn('WebGPU core init failed; falling back to WebGL.',error);logGpuError('WebGPU renderer init',error);
   }
  }
  if(!renderer){
