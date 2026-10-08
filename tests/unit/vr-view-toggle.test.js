@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, VIEW_TOGGLE_DOUBLE_MS, createViewToggle, createDoublePress, ringIdsFor } from '../../docs/vr-view-toggle.js';
+import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, VIEW_TOGGLE_DOUBLE_MS, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from '../../docs/vr-view-toggle.js';
 import { WHEEL_IDS, DEFAULT_WHEEL } from '../../docs/vr-ring.js';
 import { I18N } from '../../docs/i18n.js';
 
@@ -22,23 +22,32 @@ describe('createViewToggle', () => {
 });
 
 describe('ringIdsFor', () => {
-  it('VR: the ring is untouched (a copy)', () => {
+  it('VR: 断面を削除 is the only extra (a copy; the saved layout is not changed)', () => {
     const ids = [...DEFAULT_WHEEL];
-    const r = ringIdsFor(ids, false); expect(r).toEqual(ids); expect(r).not.toBe(ids);
+    const r = ringIdsFor(ids, false); expect(r).toEqual([...DEFAULT_WHEEL, SECTION_DELETE_ID]); expect(r).not.toBe(ids); expect(ids).toEqual(DEFAULT_WHEEL);
   });
-  it('AR with a full ring: the toggle is the last slot; the saved array is not changed', () => {
+  it('AR with a full ring: the toggle keeps its 7th slot (as before build 521), 断面を削除 is the 8th; the saved array is not changed', () => {
     const ids = [...DEFAULT_WHEEL], r = ringIdsFor(ids, true);
-    expect(r).toEqual([...DEFAULT_WHEEL, VIEW_TOGGLE_ID]); expect(ids).toEqual(DEFAULT_WHEEL);
+    expect(r).toEqual([...DEFAULT_WHEEL, VIEW_TOGGLE_ID, SECTION_DELETE_ID]); expect(ids).toEqual(DEFAULT_WHEEL);
+    expect(r.indexOf(VIEW_TOGGLE_ID)).toBe(DEFAULT_WHEEL.length);
   });
-  it('AR with an empty slot: the toggle takes the first empty slot', () => {
+  it('AR with empty slots: the toggle takes the first, 断面を削除 the next', () => {
     const ids = ['home', null, 'undo', null, null, null];
-    expect(ringIdsFor(ids, true)).toEqual(['home', VIEW_TOGGLE_ID, 'undo', null, null, null]);
+    expect(ringIdsFor(ids, true)).toEqual(['home', VIEW_TOGGLE_ID, 'undo', SECTION_DELETE_ID, null, null]);
   });
-  it('never twice; bad input is an empty list', () => {
-    expect(ringIdsFor(['home', VIEW_TOGGLE_ID], true)).toEqual(['home', VIEW_TOGGLE_ID]);
-    expect(ringIdsFor(null, false)).toEqual([]);
+  it('VR with one empty slot: 断面を削除 fills it (no 7th slot)', () => {
+    expect(ringIdsFor(['home', 'undo', null, 'menu', 'screenshot', 'section-add'], false)).toEqual(['home', 'undo', SECTION_DELETE_ID, 'menu', 'screenshot', 'section-add']);
   });
-  it('the toggle id is not a saved wheel item id', () => { expect(WHEEL_IDS).not.toContain(VIEW_TOGGLE_ID); });
+  it('AR with exactly one empty slot: the toggle takes it, 断面を削除 is appended (both coexist)', () => {
+    expect(ringIdsFor(['home', 'undo', null, 'menu', 'screenshot', 'section-add'], true)).toEqual(['home', 'undo', VIEW_TOGGLE_ID, 'menu', 'screenshot', 'section-add', SECTION_DELETE_ID]);
+  });
+  it('never twice; bad input still gives the extras only', () => {
+    expect(ringIdsFor(['home', VIEW_TOGGLE_ID, SECTION_DELETE_ID], true)).toEqual(['home', VIEW_TOGGLE_ID, SECTION_DELETE_ID]);
+    expect(ringIdsFor(['home', VIEW_TOGGLE_ID], true)).toEqual(['home', VIEW_TOGGLE_ID, SECTION_DELETE_ID]);
+    expect(ringIdsFor(null, false)).toEqual([SECTION_DELETE_ID]);
+    expect(ringIdsFor(null, true)).toEqual([VIEW_TOGGLE_ID, SECTION_DELETE_ID]);
+  });
+  it('the extra ids are not saved wheel item ids (never stored in the ring settings)', () => { expect(WHEEL_IDS).not.toContain(VIEW_TOGGLE_ID); expect(WHEEL_IDS).not.toContain(SECTION_DELETE_ID); });
 });
 
 describe('createDoublePress', () => {

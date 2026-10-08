@@ -35,3 +35,89 @@ export function sectionPage(count, page = 0, per = SECTION_ROWS_PER_PAGE) {
 }
 // the page that holds plane index i
 export const pageOfPlane = (i, per = SECTION_ROWS_PER_PAGE) => Math.max(0, Math.floor(i / per));
+
+// ---- build 521: delete a section by throwing it away, with a few seconds of 「元に戻す」 ----
+// Fling = release the trigger while the hand that drags a section frame moves fast AWAY from the volume. Pure helpers: no three.js, no DOM (vr-view.js samples the hand and applies the result).
+// Thresholds (named so they can be tuned on the headset):
+//   FLING_SPEED_MPS  1.5 m/s mean hand speed over the last FLING_WINDOW_MS (a careful drag is 0.2-0.8 m/s, a deliberate throw is 2-4 m/s)
+//   FLING_COS        0.5 = the velocity must be within 60 degrees of the outward axis (volume centre -> hand): a sideways swipe across the volume or a push into it never deletes
+//   FLING_MIN_RADIUS_M  a hand closer than this to the volume centre has no usable outward axis: the head -> hand direction (away from the viewer) is used instead
+export const FLING_SPEED_MPS = 1.5, FLING_WINDOW_MS = 100, FLING_MIN_SPAN_MS = 30, FLING_STALE_MS = 50, FLING_COS = 0.5, FLING_MIN_RADIUS_M = 0.03;
+export const FLING_FADE_S = 0.3, FLING_MAX_FLY_MPS = 4, FLING_UNDO_MS = 5000; // fly-off / fade time, speed cap of the flying frame, how long 「元に戻す」 stays
+// Hand velocity over the last windowMs: push(t ms, {x,y,z}); velocity(now) = {x,y,z (m/s), speed} from the oldest to the newest sample in the window, or null when there is no usable
+// motion estimate (fewer than 2 samples, span < FLING_MIN_SPAN_MS, or the newest sample is older than FLING_STALE_MS: a hand that paused before the release is not moving).
+export function createVelocityTracker({ windowMs = FLING_WINDOW_MS } = {}) {
+  let s = [];
+  return {
+    push(t, p) { s.push({ t, x: p.x, y: p.y, z: p.z }); const keep = t - 3 * windowMs; while (s.length > 2 && s[0].t < keep) s.shift(); },
+    velocity(now) {
+      const w = s.filter(q => q.t >= now - windowMs);
+      if (w.length < 2) return null;
+      const a = w[0], b = w[w.length - 1], span = b.t - a.t;
+      if (span < FLING_MIN_SPAN_MS || now - b.t > FLING_STALE_MS) return null;
+      const k = 1000 / span, x = (b.x - a.x) * k, y = (b.y - a.y) * k, z = (b.z - a.z) * k;
+      return { x, y, z, speed: Math.hypot(x, y, z) };
+    },
+    reset() { s = []; },
+    get size() { return s.length; },
+  };
+}
+// Is the release a throw? v: {x,y,z} (m/s, world) or null; from: the hand at the release; center: the volume centre; head: the viewer (used only when the hand is on the centre);
+// blocked: a two-hand / grip gesture moved or scaled the volume during the drag. -> {fling, reason, speed, cos}
+export function flingDecision({ v, from, center, head = null, blocked = false, minSpeed = FLING_SPEED_MPS, minCos = FLING_COS } = {}) {
+  if (blocked) return { fling: false, reason: 'volume-gesture', speed: 0, cos: 0 };
+  if (!v || !from) return { fling: false, reason: 'no-velocity', speed: 0, cos: 0 };
+  const speed = Math.hypot(v.x, v.y, v.z);
+  if (!(speed >= minSpeed)) return { fling: false, reason: 'slow', speed, cos: 0 };
+  let ax = from.x - (center?.x ?? 0), ay = from.y - (center?.y ?? 0), az = from.z - (center?.z ?? 0), r = Math.hypot(ax, ay, az);
+  if (!center || r < FLING_MIN_RADIUS_M) { if (!head) return { fling: false, reason: 'no-axis', speed, cos: 0 }; ax = from.x - head.x; ay = from.y - head.y; az = from.z - head.z; r = Math.hypot(ax, ay, az); }
+  if (!(r > 1e-6)) return { fling: false, reason: 'no-axis', speed, cos: 0 };
+  const cos = (v.x * ax + v.y * ay + v.z * az) / (speed * r);
+  return cos >= minCos ? { fling: true, reason: 'fling', speed, cos } : { fling: false, reason: 'inward', speed, cos };
+}
+// fly-off of the deleted frame: one step of dt seconds. f = {pos, v, age}; opacity fades linearly 1 -> 0 over FLING_FADE_S; done at the end. capVelocity limits the throw to FLING_MAX_FLY_MPS.
+export function capVelocity(v, maxMps = FLING_MAX_FLY_MPS) { const s = Math.hypot(v.x, v.y, v.z); if (!(s > maxMps)) return { x: v.x, y: v.y, z: v.z }; const k = maxMps / s; return { x: v.x * k, y: v.y * k, z: v.z * k }; }
+export function flyStep(f, dt) {
+  const d = Math.max(0, dt), age = f.age + d;
+  return { pos: { x: f.pos.x + f.v.x * d, y: f.pos.y + f.v.y * d, z: f.pos.z + f.v.z * d }, v: f.v, age, opacity: Math.max(0, 1 - age / FLING_FADE_S), done: age >= FLING_FADE_S };
+}
+
+// What 「元に戻す」 needs to put a deleted section back exactly: its place in the list (= its number), colour, clip on/off, kept side, last hand, and its pose in the volume's
+// object space (holder-local, so it stays right even if the volume was moved or scaled meanwhile). Plain numbers only (a copy: nothing shares the live objects).
+export function makeSectionSnapshot({ index, color, cut, side, hand = null, position, quaternion, wasSelected = false }) {
+  return Object.freeze({
+    index: index | 0, color, cut: !!cut, side: side < 0 ? -1 : 1, hand: hand === 'left' || hand === 'right' ? hand : null,
+    position: Object.freeze({ x: position.x, y: position.y, z: position.z }), quaternion: Object.freeze({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w }),
+    wasSelected: !!wasSelected,
+  });
+}
+// Where / how a snapshot is restored given the current planes (their colours, in list order): {ok:false, reason:'full'} at the limit, else the index (clamped to the list) and the colour
+// (the saved one; when another plane has taken it meanwhile, the first free palette colour, so two planes never share a colour).
+export function restorePlan(snap, usedColors, count, max = MAX_SECTION_PLANES) {
+  if (!snap) return { ok: false, reason: 'none' };
+  if (count >= max) return { ok: false, reason: 'full' };
+  const used = new Set(usedColors), color = used.has(snap.color) ? nextPlaneColor(usedColors) : snap.color;
+  return { ok: true, index: Math.min(Math.max(0, snap.index), count), color, recolored: color !== snap.color };
+}
+// The deletions that can still be undone: newest on top, each alive for windowMs (a second delete does not cancel the first: undo restores in reverse order, so each saved index is right).
+// Adding a plane meanwhile is allowed (the index is clamped, the colour re-checked by restorePlan).
+export function createSectionUndo({ windowMs = FLING_UNDO_MS, max = MAX_SECTION_PLANES } = {}) {
+  let items = [];
+  const prune = now => { items = items.filter(e => e.until > now); };
+  return {
+    push(snap, now) { prune(now); items.push({ snap, until: now + windowMs }); if (items.length > max) items.shift(); },
+    peek(now) { prune(now); return items.length ? items[items.length - 1] : null; },
+    pop(now) { prune(now); return items.pop() || null; },
+    remainingMs(now) { prune(now); return items.length ? Math.max(0, items[items.length - 1].until - now) : 0; },
+    size(now) { prune(now); return items.length; },
+    clear() { items = []; },
+  };
+}
+// The 「元に戻す」 board: placed once where the hand let go, pulled toward the head by `pull` m and kept min..max m from the head (a distance the other hand's laser reaches easily).
+export const UNDO_BTN_PULL_M = 0.12, UNDO_BTN_MIN_M = 0.30, UNDO_BTN_MAX_M = 0.70;
+export function undoButtonPlace(hand, head, { pull = UNDO_BTN_PULL_M, min = UNDO_BTN_MIN_M, max = UNDO_BTN_MAX_M } = {}) {
+  const dx = hand.x - head.x, dy = hand.y - head.y, dz = hand.z - head.z, d = Math.hypot(dx, dy, dz);
+  if (!(d > 1e-6)) return { x: head.x, y: head.y - 0.1, z: head.z - min };
+  const k = Math.min(max, Math.max(min, d - pull)) / d;
+  return { x: head.x + dx * k, y: head.y + dy * k, z: head.z + dz * k };
+}
