@@ -230,10 +230,27 @@ describe('the quick / point ring are world-fixed and focus follows the laser (st
   it('the ring is placed once on opening, and the owner laser sector sets the highlight', async () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync(new URL('../../docs/vr-view.js', import.meta.url), 'utf8');
-    expect(src).toContain('const WHEEL_FRONT_M=0.28');
+    expect(src).toContain('const WHEEL_FRONT_M=0.20');
     const upd = src.slice(src.indexOf('const updateRings='), src.indexOf('const rates='));
     expect(upd).not.toContain('placeAt'); // nothing moves the rings every frame any more
     expect(src.slice(src.indexOf('const openWheel='), src.indexOf('const openWheel=') + 500)).toContain('wheel.placeAt');
     expect(upd).toContain('laserLit(c,bd?.wheel)'); expect(upd).toContain('laserLit(c,bd?.pwheel)');
+  });
+});
+
+describe('build 496: flip-cut ring item, point mode default, ring distance (static check of vr-view.js)', () => {
+  it('the catalog has section-flip and the default ring includes it', () => {
+    expect(WHEEL_ITEMS.find(i => i.id === 'section-flip')).toMatchObject({ ja: '切り口反転', en: 'Flip cut' });
+    expect(DEFAULT_WHEEL).toContain('section-flip');
+    expect(normalizeWheelItems(['section-flip', null, null, null, null, null])[0]).toBe('section-flip');
+  });
+  it('point mode defaults to surface; the flip item shares the section-tab action and needs a one-side cut plane', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../../docs/vr-view.js', import.meta.url), 'utf8');
+    expect(src).toContain("let vrPointMode='surface'");
+    expect(src).toContain("case'section-flip':return canFlipPlane(section.selected)");
+    expect(src).toContain("case'section-flip':flipPlane(section.selected);break");
+    expect(src).toContain('L.flip,false,()=>flipPlane(pl)');
+    expect(src).toContain('const flipPlane=pl=>{if(canFlipPlane(pl))pl.side=-pl.side}');
   });
 });

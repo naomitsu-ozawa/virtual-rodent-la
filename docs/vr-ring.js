@@ -14,12 +14,13 @@ export const WHEEL_ITEMS=[
  {id:'snap-coronal',ja:'断面を冠状に',en:'Coronal',when:'section-selected'},
  {id:'snap-sagittal',ja:'断面を矢状に',en:'Sagittal',when:'section-selected'},
  {id:'section-clip',ja:'断面で切る／切らない',en:'Clip on/off',when:'section-selected'},
+ {id:'section-flip',ja:'切り口反転',en:'Flip cut',when:'section-flip'}, // build 496: the same action as the 向きを反転 button of the 断面 tab (one-side cut mode only)
  {id:'home',ja:'正面に戻す',en:'Bring to front',when:'always'},
  {id:'screenshot',ja:'スクリーンショット',en:'Screenshot',when:'always'},
  {id:'menu',ja:'全体メニュー',en:'Full menu',when:'always'},
 ];
 export const WHEEL_IDS=WHEEL_ITEMS.map(i=>i.id);
-export const DEFAULT_WHEEL=Object.freeze(['mode-section','mode-surface','undo','section-toggle','section-add',null]);
+export const DEFAULT_WHEEL=Object.freeze(['mode-section','mode-surface','undo','section-toggle','section-add','section-flip']);
 export const WHEEL_SETTINGS_KEY='wheel';
 
 // anything -> a new array of WHEEL_SLOTS ids / nulls (unknown ids and later duplicates become null; nothing usable = the default)
