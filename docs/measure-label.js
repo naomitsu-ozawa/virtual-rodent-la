@@ -68,6 +68,43 @@ export function lineSamplePoints(a,b,n=LINE_SAMPLES){
 export const fadeAlpha=(hidden,lit=false)=>hidden&&!lit?OCCLUDED_ALPHA:1;
 // the per-sample opacity factors of the line: hidden:Set of probe keys (null = nothing hidden)
 export const lineAlphas=(id,hidden,n=LINE_SAMPLES)=>{const out=[];for(let i=0;i<=n;i++)out.push(hidden&&hidden.has(probeKey(id,i))?OCCLUDED_ALPHA:1);return out};
+// build 494: where the 3D samples (i/n along the line in 3D) fall along the DRAWN 2D segment. With a perspective camera the screen fraction is not the 3D fraction
+// (f = u*wb / ((1-u)*wa + u*wb), w = the depth in front of the camera), and the drawn segment is the part in front of the near plane (clipSegmentNear), so the
+// gradient stops of the line must sit at these offsets, not at i/n. da / db = the camera depths (-z, camera space) of the UNCLIPPED ends a / b. -> n+1 offsets in
+// [0,1], non-decreasing (samples outside the clipped range snap to 0 / 1), or null when the whole segment is behind the near plane. ortho: the screen fraction is linear.
+export function lineStopOffsets(da,db,near=0.01,ortho=false,n=LINE_SAMPLES){
+ if(!(Number.isFinite(da)&&Number.isFinite(db)))return null;
+ if(da<near&&db<near)return null;
+ let t0=0,t1=1;
+ if(da<near)t0=(near-da)/(db-da);else if(db<near)t1=(da-near)/(da-db);
+ const wa=da+(db-da)*t0,wb=da+(db-da)*t1,out=[];
+ for(let i=0;i<=n;i++){
+  const t=i/n,u=t1>t0?Math.min(1,Math.max(0,(t-t0)/(t1-t0))):0;
+  let f=u;
+  if(!ortho){const d=(1-u)*wa+u*wb;f=d>0?u*wb/d:u}
+  out.push(Math.min(1,Math.max(0,f)));
+ }
+ for(let i=1;i<out.length;i++)if(out[i]<out[i-1])out[i]=out[i-1]; // rounding only: keep the offsets monotonic
+ return out;
+}
+// a fresh element id with a prefix: a counter (ids of measurements come from project files: any characters, not unique after sanitising)
+export function createIdMaker(prefix){let n=0;return()=>prefix+(++n)}
+// build 494: skip the judgement of the distances' probes while nothing it depends on changed (VR, vr-view.js updateHidden: pointIsHidden over the shown segments' classification,
+// from the probe to the eye). The inputs: key = a string of everything discrete (the probes' places, the volume's matrix, the shown segments, the section planes ...), refs =
+// objects compared by identity (the classification bytes), eye = {x,y,z} (world): re-judged once it moved by more than eyeTol (m) from where it was LAST judged
+// (a slow drift adds up), so the small sway of a still head costs nothing. reset() makes the next check run.
+export function createProbeGate(eyeTol=0.005){
+ let key=null,refs=null,eye=null;
+ return{
+  shouldRun(nextKey,nextRefs,e){
+   let run=key===null||nextKey!==key||!refs||nextRefs.length!==refs.length||nextRefs.some((r,i)=>r!==refs[i]);
+   if(!run&&eye){const dx=e.x-eye.x,dy=e.y-eye.y,dz=e.z-eye.z;run=dx*dx+dy*dy+dz*dz>eyeTol*eyeTol}
+   if(run){key=nextKey;refs=nextRefs.slice();eye={x:e.x,y:e.y,z:e.z}}
+   return run;
+  },
+  reset(){key=null;refs=null;eye=null},
+ };
+}
 // a smooth step towards the target (so the 10 Hz judgement fades in / out instead of flickering); dtMs = time since the last call; snaps when almost there
 export function approachAlpha(cur,target,dtMs){
  const k=1-Math.exp(-Math.max(0,+dtMs||0)/70),n=cur+(target-cur)*k;
