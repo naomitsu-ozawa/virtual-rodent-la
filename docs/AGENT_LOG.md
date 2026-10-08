@@ -40,7 +40,7 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ## 2026-10-08 — claude/webgpu-nvidia-oom (build 516: GPU split for the Intel-display / NVIDIA-compute hybrid, Linux only)
 
-**Agent:** Claude (Opus 5.5 worker)
+**Agent:** Claude (Sonnet 5.5 worker)
 **Task:** On the owner's Linux hybrid (Intel UHD 770 drives the display, NVIDIA RTX 4070 Ti computes, WebGPU interop on) the status showed "COMPUTE FAIL · verify [anisotropic] … Requested allocation size (10407936) is smaller than the image requires". Give compute its own NVIDIA device and render on the display GPU, for that case only.
 
 ### What changed

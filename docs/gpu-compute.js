@@ -130,8 +130,8 @@ export function updateGpuStatus(){
  const render=sceneState?.backend||'INIT';
  const compute=gpuFilterRuntime.lastBackend||(gpuFilterRuntime.device?'WEBGPU READY':'CPU');
  const adapter=gpuFilterRuntime.adapterLabel?(' · '+gpuFilterRuntime.adapterLabel):'';
- // build 516: the last error is shown in full (it used to be cut at 96 characters)
- const failure=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError):'';
+ // build 516: the chip keeps up to 160 characters of the last error (it was 96), the title and the bar under the views show all of it
+ const failureFull=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError):'',failure=failureFull.length>163?failureFull.slice(0,163)+'…':failureFull;
  // build 516: GPU split (display Intel / compute NVIDIA): "Render WEBGPU intel (display) · Compute WEBGPU … nvidia (split)"; '' otherwise
  const sp=gpuSplitStatusParts(gpuFilterRuntime.split),renderFail=gpuFilterRuntime.renderError?(' · Render error: '+gpuFilterRuntime.renderError):'';
  status.removeAttribute('data-i18n');
@@ -141,7 +141,7 @@ export function updateGpuStatus(){
  status.title=(gpuFilterRuntime.lastError||'')+(gpuFilterRuntime.renderError?(gpuFilterRuntime.lastError?'\n':'')+'Render: '+gpuFilterRuntime.renderError:'');
  // the top chip is truncated; the bar under the views shows the full text
  const bar=document.getElementById('gpu-status-bar'),barText=document.getElementById('gpu-status-text');
- if(bar&&barText){barText.textContent=status.textContent+(gpuFilterRuntime.lastError&&!failure?' · '+gpuFilterRuntime.lastError:'')+(gpuFilterRuntime.prefInfo?' · '+gpuFilterRuntime.prefInfo:'')+(gpuFilterRuntime.limitInfo?' · '+gpuFilterRuntime.limitInfo:'')+(gpuFilterRuntime.split&&gpuFilterRuntime.renderInfo?' · render device: '+(gpuFilterRuntime.renderAdapterLabel?gpuFilterRuntime.renderAdapterLabel+' · ':'')+gpuFilterRuntime.renderInfo:'')+(!gpuFilterRuntime.split&&gpuFilterRuntime.splitNote?' · GPU split: '+gpuFilterRuntime.splitNote:'');bar.classList.toggle('is-warning',!gpuActive)}
+ if(bar&&barText){barText.textContent=status.textContent+(gpuFilterRuntime.lastError&&(!failure||failure!==failureFull)?' · '+gpuFilterRuntime.lastError:'')+(gpuFilterRuntime.prefInfo?' · '+gpuFilterRuntime.prefInfo:'')+(gpuFilterRuntime.limitInfo?' · '+gpuFilterRuntime.limitInfo:'')+(gpuFilterRuntime.split&&gpuFilterRuntime.renderInfo?' · render device: '+(gpuFilterRuntime.renderAdapterLabel?gpuFilterRuntime.renderAdapterLabel+' · ':'')+gpuFilterRuntime.renderInfo:'')+(!gpuFilterRuntime.split&&gpuFilterRuntime.splitNote?' · GPU split: '+gpuFilterRuntime.splitNote:'');bar.classList.toggle('is-warning',!gpuActive)}
 }
 export function setGpuComputeBackend(label,error=''){
  // an uncaptured WebGPU error leaves 'WEBGPU GPU FAIL' standing: a later success

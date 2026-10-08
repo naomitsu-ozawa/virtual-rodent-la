@@ -1,5 +1,5 @@
 // GPU split (build 516): render on the display GPU, compute on the other GPU, ONLY for one hybrid case.
-// Pure, no imports, so unit tests load it without a DOM.
+// Pure (its only import is the pure gpu-preference.js), so unit tests load it without a DOM.
 //
 // Why (owner, Ubuntu / Chrome 155, Optimus: Intel UHD 770 drives the display, NVIDIA RTX 4070 Ti computes; the WebGPU
 // interop path is on): Chrome allocates every WebGPU "shared image" (canvas getCurrentTexture, copyExternalImageToTexture

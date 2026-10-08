@@ -329,11 +329,22 @@ describe('status line', () => {
     const s = statusOf({ ...rt(), device: {}, lastBackend: 'WEBGPU', split: { active: true, renderVendor: 'intel', computeVendor: 'nvidia' } });
     expect(s.textContent).toBe('Render WEBGPU intel (display) · Compute WEBGPU nvidia (split)');
   });
-  it('the last error is not truncated (status text and title)', () => {
+  it('the last error: chip keeps 160 characters, title and the bar under the views show it in full', () => {
     const long = 'verify [anisotropic]: pipeline anisotropic: Requested allocation size (10407936) is smaller than the image requires (11280384). - While calling [Device].CreateTexture() with a long tail ' + 'x'.repeat(200);
-    const s = statusOf({ ...rt(), device: {}, lastBackend: 'WEBGPU COMPUTE FAIL', lastError: long });
-    expect(s.textContent).toContain(long);
-    expect(s.title).toBe(long);
+    const bar = { classList: { toggle() {} } }, barText = { textContent: '' };
+    const doc = { getElementById: id => (id === 'gpu-status-bar' ? bar : id === 'gpu-status-text' ? barText : null) };
+    const runtime = { ...rt(), device: {}, lastBackend: 'WEBGPU COMPUTE FAIL', lastError: long };
+    const { api, deps } = buildCompute(LINUX, runtime, { document: doc });
+    api.updateGpuStatus();
+    expect(deps.status.textContent.length).toBeLessThan(220);
+    expect(deps.status.textContent).toContain(long.slice(0, 160));
+    expect(deps.status.title).toBe(long);
+    expect(barText.textContent.endsWith(' · ' + long)).toBe(true);
+    // a short error is shown once, in the chip, and the bar does not repeat it
+    runtime.lastError = 'short error';
+    api.updateGpuStatus();
+    expect(deps.status.textContent).toContain(' · short error');
+    expect(barText.textContent).toBe(deps.status.textContent);
   });
   it('a render error shows as Render error and does not touch the compute label', () => {
     const s = statusOf({ ...rt(), device: {}, lastBackend: 'WEBGPU CORE FULL VERIFIED · WG256', split: { active: true, renderVendor: 'intel', computeVendor: 'nvidia' }, renderError: 'uncaptured: boom' });
