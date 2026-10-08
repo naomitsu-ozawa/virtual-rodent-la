@@ -28,7 +28,7 @@ import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-bui
 import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build502';
 import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build502';
 import { createVrMeasure } from './vr-measure.js?v=20261008-build502';
-import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, tagBehindTissue, sectionPage, pageOfPlane } from './vr-section-frame.js?v=20261008-build502';
+import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE } from './vr-section-frame.js?v=20261008-build502';
 import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build502';
 import { createProbeGate } from './measure-label.js?v=20261008-build502';
 import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build502';
@@ -1077,7 +1077,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // handle corner per plane index (build 364): (+y,+z), (+y,−z), (−y,−z), (−y,+z)
  const HANDLE_CORNERS=[[1,1],[1,-1],[-1,-1],[-1,1]],HANDLE=0.034;
  const makePlane=(color,cut)=>{
-  const obj=new THREE.Group(),mat=new THREE.LineBasicMaterial({color,transparent:true,depthTest:false}),h=0.12; // build 497: the frame lies inside the volume, which now writes depth: no depth test, drawn after it (renderOrder 2)
+  const obj=new THREE.Group(),mat=new THREE.LineBasicMaterial({color,transparent:true,depthTest:false,depthWrite:false}),h=0.12; // build 497: the frame lies inside the volume, which now writes depth: no depth test, drawn after it (renderOrder 2). build 506: depthTest is switched per frame (frameDepthTest: tested = hidden behind tissue under 「実際に隠す」, on top while lit / without GPU occlusion); depthWrite is never on (a thin frame must not clip the labels drawn after it)
   const frameLine=new THREE.LineLoop(square(h),mat);frameLine.renderOrder=2;obj.add(frameLine);
   // glow (build 398; 3 mm since build 400): a band over the frame in the colour of the hand that points at or holds it
   const go=h+0.0015,gi=h-0.0015,gs=new THREE.Shape([new THREE.Vector2(-go,-go),new THREE.Vector2(go,-go),new THREE.Vector2(go,go),new THREE.Vector2(-go,go)]);
@@ -1086,7 +1086,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // build 468: no invisible pick quad over the frame (it took the laser from everything behind it); the frame is hit on its thin band and the number tag only
   // handle (build 364): small square outside a corner with the plane's number (menu 断面1..4), drawn by refreshHandles
   const canvas=document.createElement('canvas');canvas.width=96;canvas.height=96;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
-  const handle=new THREE.Mesh(new THREE.PlaneGeometry(HANDLE,HANDLE),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,side:THREE.DoubleSide,depthTest:false}));
+  const handle=new THREE.Mesh(new THREE.PlaneGeometry(HANDLE,HANDLE),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,side:THREE.DoubleSide,depthTest:false,depthWrite:false}));
   handle.rotation.y=Math.PI/2;handle.renderOrder=3;handle.userData.ctx=canvas.getContext('2d');obj.add(handle);
   // one-side mode (build 346): side picks the kept half along local X; the
   // arrow points at the removed half
@@ -1101,8 +1101,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const hd=pl.handle,ctx=hd.userData.ctx,hand=pl.hand==='right'?L.handR:pl.hand==='left'?L.handL:'';
   ctx.clearRect(0,0,96,96);ctx.fillStyle='#'+pl.color.toString(16).padStart(6,'0');ctx.beginPath();ctx.roundRect(0,0,96,96,18);ctx.fill();
   ctx.fillStyle='#111';ctx.textAlign='center';ctx.textBaseline='middle';
-  if(hand){ctx.font='bold 54px system-ui,sans-serif';ctx.fillText(String(i+1),48,32);ctx.fillStyle='#'+HAND_COLORS[pl.hand].toString(16).padStart(6,'0');ctx.beginPath();ctx.arc(48,74,20,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 28px system-ui,sans-serif';ctx.fillText(hand,48,76)}
-  else{ctx.font='bold 64px system-ui,sans-serif';ctx.fillText(String(i+1),48,52)}
+  if(hand){ctx.font='bold '+(i>=9?46:54)+'px system-ui,sans-serif';ctx.fillText(String(i+1),48,32);ctx.fillStyle='#'+HAND_COLORS[pl.hand].toString(16).padStart(6,'0');ctx.beginPath();ctx.arc(48,74,20,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 28px system-ui,sans-serif';ctx.fillText(hand,48,76)}
+  else{ctx.font='bold '+(i>=9?54:64)+'px system-ui,sans-serif';ctx.fillText(String(i+1),48,52)} // build 506: "10" in a smaller font
   hd.material.map.needsUpdate=true;
  };
  // build 491: the square may be larger (up to 1.5x) than the tag, so the tag has its own scale k (<= 1) inside the frame group: size HANDLE*k, offset from the corner (0.01+HANDLE/2)*k
@@ -1710,14 +1710,22 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0,L.sec,[{label:L.offOn[0],value:false},{label:L.offOn[1],value:true}],section.on,v=>{if(v!==section.on)setSection(v)});
    if(planes.length<MAX_PLANES)btn(800,y0,184,L.addPlane,false,()=>{addPlane()},{size:26});
    // one row per plane: colour name, clip on/off, flip (one-side), remove
-   planes.forEach((pl,i)=>{const y=y0+86+i*76,col='#'+pl.color.toString(16).padStart(6,'0');
+   // build 506: up to 10 planes, listed 4 rows at a time (the rest of the tab keeps its place); the page follows the selected plane, ▲▼ turn it
+   const si=planes.indexOf(section.selected);if(ui.secSeen!==section.selected){ui.secSeen=section.selected;if(si>=0)ui.secPage=pageOfPlane(si)}
+   const pg=sectionPage(planes.length,ui.secPage);ui.secPage=pg.page;
+   if(pg.pages>1){
+    btn(810,y0+86,174,'▲',false,()=>{ui.secPage=pg.page-1;menu.refresh()},{size:26,disabled:pg.page<=0});
+    label(822,y0+86+76+36,(pg.from+1)+'–'+pg.to+' / '+planes.length,{size:24,color:'#9fb3c3'});
+    btn(810,y0+86+152,174,'▼',false,()=>{ui.secPage=pg.page+1;menu.refresh()},{size:26,disabled:pg.page>=pg.pages-1});
+   }
+   planes.forEach((pl,i)=>{if(i<pg.from||i>=pg.to)return;const y=y0+86+(i-pg.from)*76,col='#'+pl.color.toString(16).padStart(6,'0');
     // build 364: the name is a button that selects the plane (thumbstick target)
     btn(X,y,190,L.planeN+(i+1),pl===section.selected,()=>{section.selected=pl},{color:col,size:26});
     btn(250,y,190,pl.cut?L.clipOn:L.clipOff,pl.cut,()=>{pl.cut=!pl.cut;if(pl.cut&&settings.cut===2)chooseSide(pl)},{color:col,size:26});
     if(canFlipPlane(pl))btn(452,y,170,L.flip,false,()=>flipPlane(pl),{size:26});
     btn(640,y,150,L.remove,false,()=>removePlane(pl),{size:26});
    });
-   const yb2=y0+86+MAX_PLANES*76;
+   const yb2=y0+86+SECTION_ROWS_PER_PAGE*76; // 4 rows, as with the old 4-plane limit (build 506: more planes are paged)
    // snap (build 365): the selected plane onto axial / coronal / sagittal
    label(X,yb2+36,L.snapL);
    const sp=section.selected;if(sp)L.snapModes.forEach((t,i)=>btn(CX+i*152,yb2,140,t,planeAxis(sp)===i,()=>snapPlane(sp,i),{size:26}));
@@ -1910,7 +1918,10 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
    c.userData.volHit=vh;c.userData.helpHit=!!hh;
    // build 484: how much nearer than the plane the object surface must be to hide it (0.75 voxel in world metres: the surface march and the plane meet at a cut face)
-   let occEps=1e-4;if(vh&&sh&&vrHalfExt&&vrDims&&mesh?.parent){const vs=voxelSize(vrHalfExt,vrDims);mesh.getWorldScale(tmpSs);occEps=0.75*Math.min(vs[0]*tmpSs.x,vs[1]*tmpSs.y,vs[2]*tmpSs.z)}
+   let occEps=1e-4;if(vh&&(sh||tab)&&vrHalfExt&&vrDims&&mesh?.parent){const vs=voxelSize(vrHalfExt,vrDims);mesh.getWorldScale(tmpSs);occEps=0.75*Math.min(vs[0]*tmpSs.x,vs[1]*tmpSs.y,vs[2]*tmpSs.z)}
+   // build 506: under 「実際に隠す」 a number tag the tissue covers (the frame is not drawn there) is not there for the laser or the trigger: the tag is picked before everything else (resolveTriggerTarget), so
+   // it needs this tissue test (the frame band already loses to a nearer tissue hit by distance, build 484 / 468). Unless the frame is held (then it is lit and drawn on top).
+   if(tab&&vh&&!draggedBy(tab.pl,null)&&tagBehindTissue(occlusionGpu(),tab.t,vh.distance,occEps))tab=null;
    // where a moved point would land (the current mode's rule): the surface voxel or the selected section's voxel
    const placement=surfaceActive()?(vh&&vh.voxel?vh:null):(sh&&sh.voxel&&!(vh&&vh.distance<sh.distance-occEps)?sh:null);c.userData.placement=placement; // build 484: a plane behind the object surface is not a place to put a point
    const res=rh&&!board&&wheelOwner!==c&&pw?.c!==c?{kind:'none',ref:null}:resolveTriggerTarget({board:board?bd:null,ringOwnOpen:wheelOwner===c||pw?.c===c,ringHighlight:c.userData.ringHl??null,moving:!!c.userData.moving,placement,tab,point:pt,mlabel:mlb,band,tissue:vh,plane:sh,occludeEps:occEps,mode:vrPointMode,analysis:ui.open&&ui.tab===5,canDrag:anyOk&&(surfaceActive()||labelMode()||!vh)});
@@ -1958,7 +1969,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(vrHalfExt){const cc=clampPlaneCenter(sp.obj.position,qRot(sp.obj.quaternion,{x:1,y:0,z:0}),vrHalfExt);sp.obj.position.set(cc.x,cc.y,cc.z)} // build 468: the plane keeps meeting the box
   }
   // frame: own colour; a glow band in the hand's colour while that hand points at its band / tag or drags it
-  if(section.on){const glowBy=new Map();for(const c of controllers){const rr=c.userData.press?.res||c.userData.res,pl=c.userData.drag?.pl||(rr?.kind==='section'?rr.ref.pl:null);if(pl&&!glowBy.has(pl))glowBy.set(pl,handColor(c))}for(const pl of planes){const gc=glowBy.get(pl);pl.glow.visible=gc!==undefined;if(gc!==undefined)pl.glow.material.color.setHex(gc)}}
+  if(section.on){const glowBy=new Map();for(const c of controllers){const rr=c.userData.press?.res||c.userData.res,pl=c.userData.drag?.pl||(rr?.kind==='section'?rr.ref.pl:null);if(pl&&!glowBy.has(pl))glowBy.set(pl,handColor(c))}const occF=occlusionGpu();for(const pl of planes){const gc=glowBy.get(pl);pl.glow.visible=gc!==undefined;if(gc!==undefined)pl.glow.material.color.setHex(gc);
+   // build 506: under 「実際に隠す」 the part of the frame (outline, arrow, tag) behind tissue is not drawn (no ghost); lit = the laser is on its band / tag, or it is held (the glow shows): then all of it is on top
+   const dt=frameDepthTest(occF,gc!==undefined);pl.mat.depthTest=dt;pl.handle.material.depthTest=dt}}
   const st=section.on?(controllers.some(c=>c.userData.drag)?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}
   if(material){
