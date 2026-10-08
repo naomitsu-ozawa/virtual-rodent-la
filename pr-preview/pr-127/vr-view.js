@@ -8,33 +8,33 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build510';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build510';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build510';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build510';
-import { datasetFingerprint } from './project-file.js?v=20261008-build510';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build510';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build510';
-import { buildClsData } from './point-cls.js?v=20261008-build510';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build510';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build510';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build510';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build510';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build510';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build510';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build510';
-import { tr } from './i18n.js?v=20261008-build510';
-import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261008-build510';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build510';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build510';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build510';
-import { createVrMeasure } from './vr-measure.js?v=20261008-build510';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build510';
-import { createProbeGate } from './measure-label.js?v=20261008-build510';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build510';
-import { APP_BUILD } from './version.js?v=20261008-build510';
-import { wc, ww } from './ui-shell.js?v=20261008-build510';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build510';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build512';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build512';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build512';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build512';
+import { datasetFingerprint } from './project-file.js?v=20261008-build512';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build512';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build512';
+import { buildClsData } from './point-cls.js?v=20261008-build512';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build512';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build512';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build512';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build512';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build512';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build512';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build512';
+import { tr } from './i18n.js?v=20261008-build512';
+import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261008-build512';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build512';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261008-build512';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build512';
+import { createVrMeasure } from './vr-measure.js?v=20261008-build512';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build512';
+import { createProbeGate } from './measure-label.js?v=20261008-build512';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build512';
+import { APP_BUILD } from './version.js?v=20261008-build512';
+import { wc, ww } from './ui-shell.js?v=20261008-build512';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build512';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -2057,7 +2057,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(now-fpsAt>=1000){
    fps=frames*1000/(now-fpsAt);frames=0;fpsAt=now;
    ui.fpsLine=(firstDrawMs>=0?(ja?'初回描画 ':'first draw ')+Math.round(firstDrawMs)+' ms · ':'')+fps.toFixed(0)+' fps · '+(ja?'ボリューム ':'volume ')+avg('vol')+' ms · '+(ja?'本描画 ':'main ')+avg('main')+' ms · JS '+avg('js')+' ms'+(timerExt?'':(ja?'（GPU計測なし）':' (no GPU timer)'));
-   ui.sizeLine=sizes+' · ×'+holder.scale.x.toFixed(2)+' · '+info+' · '+(ja?'データ ':'data ')+((settings.data|0)?'256':'512')+(ja?' · 表示セグメント ':' · shown segments ')+SEGMENT_PRESET_ORDER.filter(k=>{const g=segmentState[k];return g?.active&&g?.enabled&&segMode[k]!==2}).length;
+   ui.sizeLine=sizes+' · '+scaleLineText(holder.scale.x,realLongMm(),language)+' · '+info+' · '+(ja?'データ ':'data ')+((settings.data|0)?'256':'512')+(ja?' · 表示セグメント ':' · shown segments ')+SEGMENT_PRESET_ORDER.filter(k=>{const g=segmentState[k];return g?.active&&g?.enabled&&segMode[k]!==2}).length;
    // build 483: one line for the Quest numbers: fps / auto % / step / samples per ray / ended by hit / skipped by jumps / GPU ms
    ui.diagLine=fps.toFixed(0)+' fps · '+(VRES[settings.vres]?Math.round(VRES[settings.vres]*100)+'%':(ja?'自動 ':'auto ')+Math.round(aq.f*100)+'%')+' · '+(ja?'刻み ':'step ')+STEP[VRES[settings.vres]?settings.quality|0:aq.stepIdx]+(probe?' · '+(ja?'反復 ':'samples ')+probe.samples.toFixed(0)+(ja?' · hit終了 ':' · hit end ')+Math.round(probe.hit*100)+'% · '+(ja?'跳躍 ':'jump ')+Math.round(probe.skip*100)+'%':'')+' · vol '+avg('vol')+' ms · '+(ja?'本 ':'main ')+avg('main')+' ms';
    if(ui.tab===4)try{measureSamples()}catch(e){console.warn(e)}
