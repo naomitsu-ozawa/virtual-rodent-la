@@ -28,7 +28,7 @@ import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-bui
 import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build500';
 import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build500';
 import { createVrMeasure } from './vr-measure.js?v=20261008-build500';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible } from './vr-depth.js?v=20261008-build500';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build500';
 import { createProbeGate } from './measure-label.js?v=20261008-build500';
 import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build500';
 import { APP_BUILD } from './version.js?v=20261008-build500';
@@ -1266,7 +1266,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const updateHidden=now=>{
   vpHiddenAt=now;
   // build 493: the distance lines / labels are judged by the same rule (vpMeasure.probes(): 9 samples of every line + a dragged label) and drawn faint when hidden (vr-measure.js)
-  const vp=volPick,pts=vpMarkers.centres(),mps=occlusionGpu()?[]:vpMeasure.probes(); // build 497: with the GPU depth occlusion the distances' probes are not needed at all
+  const gpuOcc=occlusionGpu(),vp=volPick,pts=gpuOcc?[]:vpMarkers.centres(),mps=gpuOcc?[]:vpMeasure.probes(); // build 497: with the GPU depth occlusion the distances' probes are not needed at all; build 501: nor are the point markers' (their depth test + ghost do it)
   if(!vp||!mesh?.parent||!material||(!pts.length&&!mps.length)){if(vpHidden.size)vpHidden=new Set();if(vpMeasHidden.size)vpMeasHidden=new Set();measGate.reset();return}
   const mask=shownMask(),chs=[];for(let i=0;i<4;i++)if(mask>>i&1&&vp.cls.chan[i]>=0)chs.push(vp.cls.chan[i]);
   const cams=renderer.xr.getCamera().cameras;
@@ -1313,11 +1313,23 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const HAND_CHIP={left:[0,-0.03,-0.03],right:[0,-0.03,-0.03]};
  const hoverLabelOf=c=>c.userData.hoverLabel||=Object.assign(makeLabel(),{hand:c});
  const labelMode=()=>(ui.open&&ui.tab===5)||!section.on;
- const makeLabel=()=>{
+ const makeLabel=(pin=false)=>{
   const canvas=document.createElement('canvas');canvas.width=512;canvas.height=154;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
-  const m=new THREE.Mesh(new THREE.PlaneGeometry(LABEL_W,LABEL_H),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,depthTest:false}));m.renderOrder=5;m.visible=false;
-  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,depthTest:false}));line.frustumCulled=false;line.renderOrder=5;line.visible=false;
-  scene.add(m);scene.add(line);return{m,line,ctx:canvas.getContext('2d'),tex,key:null,anchor:new THREE.Vector3(),world:new THREE.Vector3()};
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(LABEL_W,LABEL_H),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false,depthTest:false,depthWrite:false}));m.renderOrder=5;m.visible=false;
+  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,depthTest:false,depthWrite:false}));line.frustumCulled=false;line.renderOrder=5;line.visible=false;
+  // build 501: a PINNED label (a result's label left at its point) gets a ghost child of the card and of the leader (GreaterDepth, GHOST_ALPHA), used while the GPU depth occlusion is on (pinOcclusion)
+  let mg=null,lg=null;
+  if(pin){
+   mg=new THREE.Mesh(m.geometry,Object.assign(m.material.clone(),{depthFunc:THREE.GreaterDepth,depthTest:true,depthWrite:false}));mg.renderOrder=m.renderOrder;mg.frustumCulled=false;mg.visible=false;m.add(mg);
+   lg=new THREE.Line(line.geometry,Object.assign(line.material.clone(),{depthFunc:THREE.GreaterDepth,depthTest:true,depthWrite:false}));lg.renderOrder=line.renderOrder;lg.frustumCulled=false;lg.visible=false;line.add(lg);
+  }
+  scene.add(m);scene.add(line);return{m,line,mg,lg,ctx:canvas.getContext('2d'),tex,key:null,anchor:new THREE.Vector3(),world:new THREE.Vector3()};
+ };
+ // build 501: pinned labels follow the 「ラベルの隠れ方」 setting like the distance labels: 実際に隠す = depth tested + faint ghost behind the tissue; otherwise as before (always drawn)
+ const pinOcclusion=lb=>{
+  const occ=occludedPass(occlusionGpu(),false);
+  lb.m.material.depthTest=occ;lb.line.material.depthTest=occ;lb.mg.visible=occ;lb.lg.visible=occ;
+  if(occ){lb.mg.material.opacity=lb.m.material.opacity*GHOST_ALPHA;lb.lg.material.opacity=lb.line.material.opacity*GHOST_ALPHA}
  };
  const spacingNote=()=>vrSpacingNote((gpuVolumeTarget()?.series||activeSeries)?.spacingCheck,language);
  const drawLabel=(lb,hit,faint)=>{
@@ -1341,8 +1353,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const hideLabel=lb=>{if(lb){lb.m.visible=lb.line.visible=false}};
  const togglePin=(c,hit)=>{
   if(!hit?.id)return false;const old=pins.get(hit.id);
-  if(old){pins.delete(hit.id);old.m.removeFromParent();old.line.removeFromParent();old.tex.dispose();old.m.material.dispose();old.m.geometry.dispose();old.line.geometry.dispose();old.line.material.dispose();pulse(c,0.2);return true}
-  const lb=makeLabel();lb.anchor.copy(hit.local);drawLabel(lb,hit,false);pins.set(hit.id,lb);pulse(c);return true;
+  if(old){pins.delete(hit.id);old.m.removeFromParent();old.line.removeFromParent();old.tex.dispose();old.m.material.dispose();old.m.geometry.dispose();old.line.geometry.dispose();old.line.material.dispose();old.mg.material.dispose();old.lg.material.dispose();pulse(c,0.2);return true}
+  const lb=makeLabel(true);lb.anchor.copy(hit.local);drawLabel(lb,hit,false);pins.set(hit.id,lb);pulse(c);return true;
  };
  // new plane: through the volume centre (first) or in front of the hand
  // (added ones), facing the viewer, fixed in the volume
@@ -1936,7 +1948,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   // build 423: faint label of what each laser points at (not when that result is already pinned); pinned labels follow the volume
   {const on=labelMode()&&!diagAn.noLabels;if(on||pins.size)readHead();anBenchTick();
    for(const c of controllers){const hit=on?c.userData.volHit:null;if(hit&&!(hit.id&&pins.has(hit.id))){const lb=hoverLabelOf(c);drawLabel(lb,hit,true);lb.anchor.copy(hit.local);placeLabel(lb)}else hideLabel(c.userData.hoverLabel)}
-   for(const lb of pins.values())placeLabel(lb)}
+   for(const lb of pins.values()){placeLabel(lb);pinOcclusion(lb)}}
   // thumbstick scroll (build 364): the selected plane along its own normal, same world speed fixed in the scaled holder or held
   const sp=section.selected;
   if(section.on&&sp&&scroll&&dt&&!controllers.some(c=>c.userData.drag?.pl===sp)){
@@ -1977,7 +1989,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    lblLit.clear();for(const x of controllers){const r=x.userData.res;if(r&&r.kind==='mlabel'&&r.ref)lblLit.add(r.ref.id);if(x.userData.lblDrag&&x.userData.press)lblLit.add(x.userData.lblDrag.id)} // build 485: the label the laser is on stays lit while it is grabbed
    // the active section = the selected one while sections are on, as the shader's plane (object space, unit normal, same index as planes)
    let secPl=null;if(section.on&&section.selected&&material&&!bench.noSection){const i=planes.indexOf(section.selected);if(i>=0&&i<material.uniforms.planeCount.value){const q=material.uniforms.cutPlanes.value[i];secPl={x:q.x,y:q.y,z:q.z,w:q.w}}}
-   vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds,preview:previewArg});
+   vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds,preview:previewArg,occlusion:occlusionGpu()});
    vpMeasure.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,spacing:vrSpacing,warn:!!spacingNote(),startId:getMeasureStart(),hint:L.ptDistHint,now:nowH,preview:previewArg,lit:lblLit,hidden:vpMeasHidden,occlusion:occlusionGpu()})}
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];

@@ -9,8 +9,12 @@ export const normalizeLabelHide = v => (v === 0 || v === '0' || v === false) ? L
 // GPU occlusion needs the standard depth mapping of the shader (z/w * 0.5 + 0.5): a logarithmic or reversed depth buffer would need another formula, so those fall back to the fade
 export const gpuOcclusionActive = (setting, caps) => normalizeLabelHide(setting) === LABEL_HIDE_REAL && !!caps && !caps.logarithmicDepthBuffer && !caps.reversedDepthBuffer;
 
-// the ghost pass: opacity factor of a part that is behind the tissue (the normal pass keeps the part in front)
-export const GHOST_ALPHA = 0.3;
+// the ghost pass: opacity factor of a part that is behind the tissue (the normal pass keeps the part in front). One constant for every ghosted object
+// (distance lines / leaders / labels, point markers + number chips, pinned labels). build 501: 0.3 -> 0.15 (owner: fainter).
+export const GHOST_ALPHA = 0.15;
+// which pass an object gets: true = depth tested + a ghost (GreaterDepth, GHOST_ALPHA) child; false = drawn on top without a depth test and without a ghost.
+// occlusion = gpuOcclusionActive(); lit = the object is operable right now (laser on it, grabbed, selected, being moved) and must stay fully visible.
+export const occludedPass = (occlusion, lit) => !!occlusion && !lit;
 // how far behind the surface the volume's written depth lies (object space, along the unit ray direction): DEPTH_BIAS_RAY * (the voxel's extent along the ray) + DEPTH_BIAS_MIN * voxelMin.
 // Points / lines are recorded at a voxel CENTRE on a surface voxel or a cut face (up to half a voxel inside along the ray, so 0.5 * dot(|dir|, voxelSize), which follows an
 // anisotropic spacing such as 0.1 / 0.1 / 0.5), plus up to 1.5 voxels of the surface march (grazing rays). For isotropic data this is 2.0 .. 2.4 voxels (never less than the
