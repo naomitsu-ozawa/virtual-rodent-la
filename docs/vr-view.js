@@ -366,7 +366,7 @@ void main(){
    // slices and the cut face as in the general loop (same order: slices up to t + step, then the cap, then the sample)
    while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
     vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-    float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);depthMark(sliceT[nextSlice-1],contribution);
+    float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
    }
    if(capT>=0.0){
     vec3 cp=o+dir*capT;float capAt=capT;int ci=segmentIndexAt(texCoord(cp));capT=-1.0;
@@ -450,7 +450,7 @@ void main(){
   while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
    // a slice lies before the next sample: composite it in depth order
    vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-   float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);depthMark(sliceT[nextSlice-1],contribution); // build 509: a slice is the first thing the ray shows: its depth (not the box face's) is written, so the section frame lying on it is not behind it
+   float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
   }
   if(capT>=0.0){
    // cut face: flat, segment colour lightened, lit by the plane normal
@@ -524,7 +524,7 @@ void main(){
 #endif
  while(nextSlice<nSlice&&acc.a<=ACC_STOP){
   vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-  float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);depthMark(sliceT[nextSlice-1],contribution);
+  float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);
  }
  if(diag==2){float h=clamp(float(iters)/1024.0,0.0,1.0);outColor=vec4(h,1.0-abs(h*2.0-1.0),1.0-h,1.0);return;}
  if(acc.a>ACC_STOP)hitEnd=true;

@@ -110,10 +110,10 @@ describe('the section frame under the depth occlusion', () => {
     expect(has(src, 'side:THREE.DoubleSide,depthTest:false,depthWrite:false}));\n  handle.rotation.y')).toBe(true);
     expect(has(src, 'arrow=new THREE.LineSegments(')).toBe(true); expect(has(src, '0.065,-0.02,0)]),mat);')).toBe(true); // the arrow shares mat
   });
-  it('the frame needs no extra bias on the cut face: the volume writes the cut face depth pushed behind the plane, a slice is written too', () => {
+  it('the frame needs no extra bias on the cut face: the volume writes the cut face depth pushed behind the plane; a slice writes none', () => {
     expect(has(fs, 'gl_FragDepth=clamp(cp.z/cp.w*0.5+0.5,0.0,1.0)')).toBe(true);
     expect(has(fs, 'depthMark(capAt,contribution)')).toBe(true);
-    expect((fs.match(/depthMark\(sliceT\[nextSlice-1\],contribution\)/g) || []).length).toBe(3); // a displayed slice is the first thing a ray shows: not the box face depth
+    expect(fs).not.toMatch(/depthMark\(sliceT/); // a slice writes no depth: the frame on it is in front of whatever the ray reaches behind it (the far box face if nothing), and tissue in front of it writes its own depth
     expect(has(src, 'polygonOffset')).toBe(false);
   });
   it('tagBehindTissue: only with the occlusion, only when the tissue is nearer than the tag by more than eps', () => {
