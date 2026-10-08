@@ -11,12 +11,22 @@ export const gpuOcclusionActive = (setting, caps) => normalizeLabelHide(setting)
 
 // the ghost pass: opacity factor of a part that is behind the tissue (the normal pass keeps the part in front)
 export const GHOST_ALPHA = 0.3;
-// how far behind the surface (voxels of the classification grid, voxelMin) the volume's written depth lies. Points / lines are recorded ON a surface voxel or a cut face
-// (about half a voxel inside, up to 1.7 voxels along a grazing ray), so they must stay in front of it. Must equal DEPTH_BIAS in the fragment shader (tests/unit/vr-depth.test.js).
-export const DEPTH_BIAS_VOXELS = 2;
-// the same maths as the fragment shader: the object-space ray parameter t (along the unit direction) is pushed back by the bias, the point goes through the model-view and
+// how far behind the surface the volume's written depth lies (object space, along the unit ray direction): DEPTH_BIAS_RAY * (the voxel's extent along the ray) + DEPTH_BIAS_MIN * voxelMin.
+// Points / lines are recorded at a voxel CENTRE on a surface voxel or a cut face (up to half a voxel inside along the ray, so 0.5 * dot(|dir|, voxelSize), which follows an
+// anisotropic spacing such as 0.1 / 0.1 / 0.5), plus up to 1.5 voxels of the surface march (grazing rays). For isotropic data this is 2.0 .. 2.4 voxels (never less than the
+// build 497 bias of 2). Must equal DEPTH_BIAS_RAY / DEPTH_BIAS_MIN and depthBias() in the fragment shader (tests/unit/vr-depth.test.js).
+export const DEPTH_BIAS_RAY = 0.5, DEPTH_BIAS_MIN = 1.5;
+// the same maths as the fragment shader: dir = the unit ray direction (object space), voxelSize = the object-space size of a voxel per axis [x, y, z], voxelMin = its smallest side of the classification grid
+export function depthBias(dir, voxelSize, voxelMin) {
+  return DEPTH_BIAS_RAY * (Math.abs(dir[0]) * voxelSize[0] + Math.abs(dir[1]) * voxelSize[1] + Math.abs(dir[2]) * voxelSize[2]) + DEPTH_BIAS_MIN * voxelMin;
+}
+// the per-axis voxel size the bias uses: the coarser of the rendered grid and the data grid (the points sit at the centres of the data's voxels)
+export function depthVoxelSize(halfExt, gridDims, dataDims) {
+  return [0, 1, 2].map(a => 2 * halfExt[a] / Math.max(1, Math.min(gridDims[a], dataDims ? dataDims[a] : gridDims[a])));
+}
+// the object-space ray parameter t (along the unit direction) is pushed back by the bias, the point goes through the model-view and
 // projection matrices (column-major 16 arrays, as three.js stores them) and the window depth is z/w * 0.5 + 0.5, clamped to 0..1. null = behind the camera plane (the shader keeps the box face depth).
-export function biasedT(t, voxelMin, biasVoxels = DEPTH_BIAS_VOXELS) { return t + biasVoxels * voxelMin; }
+export const biasedT = (t, dir, voxelSize, voxelMin) => t + depthBias(dir, voxelSize, voxelMin);
 export function clipDepth(modelView, projection, p) {
   const m = modelView, q = projection;
   const x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], z = m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14], w0 = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
@@ -29,3 +39,9 @@ export function perspectiveDepth(zEye, near, far) {
   const a = -(far + near) / (far - near), b = -2 * far * near / (far - near);
   return Math.min(1, Math.max(0, (a * zEye + b) / -zEye * 0.5 + 0.5));
 }
+
+// the menu / help boards are depth tested (the volume's depth hides a board that lies inside or behind the tissue), so a hit on a board that the tissue covers must not take the
+// laser or the trigger (no invisible delete / exit button). Same idea as build 484's section plane rule: the board hit is ignored when the volume surface along the ray is nearer.
+// hit = the raycaster hit of one board ({distance}) or null; tissueDistance = the volume surface hit distance along the same ray (world metres; null / undefined = none). true = the board is visible there.
+// (The rings are drawn without a depth test, so they are not subject to this rule.)
+export const boardVisible = (hit, tissueDistance) => !!hit && !(tissueDistance != null && tissueDistance < hit.distance);

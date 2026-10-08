@@ -28,7 +28,7 @@ import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-bui
 import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build499';
 import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build499';
 import { createVrMeasure } from './vr-measure.js?v=20261008-build499';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive } from './vr-depth.js?v=20261008-build499';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible } from './vr-depth.js?v=20261008-build499';
 import { createProbeGate } from './measure-label.js?v=20261008-build499';
 import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build499';
 import { APP_BUILD } from './version.js?v=20261008-build499';
@@ -107,11 +107,12 @@ in vec3 vOrigin;
 out highp vec4 outColor;
 // build 497: the depth of the first thing the ray shows (a surface hit or the cut face) is written to gl_FragDepth, so lines / labels drawn later are depth tested against the tissue
 // (a label behind it is clipped at the outline). The same two matrices as the vertex shader's gl_Position. Pixels without a hit keep the box face's depth (gl_FragCoord.z, as before),
-// a ray that shows nothing is discarded (no depth, AR stays see-through). DEPTH_BIAS (voxels, = DEPTH_BIAS_VOXELS in vr-depth.js) pushes the written depth behind the surface so things lying ON it
-// (points / lines recorded on a surface or a cut face) stay in front.
+// a ray that shows nothing is discarded (no depth, AR stays see-through). depthBias() (object space, = depthBias in vr-depth.js: DEPTH_BIAS_RAY * the voxel's extent along the ray + DEPTH_BIAS_MIN * voxelMin) pushes the
+// written depth behind the surface so things lying ON it (points at voxel centres / lines recorded on a surface or a cut face, also with an anisotropic spacing) stay in front.
 uniform mat4 projectionMatrix;
 uniform mat4 modelViewMatrix;
-const float DEPTH_BIAS=2.0;
+const float DEPTH_BIAS_RAY=0.5;
+const float DEPTH_BIAS_MIN=1.5;
 float gDepthT=-1.0;
 void depthMark(float tt,float a){if(gDepthT<0.0&&a>0.02)gDepthT=tt;}
 vec2 hitBox(vec3 o,vec3 d){
@@ -166,6 +167,8 @@ uniform sampler3D distTex;
 uniform int useDist;
 uniform int distInCls; // build 384: the combined distance field (min over the shown segments) is the classification texture's alpha: one fetch per step
 uniform float voxelMin;
+uniform vec3 voxelSize; // build 500: object-space voxel size per axis (the coarser of the rendered grid and the data grid), for the depth bias
+float depthBias(vec3 d){return DEPTH_BIAS_RAY*dot(abs(d),voxelSize)+DEPTH_BIAS_MIN*voxelMin;}
 float distAt(vec3 tc){
  vec4 q=texture(distTex,clamp(tc,vec3(0.0),vec3(0.999999)))*255.0;float m=255.0;
  for(int s=0;s<4;s++){int c=clsChan[s];if(c>=0&&segA[s].w>0.5)m=min(m,q[c]);}
@@ -528,7 +531,7 @@ void main(){
  if(acc.a<0.004)discard;
  // build 483: a ray stopped at ACC_STOP is made fully opaque (AR passthrough would show the real world through the last 5 %)
  if(acc.a>ACC_STOP)acc/=acc.a;
- if(gDepthT>=0.0){vec4 cp=projectionMatrix*(modelViewMatrix*vec4(o+dir*(gDepthT+DEPTH_BIAS*voxelMin),1.0));if(cp.w>1e-6)gl_FragDepth=clamp(cp.z/cp.w*0.5+0.5,0.0,1.0);}
+ if(gDepthT>=0.0){vec4 cp=projectionMatrix*(modelViewMatrix*vec4(o+dir*(gDepthT+depthBias(dir)),1.0));if(cp.w>1e-6)gl_FragDepth=clamp(cp.z/cp.w*0.5+0.5,0.0,1.0);}
  // premultiplied, blended over the VR background (raw colour like the
  // WebGPU canvas: no colour-space conversion)
  outColor=acc;
@@ -795,7 +798,7 @@ const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=ba
 const rayMaterialOf=m=>{const r=m.clone();r.uniforms=m.uniforms;r.defines={...m.defines};r.blending=THREE.NoBlending;r.transparent=false;return r};
 const volumeUniforms=(vd,full,settings)=>({vol:{value:full.v},bricks:{value:full.b},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
  stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
- cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionSeg:{value:new Array(14).fill(0)},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editMaskOnly:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1}});
+ cutPlanes:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionSeg:{value:new Array(14).fill(0)},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editMaskOnly:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1},voxelSize:{value:new THREE.Vector3(1,1,1)}});
 // ---- GPU preparation before the session (build 393, after the Codex branch's idea) ----
 // The renderer (an XR-compatible context), the textures of the grid in use, the
 // combined classification + field texture for the shown segments, the edit mask
@@ -1024,6 +1027,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const bhOut={menu:null,help:null,wheel:null,pwheel:null}; // reused (read at once by the caller, never kept)
  const boardHits=c=>{
   const o=bhOut;o.menu=menuHit(c);o.help=helpHit(c);o.wheel=ringHit(c,wheel);o.pwheel=ringHit(c,pointWheel);
+  // build 500: the boards are depth tested, so tissue in front of a board hides it (build 497): a board the volume surface covers along the ray is not hit (no invisible buttons, the laser goes on to the tissue).
+  // The rings are drawn without a depth test and stay hit. (the surface hit is marched only when a board is under the ray)
+  if(o.menu||o.help){const tv=volumeHit(c)?.distance;if(!boardVisible(o.menu,tv))o.menu=null;if(!boardVisible(o.help,tv))o.help=null}
   let bd=Infinity,bk=null;for(const k of ['menu','help','wheel','pwheel']){const x=o[k];if(x&&x.distance<bd){bd=x.distance;bk=k}}
   for(const k of ['menu','help','wheel','pwheel'])if(k!==bk)o[k]=null;
   return o};
@@ -2088,6 +2094,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(on&&!t.dist&&P.dist&&!comboOk)t.dist=distTexture(t);
    const onD=on&&(comboOk||!!t.dist)&&!(settings.distDiag|0);
    material.uniforms.useDist.value=onD?1:0;material.uniforms.distTex.value=t.dist||dummyEdit;material.uniforms.voxelMin.value=Math.min(2*vd.halfExt[0]/t.dims[0],2*vd.halfExt[1]/t.dims[1],2*vd.halfExt[2]/t.dims[2]);
+   material.uniforms.voxelSize.value.set(...depthVoxelSize(vd.halfExt,t.dims,vrDims?[vrDims.columns,vrDims.rows,vrDims.slices]:null)); // build 500: the depth bias follows the voxel's extent along the ray (anisotropic spacing)
    // build 384: classification + combined distance in one RGBA texture (needs a free channel: at most three segments stored)
    comboT=onD&&comboOk?t:null;comboMask=-1;refreshCombo();
    refreshEdits();

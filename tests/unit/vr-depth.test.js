@@ -5,13 +5,15 @@ import { readFileSync } from 'node:fs';
 // vr-depth.js is pure; vr-measure.js is checked with a three.js scene (no GL); vr-view.js (WebXR, not run in node) and its shader are checked on the source.
 const ver = JSON.parse(readFileSync(new URL('../../docs/version.json', import.meta.url), 'utf8')).version, tag = '?v=' + ver.replace(/\./g, '').replace(/-(\d+)$/, '-build$1');
 const load = f => import(/* @vite-ignore */ '../../docs/' + f + '.js' + tag);
-const { LABEL_HIDE_REAL, LABEL_HIDE_FADE, LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, GHOST_ALPHA, DEPTH_BIAS_VOXELS, biasedT, clipDepth, perspectiveDepth } = await load('vr-depth');
+const { LABEL_HIDE_REAL, LABEL_HIDE_FADE, LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, GHOST_ALPHA, DEPTH_BIAS_RAY, DEPTH_BIAS_MIN, depthBias, depthVoxelSize, biasedT, boardVisible, clipDepth, perspectiveDepth } = await load('vr-depth');
 const { createVrMeasure } = await load('vr-measure');
 const { addMeasurement, getMeasurements, resetMeasurements } = await load('measurements');
 const { setComments, addComment, createComment, setMarkersShown } = await load('comments');
 const { datasetFingerprint } = await load('project-file');
 const { probeKey, LABEL_MID } = await load('measure-label');
 const src = readFileSync(new URL('../../docs/vr-view.js', import.meta.url), 'utf8');
+// source checks compare with all white space removed, so a reformatting (line breaks, indentation) of the shader / JS does not break them; a missing token still does
+const squash = t => t.replace(/\s+/g, ''), has = (text, piece) => squash(text).includes(squash(piece));
 
 describe('the setting 「ラベルの隠れ方」', () => {
   it('defaults to 実際に隠す (1); only an explicit 0 selects the fade; garbage / missing falls back to the default', () => {
@@ -21,8 +23,8 @@ describe('the setting 「ラベルの隠れ方」', () => {
   });
   it('vr-view.js: DEFAULTS carry it, the settings merge keeps a saved 0 and gives old saves the default, and the 位置 tab offers the two choices', () => {
     expect(src).toMatch(/const DEFAULTS=\{[^}]*labelHide:LABEL_HIDE_DEFAULT/);
-    expect(src).toContain("const v={...DEFAULTS,...JSON.parse(n||o||'{}')"); // a key missing in an old save takes the default, a saved 0 wins
-    expect(src).toContain("lbHide:'ラベルの隠れ方',lbHideV:['実際に隠す','薄くする']");
+    expect(has(src, "const v={...DEFAULTS,...JSON.parse(n||o||'{}')")).toBe(true); // a key missing in an old save takes the default, a saved 0 wins
+    expect(has(src, "lbHide:'ラベルの隠れ方',lbHideV:['実際に隠す','薄くする']")).toBe(true);
     expect(src).toMatch(/choice\(y0\+104,L\.lbHide,L\.lbHideV\.map\(\(t,i\)=>\(\{label:t,value:1-i\}\)\),normalizeLabelHide\(settings\.labelHide\)/);
   });
   it('GPU occlusion runs for the default and for a standard depth buffer only; the fade setting or a log / reversed depth buffer falls back to the CPU fade', () => {
@@ -30,9 +32,9 @@ describe('the setting 「ラベルの隠れ方」', () => {
     expect(gpuOcclusionActive(0, {})).toBe(false); expect(gpuOcclusionActive(1, { logarithmicDepthBuffer: true })).toBe(false); expect(gpuOcclusionActive(1, { reversedDepthBuffer: true })).toBe(false); expect(gpuOcclusionActive(1, null)).toBe(false);
   });
   it('vr-view.js: the CPU probes of the distances are skipped while the GPU occlusion is on', () => {
-    expect(src).toContain('mps=occlusionGpu()?[]:vpMeasure.probes()');
-    expect(src).toContain('if(!mps.length){if(vpMeasHidden.size)vpMeasHidden=new Set();measGate.reset();return}');
-    expect(src).toContain('occlusion:occlusionGpu()})');
+    expect(has(src, 'mps=occlusionGpu()?[]:vpMeasure.probes()')).toBe(true);
+    expect(has(src, 'if(!mps.length){if(vpMeasHidden.size)vpMeasHidden=new Set();measGate.reset();return}')).toBe(true);
+    expect(has(src, 'occlusion:occlusionGpu()})')).toBe(true);
   });
 });
 
@@ -56,44 +58,84 @@ describe('the depth formula (the same as the fragment shader)', () => {
     expect(clipDepth(cam.matrixWorldInverse.elements, cam.projectionMatrix.elements, [0.05, 1.5, 5])).toBeNull();
     expect(clipDepth(cam.matrixWorldInverse.elements, cam.projectionMatrix.elements, [0, 1.3, -500])).toBe(1);
   });
-  it('the bias pushes the depth behind the surface by DEPTH_BIAS_VOXELS voxels, and the shader uses the same number', () => {
-    expect(biasedT(0.4, 0.01)).toBeCloseTo(0.4 + DEPTH_BIAS_VOXELS * 0.01, 12); expect(DEPTH_BIAS_VOXELS).toBeGreaterThanOrEqual(1.5);
-    expect(src).toContain('const float DEPTH_BIAS=' + DEPTH_BIAS_VOXELS.toFixed(1) + ';');
-    expect(src).toContain('(gDepthT+DEPTH_BIAS*voxelMin)');
+  it('the bias = DEPTH_BIAS_RAY * the voxel extent along the ray + DEPTH_BIAS_MIN * voxelMin; the shader uses the same constants and formula', () => {
+    expect(DEPTH_BIAS_RAY).toBe(0.5); expect(DEPTH_BIAS_MIN).toBe(1.5);
+    expect(squash(src)).toMatch(new RegExp('constfloatDEPTH_BIAS_RAY=' + DEPTH_BIAS_RAY.toFixed(1) + ';'));
+    expect(squash(src)).toMatch(new RegExp('constfloatDEPTH_BIAS_MIN=' + DEPTH_BIAS_MIN.toFixed(1) + ';'));
+    expect(has(src, 'uniform vec3 voxelSize;')).toBe(true);
+    expect(has(src, 'float depthBias(vec3 d){return DEPTH_BIAS_RAY*dot(abs(d),voxelSize)+DEPTH_BIAS_MIN*voxelMin;}')).toBe(true);
+    expect(has(src, 'gDepthT+depthBias(dir)')).toBe(true);
+    expect(biasedT(0.4, [0, 0, 1], [0.1, 0.1, 0.5], 0.1)).toBeCloseTo(0.4 + 0.5 * 0.5 + 1.5 * 0.1, 12);
+  });
+  it('isotropic data keeps at least the build 497 bias (2 voxels) along any ray; an anisotropic spacing grows it along the coarse axis (points sit at voxel centres)', () => {
+    const v = 0.03, iso = [v, v, v], dirs = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0.6, 0, 0.8], [1 / Math.sqrt(3), 1 / Math.sqrt(3), 1 / Math.sqrt(3)], [-0.48, 0.64, -0.6]];
+    for (const d of dirs) { const b = depthBias(d, iso, v); expect(b, d.join()).toBeGreaterThanOrEqual(2 * v - 1e-12); expect(b, d.join()).toBeLessThanOrEqual(2.4 * v); }
+    // 0.1 / 0.1 / 0.5 mm: voxelMin = 0.1, the z voxel is 5x. Along z a point at a voxel centre can lie 0.25 inside the surface: the bias must cover that (+ the 1.5 voxelMin of the march)
+    const an = [0.02, 0.02, 0.1], z = depthBias([0, 0, 1], an, 0.02), x = depthBias([1, 0, 0], an, 0.02);
+    expect(z).toBeGreaterThanOrEqual(0.5 * 0.1 + 1.5 * 0.02 - 1e-12); expect(z).toBeGreaterThan(x * 1.5); expect(x).toBeCloseTo(2 * 0.02, 12);
+    expect(z).toBeGreaterThan(2 * 0.02); // more than the old 2 * voxelMin
+  });
+  it('depthVoxelSize: the object-space voxel size per axis, the coarser of the rendered grid and the data grid', () => {
+    expect(depthVoxelSize([1, 2, 3], [100, 100, 60], [100, 100, 60])).toEqual([0.02, 0.04, 0.1]);
+    expect(depthVoxelSize([1, 2, 3], [128, 128, 64], [100, 100, 60])).toEqual([0.02, 0.04, 0.1]); // the data grid is coarser than the rendered one
+    expect(depthVoxelSize([1, 2, 3], [100, 100, 60], null)).toEqual([0.02, 0.04, 0.1]);
+    expect(depthVoxelSize([1, 2, 3], [100, 100, 60], [200, 200, 120])).toEqual([0.02, 0.04, 0.1]); // finer data: the rendered grid decides
+  });
+  it('vr-view.js: the voxelSize uniform is declared, initialised and refreshed with voxelMin', () => {
+    expect(has(src, 'voxelMin:{value:1},voxelSize:{value:new THREE.Vector3(1,1,1)}')).toBe(true);
+    expect(has(src, 'material.uniforms.voxelSize.value.set(...depthVoxelSize(vd.halfExt,t.dims,')).toBe(true);
+  });
+});
+
+describe('the menu / help boards (build 500): a board covered by the tissue is not hit', () => {
+  it('boardVisible: a hit is visible unless the volume surface along the same ray is nearer; no board hit = not visible', () => {
+    expect(boardVisible({ distance: 1.0 }, null)).toBe(true); expect(boardVisible({ distance: 1.0 }, undefined)).toBe(true);
+    expect(boardVisible({ distance: 1.0 }, 1.5)).toBe(true); // the board is in front of the tissue
+    expect(boardVisible({ distance: 1.0 }, 0.6)).toBe(false); // the tissue is nearer: the board is inside / behind it (hidden by the depth test)
+    expect(boardVisible({ distance: 1.0 }, 1.0)).toBe(true); // a tie keeps the board
+    expect(boardVisible(null, 0.5)).toBe(false); expect(boardVisible(null, null)).toBe(false);
+  });
+  it('vr-view.js: boardHits drops the menu / help hit by that rule (rings keep theirs: no depth test); the boards stay depth tested', () => {
+    const bh = src.slice(src.indexOf('const boardHits=c=>{'), src.indexOf('help.onDraw('));
+    expect(has(bh, 'o.menu=menuHit(c);o.help=helpHit(c);o.wheel=ringHit(c,wheel);o.pwheel=ringHit(c,pointWheel);')).toBe(true);
+    expect(has(bh, 'if(o.menu||o.help){const tv=volumeHit(c)?.distance;if(!boardVisible(o.menu,tv))o.menu=null;if(!boardVisible(o.help,tv))o.help=null}')).toBe(true);
+    expect(bh.indexOf('boardVisible(o.menu')).toBeLessThan(bh.indexOf('let bd=Infinity')); // before the nearest board is chosen
+    expect(bh).not.toMatch(/boardVisible\(o\.(wheel|pwheel)/);
+    expect(has(src, 'new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));let widgets=[]')).toBe(true);
   });
 });
 
 describe('the fragment shader writes depth (source checks)', () => {
   const fs = src.slice(src.indexOf('const fragmentShader=`'), src.indexOf('// brick min/max in HU'));
   it('every path has a value (default = the box face), a surface hit / the cut face set the first-hit depth with the two matrices, a miss still discards', () => {
-    expect(fs).toContain('void main(){\n gl_FragDepth=gl_FragCoord.z;');
-    expect(fs).toContain('uniform mat4 projectionMatrix;'); expect(fs).toContain('uniform mat4 modelViewMatrix;');
-    expect(fs).toContain('projectionMatrix*(modelViewMatrix*vec4(o+dir*(gDepthT+DEPTH_BIAS*voxelMin),1.0))');
-    expect(fs).toContain('if(acc.a<0.004)discard;');
+    expect(has(fs, 'void main(){\n gl_FragDepth=gl_FragCoord.z;')).toBe(true);
+    expect(has(fs, 'uniform mat4 projectionMatrix;')).toBe(true); expect(has(fs, 'uniform mat4 modelViewMatrix;')).toBe(true);
+    expect(has(fs, 'projectionMatrix*(modelViewMatrix*vec4(o+dir*(gDepthT+depthBias(dir)),1.0))')).toBe(true);
+    expect(has(fs, 'if(acc.a<0.004)discard;')).toBe(true);
     expect((fs.match(/depthMark\(/g) || []).length).toBe(1 + 5 + 1); // the function + 3 non-opaque hits + 2 cut faces + the post-loop hit
     expect(fs.indexOf('if(acc.a<0.004)discard;')).toBeLessThan(fs.indexOf('gl_FragDepth=clamp('));
   });
   it('the parity anchor of the harness (the post-loop hit shading) is intact', () => {
-    expect(fs).toContain('float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);hitEnd=true;');
+    expect(has(fs, 'float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);hitEnd=true;')).toBe(true);
   });
   it('the volume and composite materials write depth in the opaque pass (CustomBlending is kept), the low-res target has a depth texture the composite writes back', () => {
-    expect(src).toContain('material.transparent=false;material.depthWrite=true;material.blending=THREE.CustomBlending;');
-    expect(src).toContain('base.transparent=false;base.depthWrite=true;base.blending=THREE.CustomBlending;');
-    expect(src).toContain('depthBuffer:true,depthTexture:new THREE.DepthTexture(tw0,th0)');
-    expect(src).toContain('renderer.clear(true,true,false)');
-    expect(src).toContain('gl_FragDepth=texture(depthImg,uv).r;');
-    expect(src).toContain('compMaterial.uniforms.depthImg.value=lowTarget.depthTexture');
+    expect(has(src, 'material.transparent=false;material.depthWrite=true;material.blending=THREE.CustomBlending;')).toBe(true);
+    expect(has(src, 'base.transparent=false;base.depthWrite=true;base.blending=THREE.CustomBlending;')).toBe(true);
+    expect(has(src, 'depthBuffer:true,depthTexture:new THREE.DepthTexture(tw0,th0)')).toBe(true);
+    expect(has(src, 'renderer.clear(true,true,false)')).toBe(true);
+    expect(has(src, 'gl_FragDepth=texture(depthImg,uv).r;')).toBe(true);
+    expect(has(src, 'compMaterial.uniforms.depthImg.value=lowTarget.depthTexture')).toBe(true);
     expect((src.match(/toneMapped:false,depthWrite:true,transparent:false/g) || []).length).toBe(2); // both composite materials (warm-up and session)
   });
 });
 
 describe('collateral: what lies inside the volume stays visible (source checks)', () => {
   it('the section frame (+ arrow) and its glow have no depth test and are drawn after the volume; the boards (menu / help), the hand cue and the laser keep the depth test (they are outside the volume)', () => {
-    expect(src).toContain("new THREE.LineBasicMaterial({color,transparent:true,depthTest:false}),h=0.12");
-    expect(src).toContain('frameLine.renderOrder=2'); expect(src).toContain('arrow.renderOrder=2'); expect(src).toContain('glow.renderOrder=3');
+    expect(has(src, "new THREE.LineBasicMaterial({color,transparent:true,depthTest:false}),h=0.12")).toBe(true);
+    expect(has(src, 'frameLine.renderOrder=2')).toBe(true); expect(has(src, 'arrow.renderOrder=2')).toBe(true); expect(has(src, 'glow.renderOrder=3')).toBe(true);
     expect(src).toMatch(/MeshBasicMaterial\(\{color:0xffffff,transparent:true,opacity:0\.95,side:THREE\.DoubleSide,depthTest:false,depthWrite:false/);
-    expect(src).toContain('new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));\n let widgets=[]'); // the boards: a board BEHIND the volume must stay covered by it
-    expect(src).toContain("{const top=!!rh||res.kind==='point'||res.kind==='mlabel'||res.kind==='section';ray.renderOrder=dot.renderOrder=top?8:0;"); // the laser ends on a point / label / frame inside the volume: drawn on top
+    expect(has(src, 'new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));let widgets=[]')).toBe(true); // the boards: a board BEHIND the volume must stay covered by it
+    expect(has(src, "{const top=!!rh||res.kind==='point'||res.kind==='mlabel'||res.kind==='section';ray.renderOrder=dot.renderOrder=top?8:0;")).toBe(true); // the laser ends on a point / label / frame inside the volume: drawn on top
   });
   it('the point markers, cursors, rings and the scale tag already have no depth test', () => {
     for (const f of ['vr-point-markers', 'vr-ring', 'vr-real-scale']) {

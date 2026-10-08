@@ -86,7 +86,7 @@ export async function renderBatch(args) {
     segA: { value: [V4(300, 3000, 1, 1), V4(-200, 299, 0.35, 1), V4(-250, -50, 1, 1), V4()] }, segC: { value: [V4(0.91, 0.86, 0.72, 0), V4(0.85, 0.55, 0.42, 0), V4(0.95, 0.85, 0.35, 0), V4()] },
     cutPlanes: { value: [0, 1, 2, 3].map(() => V4(0, 0, 1, 0)) }, planeCount: { value: 0 }, planeCut: { value: 0 }, capOn: { value: 1 }, sliceTint: { value: 0.5 }, sliceOpacity: { value: 0 },
     sliceWindow: { value: new THREE.Vector2(40, 400) }, sliceAir: { value: -500 }, sliceVol: { value: vol }, refine: { value: 1 }, useCls: { value: 1 }, clsTex: { value: combo }, clsChan: { value: V4(0, 1, 2, -1) },
-    editMask: { value: 0 }, editMaskOnly: { value: 0 }, editTex: { value: dummy }, useDist: { value: 0 }, distInCls: { value: 1 }, distTex: { value: dummy }, voxelMin: { value: voxelMin },
+    editMask: { value: 0 }, editMaskOnly: { value: 0 }, editTex: { value: dummy }, useDist: { value: 0 }, distInCls: { value: 1 }, distTex: { value: dummy }, voxelMin: { value: voxelMin }, voxelSize: { value: new THREE.Vector3(2 * he[0] / N, 2 * he[1] / N, 2 * he[2] / N) },
     regionTex: { value: regionTex }, regionC: { value: Array.from({ length: 14 }, (_, i) => new THREE.Vector3(...(i ? [1, 1, 1] : [0, 0.85, 1]))) }, regionSeg: { value: Array.from({ length: 14 }, () => 15) },
   });
   const cam = new THREE.PerspectiveCamera(45, W / H, 0.01, 50); cam.position.set(2.0, 1.3, 2.5); cam.lookAt(0, 0, 0); cam.updateMatrixWorld();
@@ -107,20 +107,30 @@ export async function renderBatch(args) {
     renderer.setRenderTarget(target); renderer.setClearColor(new THREE.Color(...clear), alpha); renderer.clear(true, true, false); renderer.render(sc, cam); mat.dispose();
   };
   const read = (rt, Type) => { const px = new Type(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px); return px; };
+  // mode 'depth' (build 500): the window depth (0..1, the depth buffer's own value; 1 = nothing drawn) of every pixel after the volume pass (f >= 1) or after the composite pass (f < 1), as W*H Float32
+  // (row 0 = bottom). The depth texture is copied to a float colour target by a full-screen pass and read back.
+  const readDepth = rt => {
+    const fr = new THREE.WebGLRenderTarget(W, H, { depthBuffer: false, type: THREE.FloatType, minFilter: NN, magFilter: NN });
+    const m = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: 'void main(){gl_Position=vec4(position.xy,0.0,1.0);}', fragmentShader: 'uniform highp sampler2D dTex;out highp vec4 outColor;void main(){outColor=vec4(texelFetch(dTex,ivec2(gl_FragCoord.xy),0).r,0.0,0.0,1.0);}', uniforms: { dTex: { value: rt.depthTexture } }, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+    const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), m); q.frustumCulled = false; const sc = new THREE.Scene(); sc.add(q);
+    renderer.setRenderTarget(fr); renderer.setClearColor(new THREE.Color(0, 0, 0), 1); renderer.clear(true, true, false); renderer.render(sc, cam);
+    const px = read(fr, Float32Array), d = new Float32Array(W * H); for (let i = 0; i < W * H; i++) d[i] = px[i * 4];
+    fr.dispose(); m.dispose(); return d;
+  };
   for (const c of args.cases) {
     if (mode === 'hit') {
       const rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: false, type: THREE.FloatType, minFilter: NN, magFilter: NN });
       draw(mkMat(c, true, true), rt, [0, 0, 0], 0); out[c.name] = b64f(read(rt, Float32Array)); rt.dispose();
     } else if (!(c.f < 1)) {
-      const rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true }); // build 497: the volume writes depth (gl_FragDepth), as in the app
-      draw(mkMat(c, false, false), rt, BG, 1); out[c.name] = b64f(read(rt, Uint8Array)); rt.dispose();
+      const rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true, ...(mode === 'depth' ? { depthTexture: new THREE.DepthTexture(W, H) } : {}) }); // build 497: the volume writes depth (gl_FragDepth), as in the app
+      draw(mkMat(c, false, false), rt, BG, 1); out[c.name] = mode === 'depth' ? b64f(readDepth(rt)) : b64f(read(rt, Uint8Array)); rt.dispose();
     } else {
       // the low-resolution path of vr-view.js: the ray material into a small target (cleared to transparent), then the composite pass over the background
       const f = c.f, tw = Math.max(1, Math.ceil(W * f)), th = Math.max(1, Math.ceil(H * f));
-      const low = new THREE.WebGLRenderTarget(tw, th, { depthBuffer: true, depthTexture: new THREE.DepthTexture(tw, th), minFilter: L, magFilter: L }), rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true });
+      const low = new THREE.WebGLRenderTarget(tw, th, { depthBuffer: true, depthTexture: new THREE.DepthTexture(tw, th), minFilter: L, magFilter: L }), rt = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true, ...(mode === 'depth' ? { depthTexture: new THREE.DepthTexture(W, H) } : {}) });
       draw(mkMat(c, true, false), low, [0, 0, 0], 0);
       const comp = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: sh.cvs, fragmentShader: sh.cfs, side: THREE.BackSide, toneMapped: false, depthWrite: true, transparent: false, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, uniforms: { img: { value: low.texture }, depthImg: { value: low.depthTexture }, invSize: { value: new THREE.Vector2(f / tw, f / th) }, halfExt: { value: half } } });
-      draw(comp, rt, BG, 1); out[c.name] = b64f(read(rt, Uint8Array)); rt.dispose(); low.dispose();
+      draw(comp, rt, BG, 1); out[c.name] = mode === 'depth' ? b64f(readDepth(rt)) : b64f(read(rt, Uint8Array)); rt.dispose(); low.dispose();
     }
   }
   function b64f(a) { const u8 = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
