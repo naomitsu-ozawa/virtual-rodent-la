@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   MAX_SECTION_PLANES, PLANE_COLORS, nextPlaneColor,
-  FLING_SPEED_MPS, FLING_WINDOW_MS, FLING_COS, FLING_FADE_S, FLING_UNDO_MS, FLING_MAX_FLY_MPS,
+  FLING_SPEED_MPS, FLING_WINDOW_MS, FLING_STALE_MS, FLING_MIN_SPAN_MS, FLING_COS, FLING_FADE_S, FLING_UNDO_MS, FLING_MAX_FLY_MPS,
   createVelocityTracker, flingDecision, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace,
 } from '../../docs/vr-section-frame.js';
 import { SECTION_DELETE_ID, VIEW_TOGGLE_ID, ringIdsFor } from '../../docs/vr-view-toggle.js';
@@ -23,27 +23,36 @@ const X = { x: 1, y: 0, z: 0 };
 
 describe('fling constants', () => {
   it('named, tunable values', () => {
-    expect(FLING_SPEED_MPS).toBe(1.5); expect(FLING_WINDOW_MS).toBe(100); expect(FLING_COS).toBe(0.5); expect(FLING_FADE_S).toBe(0.3); expect(FLING_UNDO_MS).toBe(5000);
+    expect(FLING_SPEED_MPS).toBe(1.5); expect(FLING_WINDOW_MS).toBe(150); expect(FLING_STALE_MS).toBe(120); expect(FLING_MIN_SPAN_MS).toBe(30); expect(FLING_COS).toBe(0.5); expect(FLING_FADE_S).toBe(0.3); expect(FLING_UNDO_MS).toBe(5000);
   });
 });
 
 describe('createVelocityTracker', () => {
-  it('measures the mean velocity of the last 100 ms (90 Hz samples)', () => {
+  it('measures the velocity of the last 150 ms (90 Hz samples)', () => {
     const tr = createVelocityTracker(), t = sweep(tr, { dir: X, speed: 3 });
     const v = tr.velocity(t); expect(v.x).toBeCloseTo(3, 5); expect(v.y).toBeCloseTo(0, 6); expect(v.speed).toBeCloseTo(3, 5);
   });
-  it('only the last 100 ms count: a hand that was fast earlier but slowed down reads slow', () => {
+  it('only the last 150 ms count: a frame that was fast earlier but then stood (nearly) still for longer reads slow', () => {
     const tr = createVelocityTracker();
     sweep(tr, { dir: X, speed: 4, ms: 200, t0: 1000 });                       // fast, ends at t = 1198
-    for (let i = 1; i <= 12; i++) tr.push(1198 + i * 11, { x: 0.001 * i, y: 0, z: 0 }); // then nearly still for 130 ms
-    expect(tr.velocity(1198 + 12 * 11).speed).toBeLessThan(0.2);
+    for (let i = 1; i <= 18; i++) tr.push(1198 + i * 11, { x: 0.001 * i, y: 0, z: 0 }); // then nearly still for 198 ms
+    expect(tr.velocity(1198 + 18 * 11).speed).toBeLessThan(0.2);
+  });
+  it('build 522: the PEAK over the window (the trigger is let go a little after the fastest part): a flick that ended 60 ms before the release still reads fast', () => {
+    const tr = createVelocityTracker();
+    sweep(tr, { dir: X, speed: 4, ms: 120, t0: 1000 });                       // fast, ends at t = 1110
+    for (let i = 1; i <= 5; i++) tr.push(1110 + i * 11, { x: 0, y: 0, z: 0 });   // still 55 ms
+    const m = tr.measure(1110 + 5 * 11 + 8);
+    expect(m.v.speed).toBeCloseTo(4, 5); expect(m.v.x).toBeCloseTo(4, 5); expect(m.spanMs).toBeGreaterThanOrEqual(FLING_MIN_SPAN_MS); expect(m.ageMs).toBe(8); expect(m.why).toBeNull();
   });
   it('no usable estimate: one sample, too short a span, or a stale last sample (the hand paused before the release)', () => {
     const tr = createVelocityTracker(); expect(tr.velocity(0)).toBeNull();
     tr.push(1000, { x: 0, y: 0, z: 0 }); expect(tr.velocity(1000)).toBeNull();
     tr.push(1011, { x: 0.05, y: 0, z: 0 }); expect(tr.velocity(1011)).toBeNull(); // span 11 ms < 30 ms
+    expect(tr.measure(1011).why).toBe('span');
     tr.push(1040, { x: 0.12, y: 0, z: 0 }); expect(tr.velocity(1040)).not.toBeNull();
-    expect(tr.velocity(1040 + 80)).toBeNull(); // newest sample 80 ms old
+    expect(tr.velocity(1040 + 80)).not.toBeNull(); // build 522: 80 ms is one slow frame plus the release event (was the limit of 50 ms)
+    expect(tr.measure(1040 + FLING_STALE_MS + 1)).toMatchObject({ v: null, why: 'stale' }); // no frame sample for more than FLING_STALE_MS
   });
   it('reset forgets everything', () => { const tr = createVelocityTracker(); sweep(tr, { dir: X, speed: 2 }); tr.reset(); expect(tr.size).toBe(0); expect(tr.velocity(1200)).toBeNull(); });
 });
@@ -75,7 +84,7 @@ describe('flingDecision: speed, direction, slow release, two-hand', () => {
     expect(flingDecision({ v: mk(X, 5), from, center, head, blocked: true })).toMatchObject({ fling: false, reason: 'volume-gesture' });
   });
   it('no velocity estimate: nothing happens', () => { expect(flingDecision({ v: null, from, center, head })).toMatchObject({ fling: false, reason: 'no-velocity' }); });
-  it('a hand on the volume centre uses the head -> hand direction (away from the viewer); without a head it does nothing', () => {
+  it('a frame on the volume centre uses the head -> frame direction (away from the viewer); without a head it does nothing', () => {
     const onCenter = { x: 0, y: 1.2, z: -0.5 };
     expect(flingDecision({ v: mk({ x: 0, y: 0, z: -1 }, 3), from: onCenter, center, head }).fling).toBe(true);  // away from the viewer
     expect(flingDecision({ v: mk({ x: 0, y: 0, z: 1 }, 3), from: onCenter, center, head }).fling).toBe(false);  // toward the viewer
@@ -87,7 +96,8 @@ describe('flingDecision: speed, direction, slow release, two-hand', () => {
     const slow = createVelocityTracker(), ts = sweep(slow, { end: from, dir: X, speed: 0.5 });
     expect(flingDecision({ v: slow.velocity(ts + 5), from, center, head }).fling).toBe(false);
     const paused = createVelocityTracker(), tp = sweep(paused, { end: from, dir: X, speed: 3 });
-    expect(flingDecision({ v: paused.velocity(tp + 120), from, center, head }).fling).toBe(false); // held still 120 ms before the release
+    for (let i = 1; i <= 18; i++) paused.push(tp + i * 11, from);
+    expect(flingDecision({ v: paused.velocity(tp + 18 * 11 + 5), from, center, head }).fling).toBe(false); // held still ~200 ms before the release
   });
 });
 
@@ -205,12 +215,13 @@ describe('ring item 断面を削除: slot coexistence with the VR表示 toggle, 
 describe('vr-view.js wiring (static)', () => {
   it('the throw is decided at the trigger release BEFORE endDrag (which would snap the plane back into the box)', () => {
     expect(src).toContain('if(!tryFling(c))endDrag(c)');
-    const t = src.slice(src.indexOf('const tryFling='), src.indexOf('const tryFling=') + 700);
-    expect(t).toContain('flingDecision({v,from:tmpFv,center:tmpFc,head,blocked:!!dg.volTouched||!!twoHand||grabbing.size>0})');
+    const t = src.slice(src.indexOf('const tryFling='), src.indexOf('const tryFling=') + 900);
+    expect(t).toContain('flingDecision({v:m.v,from:tmpFv,center:tmpFc,head,blocked:!!dg.volTouched||!!twoHand||grabbing.size>0})');
     expect(t).not.toContain('.push('); // no extra sample at the release (the event carries the last frame's pose)
   });
-  it('the hand is sampled per frame from the press on; a grip / two-hand gesture restarts the record and marks the drag as touched; a new press resets', () => {
-    expect(src).toContain('if(twoHand||grabbing.size){fv.reset();if(dg)dg.volTouched=true}else if(dg||c.userData.press){c.getWorldPosition(tmpFv);fv.push(nowF,tmpFv)}');
+  it('the dragged frame is sampled per frame from the press on; a grip / two-hand gesture restarts the record and marks the drag as touched; a new press resets', () => {
+    expect(src).toContain('fp=dg?dg.pl:pr?pr.dragPl:null;');
+    expect(src).toContain('if(twoHand||grabbing.size){fv.reset();fh.reset();if(dg)dg.volTouched=true}else if(fp){fp.obj.getWorldPosition(tmpFv);fv.push(js0,tmpFv);');
     expect(src).toContain('volTouched:false}');
     expect(src).toContain('c.userData.press=pr;(c.userData.fv||=createVelocityTracker()).reset()');
   });
