@@ -1021,3 +1021,6 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .spacing-warn{pointer-events:auto}.spacing-warn summary{cursor:pointer;list-style-position:inside}.spacing-info{background:rgb(var(--ui-s2));border-color:rgb(var(--ui-b2));color:rgb(var(--ui-t3))!important}.spacing-mark{color:rgb(var(--ui-amber-tx));font-weight:700}
 .sample-choices{display:grid;gap:10px;margin-top:12px}
 .sample-choice{min-height:44px;font-size:15px;touch-action:manipulation}
+.settings-row[hidden],.settings-panel .hint[hidden]{display:none}
+.gpu-report{width:100%;box-sizing:border-box;margin-top:6px;font:11px/1.4 ui-monospace,Menlo,monospace;resize:vertical}
+.gpu-status-bar{cursor:pointer}

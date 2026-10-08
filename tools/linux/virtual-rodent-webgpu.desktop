@@ -1,8 +1,0 @@
-# Template: copy to ~/.local/share/applications/ and replace /PATH/TO with this repository's path.
-[Desktop Entry]
-Type=Application
-Name=Virtual Rodent LA (WebGPU, high-performance GPU)
-Comment=Chrome/Chromium with WebGPU on the discrete GPU
-Exec=/PATH/TO/virtual-rodent-la/tools/linux/launch-webgpu.sh
-Terminal=false
-Categories=Graphics;Science;

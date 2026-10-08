@@ -33,7 +33,8 @@
     "exclusive-segments-check": "node tools/exclusive-segments-check.mjs",
     "region-deselect-check": "node tools/region-deselect-check.mjs",
     "slider-entry-check": "node tools/slider-entry-check.mjs",
-    "theme-image-check": "node tools/theme-image-check.mjs"
+    "theme-image-check": "node tools/theme-image-check.mjs",
+    "gpu-diagnostics-check": "node tools/gpu-diagnostics-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

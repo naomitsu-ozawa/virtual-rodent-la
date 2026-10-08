@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { gpuAdapterRequestOptions } from '../../docs/gpu-diagnostics.js';
 
 // gpu-compute.js needs a DOM to import, so the pure helpers are cut out of the source and evaluated here.
 const src = readFileSync('docs/gpu-compute.js', 'utf8');
 const grab = re => { const m = src.match(re); if (!m) throw new Error('helper not found: ' + re); return m[0].replace('export ', ''); };
-const { gpuAdapterInfo, gpuAdapterHint, gpuAdapterRequestOptions, gpuAdapterLabel } = new Function(
+const { gpuAdapterInfo, gpuAdapterHint, gpuAdapterLabel } = new Function(
   grab(/export function gpuAdapterInfo[^\n]*\n/) + grab(/export function gpuAdapterHint[\s\S]*?\n}\n/) +
-  grab(/export function gpuAdapterRequestOptions[\s\S]*?\n}\n/) + grab(/export function gpuAdapterLabel[\s\S]*?\n}\n/) +
-  '\nreturn{gpuAdapterInfo,gpuAdapterHint,gpuAdapterRequestOptions,gpuAdapterLabel}')();
+  grab(/export function gpuAdapterLabel[\s\S]*?\n}\n/) +
+  '\nreturn{gpuAdapterInfo,gpuAdapterHint,gpuAdapterLabel}')();
 
 describe('gpuAdapterHint', () => {
   it('flags software renderers', () => {
