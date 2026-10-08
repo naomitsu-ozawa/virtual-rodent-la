@@ -1,7 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
 import { installGpuLedger } from './mem-ledger.js?v=20261008-build515';
-import { gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText } from './gpu-preference.js?v=20261008-build515';
+import { gpuSplitCandidate, gpuSplitDecision, gpuVendorKey, gpuAdapterVendorKey, gpuSplitStatusParts, webglDisplayGpu } from './gpu-split.js?v=20261008-build515';
+import { gpuPlatformOs, gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText } from './gpu-preference.js?v=20261008-build515';
 import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build515';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build515';
@@ -10,7 +11,7 @@ import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build515';
 import { runsSliceToMask } from './run-length.js?v=20261008-build515';
 import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build515';
 import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build515';
-export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
+export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:'',split:null,renderDevice:null,renderError:'',renderInfo:'',pendingCompute:null};
 export function gpuAdapterLabel(adapter){
  try{
   const info=adapter?.info;if(!info)return'';
@@ -71,7 +72,7 @@ export function gpuDeviceRequestDescriptor(adapter,cap=GPU_BUFFER_LIMIT_CAPS[0])
 export const vrlGpuPreference=()=>gpuEffectivePreference(globalThis.__vrlSettings?.get?.('gpuPreference'),navigator);
 // the requestAdapter option sets, in order: 'auto' = {high-performance, core}, {high-performance}, (none), then the
 // compatibility adapters of build 440 (a Linux OpenGL ES backend rather than none); see gpu-preference.js
-export async function requestVrlGpuAdapter(preference=vrlGpuPreference()){
+export async function requestVrlGpuAdapter(preference=vrlGpuPreference(),role='compute'){
  let adapter=null;
  const opts=gpuAdapterRequestOptions(gpuForceCompat,preference);
  const request={stored:String(globalThis.__vrlSettings?.get?.('gpuPreference')??'auto'),effective:preference,supported:gpuPreferenceSupported(navigator),option:undefined,optionIndex:-1};
@@ -79,7 +80,8 @@ export async function requestVrlGpuAdapter(preference=vrlGpuPreference()){
   try{adapter=await(opts[i]?navigator.gpu.requestAdapter(opts[i]):navigator.gpu.requestAdapter())}catch{}
   if(adapter){request.option=opts[i];request.optionIndex=i}
  }
- gpuFilterRuntime.adapterRequest=request;
+ // build 516: the extra render-device request of the split mode must not overwrite the compute device's record
+ gpuFilterRuntime[role==='render'?'renderAdapterRequest':'adapterRequest']=request;
  return adapter;
 }
 // resolves with the device.lost info when the device was lost within the creation window, else null. One round trip to the
@@ -92,16 +94,18 @@ export async function gpuLostAtCreation(device,settleMs=20){
  clearTimeout(timer);
  return info;
 }
-export async function requestVrlGpuDevice(){
+export async function requestVrlGpuDevice({preference:wanted,role='compute',accept=null}={}){
  // build 508: a refused request is retried with the next lower buffer-limit cap; an adapter serves
  // one request only, so each attempt asks for it again (same adapter order as before)
  const retries=[];let lastError=null;
  // build 515: the chosen GPU is resolved once and every attempt below asks for it
- const preference=vrlGpuPreference();
+ const preference=wanted||vrlGpuPreference(),render=role==='render',infoKey=render?'renderPrefInfo':'prefInfo',limitKey=render?'renderLimitInfo':'limitInfo';
  for(const cap of GPU_BUFFER_LIMIT_CAPS){
-  const adapter=await requestVrlGpuAdapter(preference);
-  gpuFilterRuntime.prefInfo=gpuPreferenceInfoText(gpuFilterRuntime.adapterRequest,adapter);
+  const adapter=await requestVrlGpuAdapter(preference,role);
+  gpuFilterRuntime[infoKey]=gpuPreferenceInfoText(gpuFilterRuntime[render?'renderAdapterRequest':'adapterRequest'],adapter);
   if(!adapter)throw lastError||new Error('WebGPU adapter unavailable (core and compatibility)');
+  // build 516: the split render device only wants the display (Intel) adapter; any other adapter ends the request (no retry)
+  if(accept&&!accept(adapter))throw Object.assign(new Error('adapter not accepted: '+(gpuAdapterLabel(adapter)||'unknown')),{adapterRejected:true});
   const descriptor=gpuDeviceRequestDescriptor(adapter,cap),capText=cap>0?Math.round(cap/2**20)+'MB':'default';
   try{
    const device=await adapter.requestDevice(descriptor);
@@ -111,14 +115,14 @@ export async function requestVrlGpuDevice(){
    // self-verification, device loss during use) never lower the cap.
    const lostAtCreation=await gpuLostAtCreation(device);
    if(lostAtCreation){try{device.destroy?.()}catch{};throw new Error('device lost at creation'+(lostAtCreation.reason?' ('+lostAtCreation.reason+')':'')+(lostAtCreation.message?': '+lostAtCreation.message:''))}
-   gpuFilterRuntime.limitInfo=gpuLimitInfoText(adapter,descriptor,retries);console.info('VRL WebGPU device: '+gpuFilterRuntime.limitInfo);
+   gpuFilterRuntime[limitKey]=gpuLimitInfoText(adapter,descriptor,retries);console.info('VRL WebGPU '+(render?'render ':'')+'device: '+gpuFilterRuntime[limitKey]);
    return{adapter,device};
   }catch(e){
    lastError=e;retries.push(capText+' failed: '+String(e?.message||e).slice(0,140));
    console.warn('WebGPU device request failed (rejected or lost at creation) with buffer-limit cap '+capText+'; retrying lower.',e);
   }
  }
- gpuFilterRuntime.limitInfo='device request failed · retry '+retries.join(' → ');
+ gpuFilterRuntime[limitKey]='device request failed · retry '+retries.join(' → ');
  throw lastError;
 }
 export function updateGpuStatus(){
@@ -126,15 +130,18 @@ export function updateGpuStatus(){
  const render=sceneState?.backend||'INIT';
  const compute=gpuFilterRuntime.lastBackend||(gpuFilterRuntime.device?'WEBGPU READY':'CPU');
  const adapter=gpuFilterRuntime.adapterLabel?(' · '+gpuFilterRuntime.adapterLabel):'';
- const failure=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError.slice(0,96)):'';
+ // build 516: the last error is shown in full (it used to be cut at 96 characters)
+ const failure=/FAIL|ERROR|LOST/.test(compute)&&gpuFilterRuntime.lastError?(' · '+gpuFilterRuntime.lastError):'';
+ // build 516: GPU split (display Intel / compute NVIDIA): "Render WEBGPU intel (display) · Compute WEBGPU … nvidia (split)"; '' otherwise
+ const sp=gpuSplitStatusParts(gpuFilterRuntime.split),renderFail=gpuFilterRuntime.renderError?(' · Render error: '+gpuFilterRuntime.renderError):'';
  status.removeAttribute('data-i18n');
- status.textContent='Render '+render+' · Compute '+compute+failure+adapter;
+ status.textContent='Render '+render+sp.render+' · Compute '+compute+sp.compute+failure+renderFail+adapter;
  const computeGpu=compute.startsWith('WEBGPU'),gpuActive=render==='WEBGPU'||computeGpu;
  status.className=gpuActive?'status status-ok':'status status-warning';
- status.title=gpuFilterRuntime.lastError||'';
+ status.title=(gpuFilterRuntime.lastError||'')+(gpuFilterRuntime.renderError?(gpuFilterRuntime.lastError?'\n':'')+'Render: '+gpuFilterRuntime.renderError:'');
  // the top chip is truncated; the bar under the views shows the full text
  const bar=document.getElementById('gpu-status-bar'),barText=document.getElementById('gpu-status-text');
- if(bar&&barText){barText.textContent=status.textContent+(gpuFilterRuntime.lastError&&!failure?' · '+gpuFilterRuntime.lastError:'')+(gpuFilterRuntime.prefInfo?' · '+gpuFilterRuntime.prefInfo:'')+(gpuFilterRuntime.limitInfo?' · '+gpuFilterRuntime.limitInfo:'');bar.classList.toggle('is-warning',!gpuActive)}
+ if(bar&&barText){barText.textContent=status.textContent+(gpuFilterRuntime.lastError&&!failure?' · '+gpuFilterRuntime.lastError:'')+(gpuFilterRuntime.prefInfo?' · '+gpuFilterRuntime.prefInfo:'')+(gpuFilterRuntime.limitInfo?' · '+gpuFilterRuntime.limitInfo:'')+(gpuFilterRuntime.split&&gpuFilterRuntime.renderInfo?' · render device: '+(gpuFilterRuntime.renderAdapterLabel?gpuFilterRuntime.renderAdapterLabel+' · ':'')+gpuFilterRuntime.renderInfo:'')+(!gpuFilterRuntime.split&&gpuFilterRuntime.splitNote?' · GPU split: '+gpuFilterRuntime.splitNote:'');bar.classList.toggle('is-warning',!gpuActive)}
 }
 export function setGpuComputeBackend(label,error=''){
  // an uncaptured WebGPU error leaves 'WEBGPU GPU FAIL' standing: a later success
@@ -146,7 +153,7 @@ export function setGpuComputeBackend(label,error=''){
  else if(label.startsWith('WEBGPU'))gpuFilterRuntime.lastError='';
  updateGpuStatus();
 }
-export function installGpuErrorListener(device){
+export function installGpuErrorListener(device,role='compute'){
  installGpuLedger(device);
  if(!device||device.__vrlErrorListenerInstalled)return;
  try{
@@ -160,6 +167,8 @@ export function installGpuErrorListener(device){
    return create(desc);
   };
   device.addEventListener?.('uncapturederror',event=>{
+   // build 516: an error on the split render device (presenting, three.js, the volume renderer) is a render error, never a compute FAIL
+   if(role==='render'){gpuFilterRuntime.renderError='uncaptured: '+String(event?.error?.message||event?.message||'uncaptured WebGPU error');console.error('Virtual Rodent Lab WebGPU render-device error:',event?.error||event);updateGpuStatus();return}
    const message=String(event?.error?.message||event?.message||'uncaptured WebGPU error'),kind=gpuFilterRuntime.lastShaderKind?(' ['+gpuFilterRuntime.lastShaderKind+']'):'';
    gpuFilterRuntime.lastError='uncaptured'+kind+': '+message+(/zero/i.test(message)&&gpuFilterRuntime.zeroTexture?' ['+gpuFilterRuntime.zeroTexture+']':'');
    setGpuComputeBackend('WEBGPU GPU FAIL',gpuFilterRuntime.lastError);
@@ -276,13 +285,51 @@ export function adoptRendererGpuDevice(renderer,adapter=null,explicitDevice=null
  void verifyGpuComputeDevice(device).then(async ok=>{if(gpuFilterRuntime.device===device&&ok){await verifyGpuPipelineSet();if(gpuFilterRuntime.device===device)setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' FULL VERIFIED · WG'+gpuFilterRuntime.workgroupSize)}}).catch(e=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.lastError='verify ['+(gpuFilterRuntime.lastShaderKind||'self-test')+']: '+String(e?.message||e);setGpuComputeBackend('WEBGPU RENDER ONLY · COMPUTE FAIL',gpuFilterRuntime.lastError)}});
  updateGpuStatus();return true;
 }
+// build 516: the GPU split (see gpu-split.js for the cause and the rule). Returns {adapter,device,split} for the render device
+// on the display (low-power) adapter, or null when this is not the display-Intel / compute-NVIDIA hybrid case on Linux, or the
+// render device cannot be created: the caller then keeps one shared device, exactly as before. Nothing beyond the platform /
+// compute-adapter check runs on Mac, iPad, Windows or a single-GPU machine (no extra requestAdapter, no WebGL context).
+export async function requestVrlSplitRenderDevice({nav=globalThis.navigator,computeAdapter=null,probe=webglDisplayGpu,request=requestVrlGpuDevice}={}){
+ try{
+  if(!gpuSplitCandidate(nav,computeAdapter))return null;
+  const os=gpuPlatformOs(nav),computeVendor=gpuAdapterVendorKey(computeAdapter),display=probe(),displayVendor=display?gpuVendorKey(display.vendor,display.renderer):'';
+  gpuFilterRuntime.splitNote='display '+(displayVendor||'unknown')+', compute '+computeVendor;
+  // cheap pre-check before the extra adapter request: the display GPU itself must be Intel
+  if(!gpuSplitDecision({os,computeVendor,displayVendor,lowPowerVendor:'intel'}).split)return null;
+  let decision=null;
+  const accept=adapter=>{decision=gpuSplitDecision({os,computeVendor,displayVendor,lowPowerVendor:gpuAdapterVendorKey(adapter)});return decision.split};
+  const render=await request({preference:'low-power',role:'render',accept});
+  if(!decision?.split)return null;
+  return{adapter:render.adapter,device:render.device,split:{active:true,renderVendor:decision.renderVendor,computeVendor:decision.computeVendor,reason:decision.reason}};
+ }catch(e){
+  gpuFilterRuntime.splitNote='split not used: '+String(e?.message||e).slice(0,160);
+  console.warn('GPU split not used (single shared device).',e);
+  return null;
+ }
+}
+// Hands the two devices over: the renderer owns the render (display) device, compute keeps its own device (never configures a
+// canvas or imports an external image) and is brought up by ensureGpuFilterDevice. A resource of one device is never used by
+// the other: createGpuResidentFloat3Attribute returns null (device mismatch), so meshes come back through the CPU readback path.
+export function adoptSplitGpuDevices(renderer,compute,render){
+ const rd=render.device;
+ clearGpuBufferPool();gpuFilterRuntime.pipelines.clear();
+ gpuFilterRuntime.split=render.split;gpuFilterRuntime.renderDevice=rd;gpuFilterRuntime.renderError='';gpuFilterRuntime.renderAdapterLabel=gpuAdapterLabel(render.adapter);
+ gpuFilterRuntime.renderInfo=[gpuFilterRuntime.renderPrefInfo,gpuFilterRuntime.renderLimitInfo].filter(Boolean).join(' · ');
+ gpuFilterRuntime.device=null;gpuFilterRuntime.disabled=false;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.initPromise=null;gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';
+ gpuFilterRuntime.pendingCompute={adapter:compute.adapter,device:compute.device};
+ installGpuErrorListener(rd,'render');
+ try{rd.lost.then(info=>{gpuFilterRuntime.renderError=gpuLostText(info);updateGpuStatus()})}catch{}
+ console.info('VRL GPU split: render on '+gpuFilterRuntime.renderAdapterLabel+' (display), compute on '+gpuAdapterLabel(compute.adapter)+' · '+render.split.reason);
+ updateGpuStatus();return true;
+}
 export async function ensureGpuFilterDevice(){
  if(!('gpu' in navigator)){gpuFilterRuntime.disabled=true;setGpuComputeBackend('CPU · WebGPU unavailable','navigator.gpu is unavailable');return null}
  gpuFilterRuntime.disabled=false;
  if(gpuFilterRuntime.device)return gpuFilterRuntime.device;
  // Safari/iPad can refuse a second adapter request even while the Three.js WebGPU
  // renderer already owns a valid GPUDevice. Reuse that renderer device first.
- const rendererDevice=sceneState?.renderer?.backend?.device;
+ // build 516: not in split mode, where the renderer's device is the display (Intel) one and compute has its own device
+ const rendererDevice=gpuFilterRuntime.split?.active?null:sceneState?.renderer?.backend?.device;
  if(rendererDevice&&typeof rendererDevice.createBuffer==='function'){
   adoptRendererGpuDevice(sceneState.renderer,gpuFilterRuntime.adapter,rendererDevice);
   if(gpuFilterRuntime.device)return gpuFilterRuntime.device;
@@ -292,7 +339,9 @@ export async function ensureGpuFilterDevice(){
  gpuFilterRuntime.initPromise=(async()=>{
   gpuFilterRuntime.initAttempts++;setGpuComputeBackend('WEBGPU CHECKING');
   try{
-   const {adapter,device}=await requestVrlGpuDevice();
+   // build 516: split mode hands over the compute device that create3DRenderer already requested
+   const handed=gpuFilterRuntime.pendingCompute;gpuFilterRuntime.pendingCompute=null;
+   const {adapter,device}=handed||await requestVrlGpuDevice();
    gpuFilterRuntime.adapter=adapter;gpuFilterRuntime.device=device;gpuFilterRuntime.sharedRendererDevice=false;gpuFilterRuntime.adapterLabel=gpuAdapterLabel(adapter);gpuFilterRuntime.retryAfter=0;gpuFilterRuntime.lastError='';gpuFilterRuntime.warned=false;gpuFilterRuntime.workgroupSize=gpuComputeWorkgroupSize(device);installGpuErrorListener(device);setGpuComputeBackend('WEBGPU CHECKING');
    device.lost.then(info=>{if(gpuFilterRuntime.device===device){gpuFilterRuntime.device=null;gpuFilterRuntime.pipelines.clear();clearGpuBufferPool();setGpuPrewarmIndex(0);setGpuPrewarmScheduled(false);gpuFilterRuntime.retryAfter=performance.now()+2000;setGpuComputeBackend('GPU DEVICE LOST',gpuLostText(info))}});
    try{await verifyGpuComputeDevice(device);await verifyGpuPipelineSet();setGpuComputeBackend('WEBGPU '+gpuDeviceMode(device)+' FULL VERIFIED · WG'+gpuFilterRuntime.workgroupSize)}catch(testError){gpuFilterRuntime.lastError='verify ['+(gpuFilterRuntime.lastShaderKind||'self-test')+']: '+String(testError?.message||testError);setGpuComputeBackend('WEBGPU COMPUTE FAIL',gpuFilterRuntime.lastError);throw testError}
