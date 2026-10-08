@@ -1,6 +1,6 @@
-// VR/AR section planes: the plane limit and the frame's depth state (build 506). Pure helpers: no three.js, no DOM.
+// VR/AR section planes: the plane limit and the frame's depth state (build 509). Pure helpers: no three.js, no DOM.
 //
-// Limit (build 506: 4 -> 10). The same number is in the volume shader (#define SECTION_PLANES in vr-view.js: the cutPlanes[] uniform array, the per-ray cross / slice
+// Limit (build 509: 4 -> 10). The same number is in the volume shader (#define SECTION_PLANES in vr-view.js: the cutPlanes[] uniform array, the per-ray cross / slice
 // arrays and their loops); tests/unit/vr-section-frame.test.js compares the two. Only the planes in use are tested: the shader's per-ray loops skip every index >= planeCount
 // (vr-view.js writes planeCount = the number of shown planes, never the limit).
 export const MAX_SECTION_PLANES = 10;
@@ -11,7 +11,7 @@ export const nextPlaneColor = usedColors => { const used = new Set(usedColors); 
 
 // The frame (outline, arrow, number tag) is depth tested with the volume's written depth when the GPU occlusion is on (「実際に隠す」, vr-depth.js gpuOcclusionActive): the part of
 // the frame behind tissue is not drawn (no ghost: the owner wants it gone). It stays on top (no depth test) while it is operable: lit = the laser is on its band / tag, or it is
-// grabbed / being dragged (the glow is shown then). Without the GPU occlusion (「薄くする」, no standard depth) it is always drawn on top, as before build 506.
+// grabbed / being dragged (the glow is shown then). Without the GPU occlusion (「薄くする」, no standard depth) it is always drawn on top, as before build 509.
 // The frame lies ON the cut plane and the volume writes the cut face depth pushed behind the plane (vr-depth.js depthBias), so the part of the frame on the cut face passes the test.
 export const frameDepthTest = (occlusion, lit) => !!occlusion && !lit;
 

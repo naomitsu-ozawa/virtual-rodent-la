@@ -95,7 +95,7 @@ export async function renderBatch(args) {
   const hitFs = src => { const a = ' float contribution=(1.0-acc.a)*alpha;acc=vec4(acc.rgb+lit*contribution,acc.a+contribution);hitEnd=true;'.trim(), i = src.indexOf(a); if (i < 0) throw new Error('parity anchor (the hit shading of the tight loop) not found in the fragment shader'); return src.replace(a, 'outColor=vec4(hp,float(idx)+1.0);return;'); };
   const mkMat = (c, ray, hit) => {
     const u = baseUniforms();
-    for (const [k, v] of Object.entries(c.u || {})) { if (Array.isArray(v) && v.length && typeof v[0] === 'object') { const arr = v.map(a => V4(...a)); if (k === 'cutPlanes') while (arr.length < 10) arr.push(V4(0, 0, 1, 0)); /* build 506: the uniform array has 10 entries (three.js reads all of them) */ u[k] = { value: arr }; } else if (Array.isArray(v)) u[k] = { value: v.length === 4 ? V4(...v) : new THREE.Vector3(...v) }; else u[k] = { value: v }; }
+    for (const [k, v] of Object.entries(c.u || {})) { if (Array.isArray(v) && v.length && typeof v[0] === 'object') { const arr = v.map(a => V4(...a)); if (k === 'cutPlanes') while (arr.length < 10) arr.push(V4(0, 0, 1, 0)); /* build 509: the uniform array has 10 entries (three.js reads all of them) */ u[k] = { value: arr }; } else if (Array.isArray(v)) u[k] = { value: v.length === 4 ? V4(...v) : new THREE.Vector3(...v) }; else u[k] = { value: v }; }
     if (c.useClsRaw) u.clsTex = { value: clsRaw };
     if (c.noCls) { u.useCls = { value: 0 }; u.distInCls = { value: 0 }; }
     const m = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: sh.vs, fragmentShader: hit ? hitFs(sh.fs) : sh.fs, side: THREE.BackSide, toneMapped: false, uniforms: u, defines: Object.fromEntries((c.defines || []).map(d => [d, ''])) });

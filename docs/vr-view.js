@@ -8,33 +8,33 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build502';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build502';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build502';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build502';
-import { datasetFingerprint } from './project-file.js?v=20261008-build502';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build502';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build502';
-import { buildClsData } from './point-cls.js?v=20261008-build502';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build502';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build502';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build502';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build502';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build502';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build502';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build502';
-import { tr } from './i18n.js?v=20261008-build502';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build502';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build502';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build502';
-import { createVrMeasure } from './vr-measure.js?v=20261008-build502';
-import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE } from './vr-section-frame.js?v=20261008-build502';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build502';
-import { createProbeGate } from './measure-label.js?v=20261008-build502';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build502';
-import { APP_BUILD } from './version.js?v=20261008-build502';
-import { wc, ww } from './ui-shell.js?v=20261008-build502';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build502';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261008-build509';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261008-build509';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261008-build509';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261008-build509';
+import { datasetFingerprint } from './project-file.js?v=20261008-build509';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261008-build509';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261008-build509';
+import { buildClsData } from './point-cls.js?v=20261008-build509';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261008-build509';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261008-build509';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261008-build509';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261008-build509';
+import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261008-build509';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261008-build509';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261008-build509';
+import { tr } from './i18n.js?v=20261008-build509';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-build509';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build509';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build509';
+import { createVrMeasure } from './vr-measure.js?v=20261008-build509';
+import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE } from './vr-section-frame.js?v=20261008-build509';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261008-build509';
+import { createProbeGate } from './measure-label.js?v=20261008-build509';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build509';
+import { APP_BUILD } from './version.js?v=20261008-build509';
+import { wc, ww } from './ui-shell.js?v=20261008-build509';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261008-build509';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -85,7 +85,7 @@ uniform int editMask;
 // build 459: segments decided by their mask alone (Closing / hole filling can add voxels outside the HU range)
 uniform int editMaskOnly;
 uniform sampler3D editTex;
-// up to SECTION_PLANES sections (build 360: 4; build 506: 10, = MAX_SECTION_PLANES in vr-section-frame.js): planeCount planes, bit i of planeCut = plane
+// up to SECTION_PLANES sections (build 360: 4; build 509: 10, = MAX_SECTION_PLANES in vr-section-frame.js): planeCount planes, bit i of planeCut = plane
 // i clips (its removed half is dot(n,p) < w); every plane shows its slice,
 // composited in depth order inside the kept interval. Only the planeCount planes in use are tested (the per-ray loops skip i >= planeCount)
 #define SECTION_PLANES 10
@@ -268,7 +268,7 @@ void main(){
  if(diag==1){outColor=vec4(0.2,0.35,0.5,1.0);return;}
  float t=max(bounds.x,0.0);float endT=bounds.y;float step=max(stepSize,1e-5);
  float capT=-1.0;int capPlane=-1;float sliceT[SECTION_PLANES];int nSlice=0;
- float crossT[SECTION_PLANES]; // build 506: -1e30 = no crossing (a plane not in use, or parallel to the ray): never inside the kept interval (t >= 0)
+ float crossT[SECTION_PLANES]; // build 509: -1e30 = no crossing (a plane not in use, or parallel to the ray): never inside the kept interval (t >= 0)
  for(int i=0;i<SECTION_PLANES;i++){
   crossT[i]=-1e30;if(i>=planeCount)continue;
   vec4 pl=cutPlanes[i];float side=dot(pl.xyz,o)-pl.w;float slope=dot(pl.xyz,dir);bool clip=((planeCut>>i)&1)==1;
@@ -450,7 +450,7 @@ void main(){
   while(nextSlice<nSlice&&sliceT[nextSlice]<=t+step){
    // a slice lies before the next sample: composite it in depth order
    vec4 sc=sliceColor(o+dir*sliceT[nextSlice]);nextSlice++;
-   float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);depthMark(sliceT[nextSlice-1],contribution); // build 506: a slice is the first thing the ray shows: its depth (not the box face's) is written, so the section frame lying on it is not behind it
+   float contribution=(1.0-acc.a)*sliceOpacity*sc.a;acc=vec4(acc.rgb+sc.rgb*contribution,acc.a+contribution);depthMark(sliceT[nextSlice-1],contribution); // build 509: a slice is the first thing the ray shows: its depth (not the box face's) is written, so the section frame lying on it is not behind it
   }
   if(capT>=0.0){
    // cut face: flat, segment colour lightened, lit by the plane normal
@@ -1061,13 +1061,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
   if(grabbing.size===2)twoHand={d0:Math.max(handDist(),1e-3),s0:holder.scale.x};
   else if(grabbing.size===1)[...grabbing][0].attach(holder);
  };
- // hand-held sections (build 344–360): up to 4 (build 506: 10) square frames, local X =
+ // hand-held sections (build 344–360): up to 4 (build 509: 10) square frames, local X =
  // plane normal (held like a blade). A frame is held only while the chosen
  // button (grip or trigger) is pressed near it; on release it stays fixed in
  // the volume. B/Y short press shows / hides the sections, long press adds
  // one. Each plane: clip or not, side (one-side mode), own frame colour.
  // build 400 (owner: a smarter palette): soft gold, sky, rose, mint for the planes; the hands use vivid orange / indigo outside that set
- const MAX_PLANES=MAX_SECTION_PLANES,LONG_PRESS=600; // build 506: 10 planes (4 before); PLANE_COLORS: vr-section-frame.js
+ const MAX_PLANES=MAX_SECTION_PLANES,LONG_PRESS=600; // build 509: 10 planes (4 before); PLANE_COLORS: vr-section-frame.js
  // thumbstick scroll (build 364): world m/s along the selected plane's normal at full deflection
  const SCROLL_SPEED=0.05;
  // selection (build 364): selected = the plane the thumbstick moves (build 400: no double frame; the list button shows it)
@@ -1077,7 +1077,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // handle corner per plane index (build 364): (+y,+z), (+y,−z), (−y,−z), (−y,+z)
  const HANDLE_CORNERS=[[1,1],[1,-1],[-1,-1],[-1,1]],HANDLE=0.034;
  const makePlane=(color,cut)=>{
-  const obj=new THREE.Group(),mat=new THREE.LineBasicMaterial({color,transparent:true,depthTest:false,depthWrite:false}),h=0.12; // build 497: the frame lies inside the volume, which now writes depth: no depth test, drawn after it (renderOrder 2). build 506: depthTest is switched per frame (frameDepthTest: tested = hidden behind tissue under 「実際に隠す」, on top while lit / without GPU occlusion); depthWrite is never on (a thin frame must not clip the labels drawn after it)
+  const obj=new THREE.Group(),mat=new THREE.LineBasicMaterial({color,transparent:true,depthTest:false,depthWrite:false}),h=0.12; // build 497: the frame lies inside the volume, which now writes depth: no depth test, drawn after it (renderOrder 2). build 509: depthTest is switched per frame (frameDepthTest: tested = hidden behind tissue under 「実際に隠す」, on top while lit / without GPU occlusion); depthWrite is never on (a thin frame must not clip the labels drawn after it)
   const frameLine=new THREE.LineLoop(square(h),mat);frameLine.renderOrder=2;obj.add(frameLine);
   // glow (build 398; 3 mm since build 400): a band over the frame in the colour of the hand that points at or holds it
   const go=h+0.0015,gi=h-0.0015,gs=new THREE.Shape([new THREE.Vector2(-go,-go),new THREE.Vector2(go,-go),new THREE.Vector2(go,go),new THREE.Vector2(-go,go)]);
@@ -1102,7 +1102,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   ctx.clearRect(0,0,96,96);ctx.fillStyle='#'+pl.color.toString(16).padStart(6,'0');ctx.beginPath();ctx.roundRect(0,0,96,96,18);ctx.fill();
   ctx.fillStyle='#111';ctx.textAlign='center';ctx.textBaseline='middle';
   if(hand){ctx.font='bold '+(i>=9?46:54)+'px system-ui,sans-serif';ctx.fillText(String(i+1),48,32);ctx.fillStyle='#'+HAND_COLORS[pl.hand].toString(16).padStart(6,'0');ctx.beginPath();ctx.arc(48,74,20,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 28px system-ui,sans-serif';ctx.fillText(hand,48,76)}
-  else{ctx.font='bold '+(i>=9?54:64)+'px system-ui,sans-serif';ctx.fillText(String(i+1),48,52)} // build 506: "10" in a smaller font
+  else{ctx.font='bold '+(i>=9?54:64)+'px system-ui,sans-serif';ctx.fillText(String(i+1),48,52)} // build 509: "10" in a smaller font
   hd.material.map.needsUpdate=true;
  };
  // build 491: the square may be larger (up to 1.5x) than the tag, so the tag has its own scale k (<= 1) inside the frame group: size HANDLE*k, offset from the corner (0.01+HANDLE/2)*k
@@ -1710,7 +1710,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    choice(y0,L.sec,[{label:L.offOn[0],value:false},{label:L.offOn[1],value:true}],section.on,v=>{if(v!==section.on)setSection(v)});
    if(planes.length<MAX_PLANES)btn(800,y0,184,L.addPlane,false,()=>{addPlane()},{size:26});
    // one row per plane: colour name, clip on/off, flip (one-side), remove
-   // build 506: up to 10 planes, listed 4 rows at a time (the rest of the tab keeps its place); the page follows the selected plane, ▲▼ turn it
+   // build 509: up to 10 planes, listed 4 rows at a time (the rest of the tab keeps its place); the page follows the selected plane, ▲▼ turn it
    const si=planes.indexOf(section.selected);if(ui.secSeen!==section.selected){ui.secSeen=section.selected;if(si>=0)ui.secPage=pageOfPlane(si)}
    const pg=sectionPage(planes.length,ui.secPage);ui.secPage=pg.page;
    if(pg.pages>1){
@@ -1725,7 +1725,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     if(canFlipPlane(pl))btn(452,y,170,L.flip,false,()=>flipPlane(pl),{size:26});
     btn(640,y,150,L.remove,false,()=>removePlane(pl),{size:26});
    });
-   const yb2=y0+86+SECTION_ROWS_PER_PAGE*76; // 4 rows, as with the old 4-plane limit (build 506: more planes are paged)
+   const yb2=y0+86+SECTION_ROWS_PER_PAGE*76; // 4 rows, as with the old 4-plane limit (build 509: more planes are paged)
    // snap (build 365): the selected plane onto axial / coronal / sagittal
    label(X,yb2+36,L.snapL);
    const sp=section.selected;if(sp)L.snapModes.forEach((t,i)=>btn(CX+i*152,yb2,140,t,planeAxis(sp)===i,()=>snapPlane(sp,i),{size:26}));
@@ -1919,7 +1919,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    c.userData.volHit=vh;c.userData.helpHit=!!hh;
    // build 484: how much nearer than the plane the object surface must be to hide it (0.75 voxel in world metres: the surface march and the plane meet at a cut face)
    let occEps=1e-4;if(vh&&(sh||tab)&&vrHalfExt&&vrDims&&mesh?.parent){const vs=voxelSize(vrHalfExt,vrDims);mesh.getWorldScale(tmpSs);occEps=0.75*Math.min(vs[0]*tmpSs.x,vs[1]*tmpSs.y,vs[2]*tmpSs.z)}
-   // build 506: under 「実際に隠す」 a number tag the tissue covers (the frame is not drawn there) is not there for the laser or the trigger: the tag is picked before everything else (resolveTriggerTarget), so
+   // build 509: under 「実際に隠す」 a number tag the tissue covers (the frame is not drawn there) is not there for the laser or the trigger: the tag is picked before everything else (resolveTriggerTarget), so
    // it needs this tissue test (the frame band already loses to a nearer tissue hit by distance, build 484 / 468). Unless the frame is held (then it is lit and drawn on top).
    if(tab&&vh&&!draggedBy(tab.pl,null)&&tagBehindTissue(occlusionGpu(),tab.t,vh.distance,occEps))tab=null;
    // where a moved point would land (the current mode's rule): the surface voxel or the selected section's voxel
@@ -1970,7 +1970,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   }
   // frame: own colour; a glow band in the hand's colour while that hand points at its band / tag or drags it
   if(section.on){const glowBy=new Map();for(const c of controllers){const rr=c.userData.press?.res||c.userData.res,pl=c.userData.drag?.pl||(rr?.kind==='section'?rr.ref.pl:null);if(pl&&!glowBy.has(pl))glowBy.set(pl,handColor(c))}const occF=occlusionGpu();for(const pl of planes){const gc=glowBy.get(pl);pl.glow.visible=gc!==undefined;if(gc!==undefined)pl.glow.material.color.setHex(gc);
-   // build 506: under 「実際に隠す」 the part of the frame (outline, arrow, tag) behind tissue is not drawn (no ghost); lit = the laser is on its band / tag, or it is held (the glow shows): then all of it is on top
+   // build 509: under 「実際に隠す」 the part of the frame (outline, arrow, tag) behind tissue is not drawn (no ghost); lit = the laser is on its band / tag, or it is held (the glow shows): then all of it is on top
    const dt=frameDepthTest(occF,gc!==undefined);pl.mat.depthTest=dt;pl.handle.material.depthTest=dt}}
   const st=section.on?(controllers.some(c=>c.userData.drag)?L.stHeld:L.stFixed):L.stNone;
   if(mesh&&st!==ui.status){ui.status=st;menu.refresh()}

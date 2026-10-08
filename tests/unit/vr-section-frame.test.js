@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-// build 506: (1) the section frame is hidden behind tissue under 「実際に隠す」 (depth tested, no ghost; on top while lit / without GPU occlusion);
+// build 509: (1) the section frame is hidden behind tissue under 「実際に隠す」 (depth tested, no ghost; on top while lit / without GPU occlusion);
 // (2) the section limit is 10 (was 4). vr-section-frame.js is pure; vr-view.js (WebXR) and its shader are checked on the source, the run in the XR stub (see the PR).
 const ver = JSON.parse(readFileSync(new URL('../../docs/version.json', import.meta.url), 'utf8')).version, tag = '?v=' + ver.replace(/\./g, '').replace(/-(\d+)$/, '-build$1');
 const load = f => import(/* @vite-ignore */ '../../docs/' + f + '.js' + tag);
@@ -87,7 +87,7 @@ describe('the section frame under the depth occlusion', () => {
   it('frameDepthTest: tested (= hidden behind tissue) only with the GPU occlusion and while not lit; lit or no occlusion = on top', () => {
     expect(frameDepthTest(true, false)).toBe(true);
     expect(frameDepthTest(true, true)).toBe(false);   // laser on the band / tag, grabbed, dragged
-    expect(frameDepthTest(false, false)).toBe(false); // 「薄くする」 / no standard depth: as before build 506
+    expect(frameDepthTest(false, false)).toBe(false); // 「薄くする」 / no standard depth: as before build 509
     expect(frameDepthTest(false, true)).toBe(false);
     expect(frameDepthTest(undefined, undefined)).toBe(false);
     // the same rule as the labels / markers (vr-depth.js occludedPass)
