@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { gpuPlatformOs, gpuPreferenceSupported, gpuEffectivePreference, gpuAdapterRequestOptions, logGpuError, getGpuErrorLog, clearGpuErrorLog, buildGpuReport, buildGpuSummary, gpuPreferenceNote } from '../../docs/gpu-diagnostics.js';
+import { gpuPlatformOs, gpuPreferenceSupported, gpuEffectivePreference, gpuAdapterRequestOptions, logGpuError, getGpuErrorLog, clearGpuErrorLog, buildGpuReport, buildGpuSummary, gpuPreferenceNote, gpuWebglShort, collectWebglInfo } from '../../docs/gpu-diagnostics.js';
 
 const LINUX = { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130', userAgentData: { platform: 'Linux' }, maxTouchPoints: 0 };
 const WIN = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130', platform: 'Win32', maxTouchPoints: 0 };
@@ -145,5 +145,36 @@ describe('browser-disabled WebGPU (Linux, navigator.gpu but no adapter)', () => 
     for (const f of ['docs/i18n.js', 'docs/gpu-diagnostics.js', 'docs/gpu-diagnostics-ui.js']) {
       expect(fs.readFileSync(new URL('../../' + f, import.meta.url), 'utf8')).not.toMatch(/chrome:\/\//i);
     }
+  });
+});
+
+describe('webgl info', () => {
+  const base = { navigatorGpu: true, build: 507, requested: { effective: 'auto' }, adapter: null, errors: [] };
+  const w = { version: 'WebGL2', vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 (0x00002206) Direct3D11 vs_5_0 ps_5_0, D3D11)', webgl2: true, max3dTextureSize: 2048, extColorBufferFloat: true, oesTextureFloatLinear: false };
+  it('shortens renderer', () => {
+    expect(gpuWebglShort(w)).toContain('GeForce RTX 3080');
+    expect(gpuWebglShort(w)).not.toContain('ANGLE');
+    expect(gpuWebglShort(null)).toBe('');
+  });
+  it('summary has WebGL and stays short', () => {
+    const s = buildGpuSummary({ ...base, webgl: w });
+    expect(s).toContain(' | WebGL:');
+    expect(s.length).toBeLessThan(180);
+    const long = 'y'.repeat(300);
+    expect(buildGpuSummary({ ...base, webgl: { renderer: long }, lastError: long, build: long }).length).toBeLessThan(180);
+    expect(buildGpuSummary({ ...base, webgl: { error: 'x' } })).toContain('WebGL:取得不可');
+    expect(buildGpuSummary(base)).not.toContain('WebGL');
+  });
+  it('report has details', () => {
+    const r = buildGpuReport({ ...base, webgl: w }, k => k);
+    for (const s of ['gpuRepWebglRenderer: ANGLE (NVIDIA', 'gpuRepWebglMax3d: 2048', 'gpuRepWebglCbf: gpuYes', 'gpuRepWebglTfl: gpuNo', 'gpuRepWebgl2: gpuYes']) expect(r).toContain(s);
+  });
+  it('collects from a mocked context and loses it', () => {
+    let lost = 0;
+    const gl = { VENDOR: 1, RENDERER: 2, MAX_3D_TEXTURE_SIZE: 3, getParameter: p => ({ 10: 'V', 11: 'R', 3: 512 }[p]), getExtension: n => n === 'WEBGL_debug_renderer_info' ? { UNMASKED_VENDOR_WEBGL: 10, UNMASKED_RENDERER_WEBGL: 11 } : n === 'WEBGL_lose_context' ? { loseContext: () => lost++ } : n === 'EXT_color_buffer_float' ? {} : null };
+    const doc = { createElement: () => ({ getContext: k => k === 'webgl2' ? gl : null }) };
+    expect(collectWebglInfo(doc)).toMatchObject({ version: 'WebGL2', vendor: 'V', renderer: 'R', webgl2: true, max3dTextureSize: 512, extColorBufferFloat: true, oesTextureFloatLinear: false });
+    expect(lost).toBe(1);
+    expect(collectWebglInfo({ createElement: () => ({ getContext: () => null }) }).error).toBeTruthy();
   });
 });

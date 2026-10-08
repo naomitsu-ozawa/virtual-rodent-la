@@ -1,10 +1,10 @@
 // GPU info tab of the settings dialog (build 503): GPU preference (Linux / Windows only), a diagnostics report that can
 // be copied without any terminal, and short GUI-only hints. Opened from the settings dialog or by clicking the GPU status bar.
-import { settings } from './app-settings.js?v=20261008-build505';
-import { gpuFilterRuntime, gpuLastAdapterRequest, requestVrlGpuAdapter, vrlGpuPreference, gpuAdapterInfo } from './gpu-compute.js?v=20261008-build505';
-import { gpuPlatformOs, gpuPreferenceSupported, gpuAdapterKind, gpuPreferenceNote, buildGpuReport, getGpuErrorLog, gpuBrowserDisabled } from './gpu-diagnostics.js?v=20261008-build505';
-import { tr } from './i18n.js?v=20261008-build505';
-import { APP_BUILD } from './version.js?v=20261008-build505';
+import { settings } from './app-settings.js?v=20261008-build507';
+import { gpuFilterRuntime, gpuLastAdapterRequest, requestVrlGpuAdapter, vrlGpuPreference, gpuAdapterInfo } from './gpu-compute.js?v=20261008-build507';
+import { gpuPlatformOs, gpuPreferenceSupported, gpuAdapterKind, gpuPreferenceNote, buildGpuReport, collectWebglInfo, getGpuErrorLog, gpuBrowserDisabled } from './gpu-diagnostics.js?v=20261008-build507';
+import { tr } from './i18n.js?v=20261008-build507';
+import { APP_BUILD } from './version.js?v=20261008-build507';
 
 const LIMIT_KEYS = ['maxTextureDimension2D', 'maxTextureDimension3D', 'maxBufferSize', 'maxStorageBufferBindingSize', 'maxComputeWorkgroupStorageSize', 'maxComputeInvocationsPerWorkgroup', 'maxComputeWorkgroupSizeX', 'maxStorageBuffersPerShaderStage'];
 
@@ -27,7 +27,7 @@ export async function collectGpuDiagnostics() {
   return {
     time: new Date().toISOString(), build: APP_BUILD, userAgent: nav.userAgent, platform: nav.userAgentData?.platform || nav.platform || '', os,
     navigatorGpu: hasGpu, requested: req, adapter: adapterData, backend: gpuFilterRuntime.lastBackend, mode: gpuFilterRuntime.device ? (gpuFilterRuntime.device.features?.has?.('core-features-and-limits') ? 'CORE' : 'COMPAT') : '',
-    errors: getGpuErrorLog(), lastError: gpuFilterRuntime.lastError, hint, kind
+    webgl: collectWebglInfo(), errors: getGpuErrorLog(), lastError: gpuFilterRuntime.lastError, hint, kind
   };
 }
 

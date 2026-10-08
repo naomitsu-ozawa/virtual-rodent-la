@@ -73,12 +73,23 @@ const val = v => (v === undefined || v === null || v === '' ? '-' : String(v));
 // mode, backend, errors:[{time,source,message,stack}], lastError, hint}. t: key -> label. Returns plain text.
 const clip = (v, n) => { const s = String(v ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 // One-line essentials (no UA) so a truncated paste still keeps the key facts. Always < 180 chars.
+// Short WebGL renderer for the one-line summary: drops the ANGLE( ) wrapper, trailing API / driver parts and vendor noise.
+export function gpuWebglShort(w, n = 24) {
+  if (!w) return '';
+  let r = String(w.renderer || '').trim();
+  const m = r.match(/^ANGLE \((.*)\)$/); if (m) r = m[1];
+  const parts = r.split(',').map(x => x.trim()).filter(Boolean);
+  if (parts.length > 1) r = parts[1].length > 3 ? parts[1] : parts[0];
+  r = r.replace(/\b(NVIDIA Corporation|NVIDIA|Intel\(R\)|AMD|Corporation|Graphics|Mesa)\b/gi, ' ').replace(/\s*\(0x[0-9a-f]+\)/gi, '').replace(/\s+/g, ' ').trim();
+  return clip(r || w.renderer || (w.version ? w.version : ''), n);
+}
 export function buildGpuSummary(data) {
   const r = data.requested || {}, a = data.adapter, i = a?.info || {};
   const dev = clip(i.device || i.description || i.architecture, 32);
   const got = a ? (clip(i.vendor, 14) || '-') + (dev ? ' ' + dev : '') + ' fallback:' + (a.isFallback === undefined ? '?' : a.isFallback ? 'yes' : 'no') : (gpuBrowserDisabled(data) ? 'なし(ブラウザ側で無効)' : 'なし');
-  const err = data.lastError ? clip(data.lastError, 40) : 'なし';
-  return ('GPU要約 b' + clip(data.build ?? '-', 8) + ' | WebGPU:' + (data.navigatorGpu ? '有' : '無') + ' | 要求:' + clip(r.effective || '-', 16) + ' | 取得:' + got + ' | 直近エラー:' + err).slice(0, 179);
+  const w = data.webgl, gl = w ? ' | WebGL:' + (gpuWebglShort(w) || (w.error ? '取得不可' : '-')) : '';
+  const err = data.lastError ? clip(data.lastError, w ? 30 : 40) : 'なし';
+  return ('GPU要約 b' + clip(data.build ?? '-', 8) + ' | WebGPU:' + (data.navigatorGpu ? '有' : '無') + ' | 要求:' + clip(r.effective || '-', 16) + ' | 取得:' + got + gl + ' | 直近エラー:' + err).slice(0, 179);
 }
 export function buildGpuReport(data, t = k => k) {
   const L = [buildGpuSummary(data)], add = (k, v) => L.push(t(k) + ': ' + val(v));
@@ -101,6 +112,16 @@ export function buildGpuReport(data, t = k => k) {
     add('gpuRepLimits', Object.keys(lim).map(k => k + '=' + lim[k]).join(', '));
     add('gpuRepFeatures', (a.features || []).join(', '));
   } else add('gpuRepAdapter', t('gpuNone'));
+  const w = data.webgl;
+  if (w) {
+    const yn = v => v === undefined || v === null ? '-' : v ? t('gpuYes') : t('gpuNo');
+    if (w.error && !w.version) add('gpuRepWebgl', w.error);
+    else {
+      add('gpuRepWebgl', w.version); add('gpuRepWebglVendor', w.vendor); add('gpuRepWebglRenderer', w.renderer);
+      add('gpuRepWebgl2', yn(w.webgl2)); add('gpuRepWebglMax3d', w.max3dTextureSize);
+      add('gpuRepWebglCbf', yn(w.extColorBufferFloat)); add('gpuRepWebglTfl', yn(w.oesTextureFloatLinear));
+    }
+  }
   add('gpuRepBackend', data.backend);
   add('gpuRepMode', data.mode);
   if (data.hint) add('gpuRepNote', data.hint);
@@ -110,4 +131,25 @@ export function buildGpuReport(data, t = k => k) {
   L.push(t('gpuRepErrors') + ' (' + errs.length + '):');
   for (const e of errs) { L.push('  [' + e.time + '] ' + e.source + ': ' + e.message); if (e.stack) L.push(e.stack.split('\n').map(s => '    ' + s).join('\n')); }
   return L.join('\n');
+}
+
+// Throwaway WebGL context on an offscreen canvas (WebGL2, else WebGL1); read vendor / renderer / a few capabilities, then lose it.
+export function collectWebglInfo(doc = globalThis.document) {
+  const out = { version: '', vendor: '', renderer: '', webgl2: false, max3dTextureSize: undefined, extColorBufferFloat: false, oesTextureFloatLinear: false, error: '' };
+  let gl = null;
+  try {
+    const c = doc?.createElement?.('canvas'); if (!c) { out.error = 'no canvas'; return out; }
+    c.width = c.height = 1;
+    gl = c.getContext('webgl2'); if (gl) { out.webgl2 = true; out.version = 'WebGL2'; }
+    else { gl = c.getContext('webgl') || c.getContext('experimental-webgl'); if (gl) out.version = 'WebGL1'; }
+    if (!gl) { out.error = 'WebGL unavailable'; return out; }
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    out.vendor = String((dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR)) ?? '');
+    out.renderer = String((dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)) ?? '');
+    if (out.webgl2) { const v = gl.getParameter(gl.MAX_3D_TEXTURE_SIZE); if (typeof v === 'number') out.max3dTextureSize = v; }
+    out.extColorBufferFloat = !!gl.getExtension('EXT_color_buffer_float');
+    out.oesTextureFloatLinear = !!gl.getExtension('OES_texture_float_linear');
+  } catch (e) { out.error = String(e?.message ?? e).slice(0, 120); }
+  try { gl?.getExtension('WEBGL_lose_context')?.loseContext(); } catch {}
+  return out;
 }
