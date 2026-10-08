@@ -23,7 +23,7 @@ import { request3DRender } from './scene3d.js?v=20261008-build495';
 import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261008-build495';
 import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261008-build495';
 import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261008-build495';
-import { planeLabelPlacement, clampLabelCenter, stepDelta, offsetFromDelta, createFocusTracker } from './measure-label.js?v=20261008-build495';
+import { planeLabelPlacement, clampLabelCenter, stepDelta, offsetFromDelta, createFocusTracker, LINE_SAMPLES, probeKey, labelPart, lineSamplePoints, lineAlphas, lineStopOffsets, createIdMaker } from './measure-label.js?v=20261008-build495';
 import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261008-build495';
 import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261008-build495';
 
@@ -90,17 +90,18 @@ function projectPair(obj,camera,W,H,a,b,out){
  // both ends to camera space, clipped to the front of the camera, then projected: out = [x1,y1,x2,y2] in px, or false when nothing is in front
  p3.set(a.x,a.y,a.z).applyMatrix4(obj.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
  q3.set(b.x,b.y,b.z).applyMatrix4(obj.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+ pairDepth[0]=-p3.z;pairDepth[1]=-q3.z; // the depths of the unclipped ends (the gradient of a measure line places its stops with them)
  const seg=clipSegmentNear({x:p3.x,y:p3.y,z:p3.z},{x:q3.x,y:q3.y,z:q3.z},camera.near||0.01);if(!seg)return false;
  p3.set(seg[0].x,seg[0].y,seg[0].z).applyMatrix4(camera.projectionMatrix);q3.set(seg[1].x,seg[1].y,seg[1].z).applyMatrix4(camera.projectionMatrix);
  out[0]=(p3.x+1)/2*W;out[1]=(1-p3.y)/2*H;out[2]=(q3.x+1)/2*W;out[3]=(1-q3.y)/2*H;
  return out.every(Number.isFinite);
 }
-const seg4=[0,0,0,0];
+const seg4=[0,0,0,0],pairDepth=[0,0],nextGradId=createIdMaker('mg3d-');
 // build 477: distances. A line between the two points (the SVG layer, clipped at the near plane) and the value at its midpoint (a small label); the start of a
 // distance in the making gets a pulsing ring (.is-measure-start) and a hint next to it. Follows the points live (they are recomputed every frame).
 const measEls=new Map(); // measurement id -> {line,label,text}
 // build 485: the lit label (mouse hover / a drag, touch included): the class is toggled only when the lit label changes
-const labelFocus=createFocusTracker((n,p)=>{measEls.get(p)?.label.classList.remove('is-lit');measEls.get(n)?.label.classList.add('is-lit')});
+const labelFocus=createFocusTracker((n,p)=>{for(const [id,on] of [[p,false],[n,true]]){const e=measEls.get(id);if(e){e.label.classList.toggle('is-lit',on);e.leader.classList.toggle('is-lit',on)}}});
 let hintEl=null;
 // object-space change per voxel along i / j / k in this view (voxelToLocal3D: the longest side is 3.3 units)
 function voxelStep3d(dims,spacing){const[sx,sy,sz]=spacing||[1,1,1],k=3.3/Math.max(dims.columns*sx,dims.rows*sy,dims.slices*sz,1);return[sx*k,-sy*k,sz*k]}
@@ -115,7 +116,7 @@ function drawMeasures(obj,camera,W,H,pts,keep,dims){
    const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('class','measure-line-3d');svg.appendChild(line);
    const leader=document.createElementNS('http://www.w3.org/2000/svg','line');leader.setAttribute('class','measure-leader-3d');svg.appendChild(leader);
    const label=document.createElement('div');label.className='measure-label-3d';layer.appendChild(label);
-   if(labelFocus.get()===m.id)label.classList.add('is-lit');e={line,leader,label,text:'',w:60,h:16,sx:0,sy:0,ctx:null};measEls.set(m.id,e);
+   if(labelFocus.get()===m.id){label.classList.add('is-lit');leader.classList.add('is-lit')}e={line,leader,label,text:'',w:60,h:16,sx:0,sy:0,ctx:null,lh:false,lsig:'',grad:null};measEls.set(m.id,e);
   }
   const text=measureLabel(measurementMm(m,cs,sp),warn);if(e.text!==text){e.text=text;e.label.textContent=text;if(warn)e.label.title=tr('measureWarn');e.label.hidden=false;e.w=e.label.offsetWidth||60;e.h=e.label.offsetHeight||16}
   const A=byId.get(m.a),B=byId.get(m.b);
@@ -133,6 +134,7 @@ function drawMeasures(obj,camera,W,H,pts,keep,dims){
    }else{ // by default NEAR the line: beside it (perpendicular, the upper side), inside the view
     const pl=planeLabelPlacement({x:seg4[0],y:seg4[1]},{x:seg4[2],y:seg4[3]},{w:e.w,h:e.h,gap:4,x0:0,y0:0,iw:W,ih:H});lx=pl.x;ly=pl.y;
    }
+   depthCue(e,m,seg4,camera);
    if(Number.isFinite(lx)&&Number.isFinite(ly)){
     e.sx=lx;e.sy=ly;e.label.hidden=false;
     e.label.style.transform='translate('+lx.toFixed(1)+'px,'+ly.toFixed(1)+'px) translate(-50%,-50%)';
@@ -141,7 +143,37 @@ function drawMeasures(obj,camera,W,H,pts,keep,dims){
   }else{e.line.style.display='none';e.leader.style.display='none';e.label.hidden=true}
  }
 }
-function pruneMeasures(keep){for(const [id,e] of [...measEls])if(!keep.has(id)){e.line.remove();e.leader.remove();e.label.remove();measEls.delete(id)}}
+function pruneMeasures(keep){for(const [id,e] of [...measEls])if(!keep.has(id)){e.line.remove();e.leader.remove();e.label.remove();e.grad?.remove();measEls.delete(id)}}
+// build 493: depth cue. The overlay is drawn over the 3D canvas, so what lies behind the volume's surface is drawn FAINT (x-ray; judged with the points' rule, see refreshHidden): the label and
+// its leader as a whole (CSS .is-behind; .is-lit / .is-dragging keep them fully visible), the line part by part (an SVG gradient along it, stop-opacity per sample).
+function depthCue(e,m,s4,camera){
+ const lh=hiddenIds.has(probeKey(m.id,labelPart(m.labelOffset)));
+ if(e.lh!==lh){e.lh=lh;e.label.classList.toggle('is-behind',lh);e.leader.classList.toggle('is-behind',lh)}
+ const al=lineAlphas(m.id,hiddenIds),any=al.some(v=>v<1),sig=any?al.join(''):'';
+ if(!any){if(e.lsig){e.lsig='';e.line.style.stroke=''}return}
+ if(!e.grad){
+  const g=document.createElementNS('http://www.w3.org/2000/svg','linearGradient');g.setAttribute('id',nextGradId()); // a counter, not the measurement id (ids come from project files: not unique once made safe for an attribute)
+  g.setAttribute('gradientUnits','userSpaceOnUse');
+  for(let i=0;i<=LINE_SAMPLES;i++){const st=document.createElementNS('http://www.w3.org/2000/svg','stop');st.setAttribute('offset',String(i/LINE_SAMPLES));st.setAttribute('stop-color','#ffd23d');g.appendChild(st)}
+  (svg.querySelector('defs')||svg.insertBefore(document.createElementNS('http://www.w3.org/2000/svg','defs'),svg.firstChild)).appendChild(g);e.grad=g;
+ }
+ e.grad.setAttribute('x1',s4[0].toFixed(1));e.grad.setAttribute('y1',s4[1].toFixed(1));e.grad.setAttribute('x2',s4[2].toFixed(1));e.grad.setAttribute('y2',s4[3].toFixed(1)); // same ends as the line (zero-length / axis-aligned lines have no bounding box: userSpaceOnUse)
+ // the stops sit where the 3D samples fall on the DRAWN segment (perspective, near-plane clip), so they follow the camera, not only the hidden set
+ const offs=lineStopOffsets(pairDepth[0],pairDepth[1],camera.near||0.01,!!camera.isOrthographicCamera);
+ if(offs){const os=offs.map(v=>v.toFixed(4));const osig=os.join(',');if(e.osig!==osig){e.osig=osig;[...e.grad.children].forEach((st,i)=>st.setAttribute('offset',os[i]))}}
+ if(e.lsig!==sig){e.lsig=sig;[...e.grad.children].forEach((st,i)=>st.setAttribute('stop-opacity',String(al[i])));e.line.style.stroke='url(#'+e.grad.getAttribute('id')+')'}
+}
+// the places of the distances judged with the points (object space): the samples of every line (A -> B) and the label that was dragged (the midpoint + its offset)
+function measureProbes(pts,dims){
+ const ms=getMeasurements();if(!ms.length)return[];
+ const byId=new Map(pts.map(p=>[p.id,p])),step=voxelStep3d(dims,volume.spacing),out=[];
+ for(const m of ms){
+  const A=byId.get(m.a),B=byId.get(m.b);if(!A||!B)continue;
+  lineSamplePoints(A.local,B.local).forEach((q,i)=>out.push({id:probeKey(m.id,i),local:q}));
+  if(m.labelOffset){const ml=voxelToLocal3D({i:(A.vox.i+B.vox.i)/2,j:(A.vox.j+B.vox.j)/2,k:(A.vox.k+B.vox.k)/2},dims,volume.spacing),d=stepDelta(m.labelOffset,step);out.push({id:probeKey(m.id,'L'),local:{x:ml.x+d.x,y:ml.y+d.y,z:ml.z+d.z}})}
+ }
+ return out;
+}
 function placeHint(){
  const id=getMeasureStart(),m=id?els.get(id):null;
  if(!id||!m||!m.vis||!layer){if(hintEl)hintEl.hidden=true;return}
@@ -200,9 +232,11 @@ export function updateComment3dMarkers(){
   });
   // hidden behind tissue: judged at most ~10 times a second (the positions above follow every frame), plus once more after the view stops
   const plane=sectionViewOpen&&sectionViewPlane?sectionPlaneLocal(sectionLocalPoint(),sectionLocalNormal()):null;
-  const sig=hiddenSignature(obj,camera,pts.map(p=>p.id),plane,fp),now=performance.now(),st=throttle.step(now,sig!==hiddenSig);
+  // build 493: the distances' probes (line samples, a dragged label) are judged in the same pass; their places are part of the signature (a moved point / label is judged again)
+  const probes=measureProbes(pts,dims),judged=probes.length?pts.concat(probes):pts;
+  const sig=hiddenSignature(obj,camera,pts.map(p=>p.id).concat(probes.map(p=>p.id+'@'+p.local.x.toFixed(3)+','+p.local.y.toFixed(3)+','+p.local.z.toFixed(3))),plane,fp),now=performance.now(),st=throttle.step(now,sig!==hiddenSig);
   clearTimeout(hiddenTimer);hiddenTimer=0;
-  if(st.run){hiddenSig=sig;refreshHidden(obj,camera,pts,plane)}
+  if(st.run){hiddenSig=sig;refreshHidden(obj,camera,judged,plane)}
   else if(st.wait>0)hiddenTimer=setTimeout(refreshSoon,st.wait);
   for(const [id,m] of els){const back=hiddenIds.has(id);if(m.back!==back){m.back=back;m.el.classList.toggle('is-behind',back)}}
   // position cues relative to the active section (VR's rule): on it = bigger (.is-on-section); off it = a thin line to its foot (SVG layer).
