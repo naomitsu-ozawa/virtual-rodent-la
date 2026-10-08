@@ -106,6 +106,11 @@ export const magnificationText = (m, lang) => {
   return lang === 'ja' ? '×' + t + '（実寸比）' : '×' + t + ' (real size)';
 };
 
+// build 512: the scale shown in the 詳細 tab line. It used to print the raw holder scale ("×0.02" at real size, because the volume is built 3.3 units
+// long), which reads as "not 1x" next to the 「×1（実寸比）」 tag. Now the same real-size magnification as the tag; the raw holder scale only when
+// the physical size is unknown (no spacing), where there is no real size to compare with.
+export const scaleLineText = (holderScale, longMm, lang) => magnificationText(realMagnification(holderScale, longMm), lang) || '×' + holderScale.toFixed(2);
+
 // a small billboard tag: a canvas plane of fixed world size placed under the lowest corner of the volume's bounding box
 export function createScaleTag(THREE) {
   const W = 320, H = 72, canvas = document.createElement('canvas');
