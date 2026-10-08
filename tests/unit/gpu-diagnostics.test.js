@@ -121,3 +121,29 @@ describe('gpuPreferenceNote', () => {
     expect(gpuPreferenceNote('auto', { vendor: 'intel', architecture: 'gen-12lp' })).toBe('');
   });
 });
+
+describe('browser-disabled WebGPU (Linux, navigator.gpu but no adapter)', () => {
+  it('detects only that case', async () => {
+    const { gpuBrowserDisabled } = await import('../../docs/gpu-diagnostics.js');
+    expect(gpuBrowserDisabled({ navigatorGpu: true, os: 'linux', adapter: null })).toBe(true);
+    expect(gpuBrowserDisabled({ navigatorGpu: false, os: 'linux', adapter: null })).toBe(false);
+    expect(gpuBrowserDisabled({ navigatorGpu: true, os: 'windows', adapter: null })).toBe(false);
+    expect(gpuBrowserDisabled({ navigatorGpu: true, os: 'mac', adapter: null })).toBe(false);
+    expect(gpuBrowserDisabled({ navigatorGpu: true, os: 'linux', adapter: { info: {} } })).toBe(false);
+  });
+  it('shows the short code and the explanation in the report', () => {
+    const t = k => k;
+    const d = { navigatorGpu: true, os: 'linux', adapter: null, requested: {} };
+    expect(buildGpuSummary(d)).toContain('取得:なし(ブラウザ側で無効)');
+    expect(buildGpuReport(d, t)).toContain('gpuBrowserOff');
+    const other = { ...d, os: 'windows' };
+    expect(buildGpuSummary(other)).toContain('取得:なし |');
+    expect(buildGpuReport(other, t)).not.toContain('gpuBrowserOff');
+  });
+  it('leaves no chrome:// string in user-facing sources', async () => {
+    const fs = await import('node:fs');
+    for (const f of ['docs/i18n.js', 'docs/gpu-diagnostics.js', 'docs/gpu-diagnostics-ui.js']) {
+      expect(fs.readFileSync(new URL('../../' + f, import.meta.url), 'utf8')).not.toMatch(/chrome:\/\//i);
+    }
+  });
+});

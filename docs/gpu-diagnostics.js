@@ -49,6 +49,10 @@ export function logGpuError(source, error) {
 export const getGpuErrorLog = () => gpuLog.slice();
 export const clearGpuErrorLog = () => { gpuLog.length = 0; };
 
+// navigator.gpu exists on Linux but requestAdapter returned nothing for every option set: the browser itself keeps
+// WebGPU off for this GPU. Other platforms are not classified this way.
+export function gpuBrowserDisabled(d) { return !!(d && d.navigatorGpu && d.os === 'linux' && !d.adapter); }
+
 // Hint for adapters that look integrated / software (null when it looks discrete or unknown)
 export function gpuAdapterKind(info) {
   if (!info) return '';
@@ -72,7 +76,7 @@ const clip = (v, n) => { const s = String(v ?? '').replace(/\s+/g, ' ').trim(); 
 export function buildGpuSummary(data) {
   const r = data.requested || {}, a = data.adapter, i = a?.info || {};
   const dev = clip(i.device || i.description || i.architecture, 32);
-  const got = a ? (clip(i.vendor, 14) || '-') + (dev ? ' ' + dev : '') + ' fallback:' + (a.isFallback === undefined ? '?' : a.isFallback ? 'yes' : 'no') : 'なし';
+  const got = a ? (clip(i.vendor, 14) || '-') + (dev ? ' ' + dev : '') + ' fallback:' + (a.isFallback === undefined ? '?' : a.isFallback ? 'yes' : 'no') : (gpuBrowserDisabled(data) ? 'なし(ブラウザ側で無効)' : 'なし');
   const err = data.lastError ? clip(data.lastError, 40) : 'なし';
   return ('GPU要約 b' + clip(data.build ?? '-', 8) + ' | WebGPU:' + (data.navigatorGpu ? '有' : '無') + ' | 要求:' + clip(r.effective || '-', 16) + ' | 取得:' + got + ' | 直近エラー:' + err).slice(0, 179);
 }
@@ -100,6 +104,7 @@ export function buildGpuReport(data, t = k => k) {
   add('gpuRepBackend', data.backend);
   add('gpuRepMode', data.mode);
   if (data.hint) add('gpuRepNote', data.hint);
+  if (gpuBrowserDisabled(data)) add('gpuRepNote', t('gpuBrowserOff'));
   add('gpuRepLastError', data.lastError);
   const errs = data.errors || [];
   L.push(t('gpuRepErrors') + ' (' + errs.length + '):');
