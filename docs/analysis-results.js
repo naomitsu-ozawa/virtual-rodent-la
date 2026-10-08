@@ -8,6 +8,7 @@ import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.j
 import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261008-build522';
 import { request3DRender } from './scene3d.js?v=20261008-build522';
 import { dispose } from './surface-mesh.js?v=20261008-build522';
+import { setRegionLabel, setRegionLabelOffset, hasOffset, clampVoxel, onAnalysisLabelsChange } from './analysis-label.js?v=20261008-build522';
 export function analysisRegionRepresentativeVoxel(region){
  if(!region?.runsBySlice)return null;
  const nonEmpty=[];for(let z=0;z<region.runsBySlice.length;z++)if(region.runsBySlice[z]?.length)nonEmpty.push(z);
@@ -33,6 +34,16 @@ export function setAnalysisFocusedRegion(id,voxel=null,move=true){
  for(const p of Object.keys(planes))schedulePlaneRender(p);
  request3DRender();renderAnalysisResults();
 }
+// build 523: pin the label of a result at its representative voxel (a point inside it) / remove it; the place is then moved by dragging it (3D view, VR)
+export function toggleAnalysisLabel(region){
+ if(!region)return false;
+ if(region.label){setRegionLabel(region,null);return true}
+ const v=analysisRegionRepresentativeVoxel(region),vol=current3DVolume||volume;if(!v)return false;
+ const dims=vol?{columns:vol.columns,rows:vol.rows,slices:vol.slices}:null;
+ return setRegionLabel(region,{anchor:dims?clampVoxel({i:v.x,j:v.y,k:v.z},dims):{i:v.x,j:v.y,k:v.z}});
+}
+// the buttons follow a change made elsewhere (VR pins / unpins; a drag only matters when the label becomes moved / unmoved)
+onAnalysisLabelsChange(e=>{if(!e?.labelOnly||e.moveToggled)renderAnalysisResults()});
 export function analysisRegionName(region){
  return region.merged?(tr('mergedRegion')+' '+region.id):(tr('analysisRegion')+' '+region.id);
 }
@@ -61,6 +72,12 @@ export function renderAnalysisResults(statusText=null){
    if(sp){const used=document.createElement('div');used.textContent=(currentLanguage==='ja'?'ボクセル間隔 (x, y, z): ':'Voxel spacing (x, y, z): ')+sp.map(n=>(+n).toFixed(4).replace(/0+$/,'').replace(/\.$/,'')).join(' × ')+' mm';used.className='analysis-spacing-used';used.style.cssText='font-size:10px;line-height:1.35;color:rgb(var(--ui-t4));overflow-wrap:anywhere';card.append(used)}
    const warnHtml=spacingWarningHtml((v?.series||activeSeries)?.spacingCheck,currentLanguage,s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
    if(warnHtml)card.insertAdjacentHTML('beforeend',warnHtml);
+   // build 523: the label of this result on the 3D view (and in VR): pinned here or in VR, moved by a drag, put back here or by a double click / tap
+   {const actions=document.createElement('div');actions.className='analysis-label-actions';
+    const pin=document.createElement('button');pin.type='button';pin.className='analysis-label-pin';pin.textContent=tr(focused.label?'analysisLabelUnpin':'analysisLabelPin');pin.onclick=()=>toggleAnalysisLabel(focused);actions.append(pin);
+    if(focused.label&&hasOffset(focused.label)){const rs=document.createElement('button');rs.type='button';rs.className='analysis-label-reset';rs.textContent=tr('analysisLabelReset');rs.onclick=()=>setRegionLabelOffset(focused,null);actions.append(rs)}
+    card.append(actions);
+    if(focused.label){const hint=document.createElement('div');hint.className='analysis-label-hint';hint.textContent=tr('analysisLabelHint');card.append(hint)}}
    analysisSummary.appendChild(card);
   }
  }

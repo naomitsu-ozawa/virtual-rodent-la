@@ -75,7 +75,9 @@ export function setRegionLabelOffset(region,offset){
  if(!region?.label)return false;
  const next=withOffset(region.label,offset);if(!next)return false;
  if(sameLabel(region.label,next))return true;
- region.label=next;emitAnalysisLabelsChange({id:region.id,labelOnly:true});return true;
+ const toggled=leaderVisible(region.label)!==leaderVisible(next);
+ region.label=next;emitAnalysisLabelsChange({id:region.id,labelOnly:true,moveToggled:toggled}); // moveToggled: moved <-> default changed (a button state follows it)
+ return true;
 }
 // the label of a region for the project file (a clean copy) / for a snapshot, or undefined
 export const labelForProject=region=>normalizeAnalysisLabel(region?.label)||undefined;

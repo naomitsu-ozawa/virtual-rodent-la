@@ -84,7 +84,7 @@ describe('state on the region: set / move / reset / events', () => {
     expect(r.label).toEqual({ anchor: { i: 10, j: 20, k: 30 } });
     expect(setRegionLabelOffset(r, { i: 4, j: 0, k: -2 })).toBe(true);
     expect(r.label.offset).toEqual({ i: 4, j: 0, k: -2 });
-    expect(events).toEqual([{ id: 7 }, { id: 7, labelOnly: true }]);
+    expect(events).toEqual([{ id: 7 }, { id: 7, labelOnly: true, moveToggled: true }]);
     expect(setRegionLabelOffset(r, { i: 4, j: 0, k: -2 })).toBe(true); expect(events.length).toBe(2); // unchanged: no event
     expect(setRegionLabelOffset(r, { i: NaN, j: 0, k: 0 })).toBe(false); expect(r.label.offset).toEqual({ i: 4, j: 0, k: -2 });
     expect(setRegionLabelOffset(r, null)).toBe(true); expect(r.label).toEqual({ anchor: { i: 10, j: 20, k: 30 } }); expect(leaderVisible(r.label)).toBe(false);
