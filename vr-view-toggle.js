@@ -17,12 +17,18 @@ export function createViewToggle(isAr){
  };
 }
 
-// The ring ids of a session: ids (saved slots, null = empty) plus the toggle, AR only. The toggle takes the first empty slot, else a new last slot (the saved layout is never changed).
+// The ring ids of a session: ids (saved slots, null = empty) plus the extras that are not saved in the layout: the toggle (AR only) and 断面を削除 (build 521, every session).
+// Each extra takes the first empty slot, else a new last slot (the saved layout is never changed). Toggle first, then 断面を削除, so the toggle keeps the slot it had before
+// build 521 (a full ring: 6 saved + toggle = 7th + 断面を削除 = 8th in AR; 7th in VR). Never twice.
+export const SECTION_DELETE_ID='section-delete'; // ring item id; not in WHEEL_ITEMS (never saved), usable while a section is selected (vr-view.js wheelAvail)
+export const ringExtras=isAr=>isAr?[VIEW_TOGGLE_ID,SECTION_DELETE_ID]:[SECTION_DELETE_ID];
 export function ringIdsFor(ids,isAr){
  const a=Array.isArray(ids)?[...ids]:[];
- if(!isAr||a.includes(VIEW_TOGGLE_ID))return a;
- const e=a.indexOf(null);
- if(e>=0)a[e]=VIEW_TOGGLE_ID;else a.push(VIEW_TOGGLE_ID);
+ for(const x of ringExtras(isAr)){
+  if(a.includes(x))continue;
+  const e=a.indexOf(null);
+  if(e>=0)a[e]=x;else a.push(x);
+ }
  return a;
 }
 

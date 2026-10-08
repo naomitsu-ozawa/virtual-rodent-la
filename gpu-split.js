@@ -14,7 +14,7 @@
 //
 // Owner's rule: handle only this combination (display = Intel, compute = NVIDIA, different GPUs). A single GPU, Mac, iPad,
 // Windows, or any uncertainty keeps the single shared device, i.e. the behaviour of builds up to 515.
-import { gpuPlatformOs } from './gpu-preference.js?v=20261008-build520';
+import { gpuPlatformOs } from './gpu-preference.js?v=20261008-build522';
 
 // 'nvidia' | 'intel' | 'amd' | 'apple' | 'software' | 'other' | '' (unknown). `parts` are the strings that name the GPU:
 // adapter.info.vendor / architecture / device / description, or the WebGL UNMASKED_VENDOR / UNMASKED_RENDERER.
