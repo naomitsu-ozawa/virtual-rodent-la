@@ -79,3 +79,19 @@ export function setRegionLabelOffset(region,offset){
 }
 // the label of a region for the project file (a clean copy) / for a snapshot, or undefined
 export const labelForProject=region=>normalizeAnalysisLabel(region?.label)||undefined;
+
+// ---- the views' per-voxel steps ----
+// VR: object-space change per voxel along i / j / k (vr-point.js voxelToLocal); PC 3D: crosshair.js voxelToLocal3D (the longest side is 3.3 units)
+export const vrVoxelStep=(halfExt,dims)=>[2*halfExt[0]/dims.columns,-2*halfExt[1]/dims.rows,2*halfExt[2]/dims.slices];
+export function pcVoxelStep(dims,spacing){
+ const[sx,sy,sz]=spacing||[1,1,1],k=3.3/Math.max(dims.columns*sx,dims.rows*sy,dims.slices*sz,1);
+ return[sx*k,-sy*k,sz*k];
+}
+// where a leader line meets the edge of a label card: (dx,dy) = the direction from the card's centre to the anchor in the card's plane, (hw,hh) = the card's half size.
+// Returns the point on the card's rectangle in that direction (the centre when there is no direction -> the bottom edge's middle).
+export function rectEdgePoint(dx,dy,hw,hh){
+ const ax=Math.abs(dx),ay=Math.abs(dy);
+ if(ax<1e-12&&ay<1e-12)return{x:0,y:-hh};
+ const s=Math.min(ax>1e-12?hw/ax:Infinity,ay>1e-12?hh/ay:Infinity);
+ return{x:dx*s,y:dy*s};
+}
