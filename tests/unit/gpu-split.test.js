@@ -188,7 +188,7 @@ const buildCompute = (navigator, runtime = {}, extra = {}) => {
     sceneState: { backend: 'WEBGPU', renderer: { backend: { device: null, set() {} } } },
     THREE: { Float32BufferAttribute: class { constructor(a) { this.array = a; } } },
     status: { removeAttribute() {}, textContent: '', className: '', title: '' }, document: { getElementById: () => null },
-    performance: { now: () => 1000 },
+    performance: { now: () => 1000 }, updateLinuxWebgpuNote() {},
     installGpuErrorListener: (d, role) => calls.push('listener ' + (role || 'compute')),
     clearGpuBufferPool() {}, setGpuPrewarmIndex() {}, setGpuPrewarmScheduled() {}, gpuComputeWorkgroupSize: () => 128, gpuDeviceMode: () => 'CORE',
     verifyGpuComputeDevice: async () => true, verifyGpuPipelineSet: async () => true,
@@ -467,6 +467,14 @@ describe('S2: single-GPU / Mac / iPad status equals the status of builds up to 5
   };
   const LIMIT_INFO = 'limits buf 4096MB/bind 4096MB (adapter 4096MB/4096MB)';
   const healthy = extra => ({ ...rt(), device: {}, lastBackend: 'WEBGPU CORE FULL VERIFIED · WG256', adapterLabel: 'apple metal-3', limitInfo: LIMIT_INFO, limitRetries: 0, ...extra });
+  it("PR #128's hook: updateGpuStatus ends with updateLinuxWebgpuNote() on every path", () => {
+    let calls = 0;
+    const { api } = buildCompute(LINUX, healthy({}), { updateLinuxWebgpuNote: () => { calls++; }, document: { getElementById: () => null } });
+    api.updateGpuStatus(); api.updateGpuStatus();
+    expect(calls).toBe(2);
+    expect(/updateLinuxWebgpuNote\(\);\n}\n/.test(gpuSrc)).toBe(true);
+    expect(gpuSrc).toContain("import { updateLinuxWebgpuNote } from './linux-webgpu-note.js");
+  });
   it('Mac: the exact string (limitInfo is recorded but not shown)', () => {
     const r = run(MAC, healthy({ adapterRequest: { stored: 'auto', effective: 'auto', supported: false, optionIndex: 0 } }));
     expect(r.chip).toBe('Render WEBGPU · Compute WEBGPU CORE FULL VERIFIED · WG256 · apple metal-3');

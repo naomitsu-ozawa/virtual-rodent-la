@@ -51,6 +51,20 @@
 - iPad / Macではワークスペース画面（ツールバーと設定パネル）を使用
 - iPadではGPUボリュームの解像度（「iPad GPU」の設定）を端末の性能に合わせて選択。縮小したボリュームは表示専用で、体積の計算は常に元の解像度で行う
 
+### Linux（Chrome）でWebGPUを使う
+
+Linux版のChromeでは、`chrome://gpu` に「WebGPU: ハードウェアアクセラレーション」と表示されていても、起動オプションなしでは `requestAdapter()` が `null` を返し、WebGPUを使えないことがあります。次のオプションを付けて起動してください。
+
+```
+google-chrome-stable --enable-features=ForceEnableWebGpuInterop
+```
+
+ランチャーから起動する場合は、`.desktop` ファイル（例: `~/.local/share/applications/google-chrome.desktop`。システム側の `/usr/share/applications/google-chrome.desktop` をコピーして編集）の `Exec=` 行に同じオプションを追加します。
+
+- Wayland環境のみ対応です（Chrome 147以降、LinuxのWebGPU interopはWaylandのみ）。X11では使えません。
+- Ubuntu 26 / Wayland / Chrome 155 で確認しています。
+- この状態のLinuxでは、アプリのGPUステータス表示に同じ説明が出ます。
+
 ## 大容量DICOM
 
 大容量のSeriesでも、解像度・CT値・voxel spacingは変更しません。ボリューム全体を一度に展開せず、元のDICOMをスライス・行単位で必要なときに読み込み、MPRとセグメンテーションを元の解像度で処理します。自動のダウンサンプリングは行いません（iPadのGPUボリュームは表示専用に縮小します）。
@@ -210,6 +224,20 @@ Live site: https://naomitsu-ozawa.github.io/virtual-rodent-la/
 - Optional public mouse PET/CT demo from Zenodo
 
 The original calibrated CT-value volume is preserved separately from processed display data. Large series are read slice by slice from the source DICOM at full resolution, without automatic downsampling.
+
+### WebGPU on Linux (Chrome)
+
+On Linux, Chrome can report WebGPU as hardware accelerated in `chrome://gpu` and still return `null` from `requestAdapter()`, so WebGPU is unavailable. Launch Chrome with this option:
+
+```
+google-chrome-stable --enable-features=ForceEnableWebGpuInterop
+```
+
+To start it from a launcher, add the same option to the `Exec=` line of the `.desktop` file (copy `/usr/share/applications/google-chrome.desktop` to `~/.local/share/applications/` and edit it).
+
+- Wayland only (Chrome 147+ allows Linux WebGPU interop only on Wayland); X11 is not supported.
+- Verified on Ubuntu 26 / Wayland / Chrome 155.
+- On Linux without working WebGPU, the app's GPU status bar shows the same explanation.
 
 ### Development
 

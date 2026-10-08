@@ -11,6 +11,7 @@ import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build517';
 import { runsSliceToMask } from './run-length.js?v=20261008-build517';
 import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build517';
 import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build517';
+import { updateLinuxWebgpuNote } from './linux-webgpu-note.js?v=20261008-build517';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:'',split:null,renderDevice:null,renderError:'',renderInfo:'',pendingCompute:null};
 export function gpuAdapterLabel(adapter){
  try{
@@ -165,6 +166,7 @@ export function updateGpuStatus(){
   }
   barText.textContent=text;bar.classList.toggle('is-warning',!gpuActive);
  }
+ updateLinuxWebgpuNote();
 }
 export function setGpuComputeBackend(label,error=''){
  // an uncaptured WebGPU error leaves 'WEBGPU GPU FAIL' standing: a later success

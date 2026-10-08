@@ -30,6 +30,7 @@ export const I18N={
   pixelDeferred:'Pixel Dataはまだ展開しません。',noSeries:'DICOMシリーズを検出できませんでした',
   original:'元のキャリブレーション済みCT値',processingReset:'処理をリセットしました。元のキャリブレーション済みCT値を復元しました',
   ipadSettings:'設定',ipadClose:'閉じる',ipadData:'データ',ipadDisplay:'表示・Seg',ipadEdit:'3D編集',ipadView3d:'3D',ipadView2d:'2D',ipadViewSplit:'分割',
+  linuxGpuNote:'Linux: WebGPUを使えません。理由を見る',linuxGpuNoteText:'LinuxのChromeでは、起動オプション --enable-features=ForceEnableWebGpuInterop を付けないとWebGPUが使えない場合があります。Wayland環境のみ対応で、X11では使えません。',
   demoCache:'公開デモ: キャッシュ済みデータを使用',demoDone:'公開デモ: ダウンロード完了。端末キャッシュへ保存中'
  },
  en:{
@@ -60,6 +61,7 @@ export const I18N={
   pixelDeferred:'Pixel Data has not been expanded yet.',noSeries:'No DICOM Series detected',
   original:'Original calibrated CT values',processingReset:'Processing reset. Original calibrated CT values restored.',
   ipadSettings:'Settings',ipadClose:'Close',ipadData:'Data',ipadDisplay:'Display / Seg',ipadEdit:'3D edit',ipadView3d:'3D',ipadView2d:'2D',ipadViewSplit:'Split',
+  linuxGpuNote:'Linux: WebGPU is unavailable. Show why',linuxGpuNoteText:'On Linux, Chrome may need the launch option --enable-features=ForceEnableWebGpuInterop to enable WebGPU. It works on Wayland only, not on X11.',
   demoCache:'Public demo: using cached data',demoDone:'Public demo: download complete. Saving to device cache'
  }
 };
