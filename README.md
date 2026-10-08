@@ -174,6 +174,22 @@ npm run test:e2e:demo # 公開デモ(約20.8MB)の読み込みテスト
 - URLに `?debug` を付けて開くと、フィルター適用中に2D断面をドラッグしたときの画像の出どころをフッターに表示します。
 - 開発ルールと作業記録は `docs/IMPLEMENTATION_PLAN.md` と `docs/AGENT_LOG.md` を参照してください。
 
+## Linux で高性能 GPU を WebGPU に使う
+
+Linux のブラウザは `powerPreference: 'high-performance'` だけでは内蔵 GPU を選ぶことがあります（アプリ側は既に要求済み）。dGPU（NVIDIA / AMD）搭載機では、次のランチャーで起動してください。
+
+```sh
+tools/linux/launch-webgpu.sh            # 既定: 公開デモ
+tools/linux/launch-webgpu.sh http://localhost:5173/
+BROWSER_BIN=/usr/bin/chromium tools/linux/launch-webgpu.sh   # ブラウザ指定
+VRL_USER_DATA_DIR=$HOME/.vrl-chrome tools/linux/launch-webgpu.sh   # 別プロファイル（任意）
+```
+
+- Chrome/Chromium を `--enable-unsafe-webgpu --enable-features=Vulkan --use-webgpu-power-preference=force-high-performance` で起動し、NVIDIA があれば PRIME オフロード（`__NV_PRIME_RENDER_OFFLOAD=1` など）、それ以外のハイブリッド構成では `DRI_PRIME=1` を設定します。選んだ経路は起動時に表示されます。
+- 確認方法: `chrome://gpu` の「WebGPU」「Vulkan」と GL_RENDERER、およびアプリ下部の GPU ステータスバー（アダプタ名）。内蔵 GPU / ソフトウェア描画と思われる場合は警告（⚠）が付きます。
+- `tools/linux/virtual-rodent-webgpu.desktop` はランチャー用テンプレートです（`/PATH/TO` を置換して `~/.local/share/applications/` へ）。
+- Firefox は別設定です。`about:config` で `dom.webgpu.enabled` を true にし、同じ PRIME 環境変数を付けて起動してください。
+
 ## ライセンス
 
 本ソフトウェアは **GNU Affero General Public License v3.0 only (AGPL-3.0-only)** の条件で公開します。

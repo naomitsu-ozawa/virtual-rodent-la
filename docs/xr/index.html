@@ -47,10 +47,10 @@ let device=null;
 if(!navigator.gpu)row('WebGPU','なし','ng');
 else{
  try{
-  const a=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
+  const a=await navigator.gpu.requestAdapter({powerPreference:'high-performance'})||await navigator.gpu.requestAdapter();
   if(!a)row('WebGPU','adapter なし','ng');
   else{
-   const info=a.info||{};row('WebGPU','あり','ok');
+   const info=a.info||(a.requestAdapterInfo?await a.requestAdapterInfo().catch(()=>null):null)||{};row('WebGPU','あり','ok');
    row('GPU',[info.vendor,info.architecture,info.device,info.description].filter(Boolean).join(' / ')||'—');
    row('maxBufferSize',(a.limits.maxBufferSize/2**20).toFixed(0)+' MB');
    row('maxStorageBufferBindingSize',(a.limits.maxStorageBufferBindingSize/2**20).toFixed(0)+' MB');

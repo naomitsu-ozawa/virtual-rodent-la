@@ -1,19 +1,38 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261008-build498';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build498';
+import { installGpuLedger } from './mem-ledger.js?v=20261008-build501';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build501';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build498';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build498';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build498';
-import { runsSliceToMask } from './run-length.js?v=20261008-build498';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build498';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build498';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build501';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build501';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build501';
+import { runsSliceToMask } from './run-length.js?v=20261008-build501';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build501';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build501';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:''};
+// adapter.info (current) or the info stashed from the older async requestAdapterInfo(); missing fields are fine
+export function gpuAdapterInfo(adapter){try{return adapter?.info||adapter?.__vrlInfo||null}catch{return null}}
+// A short hint when the chosen adapter looks software-rendered or integrated (so the user can check the GPU
+// selection; on Linux see tools/linux/launch-webgpu.sh). '' when it looks like a discrete/unknown GPU.
+export function gpuAdapterHint(info){
+ if(!info)return'';
+ const t=[info.vendor,info.architecture,info.device,info.description].filter(Boolean).join(' ').toLowerCase();
+ if(!t)return'';
+ if(/swiftshader|llvmpipe|softpipe|lavapipe|software|basic render/.test(t))return'software renderer? (not using a GPU)';
+ if(/intel|\bgen-?\d|xe-?lp|uhd|iris/.test(t)&&!/arc\b|nvidia|amd|radeon|geforce/.test(t))return'integrated GPU? (check discrete GPU setting)';
+ return'';
+}
+// requestAdapter option sets, tried in order; high-performance first, then no options, then compatibility mode
+export function gpuAdapterRequestOptions(forceCompat=false){
+ const hp={powerPreference:'high-performance'};
+ return[...(forceCompat?[]:[{...hp,featureLevel:'core'},hp,undefined]),{...hp,featureLevel:'compatibility'},{featureLevel:'compatibility'}];
+}
 export function gpuAdapterLabel(adapter){
  try{
-  const info=adapter?.info;if(!info)return'';
-  return [...new Set([info.vendor,info.architecture,info.device,info.description].filter(Boolean).map(v=>String(v).trim()).filter(Boolean))].join(' ');
+  const info=gpuAdapterInfo(adapter);if(!info)return'';
+  const base=[...new Set([info.vendor,info.architecture,info.device,info.description].filter(Boolean).map(v=>String(v).trim()).filter(Boolean))].join(' ');
+  const hint=gpuAdapterHint(info);
+  return hint?(base?base+' ':'')+'\u26a0 '+hint:base;
  }catch{return''}
 }
 export function gpuDeviceMode(device){return device?.features?.has?.('core-features-and-limits')?'CORE':'COMPAT'}
@@ -39,14 +58,12 @@ export function gpuDeviceRequestDescriptor(adapter){
 }
 export async function requestVrlGpuAdapter(){
  let adapter=null;
- if(!gpuForceCompat){
-  try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'core'})}catch{}
-  if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'})}catch{}
-  if(!adapter)try{adapter=await navigator.gpu.requestAdapter()}catch{}
+ for(const opt of gpuAdapterRequestOptions(gpuForceCompat)){
+  try{adapter=await(opt?navigator.gpu.requestAdapter(opt):navigator.gpu.requestAdapter())}catch{}
+  if(adapter)break;
  }
- // build 440: a compatibility adapter (Linux OpenGL ES backend) rather than none
- if(!adapter)try{adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance',featureLevel:'compatibility'})}catch{}
- if(!adapter)try{adapter=await navigator.gpu.requestAdapter({featureLevel:'compatibility'})}catch{}
+ // older Chromium: info only via the async requestAdapterInfo()
+ if(adapter&&!adapter.info&&typeof adapter.requestAdapterInfo==='function'){try{adapter.__vrlInfo=await adapter.requestAdapterInfo()}catch{}}
  return adapter;
 }
 export async function requestVrlGpuDevice(){
