@@ -14,6 +14,7 @@ const {
 const { setComments, addComment, removeComment, restoreComment, createComment, getComments, updateCommentPosition, updateCommentColor, setMarkersShown, loadProjectComments } = await load('comments');
 const { datasetFingerprint, packProject, unpackProject } = await load('project-file');
 const { createVrMeasure, labelScaleFor, MEASURE_LABEL_W_M, LABEL_LIT_SCALE } = await load('vr-measure');
+const { LINE_SAMPLES, LABEL_MID, OCCLUDED_ALPHA, probeKey } = await load('measure-label');
 const { createUndoStack, applyUndo, voxelToLocal, HAPTIC } = await load('vr-point');
 
 // synthetic data only: a 16 x 16 x 12 grid, anisotropic spacing 0.1 x 0.2 x 0.5 mm
@@ -219,7 +220,7 @@ describe('VR display (vr-measure.js)', () => {
     const line = scene.children.find(o => o.isLine), l1 = voxelToLocal({ i: 2, j: 3, k: 1 }, halfExt, dims), l2 = voxelToLocal({ i: 12, j: 9, k: 8 }, halfExt, dims);
     const w1 = new THREE.Vector3(l1.x, l1.y, l1.z).applyMatrix4(mesh.matrixWorld), w2 = new THREE.Vector3(l2.x, l2.y, l2.z).applyMatrix4(mesh.matrixWorld);
     const pos = line.geometry.attributes.position;
-    expect(new THREE.Vector3(pos.getX(0), pos.getY(0), pos.getZ(0)).distanceTo(w1)).toBeLessThan(1e-6); expect(new THREE.Vector3(pos.getX(1), pos.getY(1), pos.getZ(1)).distanceTo(w2)).toBeLessThan(1e-6);
+    expect(new THREE.Vector3(pos.getX(0), pos.getY(0), pos.getZ(0)).distanceTo(w1)).toBeLessThan(1e-6); const nn = pos.count - 1; expect(nn).toBe(LINE_SAMPLES); expect(new THREE.Vector3(pos.getX(nn), pos.getY(nn), pos.getZ(nn)).distanceTo(w2)).toBeLessThan(1e-6); // 9 sample vertices A -> B (build 493: a depth cue per part)
     const label = scene.children.find(o => o.isMesh && o.renderOrder === 6);
     expect(label.visible).toBe(true);
     // the label starts NEAR the line (a small offset from the midpoint, beside it), 60 % size, and a leader joins them
@@ -237,7 +238,7 @@ describe('VR display (vr-measure.js)', () => {
     const { scene, mesh, base } = setup(), v = createVrMeasure(THREE, scene);
     v.update({ ...base, preview: { id: 'p2', voxel: { i: 4, j: 3, k: 1 } } });
     const pos = scene.children.find(o => o.isLine).geometry.attributes.position, l = voxelToLocal({ i: 4, j: 3, k: 1 }, halfExt, dims);
-    expect(new THREE.Vector3(pos.getX(1), pos.getY(1), pos.getZ(1)).distanceTo(new THREE.Vector3(l.x, l.y, l.z).applyMatrix4(mesh.matrixWorld))).toBeLessThan(1e-6);
+    expect(new THREE.Vector3(pos.getX(pos.count - 1), pos.getY(pos.count - 1), pos.getZ(pos.count - 1)).distanceTo(new THREE.Vector3(l.x, l.y, l.z).applyMatrix4(mesh.matrixWorld))).toBeLessThan(1e-6);
     removeComment('p2'); v.update({ ...base }); expect(scene.children.some(o => o.isLine)).toBe(false); v.dispose();
   });
 });
@@ -354,5 +355,58 @@ describe('VR label: default near the line, grab and drag (vr-measure.js)', () =>
     v.update({ ...base, lit: new Set([m.id]) }); v.update({ ...base, lit: new Set([m.id]) }); expect(tex.version).toBe(v1); // still lit: no redraw
     v.update(base); expect(tex.version).toBeGreaterThan(v1); expect(label.scale.x).toBeCloseTo(w0, 9); // back to normal
     v.dispose();
+  });
+});
+
+describe('VR depth cue: behind the volume surface = faint (vr-measure.js, build 493)', () => {
+  const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true } });
+  beforeEach(() => vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) }));
+  afterEach(() => vi.unstubAllGlobals());
+  const make = () => {
+    pt('p1', 2, 3, 1); pt('p2', 12, 9, 8); const m = addMeasurement('p1', 'p2');
+    const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2)), holder = new THREE.Group();
+    holder.position.set(0, 1.3, -0.6); holder.scale.setScalar(0.05); holder.add(mesh); scene.add(holder); scene.updateMatrixWorld(true);
+    const base = { fingerprint: fp, dims: { columns: 16, rows: 16, slices: 12 }, halfExt: [8, 8, 6], mesh, head: new THREE.Vector3(0, 1.6, 0), spacing: [0.1, 0.2, 0.5], hint: '' };
+    const v = createVrMeasure(THREE, scene); v.update(base);
+    return { m, scene, base, v, label: scene.children.find(o => o.isMesh && o.renderOrder === 6), line: scene.children.find(o => o.isLine && o.geometry.attributes.position.count > 2), leader: scene.children.find(o => o.isLine && o.geometry.attributes.position.count === 2) };
+  };
+  // run enough time for the smooth fade to arrive
+  const settle = (v, args) => { let t = 1000; for (let i = 0; i < 30; i++) v.update({ ...args, now: (t += 50) }) };
+  it('probes: the 9 samples of every line (the label follows the midpoint) + the label only when it was dragged; they sit on the line in world space', () => {
+    const { m, v, base, line } = make(), p = v.probes();
+    expect(p.map(x => x.id)).toEqual(Array.from({ length: LINE_SAMPLES + 1 }, (_, i) => probeKey(m.id, i)));
+    const pos = line.geometry.attributes.position;
+    p.forEach((x, i) => expect(x.world.distanceTo(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)))).toBeLessThan(1e-6));
+    expect(LABEL_MID).toBe(LINE_SAMPLES / 2);
+    expect(v.dragLabel(m.id, new THREE.Vector3(0.1, 1.5, -0.55))).toBe(true); v.update(base);
+    const q = v.probes(); expect(q.length).toBe(LINE_SAMPLES + 2); expect(q[q.length - 1].id).toBe(probeKey(m.id, 'L'));
+    expect(q[q.length - 1].world.distanceTo(new THREE.Vector3(0.1, 1.5, -0.55))).toBeLessThan(1e-4);
+    removeMeasurement(m.id); v.update(base); expect(v.probes()).toEqual([]); v.dispose();
+  });
+  it('nothing hidden: everything stays fully visible; the label behind the surface (the midpoint, not dragged) fades with its leader; lit = full again', () => {
+    const { m, v, base, label, leader } = make();
+    settle(v, base); expect(label.material.opacity).toBe(1); expect(leader.geometry.attributes.color.getW(0)).toBe(1);
+    const hid = new Set([probeKey(m.id, LABEL_MID)]);
+    settle(v, { ...base, hidden: hid }); expect(label.material.opacity).toBeCloseTo(OCCLUDED_ALPHA, 6); expect(leader.geometry.attributes.color.getW(1)).toBeCloseTo(OCCLUDED_ALPHA, 6);
+    settle(v, { ...base, hidden: hid, lit: new Set([m.id]) }); expect(label.material.opacity).toBe(1); // grabbed / laser on it: operable
+    settle(v, { ...base, hidden: hid }); expect(label.material.opacity).toBeCloseTo(OCCLUDED_ALPHA, 6);
+    settle(v, { ...base, hidden: new Set() }); expect(label.material.opacity).toBe(1);
+    v.dispose();
+  });
+  it('the line fades only where it is hidden (per vertex); a dragged label follows its own probe, not the midpoint', () => {
+    const { m, v, base, line, label } = make(), col = line.geometry.attributes.color;
+    settle(v, { ...base, hidden: new Set([2, 3, 4].map(i => probeKey(m.id, i))) });
+    const f = Math.fround(OCCLUDED_ALPHA); // the attribute is a Float32Array
+    expect(Array.from({ length: LINE_SAMPLES + 1 }, (_, i) => col.getW(i))).toEqual([1, 1, f, f, f, 1, 1, 1, 1]);
+    expect(label.material.opacity).toBeCloseTo(OCCLUDED_ALPHA, 6); // the midpoint (4) is hidden and the label was not dragged
+    v.dragLabel(m.id, new THREE.Vector3(0.1, 1.5, -0.55)); settle(v, { ...base, hidden: new Set([probeKey(m.id, LABEL_MID)]) });
+    expect(label.material.opacity).toBe(1); // dragged: its own place is exposed
+    settle(v, { ...base, hidden: new Set([probeKey(m.id, 'L')]) }); expect(label.material.opacity).toBeCloseTo(OCCLUDED_ALPHA, 6);
+    // a faint label can still be picked by the laser (the pick is geometric)
+    const o = label.position.clone().add(new THREE.Vector3(0, 0, 0.5)); expect(v.pickLabel(o, new THREE.Vector3(0, 0, -1))?.id).toBe(m.id);
+    v.dispose();
+  });
+  it('the volume shader is untouched by the depth cue: no depth is written for the labels, they stay depthTest:false (the judgement is CPU)', () => {
+    const { v, label, line } = make(); expect(label.material.depthTest).toBe(false); expect(line.material.depthTest).toBe(false); expect(line.material.vertexColors).toBe(true); v.dispose();
   });
 });

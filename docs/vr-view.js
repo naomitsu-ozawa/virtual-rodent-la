@@ -28,6 +28,7 @@ import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261008-bui
 import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale } from './vr-real-scale.js?v=20261008-build495';
 import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261008-build495';
 import { createVrMeasure } from './vr-measure.js?v=20261008-build495';
+import { createProbeGate } from './measure-label.js?v=20261008-build495';
 import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261008-build495';
 import { APP_BUILD } from './version.js?v=20261008-build495';
 import { wc, ww } from './ui-shell.js?v=20261008-build495';
@@ -1239,18 +1240,28 @@ export async function startVrView({language='ja',mode='vr'}={}){
   vpSel=op.type==='add'?null:op.type==='delete'?op.c.id:op.type.startsWith('measure')?vpSel:op.id;flashMsg(L.undoDone);return true;
  };
  // hidden behind tissue: refreshed about 10 times a second (not every frame); the rule is vr-point.js pointIsHidden. The head is the middle of both eyes.
- let vpHidden=new Set(),vpHiddenAt=0;const tmpEyeL=new THREE.Vector3(),tmpEyeR=new THREE.Vector3(),tmpHp=new THREE.Vector3();
+ // build 494: the distances' probes (9 per line, up to ~890 march steps each) are re-judged only when an input of pointIsHidden changed (createProbeGate), not every 100 ms
+ const measGate=createProbeGate(0.005);let vpHidden=new Set(),vpHiddenAt=0,vpMeasHidden=new Set();const tmpEyeL=new THREE.Vector3(),tmpEyeR=new THREE.Vector3(),tmpHp=new THREE.Vector3();
  const updateHidden=now=>{
   vpHiddenAt=now;
-  const vp=volPick,pts=vpMarkers.centres();
-  if(!vp||!mesh?.parent||!material||!pts.length){if(vpHidden.size)vpHidden=new Set();return}
+  // build 493: the distance lines / labels are judged by the same rule (vpMeasure.probes(): 9 samples of every line + a dragged label) and drawn faint when hidden (vr-measure.js)
+  const vp=volPick,pts=vpMarkers.centres(),mps=vpMeasure.probes();
+  if(!vp||!mesh?.parent||!material||(!pts.length&&!mps.length)){if(vpHidden.size)vpHidden=new Set();if(vpMeasHidden.size)vpMeasHidden=new Set();measGate.reset();return}
   const mask=shownMask(),chs=[];for(let i=0;i<4;i++)if(mask>>i&1&&vp.cls.chan[i]>=0)chs.push(vp.cls.chan[i]);
   const cams=renderer.xr.getCamera().cameras;
   if(cams&&cams.length>=2){cams[0].getWorldPosition(tmpEyeL);cams[1].getWorldPosition(tmpEyeR);tmpEyeL.add(tmpEyeR).multiplyScalar(0.5)}else tmpEyeL.copy(head);
+  tmpEyeR.copy(tmpEyeL); // the eye in the world (kept for the probe gate: the head's sway is judged in metres)
   mesh.worldToLocal(tmpEyeL);
   const u=material.uniforms,opt={cls:vp.cls,dims:vp.dims,halfExt:vp.halfExt,chs,planes:u.cutPlanes.value,count:u.planeCount.value,cut:u.planeCut.value},next=new Set();
   for(const p of pts){tmpHp.copy(p.world);mesh.worldToLocal(tmpHp);if(pointIsHidden(tmpHp,tmpEyeL,opt))next.add(p.id)}
   vpHidden=next;
+  // the inputs of pointIsHidden for a probe: its place (and so the volume's matrix), the eye (tmpEyeL is local: moved by the volume too), the shown segments' classification, the section planes
+  const pl=u.cutPlanes.value,np=u.planeCount.value;let key=mesh.matrixWorld.elements.join(',')+'|'+mask+'|'+np+'|'+u.planeCut.value+'|'+vp.dims.join(',')+'|'+SEGMENT_PRESET_ORDER.map(k=>{const g=segmentState[k]||{};return g.min+','+g.max+','+(segmentEditState[k]?.revision|0)}).join(';'); // thresholds / edits of the segments (the classification is rebuilt for them: vp.cls changes too)
+  for(let i=0;i<np&&i<pl.length;i++)key+='|'+pl[i].x+','+pl[i].y+','+pl[i].z+','+pl[i].w;
+  for(const p of mps)key+='|'+p.id+'@'+p.world.x.toFixed(4)+','+p.world.y.toFixed(4)+','+p.world.z.toFixed(4);
+  if(!measGate.shouldRun(key,[vp.cls,mesh],tmpEyeR))return; // nothing changed: the previous judgement stands
+  const nextM=new Set();for(const p of mps){tmpHp.copy(p.world);mesh.worldToLocal(tmpHp);if(pointIsHidden(tmpHp,tmpEyeL,opt))nextM.add(p.id)}
+  vpMeasHidden=nextM;
  };
  const unsubComments=onCommentsChange(()=>{const ids=new Set(getComments().map(c=>c.id));if(vpSel&&!ids.has(vpSel))vpSel=null;for(const c of controllers)if(c.userData.moving&&!ids.has(c.userData.moving.id))c.userData.moving=null;if(pw&&!ids.has(pw.id))closePointWheel();if(ui.tab===6)menu.refresh()});
  const volumeHit=c=>{if(c)setRay(c);return volumeHitRay()};
@@ -1939,7 +1950,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    // the active section = the selected one while sections are on, as the shader's plane (object space, unit normal, same index as planes)
    let secPl=null;if(section.on&&section.selected&&material&&!bench.noSection){const i=planes.indexOf(section.selected);if(i>=0&&i<material.uniforms.planeCount.value){const q=material.uniforms.cutPlanes.value[i];secPl={x:q.x,y:q.y,z:q.z,w:q.w}}}
    vpMarkers.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,hidden:vpHidden,section:secPl,selectedId:vpSel,hover:hoverIds,preview:previewArg});
-   vpMeasure.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,spacing:vrSpacing,warn:!!spacingNote(),startId:getMeasureStart(),hint:L.ptDistHint,now:nowH,preview:previewArg,lit:lblLit})}
+   vpMeasure.update({fingerprint:vrFp,dims:vrDims,halfExt:vrHalfExt,mesh:mesh?.parent?mesh:null,head,spacing:vrSpacing,warn:!!spacingNote(),startId:getMeasureStart(),hint:L.ptDistHint,now:nowH,preview:previewArg,lit:lblLit,hidden:vpMeasHidden})}
   // auto: frame interval from the XR loop, checked twice a second
   const auto=!VRES[settings.vres];
   if(auto){
