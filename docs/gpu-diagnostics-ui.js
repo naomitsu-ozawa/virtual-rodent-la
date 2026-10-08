@@ -1,10 +1,10 @@
 // GPU info tab of the settings dialog (build 503): GPU preference (Linux / Windows only), a diagnostics report that can
 // be copied without any terminal, and short GUI-only hints. Opened from the settings dialog or by clicking the GPU status bar.
-import { settings } from './app-settings.js?v=20261008-build503';
-import { gpuFilterRuntime, gpuLastAdapterRequest, requestVrlGpuAdapter, vrlGpuPreference, gpuAdapterInfo } from './gpu-compute.js?v=20261008-build503';
-import { gpuPlatformOs, gpuPreferenceSupported, gpuAdapterKind, gpuPreferenceNote, buildGpuReport, getGpuErrorLog } from './gpu-diagnostics.js?v=20261008-build503';
-import { tr } from './i18n.js?v=20261008-build503';
-import { APP_BUILD } from './version.js?v=20261008-build503';
+import { settings } from './app-settings.js?v=20261008-build504';
+import { gpuFilterRuntime, gpuLastAdapterRequest, requestVrlGpuAdapter, vrlGpuPreference, gpuAdapterInfo } from './gpu-compute.js?v=20261008-build504';
+import { gpuPlatformOs, gpuPreferenceSupported, gpuAdapterKind, gpuPreferenceNote, buildGpuReport, getGpuErrorLog } from './gpu-diagnostics.js?v=20261008-build504';
+import { tr } from './i18n.js?v=20261008-build504';
+import { APP_BUILD } from './version.js?v=20261008-build504';
 
 const LIMIT_KEYS = ['maxTextureDimension2D', 'maxTextureDimension3D', 'maxBufferSize', 'maxStorageBufferBindingSize', 'maxComputeWorkgroupStorageSize', 'maxComputeInvocationsPerWorkgroup', 'maxComputeWorkgroupSizeX', 'maxStorageBuffersPerShaderStage'];
 const CHROME_TEXT = 'chrome://gpu';

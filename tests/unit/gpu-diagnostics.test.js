@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { gpuPlatformOs, gpuPreferenceSupported, gpuEffectivePreference, gpuAdapterRequestOptions, logGpuError, getGpuErrorLog, clearGpuErrorLog, buildGpuReport, gpuPreferenceNote } from '../../docs/gpu-diagnostics.js';
+import { gpuPlatformOs, gpuPreferenceSupported, gpuEffectivePreference, gpuAdapterRequestOptions, logGpuError, getGpuErrorLog, clearGpuErrorLog, buildGpuReport, buildGpuSummary, gpuPreferenceNote } from '../../docs/gpu-diagnostics.js';
 
 const LINUX = { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130', userAgentData: { platform: 'Linux' }, maxTouchPoints: 0 };
 const WIN = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130', platform: 'Win32', maxTouchPoints: 0 };
@@ -87,6 +87,25 @@ describe('buildGpuReport', () => {
   it('contains the main facts as plain text', () => {
     const r = buildGpuReport(data, t);
     for (const s of ['UA', 'Linux (linux)', 'intel', 'gen-12lp', 'UHD', 'maxBufferSize=123', 'a, b', 'high-performance', '#2', 'oops', 'note', '[T] requestDevice: boom', 'Error: boom']) expect(r).toContain(s);
+  });
+  it('puts a compact summary on the first line', () => {
+    const first = buildGpuReport(data, t).split('\n')[0];
+    expect(first).toBe(buildGpuSummary(data));
+    expect(first).toBe('GPU要約 b503 | WebGPU:有 | 要求:high-performance | 取得:intel UHD fallback:no | 直近エラー:oops');
+    expect(first).not.toContain('UA');
+    expect(first.length).toBeLessThan(180);
+  });
+  it('caps summary length with long values', () => {
+    const long = 'x'.repeat(500);
+    const s = buildGpuSummary({ ...data, build: long, lastError: long, requested: { effective: long }, adapter: { info: { vendor: long, device: long }, isFallback: true } });
+    expect(s.length).toBeLessThan(180);
+    expect(s).toContain('fallback:yes');
+  });
+  it('summary covers no-adapter / no-gpu', () => {
+    const s = buildGpuSummary({ navigatorGpu: false, requested: {}, adapter: null, errors: [] });
+    expect(s).toContain('WebGPU:無');
+    expect(s).toContain('取得:なし');
+    expect(s).toContain('直近エラー:なし');
   });
   it('works with no adapter and no gpu', () => {
     const r = buildGpuReport({ navigatorGpu: false, requested: {}, adapter: null, errors: [] }, t);
