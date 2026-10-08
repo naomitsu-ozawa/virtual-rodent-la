@@ -228,6 +228,13 @@ describe('vr-view.js wiring (static)', () => {
   });
   it('the 断面 tab 削除 button goes through the same undoable delete', () => { expect(src).toContain('L.remove,false,()=>deleteSection(pl)'); });
   it('the bench keeps its immediate removePlane', () => { expect(src).toContain('removePlane(bench.tempPlane)'); });
+  it('the snapshot of a deleted plane holds the resting position (snapPlaneCenterIntoBox, as a normal release), not the thrown one', () => {
+    const t = src.slice(src.indexOf('const deleteSection='), src.indexOf('const restoreSection='));
+    expect(t).toContain('snapPlaneCenterIntoBox(pl.obj.position');
+    expect(t).toContain('position:rest');
+    expect(t.indexOf('snapPlaneCenterIntoBox')).toBeLessThan(t.indexOf('startFly(pl,vel)'));
+    expect(t).not.toContain('pl.obj.position.set'); // the flying frame is not moved back
+  });
   it('restore puts the plane in holder space at its number and refreshes the numbering; the selected plane drives the menu page', () => {
     const t = src.slice(src.indexOf('const restoreSection='), src.indexOf('const restoreSection=') + 1500);
     for (const w of ['restorePlan(e.snap', 'holder.add(pl.obj)', 'planes.splice(plan.index,0,pl)', 'refreshHandles()', 'pl.side=sn.side', 'pl.hand=sn.hand', 'sn.position.x', 'sn.quaternion.w']) expect(t, w).toContain(w);

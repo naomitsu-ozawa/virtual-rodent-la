@@ -1389,13 +1389,15 @@ export async function startVrView({language='ja',mode='vr'}={}){
   flying.push({pl,v:capVelocity(v),age:0});
  };
  const showUndoBoard=(c,n)=>{
-  if(c){c.getWorldPosition(tmpFv)}else{readHead();tmpFv.copy(head).addScaledVector(headFwd,0.5);tmpFv.y-=0.12}
+  if(c){c.getWorldPosition(tmpFv)}else{readHead();tmpFv.copy(head).addScaledVector(headFwd,0.45);tmpFv.y-=0.12} // no hand (the 断面 tab's button): in front of the face, nearer than the menu (0.78 m) and the volume (0.65 m)
   readHead();const pos=undoButtonPlace(tmpFv,head);undoAt={x:pos.x,y:pos.y,z:pos.z};
   undoBtn.show(pos,head,tr('vrSecUndo'),tr('vrSecDeletedShort').replace('{n}',n));
  };
  const deleteSection=(pl,{c=null,vel=null}={})=>{
   const i=planes.indexOf(pl);if(i<0)return false;
-  const wasSel=section.selected===pl,snap=makeSectionSnapshot({index:i,color:pl.color,cut:pl.cut,side:pl.side,hand:pl.hand,position:pl.obj.position,quaternion:pl.obj.quaternion,wasSelected:wasSel});
+  // the saved position is where a normal release would have left it (snapSection: the centre brought back into the volume box); the flying frame itself keeps its current place
+  const wasSel=section.selected===pl,rest=vrHalfExt?snapPlaneCenterIntoBox(pl.obj.position,qRot({x:pl.obj.quaternion.x,y:pl.obj.quaternion.y,z:pl.obj.quaternion.z,w:pl.obj.quaternion.w},{x:1,y:0,z:0}),vrHalfExt):pl.obj.position;
+  const snap=makeSectionSnapshot({index:i,color:pl.color,cut:pl.cut,side:pl.side,hand:pl.hand,position:rest,quaternion:pl.obj.quaternion,wasSelected:wasSel});
   detachPlane(pl);
   if(wasSel)section.selected=planes[Math.min(i,planes.length-1)]||null; // the neighbour takes over the selection (detachPlane took the last one)
   if(vel)startFly(pl,vel);else disposePlane(pl);
