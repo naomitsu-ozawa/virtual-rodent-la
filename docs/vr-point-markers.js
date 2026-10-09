@@ -13,10 +13,10 @@
 // build 502 (GPU occlusion, update({occlusion:true}), vr-depth.js): the sphere, its rim, the chip (number) and the perpendicular are drawn with a real depth test (clipped at the tissue outline) plus a faint
 // ghost child (depthFunc GreaterDepth, GHOST_ALPHA), and the CPU "hidden" look (small dot) is not used. A hovered / selected / moved point (and its chip) stays fully on top, so it can be operated.
 // With occlusion off (「薄くする」, or no usable GPU depth) nothing changes: no depth test, the CPU hidden look.
-import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261009-build533';
-import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261009-build533';
-import { pointColor, colorToInt, darkFill, inkOn } from './point-colors.js?v=20261009-build533';
-import { GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261009-build533';
+import { getComments, getMarkersShown, commentMatchesSeries, commentTarget } from './comments.js?v=20261009-build534';
+import { voxelToLocal, sectionRelation, pickPoint } from './vr-point.js?v=20261009-build534';
+import { pointColor, colorToInt, darkFill, inkOn } from './point-colors.js?v=20261009-build534';
+import { GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261009-build534';
 
 export const VR_MARKER_COLOR=0x4dd8ff,VR_MARKER_FILL=0x0b6f8c,VR_RIM_COLOR=0xffffff,VR_HALO_HOVER=0xffffff,VR_HALO_SELECTED=0xffd23d;
 export const PICK_MIN_M=0.004,MARKER_SCALE=0.4; // MARKER_SCALE: the drawn radius as a factor of the base radius, the same in every state (build 471)
