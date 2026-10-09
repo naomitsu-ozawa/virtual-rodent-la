@@ -162,7 +162,7 @@ function analysisProbes(regs,dims){
 function drawAnalysisLabels(obj,camera,W,H,regs,keep,dims){
  if(!regs.length)return;
  ensureSvg();svg.setAttribute('width',W);svg.setAttribute('height',H);
- const step=pcVoxelStep(dims,volume.spacing),warn=spacingLevel(activeSeries)==='warn',shown=analysisRegions.filter(shownRegion);
+ const step=pcVoxelStep(dims,volume.spacing),warn=spacingLevel(activeSeries)==='warn'; // the chip's number is the result's number in the panel (analysisRegionName: the region id)
  for(const r of regs){
   keep.add(r.id);let e=alEls.get(r.id);
   if(!e){
@@ -173,11 +173,11 @@ function drawAnalysisLabels(obj,camera,W,H,regs,keep,dims){
    if(labelFocus.get()==='A:'+r.id){label.classList.add('is-lit');leader.classList.add('is-lit')}
    e={label,leader,dot,sw,t1,t2,sig:'',w:90,h:16,sx:0,sy:0,ctx:null,lh:false};alEls.set(r.id,e);
   }
-  const sig=r.id+'|'+shown.indexOf(r)+'|'+(r.segmentKeys||[]).join()+'|'+r.mm3+'|'+r.color+'|'+(warn?1:0)+'|'+tr('analysisRegion');
+  const sig=r.id+'|'+(r.segmentKeys||[]).join()+'|'+r.mm3+'|'+r.color+'|'+(warn?1:0)+'|'+tr('analysisRegion');
   if(e.sig!==sig){
    e.sig=sig;const col=regionCss(r.color);
    e.sw.style.background=col;e.label.style.borderColor=col;e.leader.style.stroke=col;e.dot.style.fill=col;
-   e.t1.textContent=(shown.indexOf(r)+1)+'. '+(r.segmentKeys||[]).map(k=>tr(k)||k).join('+');e.t2.textContent=(warn?'⚠ ':'')+(+r.mm3).toFixed(2)+' mm³';
+   e.t1.textContent=r.id+'. '+(r.segmentKeys||[]).map(k=>tr(k)||k).join('+');e.t2.textContent=(warn?'⚠ ':'')+(+r.mm3).toFixed(2)+' mm³';
    if(warn)e.label.title=tr('measureWarn');
    e.label.hidden=false;e.w=e.label.offsetWidth||90;e.h=e.label.offsetHeight||16;
   }

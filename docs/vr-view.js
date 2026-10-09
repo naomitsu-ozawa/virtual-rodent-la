@@ -1412,7 +1412,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
   tmpPl.set(P.x,P.y,P.z);mesh.worldToLocal(tmpPl);
   return setRegionLabelOffset(reg,offsetForLocal(lb.anchor,tmpPl,vrVoxelStep(vrHalfExt,vrDims)));
  };
- const resetPin=c=>{const reg=regionByRid(c.userData.lblDrag?.id);if(!reg?.label?.offset)return false;setRegionLabelOffset(reg,null);pulseTwice(c);flashMsg(L.lbReset,2200);return true};
+ const resetPin=c=>{const ld=c.userData.lblDrag,reg=regionByRid(ld?.id);if(!reg?.label?.offset)return false;ld.done=true; // the press is spent: a drift of the hand after the reset does not drag the card again
+  setRegionLabelOffset(reg,null);pulseTwice(c);flashMsg(L.lbReset,2200);return true};
  // new plane: through the volume centre (first) or in front of the hand
  // (added ones), facing the viewer, fixed in the volume
  // build 401 (owner: planes are added to cut): every new plane clips; the bench keeps its old rule (only a first plane clips)
@@ -2059,7 +2060,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    // (it stands still then, so the record has no jump when the drag starts). The controller is recorded beside it only for the debug readout.
    {const dg=c.userData.drag,pr=c.userData.press,fv=c.userData.fv||=createVelocityTracker(),fh=c.userData.fvHand||=createVelocityTracker(),fp=dg?dg.pl:pr?pr.dragPl:null;
     if(twoHand||grabbing.size){fv.reset();fh.reset();if(dg)dg.volTouched=true}else if(fp){fp.obj.getWorldPosition(tmpFv);fv.push(js0,tmpFv);c.getWorldPosition(tmpFv);fh.push(js0,tmpFv)}}
-   {const ld=c.userData.lblDrag;if(ld&&c.userData.press){setRay(c);const o=raycaster.ray.origin,q=raycaster.ray.direction;tmpRc.set(o.x+q.x*ld.dist+ld.grab.x,o.y+q.y*ld.dist+ld.grab.y,o.z+q.z*ld.dist+ld.grab.z);if(ld.pin){if(!ld.moved&&tmpRc.distanceTo(ld.pos0)>0.008)ld.moved=true;if(ld.moved)dragPin(ld.id,tmpRc)}else vpMeasure.dragLabel(ld.id,tmpRc)}} // build 480: the grabbed label follows the laser
+   {const ld=c.userData.lblDrag;if(ld&&c.userData.press){setRay(c);const o=raycaster.ray.origin,q=raycaster.ray.direction;tmpRc.set(o.x+q.x*ld.dist+ld.grab.x,o.y+q.y*ld.dist+ld.grab.y,o.z+q.z*ld.dist+ld.grab.z);if(ld.pin){if(!ld.moved&&!ld.done&&tmpRc.distanceTo(ld.pos0)>0.008)ld.moved=true;if(ld.moved&&!ld.done)dragPin(ld.id,tmpRc)}else vpMeasure.dragLabel(ld.id,tmpRc)}} // build 480: the grabbed label follows the laser
    const ref=res.ref,dist=board?board.distance:rh?rh.distance:(ref&&(res.kind==='point'||res.kind==='mlabel'||res.kind==='section'||res.kind==='record'||res.kind==='label'||res.kind==='move'||res.kind==='tissue')?(ref.t??ref.distance):null);
    const busy=!!c.userData.drag,rec=res.kind==='record'||res.kind==='move',cur=!busy&&rec&&!!ref?.voxel,curSurf=cur&&surfaceActive(),curSec=cur&&!surfaceActive();
    const hc=handColor(c),dot=c.userData.dot;ray.material.color.setHex(hc);dot.material.color.setHex(hc);dot.visible=dist!=null&&!cur&&!busy;

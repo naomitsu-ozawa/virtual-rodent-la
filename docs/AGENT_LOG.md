@@ -40,7 +40,7 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ## 2026-10-08 — claude/analysis-label-move (build 523: movable analysis labels, VR and PC 3D)
 
-**Agent:** Claude (Opus 5.5 worker)
+**Agent:** Claude (Sonnet 5.5 worker)
 **Task:** The label of an analysis result (VR: the card pinned with the trigger in the 解析 tab) can be moved by the user in VR / AR and on the PC / Mac / iPad 3D view; it stays joined to its point by a leader line; the place is saved in the project.
 
 ### What changed
