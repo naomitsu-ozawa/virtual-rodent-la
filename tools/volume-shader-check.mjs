@@ -15,6 +15,11 @@ const counting=code=>('var<private> nFetch:u32=0u;var<private> nBrick:u32=0u;var
  .replace('fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}','fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}').replace('fn brickClass(p:vec3<f32>)->i32{','fn brickClass(p:vec3<f32>)->i32{nBrick=nBrick+1u;').replace(/fn brickMayContain\(p:vec3<f32>\)->bool\{\n/,'fn brickMayContain(p:vec3<f32>)->bool{nBrick=nBrick+1u;\n')
  .replace('fn editAllows(seg:u32,tc0:vec3<f32>)->bool{','fn editAllows(seg:u32,tc0:vec3<f32>)->bool{nEdit=nEdit+1u;')
  .replace(/return vec4<f32>\(acc\.rgb\+bg\*\(1\.0-acc\.a\),1\.0\);\n}`?$/,'return vec4<f32>(f32(nFetch),f32(nBrick),f32(nEdit),1.0);\n}');
+// uniform size is derived from the volume shader's own Uniforms struct (every member is a vec4, segments is array<vec4,8>), so it follows the app's layout
+const uniformBytes=(()=>{const m=/struct Uniforms\{([\s\S]*?)\};/.exec(shaderOf(fileA));if(!m){console.error('FAIL: Uniforms struct not found in '+fileA);process.exit(1)}
+ const members=m[1].replace(/\s+/g,'').replace(/,$/,''),re=/(\w+):(?:array<vec4<f32>,(\d+)>|vec4<f32>)(?:,|$)/y;let n=0,at=0;
+ while(at<members.length){re.lastIndex=at;const x=re.exec(members);if(!x){console.error('FAIL: unexpected Uniforms member near: '+members.slice(at,at+40));process.exit(1)}n+=x[2]?+x[2]:1;at=re.lastIndex}
+ return n*16})();
 const shaders={A:shaderOf(fileA),B:fileB?shaderOf(fileB):null};
 // IDCAP=1 (build 416): a third pass per file returns, for every pixel whose ray reaches the section cap, the voxel at
 // the cap point (linear index + 1), the segment the cap shows (capSegmentIndex) and whether it takes a result colour;
@@ -30,9 +35,10 @@ const CAPLINE='let cp=u.camOrigin.xyz+dir*capT;let ctc=texCoord(cp);let capIndex
 const idCap=code=>{if(!code.includes(CAPLINE))throw new Error('IDCAP: cap line not found');return code.replace(CAPLINE,CAPLINE+'{let td=vec3<u32>(u.textureDims.xyz);let pv=min(vec3<u32>(clamp(ctc,vec3<f32>(0.0),vec3<f32>(0.999999))*u.textureDims.xyz),td-vec3<u32>(1u));var rg=0u;if(analysisOverlay[0]!=0u&&capIndex>=0){rg=analysisOverlayAt(ctc);}return vec4<f32>(f32((pv.z*td.y+pv.y)*td.x+pv.x)+1.0,f32(capIndex),select(0.0,1.0,rg!=0u),1.0);}')};
 const srv=http.createServer((q,r)=>{r.writeHead(200,{'content-type':'text/html'});r.end('<!doctype html><html><body></body></html>')}).listen(8778);
 const b=await chromium.launch({executablePath:process.env.PW_CHROMIUM,args:['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--use-webgpu-adapter=swiftshader']});
-const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type()+':',m.text().slice(0,400))});
+let gpuErrors=0;
+const pg=await b.newPage();pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning'){if(/invalid|validation/i.test(m.text()))gpuErrors++;console.log('console.'+m.type()+':',m.text().slice(0,400))}});
 await pg.goto('http://localhost:8778/');
-const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analysis,regionTexOn,regionR,edit,specksOn,section,sectionZ,sectionSign})=>{
+const result=await pg.evaluate(async ({uniformBytes,shaders,counting,refine,overlap,mpr,analysis,regionTexOn,regionR,edit,specksOn,section,sectionZ,sectionSign})=>{
  const adapter=await navigator.gpu.requestAdapter(),device=await adapter.requestDevice();
  // phantom: 128³, unsigned u16 = HU + 1024 (slope 1, intercept -1024, bias 0):
  // soft-tissue ellipsoid (40 HU) holding a bone sphere (900 HU), a 2-voxel
@@ -83,7 +89,7 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
   staging.unmap();
   regionTex=device.createTexture({size:{width:tw,height:N,depthOrArrayLayers:N},dimension:'3d',format:'r32uint',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
   const enc=device.createCommandEncoder();enc.copyBufferToTexture({buffer:staging,bytesPerRow,rowsPerImage:N},{texture:regionTex},{width:tw,height:N,depthOrArrayLayers:N});device.queue.submit([enc.finish()]);}
- const W=384,H=384,uni=new Float32Array(22*4),put=(s,a,c,d,e)=>{uni[s*4]=a;uni[s*4+1]=c;uni[s*4+2]=d;uni[s*4+3]=e};
+ const W=384,H=384,uni=new Float32Array(uniformBytes/4),put=(s,a,c,d,e)=>{uni[s*4]=a;uni[s*4+1]=c;uni[s*4+2]=d;uni[s*4+3]=e};
  // camera: app units, longest side 3.3; half extents 1.65; looking from a corner
  const half=[1.65,1.65,1.65],scale=3.3/N,step=Math.max(1e-5,scale*0.85);
  const o=[3.2,2.1,4.0],len=Math.hypot(...o),fwd=o.map(v=>-v/len),upW=[0,1,0];
@@ -93,13 +99,15 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
  put(4,half[0],half[1],half[2],step);put(5,N,N,N,1);put(6,-1024,0,bx,bx);put(7,W,H,bx,BS);
  // segments: bone opaque, soft tissue 35 % (rays continue through it)
  put(8,300,3000,1,1);put(9,0.91,0.86,0.72,1);put(10,-200,299,0.35,1);put(11,0.85,0.55,0.42,1);put(12,0,0,0,0);put(13,0,0,0,0);put(14,0,0,0,0);put(15,0,0,0,0);
- put(16,64,64,64,mpr?0.6:0);put(17,mpr,0,0,refine);put(18,40,400,0,0);put(19,section?1:0,sectionZ,sectionSign,analysis&&regionTexOn?1:0);put(20,section?1:0,0.85,0,28);put(21,N,N,N,1);
+ put(16,64,64,64,mpr?0.6:0);put(17,mpr,0,0,refine);put(18,40,400,0,0);put(19,section?1:0,sectionZ,sectionSign,analysis&&regionTexOn?1:0);put(20,section?1:0,0.85,0,28);put(21,N,N,N,1);put(22,0.05,0.06,0.08,1);
  // SECTION=1 (build 410): axial section at z = SECTION_Z (app units), SECTION_SIGN picks the kept side, cap at 85 %
  const uniBuf=device.createBuffer({size:uni.byteLength,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(uniBuf,0,uni);
  const sampler=device.createSampler({magFilter:'linear',minFilter:'linear'});
  const targets={rgba8unorm:device.createTexture({size:{width:W,height:H},format:'rgba8unorm',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_SRC}),rgba32float:device.createTexture({size:{width:W,height:H},format:'rgba32float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_SRC})};
  const readBufs={rgba8unorm:device.createBuffer({size:W*H*4,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ}),rgba32float:device.createBuffer({size:W*H*16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ})};
- const run=async(code,label,format='rgba8unorm')=>{
+ const validation=[];
+ const run=async(code,label,format='rgba8unorm')=>{device.pushErrorScope('validation');try{return await run0(code,label,format)}finally{const e=await device.popErrorScope();if(e)validation.push(label+': '+e.message.slice(0,300))}};
+ const run0=async(code,label,format)=>{
   const target=targets[format],readBuf=readBufs[format],bpp=format==='rgba8unorm'?4:16;
   const module=device.createShaderModule({code});const info=await module.getCompilationInfo();
   const errs=info.messages.filter(m=>m.type==='error').map(m=>m.lineNum+':'+m.message);if(errs.length)return{label,errs};
@@ -127,10 +135,10 @@ const result=await pg.evaluate(async ({shaders,counting,refine,overlap,mpr,analy
    if(px[i+2]>0.5)colored=(colored||0)+1;if(analysis&&ss===0){const tr=Math.hypot(x-64,y-64,z-64)<regionR,sr=px[i+2]>0.5;if(tr!==sr){regBad++;if(sr)regExtra++;else regMissing++}}}
   out[k]={colored,cap,segBad,segExtra,segMissing,regBad,regExtra,regMissing}}
  for(const k of ['Ac','Bc']){const r=out[k];if(!r||r.errs)continue;let f=0,br=0,e=0;for(let i=0;i<r.px.length;i+=4){f+=r.px[i];br+=r.px[i+1];e+=r.px[i+2]}r.sums={fetch:f,brick:br,edit:e};r.px=null}
- return{W,H,out};
-},{shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null,Aid:process.env.IDCAP?idCap(shaders.A):process.env.IDHIT?idHit(shaders.A):null,Bid:shaders.B?(process.env.IDCAP?idCap(shaders.B):process.env.IDHIT?idHit(shaders.B):null):null},refine,overlap,mpr,analysis,section:!!process.env.SECTION,sectionZ:+(process.env.SECTION_Z??0.3),sectionSign:+(process.env.SECTION_SIGN??-1),regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22),edit:+(process.env.EDIT??0),specksOn:+(process.env.SPECKS??0)});
+ return{W,H,out,validation};
+},{uniformBytes,shaders:{A:shaders.A,B:shaders.B,Ac:counting(shaders.A),Bc:shaders.B?counting(shaders.B):null,Aid:process.env.IDCAP?idCap(shaders.A):process.env.IDHIT?idHit(shaders.A):null,Bid:shaders.B?(process.env.IDCAP?idCap(shaders.B):process.env.IDHIT?idHit(shaders.B):null):null},refine,overlap,mpr,analysis,section:!!process.env.SECTION,sectionZ:+(process.env.SECTION_Z??0.3),sectionSign:+(process.env.SECTION_SIGN??-1),regionTexOn:+(process.env.REGIONTEX??1),regionR:+(process.env.REGIONR??22),edit:+(process.env.EDIT??0),specksOn:+(process.env.SPECKS??0)});
 await b.close();srv.close();
-const {W,H,out}=result;
+const {W,H,out,validation}=result;
 for(const k of Object.keys(out)){const r=out[k];if(r.errs){console.log(k,'COMPILE ERRORS',r.errs);process.exit(1)}
  if(k.endsWith('id')){console.log(k+(process.env.IDHIT?' (surface hits vs voxel truth): hit pixels ':' (cap vs voxel truth): cap pixels ')+r.cap+' · segment wrong '+r.segBad+' (shown where the voxel is not in it '+r.segExtra+', missing '+r.segMissing+') · result wrong '+r.regBad+' (coloured but not in the result '+r.regExtra+', missing '+r.regMissing+') · coloured '+r.colored);continue}
  if(r.sums)console.log(k+': per pixel — HU fetches '+(r.sums.fetch/(W*H)).toFixed(1)+', brick reads '+(r.sums.brick/(W*H)).toFixed(1)+', edit lookups '+(r.sums.edit/(W*H)).toFixed(1)+' (totals '+r.sums.fetch+' / '+r.sums.brick+' / '+r.sums.edit+')');
@@ -148,3 +156,9 @@ if(out.B){fs.writeFileSync(path.join(outDir,'volume-B.png'),png(out.B.px,W,H));
  console.log('A vs B: differing channels '+n+' of '+(a.length*3/4)+', max |diff| '+maxd+', mean |diff| over differing '+(n?(sum/n).toFixed(2):0));
  const diff=a.map((v,i)=>i%4===3?255:Math.min(255,Math.abs(v-bb[i])*8));fs.writeFileSync(path.join(outDir,'volume-diff.png'),png(diff,W,H));}
 console.log('images in',outDir);
+// guard: an invalid BindGroup / pipeline makes every pass ~1 ms with 0 fetches, so an A/B would read "no difference"
+const problems=[];
+if(validation.length)problems.push('WebGPU validation error: '+validation.join(' | '));
+if(gpuErrors)problems.push(gpuErrors+' invalid/validation message(s) on the console');
+for(const k of ['Ac','Bc']){const r=out[k];if(r&&r.sums&&!(r.sums.fetch>0))problems.push(k+': 0 HU fetches (shader did not run)')}
+if(problems.length){console.error('FAIL: '+problems.join('; '));process.exit(1)}
