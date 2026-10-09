@@ -33,10 +33,26 @@ const CASES = [
   { name: 'full-hu', defines: [], noCls: true, u: { segA: translucent } },
   { name: 'noevents-regions', defines: [...OPQ, 'VRL_NO_EVENTS', 'VRL_REGIONS'], u: { segA: noSoft } },
 ];
+// build 528: four enabled segments (chan 0..3) on their own phantom (a -600 HU ball in the soft tissue as the fourth segment): the VRL_CLS4 variants the app uses
+// then (the fourth segment's bytes in a second R8 texture) and, for reference, the general loop with the separate field those data used to run on
+const allOpaque4 = [[300, 3000, 1, 1], [-200, 299, 1, 1], [-250, -50, 1, 1], [-800, -300, 1, 1]], noSoft4 = [[300, 3000, 1, 1], [-200, 299, 1, 0], [-250, -50, 1, 1], [-800, -300, 1, 1]];
+const CASES4 = [
+  { name: '4seg-noevents', defines: [...OPQ, 'VRL_NO_EVENTS', 'VRL_CLS4'], u: { segA: allOpaque4 } },
+  { name: '4seg-noevents-nosoft', defines: [...OPQ, 'VRL_NO_EVENTS', 'VRL_CLS4'], u: { segA: noSoft4 } },
+  { name: '4seg-combined-section', defines: [...OPQ, 'VRL_CLS4'], u: { segA: allOpaque4, cutPlanes: cut, planeCount: 1, planeCut: 1, capOn: 1, sliceOpacity: 0.7 } },
+  { name: '4seg-full-general', defines: [], useClsRaw: true, useDistTex: true, u: { segA: allOpaque4 } },
+];
 const jobs = CASES.flatMap(c => [{ ...c, name: c.name + '-f100', f: 1 }, { ...c, name: c.name + '-f' + Math.round(F_LOW * 100), f: F_LOW }]);
+const jobs4 = CASES4.flatMap(c => [{ ...c, name: c.name + '-f100', f: 1 }, { ...c, name: c.name + '-f' + Math.round(F_LOW * 100), f: F_LOW }]);
 
-const sh = grabShaders(shaderFile), scene = await buildScene(N);
-const render = () => withPage(async (pg, info) => { const r = await runBatch(pg, { sh, N, W, H, halfExt: HALF_EXT, scene: sceneArgs(scene), cases: jobs, mode: 'color', filter: 'linear' }); return { ...r, info }; });
+const jobs3 = jobs.slice(); // the three-segment jobs alone go to the first scene (jobs gets the four-segment ones appended for the comparison loop)
+const sh = grabShaders(shaderFile), scene = await buildScene(N), scene4 = await buildScene(N, { four: true });
+const render = () => withPage(async (pg, info) => {
+  const r = await runBatch(pg, { sh, N, W, H, halfExt: HALF_EXT, scene: sceneArgs(scene), cases: jobs3, mode: 'color', filter: 'linear' });
+  const r4 = await runBatch(pg, { sh, N, W, H, halfExt: HALF_EXT, scene: sceneArgs(scene4), cases: jobs4, mode: 'color', filter: 'linear' });
+  return { ...r, out: { ...r.out, ...r4.out }, glError: r.glError || r4.glError, info };
+});
+jobs.push(...jobs4);
 const results = []; for (let i = 0; i < runs; i++) results.push(await render());
 const first = results[0];
 console.log('Chromium ' + first.info.version + ' · shader ' + path.relative(ROOT, shaderFile) + ' · ' + jobs.length + ' images ' + W + 'x' + H + ' · threshold: pixels <= ' + maxPixels + ', max channel diff <= ' + maxDiff);

@@ -8,37 +8,37 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261009-build525';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261009-build525';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261009-build525';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261009-build525';
-import { datasetFingerprint } from './project-file.js?v=20261009-build525';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261009-build525';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261009-build525';
-import { buildClsData } from './point-cls.js?v=20261009-build525';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261009-build525';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261009-build525';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261009-build525';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261009-build525';
-import { buildDistanceBytes, combineClassificationDistance } from './distance-field.js?v=20261009-build525';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261009-build525';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261009-build525';
-import { tr } from './i18n.js?v=20261009-build525';
-import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261009-build525';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261009-build525';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261009-build525';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261009-build525';
-import { createVrMeasure, LABEL_LIT_SCALE } from './vr-measure.js?v=20261009-build525';
-import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE, FLING_UNDO_MS, FLING_DEBUG_MS, createVelocityTracker, flingDecision, flingDebugLines, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace } from './vr-section-frame.js?v=20261009-build525';
-import { createUndoButton } from './vr-undo-button.js?v=20261009-build525';
-import { createFlingDebugTag } from './vr-fling-debug.js?v=20261009-build525';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261009-build525';
-import { createProbeGate } from './measure-label.js?v=20261009-build525';
-import { setRegionLabel, setRegionLabelOffset, voxelFromLocalVr, clampVoxel, labelLocal, offsetForLocal, vrVoxelStep, rectEdgePoint, leaderVisible } from './analysis-label.js?v=20261009-build525';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261009-build525';
-import { APP_BUILD } from './version.js?v=20261009-build525';
-import { wc, ww } from './ui-shell.js?v=20261009-build525';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261009-build525';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261009-build528';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261009-build528';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261009-build528';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261009-build528';
+import { datasetFingerprint } from './project-file.js?v=20261009-build528';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261009-build528';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261009-build528';
+import { buildClsData } from './point-cls.js?v=20261009-build528';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261009-build528';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261009-build528';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261009-build528';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261009-build528';
+import { buildDistanceBytes, combineClassificationDistance, fourthChannelBytes } from './distance-field.js?v=20261009-build528';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261009-build528';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261009-build528';
+import { tr } from './i18n.js?v=20261009-build528';
+import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261009-build528';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261009-build528';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261009-build528';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261009-build528';
+import { createVrMeasure, LABEL_LIT_SCALE } from './vr-measure.js?v=20261009-build528';
+import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE, FLING_UNDO_MS, FLING_DEBUG_MS, createVelocityTracker, flingDecision, flingDebugLines, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace } from './vr-section-frame.js?v=20261009-build528';
+import { createUndoButton } from './vr-undo-button.js?v=20261009-build528';
+import { createFlingDebugTag } from './vr-fling-debug.js?v=20261009-build528';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261009-build528';
+import { createProbeGate } from './measure-label.js?v=20261009-build528';
+import { setRegionLabel, setRegionLabelOffset, voxelFromLocalVr, clampVoxel, labelLocal, offsetForLocal, vrVoxelStep, rectEdgePoint, leaderVisible } from './analysis-label.js?v=20261009-build528';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261009-build528';
+import { APP_BUILD } from './version.js?v=20261009-build528';
+import { wc, ww } from './ui-shell.js?v=20261009-build528';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261009-build528';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -162,6 +162,9 @@ bool editAllows(int s,vec3 tc){
 uniform int useCls;
 uniform sampler3D clsTex;
 uniform ivec4 clsChan; // channel of each segment (-1: none); only active segments are stored
+// build 528: with four stored segments the combined texture (channels 0..2 + distance alpha) cannot hold the fourth one; its
+// classification bytes come from this R8 texture (VRL_CLS4 variants, chan 3): read into q.a after the alpha served the jump test
+uniform sampler3D cls4Tex;
 // distance field (build 369): per segment channel (same layout as clsTex) a
 // lower bound, in voxels, of the distance to the voxels around that
 // segment's surface (distance-field.js). With useDist > 0 the ray jumps
@@ -190,7 +193,11 @@ int segmentIndexFromQ(vec4 q){
 }
 int segmentIndexAt(vec3 tc){
  if(useCls>0){
-  return segmentIndexFromQ(texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999))));
+  vec4 q=texture(clsTex,clamp(tc,vec3(0.0),vec3(0.999999)));
+#ifdef VRL_CLS4
+  q.a=texture(cls4Tex,clamp(tc,vec3(0.0),vec3(0.999999))).r;
+#endif
+  return segmentIndexFromQ(q);
  }
  float v=huAt(tc);gHu=v;
  for(int s=0;s<4;s++){vec4 a=segA[s];if(a.w>0.5&&(((editMaskOnly>>s)&1)==1||(v>=a.x&&v<=a.y))&&editAllows(s,tc))return s;}
@@ -324,6 +331,9 @@ void main(){
    vec4 q=texture(clsTex,clamp(tcO+tcD*t,vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
    // build 483: a jump is never shorter than a normal step
    if(dd>=2.7){float nextJ=max(t+(dd-1.8)*voxelMin,t+step);jumpLen+=nextJ-t;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+#ifdef VRL_CLS4
+   q.a=texture(cls4Tex,clamp(tcO+tcD*t,vec3(0.0),vec3(0.999999))).r; // build 528: channel 3 = the fourth segment (only on sampled steps, never on jumps)
+#endif
    vec4 qc=q-0.5;float f0=dot(qc,sel0)-off0,f1=dot(qc,sel1)-off1,f2=dot(qc,sel2)-off2,f3=dot(qc,sel3)-off3;
    int idx=-1;float curF=-1.0;
    if(f0>=0.0){idx=0;curF=f0;}else if(f1>=0.0){idx=1;curF=f1;}else if(f2>=0.0){idx=2;curF=f2;}else if(f3>=0.0){idx=3;curF=f3;}
@@ -342,10 +352,18 @@ void main(){
      int cIdx=clsChan[idx];
      if(!simple&&iso){float f0=prevF;
       for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
-       vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+       vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));
+#ifdef VRL_CLS4
+      qm.a=texture(cls4Tex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999))).r;
+#endif
+      float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
        for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
        if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
-     else if(!simple)for(int r=0;r<6;r++){if(r>=nb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+     else if(!simple)for(int r=0;r<6;r++){if(r>=nb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));
+#ifdef VRL_CLS4
+      qm.a=texture(cls4Tex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999))).r;
+#endif
+      bool inside=qm[cIdx]>=0.5;
        for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
        if(inside)hi=mid;else lo=mid;}
      vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
@@ -385,6 +403,9 @@ void main(){
    vec4 q=texture(clsTex,clamp(tcO+tcD*t,vec3(0.0),vec3(0.999999)));float dd=q.a*255.0;
    // build 483: a jump is never shorter than a normal step
    if(dd>=2.7){float nextJ=max(t+(dd-1.8)*voxelMin,t+step);jumpLen+=nextJ-t;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+#ifdef VRL_CLS4
+   q.a=texture(cls4Tex,clamp(tcO+tcD*t,vec3(0.0),vec3(0.999999))).r; // build 528: channel 3 = the fourth segment (only on sampled steps, never on jumps)
+#endif
    vec4 qc=q-0.5;float f0=dot(qc,sel0)-off0,f1=dot(qc,sel1)-off1,f2=dot(qc,sel2)-off2,f3=dot(qc,sel3)-off3;
    int idx=-1;float curF=-1.0;
    if(f0>=0.0){idx=0;curF=f0;}else if(f1>=0.0){idx=1;curF=f1;}else if(f2>=0.0){idx=2;curF=f2;}else if(f3>=0.0){idx=3;curF=f3;}
@@ -403,10 +424,18 @@ void main(){
      int cIdx=clsChan[idx];
      if(!simple&&iso){float f0=prevF;
       for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
-       vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+       vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));
+#ifdef VRL_CLS4
+      qm.a=texture(cls4Tex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999))).r;
+#endif
+      float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
        for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
        if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
-     else if(!simple)for(int r=0;r<6;r++){if(r>=nb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+     else if(!simple)for(int r=0;r<6;r++){if(r>=nb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));
+#ifdef VRL_CLS4
+      qm.a=texture(cls4Tex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999))).r;
+#endif
+      bool inside=qm[cIdx]>=0.5;
        for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
        if(inside)hi=mid;else lo=mid;}
      vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
@@ -430,10 +459,18 @@ void main(){
    if(hitSimple){}
    else if(hitIso){
     for(int r=0;r<3;r++){float mid=(lo+hi)*0.5;if(r<2&&abs(f1-f0)>1e-6)mid=clamp(lo+(hi-lo)*(-f0/(f1-f0)),lo+(hi-lo)*0.02,hi-(hi-lo)*0.02);
-     vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
+     vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));
+#ifdef VRL_CLS4
+      qm.a=texture(cls4Tex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999))).r;
+#endif
+      float fm=qm[cIdx]-0.5;bool inside=fm>=0.0;
      for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
      if(inside){hi=mid;f1=fm;}else{lo=mid;f0=fm;}}}
-   else if(!hitSimple)for(int r=0;r<6;r++){if(r>=hitNb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));bool inside=qm[cIdx]>=0.5;
+   else if(!hitSimple)for(int r=0;r<6;r++){if(r>=hitNb)break;float mid=(lo+hi)*0.5;vec4 qm=texture(clsTex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999)));
+#ifdef VRL_CLS4
+      qm.a=texture(cls4Tex,clamp(tcO+tcD*mid,vec3(0.0),vec3(0.999999))).r;
+#endif
+      bool inside=qm[cIdx]>=0.5;
      for(int s=0;s<4;s++){if(s>=idx)break;int c=clsChan[s];if(c>=0&&segA[s].w>0.5&&qm[c]>=0.5)inside=false;}
      if(inside)hi=mid;else lo=mid;}
    vec3 hp=o+dir*hi;vec3 tc=texCoord(hp);
@@ -475,6 +512,9 @@ void main(){
    // 1-Lipschitz, so the surface is at least dd - 1.74 voxels away; jump dd - 1.8 when that is 0.9 or more
    qHere=texture(clsTex,clamp(tc0,vec3(0.0),vec3(0.999999)));haveQ=true;float dd=qHere.a*255.0;
    if(dd>=2.7){float nextJ=t+(dd-1.8)*voxelMin;jumpLen+=nextJ-t;previousT=nextJ-step*0.05;prevValid=false;t=nextJ;continue;}
+#ifdef VRL_CLS4
+   qHere.a=texture(cls4Tex,clamp(tc0,vec3(0.0),vec3(0.999999))).r;
+#endif
   }
   else if(useDist>0&&diag!=4){
    // build 381: the field is read only when a jump is possible. One step moves the sampled voxel by at most one per
@@ -670,6 +710,13 @@ function makeBackground(){
 // button or drags a slider while held. Build 365: canvas size and width in
 // metres are parameters (the left-hand section panel uses a small one).
 const MENU_W=1024,MENU_H=1180;
+// build 528: greedy line wrap for a menu label: at ' · ' separators while a line fits maxW (measure(text) = width), a single part wider than maxW is split by characters
+export function wrapMenuText(text,maxW,measure){
+ const parts=String(text).split(' · '),lines=[];let cur='';
+ const push=p=>{if(measure(p)<=maxW){lines.push(p);return}let seg='';for(const ch of p){if(seg&&measure(seg+ch)>maxW){lines.push(seg);seg=ch}else seg+=ch}if(seg)lines.push(seg)};
+ for(const p of parts){const cand=cur?cur+' · '+p:p;if(cur&&measure(cand)>maxW){push(cur);cur=p}else cur=cand}
+ if(cur)push(cur);return lines;
+}
 function makeMenu(W=MENU_W,H=MENU_H,widthM=0.5){
  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d'),tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
@@ -679,7 +726,10 @@ function makeMenu(W=MENU_W,H=MENU_H,widthM=0.5){
   ctx.clearRect(0,0,W,H);ctx.fillStyle='rgba(14,20,27,.94)';ctx.beginPath();ctx.roundRect(0,0,W,H,30);ctx.fill();
   ctx.textBaseline='middle';
   widgets.forEach((w,i)=>{
-   if(w.type==='label'){ctx.fillStyle=w.color||'#cfe3f0';ctx.font=(w.bold?'bold ':'')+(w.size||30)+'px system-ui,sans-serif';ctx.textAlign='left';ctx.fillText(w.text,w.x,w.y);return}
+   if(w.type==='label'){ctx.fillStyle=w.color||'#cfe3f0';ctx.font=(w.bold?'bold ':'')+(w.size||30)+'px system-ui,sans-serif';ctx.textAlign='left';
+    // build 528 (owner: the 詳細 tab's size line ran off the canvas): a label with maxW wraps at its ' · ' separators (then anywhere) onto further lines, lh apart
+    if(w.maxW&&ctx.measureText(w.text).width>w.maxW){const lh=w.lh||Math.round((w.size||30)*1.15);wrapMenuText(w.text,w.maxW,t=>ctx.measureText(t).width).forEach((ln,k)=>ctx.fillText(ln,w.x,w.y+k*lh));return}
+    ctx.fillText(w.text,w.x,w.y);return}
    if(w.type==='slider'){
     ctx.fillStyle='#26313b';ctx.beginPath();ctx.roundRect(w.x,w.y+w.h/2-10,w.w,20,10);ctx.fill();
     ctx.fillStyle='#2d6cdf';ctx.beginPath();ctx.roundRect(w.x,w.y+w.h/2-10,Math.max(20,w.w*w.value),20,10);ctx.fill();
@@ -791,20 +841,26 @@ const makeVolumeTextures=d=>{
  v.minFilter=v.magFilter=THREE.LinearFilter;v.unpackAlignment=1;v.needsUpdate=true;
  const b=new THREE.Data3DTexture(d.bricks,...d.brickDims);b.format=THREE.RGFormat;b.type=THREE.FloatType;
  b.minFilter=b.magFilter=THREE.NearestFilter;b.unpackAlignment=1;b.needsUpdate=true;
- return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null,dist:null,combo:null,comboMask:-1};
+ return{v,b,dims:d.dims,brickDims:d.brickDims,src:d.data,cls:null,dist:null,combo:null,cls4:null,comboMask:-1};
 };
 const makeRegionTexture=P=>{const g=P.region;if(!g?.data)return null;const t=new THREE.Data3DTexture(g.data,...g.dims);t.format=THREE.RedFormat;t.type=THREE.UnsignedByteType;t.minFilter=t.magFilter=THREE.NearestFilter;t.unpackAlignment=1;t.needsUpdate=true;return t};
 const makeEditTexture=P=>{if(!P.edit.data)return null;const e=new THREE.Data3DTexture(P.edit.data,...P.edit.dims);e.format=THREE.RGBAFormat;e.type=THREE.UnsignedByteType;e.unpackAlignment=1;return e};
 const makeComboTexture=(data,dims)=>{const x=new THREE.Data3DTexture(data,...dims);x.format=THREE.RGBAFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;return x};
+// build 528: the fourth stored segment's classification bytes (R8, trilinear like the combined texture)
+const makeCls4Texture=(data,dims)=>{const x=new THREE.Data3DTexture(data,...dims);x.format=THREE.RedFormat;x.type=THREE.UnsignedByteType;x.minFilter=x.magFilter=THREE.LinearFilter;x.unpackAlignment=1;x.needsUpdate=true;return x};
 // shown-segment mask for the combined texture's alpha (segMode 2 = hidden)
 const shownMask=()=>{let mask=0;for(let i=0;i<4;i++){const key=SEGMENT_PRESET_ORDER[i],seg=segmentState[key];if(seg?.active&&seg?.enabled&&segMode[key]!==2)mask|=1<<i}return mask};
 // build 393: shader variants (preprocessor guards in fragmentShader) sharing one uniforms object:
 // combined = without the general loop (used when the combined field is in use), noEvents = also without the slice / cut-face loop (no section)
-const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...base.defines,...defs};return m};return{full:base,combined:mk({VRL_NO_GENERAL:'',VRL_OPAQUE:''}),noEvents:mk({VRL_NO_GENERAL:'',VRL_NO_EVENTS:'',VRL_OPAQUE:''})}};
+// build 528: the same three with VRL_CLS4 (four stored segments: the fourth from its own texture), compiled only when four are stored
+const VARIANT_DEFS={full:{},combined:{VRL_NO_GENERAL:'',VRL_OPAQUE:''},noEvents:{VRL_NO_GENERAL:'',VRL_NO_EVENTS:'',VRL_OPAQUE:''}};
+const materialVariants=base=>{const mk=defs=>{const m=base.clone();m.uniforms=base.uniforms;m.defines={...base.defines,...defs};return m};const v={full:base};for(const [k,d] of Object.entries(VARIANT_DEFS)){if(k!=='full')v[k]=mk(d);v[k+'4']=mk({...d,VRL_CLS4:''})}return v};
+const VARIANT_KEYS=['full','combined','noEvents'],VARIANT_KEYS4=VARIANT_KEYS.map(k=>k+'4');
 const rayMaterialOf=m=>{const r=m.clone();r.uniforms=m.uniforms;r.defines={...m.defines};r.blending=THREE.NoBlending;r.transparent=false;return r};
+const rayVariantsOf=vars=>Object.fromEntries(Object.entries(vars).map(([k,m])=>[k,rayMaterialOf(m)]));
 const volumeUniforms=(vd,full,settings)=>({vol:{value:full.v},bricks:{value:full.b},halfExt:{value:new THREE.Vector3(...vd.halfExt)},texDims:{value:new THREE.Vector3(...vd.dims)},brickDims:{value:new THREE.Vector3(...vd.brickDims)},
  stepSize:{value:vd.step},diag:{value:0},calib:{value:new THREE.Vector3(...vd.calibration)},segA:{value:[0,1,2,3].map(()=>new THREE.Vector4())},segC:{value:[0,1,2,3].map(()=>new THREE.Vector4())},
- cutPlanes:{value:Array.from({length:MAX_SECTION_PLANES},()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionSeg:{value:new Array(14).fill(0)},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editMaskOnly:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1},voxelSize:{value:new THREE.Vector3(1,1,1)}});
+ cutPlanes:{value:Array.from({length:MAX_SECTION_PLANES},()=>new THREE.Vector4(0,0,1,0))},planeCount:{value:0},planeCut:{value:0},capOn:{value:1},sliceTint:{value:0.5},sliceOpacity:{value:0},sliceWindow:{value:new THREE.Vector2(0,1)},sliceAir:{value:-500},regionTex:{value:null},regionSeg:{value:new Array(14).fill(0)},regionC:{value:Array.from({length:14},()=>new THREE.Vector3())},sliceVol:{value:full.v},refine:{value:settings.refine|0},useCls:{value:0},clsTex:{value:null},cls4Tex:{value:null},clsChan:{value:new THREE.Vector4(-1,-1,-1,-1)},editMask:{value:0},editMaskOnly:{value:0},editTex:{value:null},useDist:{value:0},distInCls:{value:0},distTex:{value:null},voxelMin:{value:1},voxelSize:{value:new THREE.Vector3(1,1,1)}});
 // ---- GPU preparation before the session (build 393, after the Codex branch's idea) ----
 // The renderer (an XR-compatible context), the textures of the grid in use, the
 // combined classification + field texture for the shown segments, the edit mask
@@ -826,16 +882,18 @@ export async function prepareVrGpu(P,mode='vr',settings=loadSettings()){
   const vd=P.vd,full=makeVolumeTextures(vd);assets.full=full;
   const half=P.half?makeVolumeTextures(P.half):null;assets.half=half;
   const useHalf=(settings.data|0)===1&&!!half,t=useHalf?half:full;
-  if(Math.max(...t.dims)<=256&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3)){const mask=shownMask();const data=combineClassificationDistance(P.cls,P.dist,mask);if(data){t.combo=makeComboTexture(data,t.dims);t.comboMask=mask}}
+  // build 528: four stored segments use the combined texture as well (VRL_CLS4), with the fourth one's bytes in an R8 texture (16 MB at 256³)
+  const four=!!P.cls?.chan.includes(3);
+  if(Math.max(...t.dims)<=256&&P.cls&&P.dist){const mask=shownMask();const data=combineClassificationDistance(P.cls,P.dist,mask,null,{four});if(data){t.combo=makeComboTexture(data,t.dims);t.comboMask=mask;if(four)t.cls4=makeCls4Texture(fourthChannelBytes(P.cls),t.dims)}}
   assets.edit=makeEditTexture(P);assets.region=makeRegionTexture(P);
-  for(const x of [full.v,full.b,half?.v,half?.b,t.combo,assets.edit,assets.region].filter(Boolean))renderer.initTexture(x);
+  for(const x of [full.v,full.b,half?.v,half?.b,t.combo,t.cls4,assets.edit,assets.region].filter(Boolean))renderer.initTexture(x);
   times.upload=performance.now()-t0;const t1=performance.now();
   // compile every program the session can use: the three volume variants, their offscreen (no blending) copies and the composite
   const u=volumeUniforms(vd,full,settings),dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
-  u.clsTex.value=dummy;u.editTex.value=dummy;u.distTex.value=dummy;u.regionTex.value=dummy;
+  u.clsTex.value=dummy;u.cls4Tex.value=dummy;u.editTex.value=dummy;u.distTex.value=dummy;u.regionTex.value=dummy;
   const base=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:u,defines:P.region?.data?{VRL_REGIONS:''}:{}});
   base.transparent=false;base.depthWrite=true;base.blending=THREE.CustomBlending;base.blendSrc=THREE.OneFactor;base.blendDst=THREE.OneMinusSrcAlphaFactor;
-  const vars=materialVariants(base),mats=[vars.full,vars.combined,vars.noEvents,rayMaterialOf(vars.full),rayMaterialOf(vars.combined),rayMaterialOf(vars.noEvents),
+  const vars=materialVariants(base),keys=four?[...VARIANT_KEYS,...VARIANT_KEYS4]:VARIANT_KEYS,mats=[...keys.map(k=>vars[k]),...keys.map(k=>rayMaterialOf(vars[k])),
    new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader:compositeVertex,fragmentShader:compositeFragment,side:THREE.BackSide,toneMapped:false,depthWrite:true,transparent:false,blending:THREE.CustomBlending,blendSrc:THREE.OneFactor,blendDst:THREE.OneMinusSrcAlphaFactor,uniforms:{img:{value:null},depthImg:{value:null},invSize:{value:new THREE.Vector2(1,1)},halfExt:{value:new THREE.Vector3(...vd.halfExt)}}})];
   const sc=new THREE.Scene(),geo=new THREE.BoxGeometry(2,2,2),cam=new THREE.PerspectiveCamera();
   for(const m of mats){const mesh=new THREE.Mesh(geo,m);mesh.frustumCulled=false;sc.add(mesh)}
@@ -851,7 +909,7 @@ export async function prepareVrGpu(P,mode='vr',settings=loadSettings()){
 }
 export function disposeGpuPrepared(){
  const g=gpuPrepared;if(!g)return;gpuPrepared=null;
- for(const t of [g.full,g.half])if(t){t.v.dispose();t.b.dispose();t.combo?.dispose()}
+ for(const t of [g.full,g.half])if(t){t.v.dispose();t.b.dispose();t.combo?.dispose();t.cls4?.dispose()}
  g.edit?.dispose();g.region?.dispose();g.warm.forEach(m=>m.dispose());g.renderer.dispose();g.renderer.domElement.remove();
 }
 export function vrReady(){return !!prepared&&prepared.key===vrDataKey()}
@@ -980,7 +1038,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const menu=makeMenu(MENU_W,MENU_H,MENU_WIDTH);scene.add(menu.mesh);
  const ui={tab:0,open:true,status:L.preparing,fpsLine:'',sizeLine:'',flash:'',flashUntil:0,benchLine:''};
  const holder=new THREE.Group();holder.position.set(0,1.3,-VOLUME_FWD);scene.add(holder);
- let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,variants=null,rayVariants=null,mesh=null,material=null,volPick=null,regionList=[],volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
+ let refreshEdits=()=>{},disposeEdits=()=>{},useData=()=>{},disposeExtra=()=>{},refreshCombo=()=>{},comboT=null,comboMask=-1,cls4On=false,variants=null,rayVariants=null,mesh=null,material=null,volPick=null,regionList=[],volTex=null,brickTex=null,compMaterial=null,rayMesh=null,lowTarget=null;const volScene=new THREE.Scene();volScene.matrixWorldAutoUpdate=false;let baseStep=0.002,baseScale=0.165/3.3, /* build 383: longest side 16.5 cm (was 30 cm): the owner found the smallest two-hand size much lighter; cost follows the pixels covered (size²) */info='';
  // per segment in VR only: 0 normal, 1 simple (for segments not being
  // looked at; owner, build 341), 2 hidden
  // segMode (normal / simple / hidden per segment) lives at module level since build 393 (shownMask); it persists across sessions
@@ -1945,7 +2003,8 @@ export async function startVrView({language='ja',mode='vr'}={}){
    WHEEL_ITEMS.forEach((it,i)=>btn(X+(i%2)*480,yo+120+Math.floor(i/2)*64,470,itemName(it.id)+(items.includes(it.id)?'  ✓':''),items[slot]===it.id,()=>save(setWheelItem(items,slot,it.id)),{size:24,h:58}));
    btn(X,MENU_H-100,260,L.back,false,()=>{ui.tab=0;menu.refresh()},{size:28});
   }else if(ui.tab===4){
-   label(X,y0+10,ui.fpsLine,{size:28});label(X,y0+50,ui.sizeLine,{size:28});if(ui.placeLine)label(X,y0+90,ui.placeLine,{size:26,color:'#9fb3c3'});if(ui.diagLine)label(X,y0+122,ui.diagLine,{size:22,color:'#cfe3f0'});else if(ui.sampleLine)label(X,y0+122,ui.sampleLine,{size:26,color:'#9fb3c3'});if(ui.autoLine)label(X,y0+154,ui.autoLine,{size:26,color:'#9fb3c3'});
+   // build 528: the long lines wrap inside the menu (maxW) instead of running off its right edge; size / diag lines may take two lines each
+   const mw=MENU_W-2*X;label(X,y0+10,ui.fpsLine,{size:26,maxW:mw});label(X,y0+46,ui.sizeLine,{size:24,maxW:mw,lh:28});if(ui.placeLine)label(X,y0+104,ui.placeLine,{size:22,color:'#9fb3c3',maxW:mw});if(ui.diagLine)label(X,y0+132,ui.diagLine,{size:22,color:'#cfe3f0',maxW:mw,lh:24});else if(ui.sampleLine)label(X,y0+132,ui.sampleLine,{size:24,color:'#9fb3c3',maxW:mw});if(ui.autoLine)label(X,y0+184,ui.autoLine,{size:22,color:'#9fb3c3',maxW:mw});
    choice(y0+200,L.diag,L.dv.slice(0,3).map((t,i)=>({label:t,value:i})),settings.diag,v=>{settings.diag=v;applyQuality()});
    choice(y0+470,L.clsD,[{label:L.offOn[1],value:0},{label:L.offOn[0],value:1}],settings.clsDiag|0,v=>{settings.clsDiag=v;applyQuality()});
    choice(y0+560,L.refineL,L.refineV.map((t,i)=>({label:t,value:1-i})),settings.refine|0,v=>{settings.refine=v;applyQuality()});
@@ -2178,8 +2237,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
   const f=auto?aq.f:(VRES[settings.vres]??1);
   // build 424: the same variants without VRL_REGIONS (sharing the uniforms), built on first use by the analysis bench
   let plain=null;
-  const plainSets=()=>{if(!plain){const base=material.clone();base.uniforms=material.uniforms;base.defines={};const vars=materialVariants(base);plain={vars,ray:{full:rayMaterialOf(vars.full),combined:rayMaterialOf(vars.combined),noEvents:rayMaterialOf(vars.noEvents)}}}return plain};
-  const variantKey=()=>{const u=material.uniforms;if(!(u.distInCls.value>0&&u.useCls.value>0)||(settings.diag|0))return 'full';return u.planeCount.value===0?'noEvents':'combined'};
+  const plainSets=()=>{if(!plain){const base=material.clone();base.uniforms=material.uniforms;base.defines={};const vars=materialVariants(base);plain={vars,ray:rayVariantsOf(vars)}}return plain};
+  // build 528: the VRL_CLS4 twin of each variant while four stored segments are drawn through the combined texture
+  const variantKey=()=>{const u=material.uniforms,k=!(u.distInCls.value>0&&u.useCls.value>0)||(settings.diag|0)?'full':u.planeCount.value===0?'noEvents':'combined';return cls4On?k+'4':k};
   if(mesh){
    if(f<1){
     // own pass per eye into the small target, then the composite material
@@ -2227,7 +2287,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  });
  const cleanup=()=>{
   renderer.setAnimationLoop(null);
-  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();if(variants){variants.combined.dispose();variants.noEvents.dispose()}if(rayVariants)Object.values(rayVariants).forEach(m=>m.dispose());gpu?.warm.forEach(m=>m.dispose());compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();scaleTag.dispose();menu.dispose();help.dispose();badge.userData.dispose();
+  probeTarget.dispose();volTex?.dispose();brickTex?.dispose();comboT?.combo?.dispose();disposeExtra();disposeEdits();material?.dispose();if(variants)for(const [k,m] of Object.entries(variants))if(k!=='full')m.dispose();if(rayVariants)Object.values(rayVariants).forEach(m=>m.dispose());gpu?.warm.forEach(m=>m.dispose());compMaterial?.dispose();lowTarget?.dispose();mesh?.geometry.dispose();scaleTag.dispose();menu.dispose();help.dispose();badge.userData.dispose();
   background.traverse(o=>{o.geometry?.dispose();o.material?.dispose()});planes.forEach(disposePlane);flying.forEach(f=>disposePlane(f.pl));flying.length=0;secUndo.clear();undoBtn.dispose();flingDbg?.dispose();unsubComments();vpMarkers.dispose();vpMeasure.dispose();cancelMeasure();surfCursors.forEach(x=>x.dispose());wheel.dispose();pointWheel.dispose();ringGeo.dispose();ring.material.dispose();
   renderer.dispose();renderer.domElement.remove();running=null;
   showShotsPanel(ja);showBenchPanel(ja);
@@ -2267,8 +2327,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const on=!!t.cls&&!(settings.clsDiag|0);
    material.uniforms.useCls.value=on?1:0;material.uniforms.clsTex.value=t.cls||dummyEdit;if(t.cls)material.uniforms.clsChan.value.set(...t.cls.userData.chan);
    // sphere tracing needs the classification grid (the distances describe its boundaries)
-   // build 395: the separate field texture (67 MB at 256³) is uploaded only when the combined texture cannot serve (four segments stored)
-   const comboOk=on&&P.cls&&P.dist&&!P.cls.chan.some(c=>c>=3);
+   // build 395: the separate field texture (67 MB at 256³) is uploaded only when the combined texture cannot serve
+   // build 528: it serves four stored segments too (the fourth from its own R8 texture, VRL_CLS4), so the general loop is no longer used for them
+   const comboOk=on&&P.cls&&P.dist;
    if(on&&!t.dist&&P.dist&&!comboOk)t.dist=distTexture(t);
    const onD=on&&(comboOk||!!t.dist)&&!(settings.distDiag|0);
    material.uniforms.useDist.value=onD?1:0;material.uniforms.distTex.value=t.dist||dummyEdit;material.uniforms.voxelMin.value=Math.min(2*vd.halfExt[0]/t.dims[0],2*vd.halfExt[1]/t.dims[1],2*vd.halfExt[2]/t.dims[2]);
@@ -2278,19 +2339,23 @@ export async function startVrView({language='ja',mode='vr'}={}){
    refreshEdits();
   };
   // the alpha depends on which segments are shown: rebuilt (about 0.2 s at 256³) when that set changes
+  // build 528: four stored segments: the fourth one's bytes in t.cls4 (built once), the VRL_CLS4 variants (cls4On) while the combined texture is in use
+  const four=!!P.cls?.chan.includes(3);
+  const useCombo=t=>{material.uniforms.clsTex.value=t.combo;material.uniforms.clsChan.value.set(...P.cls.chan);material.uniforms.distInCls.value=1;
+   if(four){if(!t.cls4)t.cls4=makeCls4Texture(fourthChannelBytes(P.cls),t.dims);material.uniforms.cls4Tex.value=t.cls4}cls4On=four};
   refreshCombo=()=>{
    const t=comboT;
-   if(!t){material.uniforms.distInCls.value=0;return}
+   if(!t){material.uniforms.distInCls.value=0;cls4On=false;return}
    const mask=shownMask();
    if(mask===comboMask)return;
    // prepared on the page for this mask (build 393): no rebuild, no upload
-   if(t.combo&&t.comboMask===mask){comboMask=mask;material.uniforms.clsTex.value=t.combo;material.uniforms.clsChan.value.set(...P.cls.chan);material.uniforms.distInCls.value=1;return}
+   if(t.combo&&t.comboMask===mask){comboMask=mask;useCombo(t);return}
    comboMask=mask;
-   const data=combineClassificationDistance(P.cls,P.dist,mask,t.combo?.image?.data||null);
-   if(!data){material.uniforms.distInCls.value=0;return}
+   const data=combineClassificationDistance(P.cls,P.dist,mask,t.combo?.image?.data||null,{four});
+   if(!data){material.uniforms.distInCls.value=0;cls4On=false;return}
    if(!t.combo)t.combo=makeComboTexture(data,t.dims);
    t.combo.needsUpdate=true;t.comboMask=mask;
-   material.uniforms.clsTex.value=t.combo;material.uniforms.clsChan.value.set(...P.cls.chan);material.uniforms.distInCls.value=1;
+   useCombo(t);
   };
   // processed segments: built once when VR starts (edits cannot change in
   // VR), on a grid of at most 256 per side (texture coordinates are
@@ -2307,9 +2372,9 @@ export async function startVrView({language='ja',mode='vr'}={}){
    material.uniforms.regionTex.value=regionTex||dummyEdit;regionColors.forEach((c,i)=>{color.setHex(c);material.uniforms.regionC.value[i].set(color.r,color.g,color.b);material.uniforms.regionSeg.value[i]=regionSegs[i]|0});
   };
   disposeEdits=()=>{editTex?.dispose();regionTex?.dispose();dummyEdit.dispose()};
-  disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();half?.dist?.dispose();half?.combo?.dispose();full.cls?.dispose();full.dist?.dispose();full.combo?.dispose()};
+  disposeExtra=()=>{half?.v.dispose();half?.b.dispose();half?.cls?.dispose();half?.dist?.dispose();half?.combo?.dispose();half?.cls4?.dispose();full.cls?.dispose();full.dist?.dispose();full.combo?.dispose();full.cls4?.dispose()};
   material=new THREE.ShaderMaterial({glslVersion:THREE.GLSL3,vertexShader,fragmentShader,side:THREE.BackSide,toneMapped:false,uniforms:volumeUniforms(vd,full,settings),defines:P.region?.data?{VRL_REGIONS:''}:{}});
-  material.uniforms.clsTex.value=dummyEdit;material.uniforms.editTex.value=dummyEdit;material.uniforms.distTex.value=dummyEdit;
+  material.uniforms.clsTex.value=dummyEdit;material.uniforms.cls4Tex.value=dummyEdit;material.uniforms.editTex.value=dummyEdit;material.uniforms.distTex.value=dummyEdit;
   material.transparent=false;material.depthWrite=true;material.blending=THREE.CustomBlending;material.blendSrc=THREE.OneFactor;material.blendDst=THREE.OneMinusSrcAlphaFactor;
   // build 393: variants without the unused loops, chosen per frame (same uniforms)
   variants=materialVariants(material);
@@ -2319,7 +2384,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    blending:THREE.CustomBlending,blendSrc:THREE.OneFactor,blendDst:THREE.OneMinusSrcAlphaFactor,uniforms:{img:{value:null},depthImg:{value:null},invSize:{value:new THREE.Vector2(1,1)},halfExt:{value:new THREE.Vector3(...vd.halfExt)}}});
   // the offscreen target is cleared to 0 and written with plain premultiplied
   // colour (no blending needed inside the volume pass)
-  rayVariants={full:rayMaterialOf(variants.full),combined:rayMaterialOf(variants.combined),noEvents:rayMaterialOf(variants.noEvents)};
+  rayVariants=rayVariantsOf(variants);
   rayMesh=new THREE.Mesh(mesh.geometry,rayVariants.full);
   rayMesh.matrixAutoUpdate=false;rayMesh.matrixWorldAutoUpdate=false;rayMesh.frustumCulled=false;volScene.add(rayMesh);
   // app units (longest side 3.3) -> 0.3 m in VR, placed in front of the head

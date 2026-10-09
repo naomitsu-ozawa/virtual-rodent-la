@@ -61,3 +61,22 @@ describe('distance field (chamfer 3-4-5 lower bound)',()=>{
   expect(combineClassificationDistance({data:new Uint8Array(4),C:4,chan:[0,1,2,3]},{data:new Uint8Array(4),C:4,chan:[0,1,2,3]},15)).toBeNull();
  });
 });
+
+// build 528: four stored segments share the combined texture (channels 0..2 + the distance alpha over every shown
+// segment, the fourth included); the fourth segment's bytes go to their own texture
+import { fourthChannelBytes } from '../../docs/distance-field.js';
+describe('combineClassificationDistance with four stored channels (build 528)', () => {
+ const cls={C:4,chan:[0,1,2,3],data:Uint8Array.from([200,10,20,30, 5,6,7,8])},dist={C:4,chan:[0,1,2,3],data:Uint8Array.from([9,4,7,2, 1,3,5,6])};
+ it('is null without the option (as before)',()=>{expect(combineClassificationDistance(cls,dist,0b1111)).toBeNull()});
+ it('keeps channels 0..2 and takes the alpha over the shown segments, the fourth included',()=>{
+  const r=combineClassificationDistance(cls,dist,0b1111,null,{four:true});
+  expect(Array.from(r)).toEqual([200,10,20,2, 5,6,7,1]);
+  const noFourth=combineClassificationDistance(cls,dist,0b0111,null,{four:true});expect(Array.from(noFourth)).toEqual([200,10,20,4, 5,6,7,1]);
+  const onlyFourth=combineClassificationDistance(cls,dist,0b1000,null,{four:true});expect(Array.from(onlyFourth)).toEqual([200,10,20,2, 5,6,7,6]);
+ });
+ it('fourthChannelBytes returns channel 3, null when unused',()=>{
+  expect(Array.from(fourthChannelBytes(cls))).toEqual([30,8]);
+  expect(fourthChannelBytes({C:4,chan:[0,1,2,-1],data:cls.data})).toBeNull();
+  expect(fourthChannelBytes({C:2,chan:[0,1,-1,-1],data:new Uint8Array(4)})).toBeNull();
+ });
+});
