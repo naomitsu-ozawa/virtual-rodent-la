@@ -77,11 +77,14 @@ export async function buildDistanceBytes(cls,dims,onProgress=null){
 // distance over the enabled segments (bit s of mask), 255 when none. One
 // fetch per ray step then serves the jump test and the classification.
 // Needs a free channel: at most three segments stored (chan < 3).
-export function combineClassificationDistance(cls,dist,mask,out=null){
+// build 528: with {four:true} four stored channels are accepted as well: channels 0..2 go to the texture as before, the
+// alpha is the smallest distance over every shown segment (channel 3 included), and channel 3's classification bytes are
+// served by fourthChannelBytes for a second (R8) texture. Without the option the result is as before (null for four).
+export function combineClassificationDistance(cls,dist,mask,out=null,{four=false}={}){
  const C=cls.C,n=cls.data.length/C,chan=cls.chan;
- if(chan.some(c=>c>=3))return null;
+ if(chan.some(c=>c>=3)&&!four)return null;
  const res=out&&out.length===n*4?out:new Uint8Array(n*4);
- const used=[];for(let s=0;s<4;s++)if(chan[s]>=0)used.push(chan[s]);
+ const used=[];for(let s=0;s<4;s++)if(chan[s]>=0&&chan[s]<3)used.push(chan[s]);
  const on=[];for(let s=0;s<4;s++)if(chan[s]>=0&&((mask>>s)&1))on.push(chan[s]);
  for(let i=0;i<n;i++){
   const b=i*C,o=i*4;
@@ -90,4 +93,12 @@ export function combineClassificationDistance(cls,dist,mask,out=null){
   res[o+3]=m;
  }
  return res;
+}
+// build 528: the classification bytes of channel 3 (the fourth stored segment), one byte per voxel, for the VR shader's
+// second texture (VRL_CLS4); null when no segment uses channel 3
+export function fourthChannelBytes(cls){
+ const C=cls.C,chan=cls.chan;if(!chan.includes(3)||C<4)return null;
+ const n=cls.data.length/C,out=new Uint8Array(n);
+ for(let i=0;i<n;i++)out[i]=cls.data[i*C+3];
+ return out;
 }
