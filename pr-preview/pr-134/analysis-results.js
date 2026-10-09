@@ -1,14 +1,15 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume, current3DVolume, activeSeries } from './state.js?v=20261008-build523';
-import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261008-build523';
-import { tr } from './i18n.js?v=20261008-build523';
-import { spacingWarningHtml } from './slice-spacing.js?v=20261008-build523';
-import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261008-build523';
-import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261008-build523';
-import { request3DRender } from './scene3d.js?v=20261008-build523';
-import { dispose } from './surface-mesh.js?v=20261008-build523';
-import { setRegionLabel, setRegionLabelOffset, hasOffset, clampVoxel, onAnalysisLabelsChange } from './analysis-label.js?v=20261008-build523';
+import { setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, sceneState, analysisRegions, analysisFocusedRegionId, currentLanguage, volumeAnalysisBusy, volume, current3DVolume, activeSeries } from './state.js?v=20261009-build524';
+import { analysisSummary, analysisRegionList, analysisMergeButton, analysisClearButton, planes } from './ui-shell.js?v=20261009-build524';
+import { tr } from './i18n.js?v=20261009-build524';
+import { spacingWarningHtml } from './slice-spacing.js?v=20261009-build524';
+import { analysisRegionById, updateAnalysisEditorControls } from './edit-tools.js?v=20261009-build524';
+import { analysisColorCss, schedulePlaneRender } from './mpr-render.js?v=20261009-build524';
+import { request3DRender } from './scene3d.js?v=20261009-build524';
+import { dispose } from './surface-mesh.js?v=20261009-build524';
+import { setRegionLabel, setRegionLabelOffset, hasOffset, clampVoxel, onAnalysisLabelsChange, surfaceAnchor, voxelFromLocal3d } from './analysis-label.js?v=20261009-build524';
+import { analysisRunsContain } from './run-length.js?v=20261009-build524';
 export function analysisRegionRepresentativeVoxel(region){
  if(!region?.runsBySlice)return null;
  const nonEmpty=[];for(let z=0;z<region.runsBySlice.length;z++)if(region.runsBySlice[z]?.length)nonEmpty.push(z);
@@ -34,13 +35,28 @@ export function setAnalysisFocusedRegion(id,voxel=null,move=true){
  for(const p of Object.keys(planes))schedulePlaneRender(p);
  request3DRender();renderAnalysisResults();
 }
-// build 523: pin the label of a result at its representative voxel (a point inside it) / remove it; the place is then moved by dragging it (3D view, VR)
+// build 523: pin the label of a result / remove it; the place is then moved by dragging it (3D view, VR).
+// build 524: the anchor is on the result's SURFACE as the 3D camera sees it (the entry point of the ray from the eye to a voxel inside the result), not inside it: in VR a card inside bone is a ghost behind the tissue.
+// Without a 3D camera / object (or when the ray finds nothing) it falls back to the representative voxel.
+export function labelAnchorFor(region,vol=current3DVolume||volume){
+ const v=analysisRegionRepresentativeVoxel(region);if(!v)return null;
+ const inside={i:v.x,j:v.y,k:v.z},dims=vol?{columns:vol.columns,rows:vol.rows,slices:vol.slices}:null,obj=sceneState?.obj,cam=sceneState?.camera;
+ let a=null;
+ if(dims&&obj&&cam&&vol.spacing){
+  try{
+   obj.updateMatrixWorld(true);cam.updateMatrixWorld(true);
+   const eyeWorld=cam.position.clone();if(cam.parent)eyeWorld.applyMatrix4(cam.parent.matrixWorld);
+   const e=obj.worldToLocal(eyeWorld),eye=voxelFromLocal3d({x:e.x,y:e.y,z:e.z},dims,vol.spacing);
+   a=surfaceAnchor({contains:(i,j,k)=>analysisRunsContain(region.runsBySlice,i,j,k),eye,target:inside});
+  }catch{a=null}
+ }
+ return clampVoxel(a||inside,dims||{columns:1e9,rows:1e9,slices:1e9});
+}
 export function toggleAnalysisLabel(region){
  if(!region)return false;
  if(region.label){setRegionLabel(region,null);return true}
- const v=analysisRegionRepresentativeVoxel(region),vol=current3DVolume||volume;if(!v)return false;
- const dims=vol?{columns:vol.columns,rows:vol.rows,slices:vol.slices}:null;
- return setRegionLabel(region,{anchor:dims?clampVoxel({i:v.x,j:v.y,k:v.z},dims):{i:v.x,j:v.y,k:v.z}});
+ const anchor=labelAnchorFor(region);if(!anchor)return false;
+ return setRegionLabel(region,{anchor});
 }
 // the buttons follow a change made elsewhere (VR pins / unpins; a drag only matters when the label becomes moved / unmoved)
 onAnalysisLabelsChange(e=>{if(!e?.labelOnly||e.moveToggled)renderAnalysisResults()});
