@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { canvasBackground3dUnit } from './canvas-theme.js?v=20261009-build524';
+import { canvasBackground3dUnit } from './canvas-theme.js?v=20261009-build525';
 
 const UNCOMPRESSED_TS=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
@@ -362,9 +362,14 @@ fn brickMayContain(p:vec3<f32>)->bool{return brickClass(p)>0;}
 fn brickClass(p:vec3<f32>)->i32{
  let tc=clamp(texCoord(p),vec3<f32>(0.0),vec3<f32>(0.999999));let dims=max(u.textureDims.xyz,vec3<f32>(1.0));let bs=max(u.viewport.w,1.0);
  let voxel=vec3<u32>(tc*dims);let bx=voxel.x/u32(bs);let by=voxel.y/u32(bs);let bz=voxel.z/u32(bs);let bcx=u32(u.calibration.z);let bcy=u32(u.calibration.w);
- let mm=brickMinMax[bz*bcx*bcy+by*bcx+bx];
+ let brick=bz*bcx*bcy+by*bcx+bx;let mm=brickMinMax[brick];
  let masks=editRows[0]|appliedCutRows[0];
- for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];if(a.w>0.5&&((editRows[1]&(16u<<s))!=0u||(a.y>=mm.x&&a.x<=mm.y))){
+ // build 525 (issue #132): a mask-only segment (bit 4+s) is decided by its mask, not the HU range, so the brick's HU
+ // min/max say nothing about it; before, every brick was mixed while such a segment was shown (no empty-space skip at
+ // all). setEditRuns appends one nibble per brick after the row index: bit s set when the brick holds a voxel of
+ // segment s's final mask. Only bricks with that bit are candidates for s (same mixed treatment as before inside them).
+ var occ=0u;if((editRows[1]&240u)!=0u){let w=editRows[2u+4u*(u32(dims.y)*u32(dims.z)+1u)+brick/8u];occ=(w>>((brick%8u)*4u))&15u;}
+ for(var s:u32=0u;s<4u;s=s+1u){let a=u.segments[s*2u];var cand=a.y>=mm.x&&a.x<=mm.y;if((editRows[1]&(16u<<s))!=0u){cand=(occ&(1u<<s))!=0u;}if(a.w>0.5&&cand){
   if(mm.x>=a.x&&mm.y<=a.y&&(masks&(1u<<s))==0u){return 2+i32(s);}
   return 1;}}
  return 0;
@@ -847,6 +852,26 @@ export function gpuRunsForTexture(runs,sourceDims,textureDims,{dilate=0}={}){
  }
  return dilate?gpuDilateRuns(out,tw,th,td,dilate):out;
 }
+// build 525 (issue #132): per-brick occupancy of the mask-only segments, for the brick classification of volumeShader
+// (brickClass): one nibble per 8^3 brick of the TEXTURE grid (runs = gpuRunsForTexture output), bit s set when the brick
+// holds at least one voxel of segment s's mask; eight bricks per u32, brick index (bz*bcy+by)*bcx+bx as in the shader.
+// Only segments with maskOnly contribute; null when there is none (the row-index buffer then has no tail, as before).
+export function editBrickOccupancy(descs,gridDims,brickSize=8){
+ const [w,h,d]=gridDims,bs=Math.max(1,brickSize|0),bcx=Math.ceil(w/bs),bcy=Math.ceil(h/bs),bcz=Math.ceil(d/bs);
+ if(!descs.some(desc=>desc?.maskOnly&&desc.runs))return null;
+ const words=new Uint32Array(Math.ceil(bcx*bcy*bcz/8));
+ for(let si=0;si<descs.length&&si<4;si++){
+  const desc=descs[si];if(!desc?.maskOnly||!desc.runs)continue;const bit=1<<si;
+  for(let z=0;z<d;z++){
+   const rec=desc.runs[z];if(!rec?.length)continue;const bz=Math.floor(z/bs);
+   for(let i=0;i<rec.length;i+=3){
+    const row=(bz*bcy+Math.floor(rec[i]/bs))*bcx,x1=Math.min(rec[i+2],w-1);
+    for(let bx=Math.floor(rec[i+1]/bs);bx<=Math.floor(x1/bs);bx++){const b=row+bx;words[b>>3]|=bit<<((b&7)*4)}
+   }
+  }
+ }
+ return words;
+}
 
 export class MedicalVolumeRenderer{
  constructor({device,host,rendererCanvas,onProgress,onStatus}){
@@ -1186,7 +1211,10 @@ export class MedicalVolumeRenderer{
    for(let z=0;z<d;z++)total+=(desc.runs?.[z]?.length||0)/3;
   }
   if(!activeMask){this.clearEditRuns();return}
-  const offsets=new Uint32Array(2+4*(rowCount+1)),intervals=new Uint32Array(Math.max(1,total));offsets[0]=activeMask;offsets[1]=keepMask;let cursor=0;
+  // build 525 (issue #132): brick occupancy of the mask-only segments after the row index (brickClass reads it there)
+  const occupancy=editBrickOccupancy(descs,gridDims,this.brickSize);
+  const offsets=new Uint32Array(2+4*(rowCount+1)+(occupancy?occupancy.length:0)),intervals=new Uint32Array(Math.max(1,total));offsets[0]=activeMask;offsets[1]=keepMask;let cursor=0;
+  if(occupancy)offsets.set(occupancy,2+4*(rowCount+1));
   for(let si=0;si<4;si++){
    const desc=descs[si],base=2+si*(rowCount+1);let rowIndex=0;
    for(let z=0;z<d;z++){
