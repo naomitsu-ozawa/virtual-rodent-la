@@ -41,6 +41,8 @@ const CASES4 = [
   { name: '4seg-noevents-nosoft', defines: [...OPQ, 'VRL_NO_EVENTS', 'VRL_CLS4'], u: { segA: noSoft4 } },
   { name: '4seg-combined-section', defines: [...OPQ, 'VRL_CLS4'], u: { segA: allOpaque4, cutPlanes: cut, planeCount: 1, planeCut: 1, capOn: 1, sliceOpacity: 0.7 } },
   { name: '4seg-full-general', defines: [], useClsRaw: true, useDistTex: true, u: { segA: allOpaque4 } },
+  { name: '4seg-full4', defines: ['VRL_CLS4'], u: { segA: allOpaque4 } }, // build 529: the full4 variant (screenshots, diag modes): its runtime tight branch
+  { name: '4seg-full4-noskip', defines: ['VRL_CLS4'], u: { segA: allOpaque4, diag: 4 } }, // and its general loop (診断 スキップなし) reading the fourth segment from cls4Tex
 ];
 const jobs = CASES.flatMap(c => [{ ...c, name: c.name + '-f100', f: 1 }, { ...c, name: c.name + '-f' + Math.round(F_LOW * 100), f: F_LOW }]);
 const jobs4 = CASES4.flatMap(c => [{ ...c, name: c.name + '-f100', f: 1 }, { ...c, name: c.name + '-f' + Math.round(F_LOW * 100), f: F_LOW }]);

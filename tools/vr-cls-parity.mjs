@@ -36,6 +36,7 @@ const allOpaque4 = [[300, 3000, 1, 1], [-200, 299, 1, 1], [-250, -50, 1, 1], [-8
 const TOL4 = { linear: { dtP95: 2.6, dtP99: 4.6, cheb1: 0.92 } };
 const CASES4 = [
   { name: '4seg-tight-cls4', tol: TOL4, defines: ['VRL_NO_GENERAL', 'VRL_NO_EVENTS', 'VRL_OPAQUE', 'VRL_CLS4'], u: { segA: allOpaque4 }, shown: [0, 1, 2, 3], planes: [], cut: 0 },
+  { name: '4seg-full4', tol: TOL4, defines: ['VRL_CLS4'], u: { segA: allOpaque4 }, shown: [0, 1, 2, 3], planes: [], cut: 0 }, // build 529: the full4 variant (its runtime tight branch, as screenshots take it)
   { name: '4seg-tight-plane', tol: TOL4, defines: ['VRL_NO_GENERAL', 'VRL_OPAQUE', 'VRL_CLS4'], u: { segA: allOpaque4, cutPlanes: [[plane.x, plane.y, plane.z, plane.w], none, none, none], planeCount: 1, planeCut: 1, capOn: 0, sliceOpacity: 0 }, shown: [0, 1, 2, 3], planes: [plane], cut: 1 },
 ];
 const CASES = [

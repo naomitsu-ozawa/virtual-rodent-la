@@ -49,6 +49,8 @@ has enough context to continue without re-deriving decisions from scratch.
 - 詳細 tab (owner: the 2nd line could not be read): menu labels take `maxW` and wrap at their ` · ` separators (`wrapMenuText`, exported, pure); the fps / size / place / diag / auto lines wrap inside the menu width instead of running off the canvas (size and diag may take two lines; the rows below start at y0+200 as before).
 - Guards: `tools/lib/vr-phantom.mjs` `four` option (SEGMENTS4: a -600 HU ball with a 213 HU/voxel ramp as the fourth segment, no skin ramp so the band -800..-300 is nowhere else), harness `buildScene(N,{four})` (chan 0..3, cls4, dist bytes, `useDistTex` for the general loop); vr-render-golden: 8 new images (`4seg-*`: noEvents, noSoft, section, and the general loop those data used to take); vr-cls-parity: `4seg-tight-cls4` / `4seg-tight-plane` against the CPU march over the same four-channel bytes (nearest: segment 98.5 %; linear with its own declared distance tolerance, see the file).
 
+- build 529 (PR #137 review): `takeScreenshot` draws with `variants[cls4On?'full4':'full']` and `measureSamples` with `rayVariants[variantKey()]` (the screenshot / diag-5 probe used the plain full variant, where the fourth segment's channel is the distance); the 詳細 tab rows are stacked cumulatively above the first button row (`stackMenuRows`, scaled down when too tall) with the wrap helpers moved to the pure `docs/vr-menu-text.js` (+ unit test); goldens `4seg-full4` / `4seg-full4-noskip` and parity `4seg-full4` cover the full4 variant.
+
 ### Measured
 - SwiftShader (64³ complex phantom, four segments, 192² / 320²): general loop 341 / 775 ms per draw -> tight CLS4 35 / 110 ms (median of 7); the three-segment tight loop 32 / 59 ms. Samples per ray unchanged (10.7 vs 10.3).
 
