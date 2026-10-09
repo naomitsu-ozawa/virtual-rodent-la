@@ -38,6 +38,26 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-09 — claude/vr-4seg-tight-loop (build 528: four enabled segments take the VR tight loop)
+
+**Agent:** Claude (Fable 5.1 worker)
+**Task:** Owner: VR / AR slow (44 fps at auto 50 %, 反復 10, hit 20 %, 箱のみ 72 fps, JS 1.1 ms) with four segments enabled on the PC, one of them made of many tiny pieces; with three enabled it was fine. Cause (confirmed on the Quest): with four stored classification channels the combined texture (cls 0..2 + distance alpha) could not be built (`chan >= 3`), so `variantKey` fell back to the `full` variant's general loop (two fetches per step, brickClass, dynamic indexing, the search inside the divergent march).
+
+### What changed
+- `docs/distance-field.js`: `combineClassificationDistance(cls,dist,mask,out,{four})` accepts four stored channels (channels 0..2 as before, alpha = the smallest distance over every shown segment, the fourth included); `fourthChannelBytes(cls)` = channel 3's bytes. Without the option: unchanged (null for four). Unit tests added.
+- `docs/vr-view.js`: `uniform sampler3D cls4Tex` (R8, trilinear, 16 MB at 256³) and the `VRL_CLS4` define: in the tight loops the fourth segment's byte is read into `q.a` after the alpha served the jump test (so only sampled steps pay the second fetch, never jumps); the same at every refinement fetch, in `segmentIndexAt` (slice tint, cut face) and in the general loop's fetch (diag 4). Variants `full4 / combined4 / noEvents4` (+ ray copies) are compiled in `prepareVrGpu` only when four channels are stored; `variantKey` adds the `4` while the combined texture is in use (`cls4On`); `comboOk` no longer excludes four channels, so the separate 67 MB distance texture is not uploaded for them. With 1–3 segments the preprocessed GLSL is identical (the `#ifdef VRL_CLS4` blocks vanish): vr-render-golden 0 changed pixels on the 16 existing images.
+- 詳細 tab (owner: the 2nd line could not be read): menu labels take `maxW` and wrap at their ` · ` separators (`wrapMenuText`, exported, pure); the fps / size / place / diag / auto lines wrap inside the menu width instead of running off the canvas (size and diag may take two lines; the rows below start at y0+200 as before).
+- Guards: `tools/lib/vr-phantom.mjs` `four` option (SEGMENTS4: a -600 HU ball with a 213 HU/voxel ramp as the fourth segment, no skin ramp so the band -800..-300 is nowhere else), harness `buildScene(N,{four})` (chan 0..3, cls4, dist bytes, `useDistTex` for the general loop); vr-render-golden: 8 new images (`4seg-*`: noEvents, noSoft, section, and the general loop those data used to take); vr-cls-parity: `4seg-tight-cls4` / `4seg-tight-plane` against the CPU march over the same four-channel bytes (nearest: segment 98.5 %; linear with its own declared distance tolerance, see the file).
+
+- build 529 (PR #137 review): `takeScreenshot` draws with `variants[cls4On?'full4':'full']` and `measureSamples` with `rayVariants[variantKey()]` (the screenshot / diag-5 probe used the plain full variant, where the fourth segment's channel is the distance); the 詳細 tab rows are stacked cumulatively above the first button row (`stackMenuRows`, scaled down when too tall) with the wrap helpers moved to the pure `docs/vr-menu-text.js` (+ unit test); goldens `4seg-full4` / `4seg-full4-noskip` and parity `4seg-full4` cover the full4 variant.
+
+### Measured
+- SwiftShader (64³ complex phantom, four segments, 192² / 320²): general loop 341 / 775 ms per draw -> tight CLS4 35 / 110 ms (median of 7); the three-segment tight loop 32 / 59 ms. Samples per ray unchanged (10.7 vs 10.3).
+
+### Follow-up / open questions
+- Quest numbers with four segments (fps / 自動 %) to be read off the 詳細 tab; the second fetch per sampled step is the remaining cost of the fourth segment.
+- 512³ data: no classification there (unchanged); the 4-channel path only exists on the ≤256 grid.
+
 ## 2026-10-08 — claude/analysis-label-move (build 523: movable analysis labels, VR and PC 3D)
 
 **Agent:** Claude (Sonnet 5.5 worker)
