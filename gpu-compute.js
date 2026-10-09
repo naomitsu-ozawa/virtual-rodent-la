@@ -1,18 +1,18 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { installGpuLedger } from './mem-ledger.js?v=20261008-build522';
-import { gpuSplitCandidate, gpuSplitDecision, gpuVendorKey, gpuAdapterVendorKey, gpuSplitStatusParts, gpuHybridStatusText, gpuStatusDetailed, webglDisplayGpu } from './gpu-split.js?v=20261008-build522';
-import { gpuPlatformOs, gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText, gpuEffectiveHybridMode } from './gpu-preference.js?v=20261008-build522';
-import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261008-build522';
+import { installGpuLedger } from './mem-ledger.js?v=20261009-build524';
+import { gpuSplitCandidate, gpuSplitDecision, gpuVendorKey, gpuAdapterVendorKey, gpuSplitStatusParts, gpuHybridStatusText, gpuStatusDetailed, webglDisplayGpu } from './gpu-split.js?v=20261009-build524';
+import { gpuPlatformOs, gpuEffectivePreference, gpuPreferenceSupported, gpuAdapterRequestOptions, gpuPreferenceInfoText, gpuEffectiveHybridMode } from './gpu-preference.js?v=20261009-build524';
+import { setGpuPrewarmIndex, setGpuPrewarmScheduled, sceneState } from './state.js?v=20261009-build524';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261008-build522';
-import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261008-build522';
-import { isDesktopRuntime, frameYield } from './utils.js?v=20261008-build522';
-import { runsSliceToMask } from './run-length.js?v=20261008-build522';
-import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261008-build522';
-import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261008-build522';
-import { updateLinuxWebgpuNote } from './linux-webgpu-note.js?v=20261008-build522';
-import { logGpuError } from './gpu-diagnostics.js?v=20261008-build522';
+import { normalizeVrlWgsl, gpuFilterShader, GPU_PREWARM_KINDS, gaussianPassKernel, AIRDIST_X_MAX_N } from './gpu-shaders.js?v=20261009-build524';
+import { spacingParams, spacingRatios, bilateralRadii, nlmRadii, unsharpAxes } from './filter-units.js?v=20261009-build524';
+import { isDesktopRuntime, frameYield } from './utils.js?v=20261009-build524';
+import { runsSliceToMask } from './run-length.js?v=20261009-build524';
+import { surfaceSmoothingActive, strongSurfaceSmoothingActive } from './settings.js?v=20261009-build524';
+import { surfaceSmoothStrength, status } from './ui-shell.js?v=20261009-build524';
+import { updateLinuxWebgpuNote } from './linux-webgpu-note.js?v=20261009-build524';
+import { logGpuError } from './gpu-diagnostics.js?v=20261009-build524';
 export const gpuFilterRuntime={device:null,adapter:null,initPromise:null,disabled:false,pipelines:new Map(),warned:false,lastBackend:'CPU',lastError:'',adapterLabel:'',retryAfter:0,initAttempts:0,bufferPool:new Map(),bufferPoolBytes:0,sharedRendererDevice:false,workgroupSize:128,lastShaderKind:'',split:null,renderDevice:null,renderError:'',renderInfo:'',pendingCompute:null};
 export function gpuAdapterLabel(adapter){
  try{
