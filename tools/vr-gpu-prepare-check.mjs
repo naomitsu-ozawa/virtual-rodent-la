@@ -32,7 +32,7 @@ const ver=fs.readFileSync('docs/version.js','utf8').match(/APP_VERSION='([^']+)'
 const result=await pg.evaluate(async ver=>{
  const m=await import('./vr-view.js?v='+ver.replace(/\./g,'')+'x');
  const N=32,n=N*N*N,data=new Uint8Array(n*2);for(let i=0;i<n;i++){const v=1024+((i%7)*200);data[i*2]=v&255;data[i*2+1]=v>>8}
- const bx=N/8,bricks=new Float32Array(bx*bx*bx*2);for(let i=0;i<bx*bx*bx;i++){bricks[i*2]=-1000;bricks[i*2+1]=2000}
+ const bx=N/8,bricks=new Float32Array(bx*bx*bx*4);for(let i=0;i<bx*bx*bx;i++){bricks[i*4]=-1000;bricks[i*4+1]=2000} // build 526: RGBA32F (B = mask-only occupancy)
  const vd={data,dims:[N,N,N],bricks,brickDims:[bx,bx,bx],halfExt:[1.65,1.65,1.65],step:0.08,calibration:[1,-1024,0]};
  const C=4,cls=new Uint8Array(n*C),dist=new Uint8Array(n*C);for(let i=0;i<n;i++){cls[i*C]=i%2?200:10;cls[i*C+1]=100;cls[i*C+2]=10;dist[i*C]=1;dist[i*C+1]=3;dist[i*C+2]=9}
  const P={key:'smoke',vd,half:null,edit:{dims:[N,N,N],data:null,active:0},cls:{data:cls,C,chan:[0,1,2,-1]},dist:{data:dist,C,chan:[0,1,2,-1]},times:{}};

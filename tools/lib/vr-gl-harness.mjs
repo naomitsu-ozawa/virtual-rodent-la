@@ -23,9 +23,10 @@ export { makePhantom, SEGMENTS, SEGMENTS4, CALIB, HALF_EXT, SHOWN_MASK, SHOWN_MA
 
 // u16 rg8-packed volume, the app's classification bytes (point-cls.js buildClsData), distance bytes and the combined (cls + distance in alpha) texture
 export async function buildScene(N, opts = {}) {
-  const [{ buildClsData }, { buildDistanceBytes, combineClassificationDistance, fourthChannelBytes }] = await Promise.all([
+  const [{ buildClsData }, { buildDistanceBytes, combineClassificationDistance, fourthChannelBytes }, { brickOccupancy, writeBrickOccupancy }] = await Promise.all([
     import(pathToFileURL(path.join(ROOT, 'docs/point-cls.js'))),
-    import(pathToFileURL(path.join(ROOT, 'docs/distance-field.js')))]);
+    import(pathToFileURL(path.join(ROOT, 'docs/distance-field.js'))),
+    import(pathToFileURL(path.join(ROOT, 'docs/vr-brick-occupancy.js')))]);
   const hu = makePhantom(N, opts), n = N * N * N, vol = new Uint8Array(n * 2);
   for (let i = 0; i < n; i++) { const q = hu[i] + 1024; vol[i * 2] = q & 255; vol[i * 2 + 1] = q >> 8; }
   // opts.four (build 528): four enabled segments (SEGMENTS4): chan 0..3, the combined texture with {four:true} and the fourth channel's own bytes (cls4) for VRL_CLS4
@@ -33,14 +34,29 @@ export async function buildScene(N, opts = {}) {
   if (cls.C !== 4 || cls.chan.join() !== (four ? '0,1,2,3' : '0,1,2,-1')) throw new Error('unexpected classification layout ' + cls.C + ' ' + cls.chan);
   const dist = await buildDistanceBytes(cls, [N, N, N]);
   const combo = combineClassificationDistance(cls, dist, four ? SHOWN_MASK4 : SHOWN_MASK, null, { four }), cls4 = four ? fourthChannelBytes(cls) : null;
-  // bricks 8^3 with one voxel of overlap (vr-view computeBricks), HU min/max, for the general loop
-  const BS = 8, bx = N / BS, bricks = new Float32Array(bx * bx * bx * 2);
+  // bricks 8^3 with one voxel of overlap (vr-view computeBricks), HU min/max, for the general loop; four floats per brick (build 526:
+  // the B channel is the mask-only occupancy nibble, the app's brickOccupancy on the edit grid below)
+  const BS = 8, bx = N / BS, bricks = new Float32Array(bx * bx * bx * 4);
   for (let k = 0; k < bx; k++) for (let j = 0; j < bx; j++) for (let i = 0; i < bx; i++) {
     let lo = 1e9, hi = -1e9;
     for (let z = Math.max(0, k * BS - 1); z < Math.min(N, (k + 1) * BS + 1); z++) for (let y = Math.max(0, j * BS - 1); y < Math.min(N, (j + 1) * BS + 1); y++) for (let x = Math.max(0, i * BS - 1); x < Math.min(N, (i + 1) * BS + 1); x++) { const v = hu[(z * N + y) * N + x]; if (v < lo) lo = v; if (v > hi) hi = v; }
-    const o = ((k * bx + j) * bx + i) * 2; bricks[o] = lo; bricks[o + 1] = hi;
+    const o = ((k * bx + j) * bx + i) * 4; bricks[o] = lo; bricks[o + 1] = hi;
   }
-  return { N, hu, vol, cls, dist, combo, cls4, bricks, brickN: bx, four };
+  // mask-only edit of the bone segment (build 526, issue #132) on a HALF grid (the app rasterises the mask on the <= 256 grid and samples it by
+  // normalised coordinate, so at 512^3 one brick is 4^3 edit voxels): the bone ball "closed" to a ball of 12 voxels (its ramp and a shell of
+  // soft tissue filled in), plus a detached 8-voxel cube of soft tissue reaching bricks with no bone HU at all. With editMaskOnly the bone segment
+  // is exactly this mask; a brick skip that ignored the mask would lose the cube and the shell.
+  const M = N / 2, edit = new Uint8Array(M * M * M * 4), cM = M / 2, sM = M / 64;
+  for (let z = 0; z < M; z++) for (let y = 0; y < M; y++) for (let x = 0; x < M; x++) {
+    const cx = x + 0.5 - cM, cy = y + 0.5 - cM, cz = z + 0.5 - cM;
+    const ball = Math.hypot(cx, cy, cz) < 12 * sM, cube = cx >= 12 * sM && cx < 20 * sM && cy >= -8 * sM && cy < 0 && cz >= 2 * sM && cz < 10 * sM; // the cube: 8 full-grid voxels a side, partly in bricks with no bone HU
+    if (ball || cube) edit[((z * M + y) * M + x) * 4] = 255;
+  }
+  const editInfo = { data: edit, dims: [M, M, M], active: 1, maskOnly: 1 }, occ = brickOccupancy(editInfo, [bx, bx, bx]);
+  const occupied = writeBrickOccupancy(bricks, occ);
+  // the pre-526 behaviour for comparison: every brick is a candidate of the mask-only segment
+  const bricksMixed = bricks.slice(); for (let b = 0; b < bx * bx * bx; b++) bricksMixed[b * 4 + 2] = 15;
+  return { N, hu, vol, cls, dist, combo, cls4, bricks, bricksMixed, brickN: bx, edit, editN: M, occupied, four };
 }
 const b64 = a => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString('base64');
 
@@ -74,7 +90,9 @@ export async function renderBatch(args) {
   const tex3 = (data, w, h, d, format, type, f) => { const t = new THREE.Data3DTexture(data, w, h, d); t.format = format; t.type = type; t.minFilter = t.magFilter = f; t.unpackAlignment = 1; t.needsUpdate = true; return t; };
   const L = THREE.LinearFilter, NN = THREE.NearestFilter, clsF = filter === 'nearest' ? NN : L;
   const vol = tex3(un(args.scene.vol), N, N, N, THREE.RGFormat, THREE.UnsignedByteType, L);
-  const bx = args.scene.brickN, bricks = tex3(new Float32Array(un(args.scene.bricks).buffer), bx, bx, bx, THREE.RGFormat, THREE.FloatType, NN);
+  const bx = args.scene.brickN, bricks = tex3(new Float32Array(un(args.scene.bricks).buffer), bx, bx, bx, THREE.RGBAFormat, THREE.FloatType, NN);
+  const bricksMixed = args.scene.bricksMixed ? tex3(new Float32Array(un(args.scene.bricksMixed).buffer), bx, bx, bx, THREE.RGBAFormat, THREE.FloatType, NN) : null;
+  const M = args.scene.editN, editTex = args.scene.edit ? tex3(un(args.scene.edit), M, M, M, THREE.RGBAFormat, THREE.UnsignedByteType, L) : null;
   const clsRaw = tex3(un(args.scene.cls), N, N, N, THREE.RGBAFormat, THREE.UnsignedByteType, clsF);
   const combo = tex3(un(args.scene.combo), N, N, N, THREE.RGBAFormat, THREE.UnsignedByteType, clsF);
   // build 528: the fourth segment's classification bytes (R8, VRL_CLS4) and the separate distance texture of the general loop (useDist), when the scene has them
@@ -104,6 +122,8 @@ export async function renderBatch(args) {
     if (c.useDistTex) { if (!distT) throw new Error('useDistTex needs the scene distance bytes'); u.useDist = { value: 1 }; u.distInCls = { value: 0 }; u.distTex = { value: distT }; } // the general loop with its separate field (build 528 bench / parity)
     if (args.scene.four) u.clsChan = { value: V4(0, 1, 2, 3) };
     if (c.noCls) { u.useCls = { value: 0 }; u.distInCls = { value: 0 }; }
+    if (c.maskOnly) { if (!editTex) throw new Error('case ' + c.name + ' needs the scene edit mask'); u.editMask = { value: 1 }; u.editMaskOnly = { value: 1 }; u.editTex = { value: editTex }; } // build 526: bone decided by the mask alone
+    if (c.bricksMixed) { if (!bricksMixed) throw new Error('case ' + c.name + ' needs the scene bricksMixed'); u.bricks = { value: bricksMixed }; } // every brick a mask-only candidate (pre-526)
     const m = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: sh.vs, fragmentShader: hit ? hitFs(sh.fs) : sh.fs, side: THREE.BackSide, toneMapped: false, uniforms: u, defines: Object.fromEntries((c.defines || []).map(d => [d, ''])) });
     if (ray || hit) { m.blending = THREE.NoBlending; m.transparent = false; } else { m.transparent = false; m.depthWrite = true; m.blending = THREE.CustomBlending; m.blendSrc = THREE.OneFactor; m.blendDst = THREE.OneMinusSrcAlphaFactor; }
     return m;
@@ -156,7 +176,7 @@ export async function runBatch(pg, args) {
   const dec = s => Buffer.from(s, 'base64');
   return { ...r, out: Object.fromEntries(Object.entries(r.out).map(([k, v]) => [k, dec(v)])), raysBuf: r.rays ? new Float32Array(new Uint8Array(dec(r.rays)).buffer) : null };
 }
-export const sceneArgs = s => ({ vol: b64(s.vol), bricks: b64(s.bricks), cls: b64(s.cls.data), combo: b64(s.combo), brickN: s.brickN, ...(s.four ? { four: true, cls4: b64(s.cls4), dist: b64(s.dist.data) } : {}) });
+export const sceneArgs = s => ({ vol: b64(s.vol), bricks: b64(s.bricks), cls: b64(s.cls.data), combo: b64(s.combo), brickN: s.brickN, ...(s.edit ? { edit: b64(s.edit), editN: s.editN, bricksMixed: b64(s.bricksMixed) } : {}), ...(s.four ? { four: true, cls4: b64(s.cls4), dist: b64(s.dist.data) } : {}) });
 
 // ---- PNG (RGBA8, filter 0 only: written and read by this tool) ----
 const crcTable = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();

@@ -49,11 +49,11 @@ const result=await pg.evaluate(async ({A,B,countA,countB,refine,useDist,boneOnly
  const INTERCEPT=useVol?-4000:-1024;
  const vol=new THREE.Data3DTexture(data,N,N,N);vol.format=THREE.RGFormat;vol.type=THREE.UnsignedByteType;vol.minFilter=vol.magFilter=THREE.LinearFilter;vol.unpackAlignment=1;vol.needsUpdate=true;
  // bricks 8³ with one voxel of overlap (vr-view computeBricks)
- const BS=8,bx=N/BS,mm=new Float32Array(bx*bx*bx*2);
+ const BS=8,bx=N/BS,mm=new Float32Array(bx*bx*bx*4); // build 526: four floats per brick (B = mask-only occupancy, unused here)
  for(let k=0;k<bx;k++)for(let j=0;j<bx;j++)for(let i=0;i<bx;i++){let lo=1e9,hi=-1e9;
   for(let z=Math.max(0,k*BS-1);z<Math.min(N,(k+1)*BS+1);z++)for(let y=Math.max(0,j*BS-1);y<Math.min(N,(j+1)*BS+1);y++)for(let x=Math.max(0,i*BS-1);x<Math.min(N,(i+1)*BS+1);x++){const v=hu(x,y,z);if(v<lo)lo=v;if(v>hi)hi=v}
-  const o=((k*bx+j)*bx+i)*2;mm[o]=lo;mm[o+1]=hi}
- const bricks=new THREE.Data3DTexture(mm,bx,bx,bx);bricks.format=THREE.RGFormat;bricks.type=THREE.FloatType;bricks.minFilter=bricks.magFilter=THREE.NearestFilter;bricks.unpackAlignment=1;bricks.needsUpdate=true;
+  const o=((k*bx+j)*bx+i)*4;mm[o]=lo;mm[o+1]=hi}
+ const bricks=new THREE.Data3DTexture(mm,bx,bx,bx);bricks.format=THREE.RGBAFormat;bricks.type=THREE.FloatType;bricks.minFilter=bricks.magFilter=THREE.NearestFilter;bricks.unpackAlignment=1;bricks.needsUpdate=true;
  // classification (vr-view build 356): per segment 0.5 + (HU distance inside the range)/2048, one byte per channel
  const SEG=[seg.bone,seg.soft,seg.fat],C=4,cls=cached?new Uint8Array(await (await fetch('/cls.bin')).arrayBuffer()):new Uint8Array(N*N*N*C);
  const excluded=(x,y,z)=>edit&&z>=64&&y>=44&&y<=84&&x>=44&&x<=84;
