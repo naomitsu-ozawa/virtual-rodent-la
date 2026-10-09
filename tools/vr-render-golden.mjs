@@ -23,6 +23,7 @@ const zero = [0, 0, 1, 0];
 const noSoft = [[300, 3000, 1, 1], [-200, 299, 1, 0], [-250, -50, 1, 1], [0, 0, 0, 0]]; // soft tissue off: bone and (complex) fat show
 const translucent = [[300, 3000, 1, 1], [-200, 299, 0.35, 1], [-250, -50, 0.5, 1], [0, 0, 0, 0]]; // the app's soft-tissue default 0.35; fat 0.5 so that rays pile up opacity through many sheets (ACC_STOP matters)
 const cut = [[-pl[0], -pl[1], -pl[2], 0.05], zero, zero, zero]; // the half towards the camera is removed
+const boneOnly = [[300, 3000, 1, 1], [-200, 299, 1, 0], [-250, -50, 1, 0], [0, 0, 0, 0]]; // build 526: only the (mask-only) bone is shown, so empty bricks exist to skip
 const CASES = [
   { name: 'noevents-bonefat', defines: [...OPQ, 'VRL_NO_EVENTS'], u: { segA: noSoft } },
   { name: 'noevents-allopaque', defines: [...OPQ, 'VRL_NO_EVENTS'], u: { segA: allOpaque } },
@@ -32,11 +33,20 @@ const CASES = [
   { name: 'full-cls-translucent', defines: [], useClsRaw: true, u: { segA: translucent, distInCls: 0, useDist: 0 } },
   { name: 'full-hu', defines: [], noCls: true, u: { segA: translucent } },
   { name: 'noevents-regions', defines: [...OPQ, 'VRL_NO_EVENTS', 'VRL_REGIONS'], u: { segA: noSoft } },
+  { name: 'full-hu-maskonly', defines: [], noCls: true, maskOnly: true, u: { segA: boneOnly } }, // build 526 (issue #132): HU path with a mask-only bone (the scene's edit mask), brick occupancy in use
 ];
+// build 526: the same scene with the pre-526 bricks (every brick a candidate of the mask-only segment = no empty-space skip) and the diag 5 probe
+// (R = samples / 1024): the occupancy must skip (fewer samples) without losing a mask voxel (the drawn silhouette is the same; the skip re-phases
+// the samples, so single pixels inside the silhouette may differ by dither)
+const moCase = CASES[CASES.length - 1], PROOF = [
+  { ...moCase, name: 'proof-occ', f: 1 }, { ...moCase, name: 'proof-mixed', f: 1, bricksMixed: true },
+  { ...moCase, name: 'proof-occ-probe', f: 1, u: { ...moCase.u, diag: 5 } }, { ...moCase, name: 'proof-mixed-probe', f: 1, bricksMixed: true, u: { ...moCase.u, diag: 5 } },
+];
+const PROOF_MAX_SILHOUETTE = +opt('--max-silhouette', 24), PROOF_SAMPLE_RATIO = +opt('--max-sample-ratio', 0.6);
 const jobs = CASES.flatMap(c => [{ ...c, name: c.name + '-f100', f: 1 }, { ...c, name: c.name + '-f' + Math.round(F_LOW * 100), f: F_LOW }]);
 
 const sh = grabShaders(shaderFile), scene = await buildScene(N);
-const render = () => withPage(async (pg, info) => { const r = await runBatch(pg, { sh, N, W, H, halfExt: HALF_EXT, scene: sceneArgs(scene), cases: jobs, mode: 'color', filter: 'linear' }); return { ...r, info }; });
+const render = () => withPage(async (pg, info) => { const r = await runBatch(pg, { sh, N, W, H, halfExt: HALF_EXT, scene: sceneArgs(scene), cases: [...jobs, ...PROOF], mode: 'color', filter: 'linear' }); return { ...r, info }; });
 const results = []; for (let i = 0; i < runs; i++) results.push(await render());
 const first = results[0];
 console.log('Chromium ' + first.info.version + ' · shader ' + path.relative(ROOT, shaderFile) + ' · ' + jobs.length + ' images ' + W + 'x' + H + ' · threshold: pixels <= ' + maxPixels + ', max channel diff <= ' + maxDiff);
@@ -67,6 +77,16 @@ for (const j of jobs) {
     const dp = new Uint8Array(px.length); for (let i = 0; i < px.length; i += 4) { for (let k = 0; k < 3; k++) dp[i + k] = Math.min(255, Math.abs(px[i + k] - g.px[i + k]) * 16); dp[i + 3] = 255; }
     fs.writeFileSync(path.join(outDir, j.name + '-diff.png'), encodePng(dp, W, H));
   }
+}
+// build 526: the mask-only occupancy proof (not a golden: compared within the run)
+{
+  const px = n => first.out[n], covered = p => { const c = new Uint8Array(W * H); for (let i = 0; i < c.length; i++) { const o = i * 4; if (Math.abs(p[o] - BGpx[0]) + Math.abs(p[o + 1] - BGpx[1]) + Math.abs(p[o + 2] - BGpx[2]) > 6) c[i] = 1; } return c; };
+  const a = covered(px('proof-occ')), b = covered(px('proof-mixed')); let sil = 0, drawn = 0; for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) sil++; if (b[i]) drawn++; }
+  const mean = p => { let s = 0, n = 0; for (let i = 0; i < p.length; i += 4) { s += p[i]; n++; } return s / n; }; // samples / 1024 * 255, averaged over the image
+  const sOcc = mean(px('proof-occ-probe')), sMixed = mean(px('proof-mixed-probe')), ratio = sOcc / Math.max(sMixed, 1e-9), d = diffPixels(px('proof-occ'), px('proof-mixed'));
+  const bad = sil > PROOF_MAX_SILHOUETTE || ratio > PROOF_SAMPLE_RATIO || drawn < W * H * 0.02 || scene.occupied === 0 || scene.occupied >= scene.brickN ** 3;
+  console.log((bad ? 'FAIL ' : 'ok   ') + 'mask-only occupancy proof: occupied bricks ' + scene.occupied + ' / ' + scene.brickN ** 3 + ', silhouette pixels changed ' + sil + ' of ' + drawn + ' drawn (max ' + PROOF_MAX_SILHOUETTE + '), samples per ray ' + (sOcc * 1024 / 255).toFixed(1) + ' with occupancy vs ' + (sMixed * 1024 / 255).toFixed(1) + ' with every brick mixed (ratio ' + ratio.toFixed(3) + ', max ' + PROOF_SAMPLE_RATIO + '); colour diff inside the silhouette ' + d.pixels + ' px / max ' + d.maxDiff);
+  if (bad) { failed = true; fs.mkdirSync(outDir, { recursive: true }); for (const n of ['proof-occ', 'proof-mixed']) fs.writeFileSync(path.join(outDir, n + '.png'), encodePng(px(n), W, H)); }
 }
 if (update) console.log('goldens updated in ' + path.relative(ROOT, goldenDir) + ': review the images and commit them, stating why the picture changed');
 else if (failed) { console.error('vr-render-golden FAILED (actual / diff images in ' + path.relative(ROOT, outDir) + '). If the change is intended, rerun with --update, review and commit the goldens.'); process.exit(1); }

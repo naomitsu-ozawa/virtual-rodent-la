@@ -27,12 +27,17 @@ All four browser checks run on headless Chromium with SwiftShader (software WebG
 ## Render golden (`tools/vr-render-golden.mjs`)
 
 A 64^3 phantom (bone ball / plate / rod with 100 HU-per-voxel ramps, soft tissue, "complex" fat: thin sheets with holes plus single-voxel specks), anisotropic box
-(halfExt 1.65 x 1.3 x 1.0), 160 x 160 px, fixed camera. Eight cases x two resolutions = 16 PNGs in `tests/golden/vr-render/`:
+(halfExt 1.65 x 1.3 x 1.0), 160 x 160 px, fixed camera. Nine cases x two resolutions = 18 PNGs in `tests/golden/vr-render/`:
 
 - `noevents-bonefat`, `noevents-allopaque`: variant `VRL_NO_GENERAL + VRL_NO_EVENTS + VRL_OPAQUE` (the tight loop without plane events), soft tissue off / on;
 - `combined-section`, `combined-section-bonefat`, `combined-two-planes`: variant `VRL_NO_GENERAL + VRL_OPAQUE` with a clipping plane, cut-face cap and CT slice (and a second, non-clipping slice plane);
 - `noevents-regions`: the same with `VRL_REGIONS` (analysis result colours);
 - `full-cls-translucent`, `full-hu`: the general loop (translucent soft tissue 0.35 / fat 0.5), classification path and HU path (this is where `ACC_STOP` shows).
+- `full-hu-maskonly` (build 526, issue #132): the HU path with only the bone shown and the bone decided by a mask-only edit (`editMaskOnly`; the scene's edit mask on a
+  half-size grid, as the app's 512³ data with the 256 mask: the ball "closed" to 12 voxels plus a detached cube of soft tissue). The brick texture's B channel
+  carries the mask-only occupancy (`docs/vr-brick-occupancy.js`). The same run also checks the **occupancy proof** (not a golden): the scene rendered with every
+  brick a candidate (the pre-526 behaviour = no skip) must have the same drawn silhouette (at most `--max-silhouette` 24 edge pixels re-phased by the skip) and the
+  diag 5 probe must show at most `--max-sample-ratio` 0.6 of the samples per ray (measured 0.25).
 - `-f100` = direct 100 % drawing; `-f70` = the low-resolution path of `vr-view.js` (ray material into a 70 % target, then the composite pass over the background).
 
 Options: `--update`, `--max-pixels N`, `--max-diff N` (default 0 / 0, env `GOLDEN_MAX_PIXELS` / `GOLDEN_MAX_DIFF`), `--shader FILE` (render a scratch copy of vr-view.js), `--runs K` (variance), `--out DIR`.

@@ -29,7 +29,7 @@ const result=await pg.evaluate(async ({vertexShader,fragmentShader})=>{
  for(let z=0;z<dims[2];z++)for(let y=0;y<dims[1];y++)for(let x=0;x<dims[0];x++){const v=x*10,o=((z*dims[1]+y)*dims[0]+x)*2;data[o]=v&255;data[o+1]=v>>8}
  const vol=new THREE.Data3DTexture(data,...dims);vol.format=THREE.RGFormat;vol.type=THREE.UnsignedByteType;vol.minFilter=vol.magFilter=THREE.LinearFilter;vol.unpackAlignment=1;vol.needsUpdate=true;
  // bricks: one brick covering everything, HU 0..630
- const bricks=new THREE.Data3DTexture(new Float32Array([0,630]),1,1,1);bricks.format=THREE.RGFormat;bricks.type=THREE.FloatType;bricks.minFilter=bricks.magFilter=THREE.NearestFilter;bricks.needsUpdate=true;
+ const bricks=new THREE.Data3DTexture(new Float32Array([0,630,0,0]),1,1,1);bricks.format=THREE.RGBAFormat;bricks.type=THREE.FloatType;bricks.minFilter=bricks.magFilter=THREE.NearestFilter;bricks.needsUpdate=true; // build 526: RGBA32F (B = mask-only occupancy)
  const dummy=new THREE.Data3DTexture(new Uint8Array(4),1,1,1);dummy.format=THREE.RGBAFormat;dummy.needsUpdate=true;
  const halfExt=[1.6,0.2,0.2];
  const u={vol:{value:vol},bricks:{value:bricks},halfExt:{value:new THREE.Vector3(...halfExt)},texDims:{value:new THREE.Vector3(...dims)},brickDims:{value:new THREE.Vector3(1,1,1)},
