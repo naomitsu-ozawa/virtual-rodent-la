@@ -17,12 +17,15 @@
 // edit: {data: Uint8Array RGBA (channel s = mask of segment s, >= 128 set) | null, dims: [ew, eh, ed], maskOnly: bits of the
 // mask-only segments}; brickDims: [bx, by, bz] of the rendered grid (ceil(dim / 8), as computeBricks). Returns a Uint8Array of
 // bx*by*bz nibbles (index (bz*by+by)*bx+bx, as the texture) or null when no mask-only segment is active (nothing to store).
+// Fail-safe: a mask-only segment whose mask bytes are missing or short gets every brick (the pre-526 "mixed" behaviour: slower,
+// never a hidden segment).
 export function brickOccupancy(edit, brickDims) {
  const maskOnly = (edit?.maskOnly | 0) & 15;
- if (!maskOnly || !edit.data || !edit.dims) return null;
- const [ew, eh, ed] = edit.dims, [bx, by, bz] = brickDims, data = edit.data;
- if (!(ew > 0 && eh > 0 && ed > 0 && bx > 0 && by > 0 && bz > 0) || data.length < ew * eh * ed * 4) return null;
- const occ = new Uint8Array(bx * by * bz);
+ if (!maskOnly) return null;
+ const [bx, by, bz] = brickDims || [];
+ if (!(bx > 0 && by > 0 && bz > 0)) return null;
+ const occ = new Uint8Array(bx * by * bz), [ew, eh, ed] = edit.dims || [], data = edit.data;
+ if (!data || !(ew > 0 && eh > 0 && ed > 0) || data.length < ew * eh * ed * 4) return occ.fill(maskOnly);
  const rx = cellRange(ew, bx), ry = cellRange(eh, by), rz = cellRange(ed, bz);
  for (let z = 0; z < ed; z++) {
   const z0 = rz.lo[z], z1 = rz.hi[z];
