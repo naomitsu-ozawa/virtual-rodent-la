@@ -38,6 +38,24 @@ has enough context to continue without re-deriving decisions from scratch.
 
 ---
 
+## 2026-10-08 — claude/analysis-label-move (build 523: movable analysis labels, VR and PC 3D)
+
+**Agent:** Claude (Opus 5.5 worker)
+**Task:** The label of an analysis result (VR: the card pinned with the trigger in the 解析 tab) can be moved by the user in VR / AR and on the PC / Mac / iPad 3D view; it stays joined to its point by a leader line; the place is saved in the project.
+
+### What changed
+- There was no analysis label on the PC 3D view, and the VR pinned card was session-only (a `pins` Map keyed by list position). Now a label is `region.label = {anchor:{i,j,k}, offset?:{i,j,k}}` on the analysis region (`docs/analysis-label.js`, pure): anchor and offset are in VOXEL units of the data (the convention of a distance label's `labelOffset`), so the same place shows in VR and on the PC and does not depend on the model's move / turn / scale.
+- Project: `project.analysis.regions[i].label` (written only when set; read through `normalizeAnalysisLabel`). No `PROJECT_VERSION` bump (optional field, like comments and measurements; an old app ignores it, an old project has none). The label also follows an edit's trim / rebuild of the results (`snapshotAnalysisRegionsForSegment`, `trimAnalysisRegionsAfterEdit`, `rebuildEditedAnalysisForSegment`).
+- VR (`vr-view.js`): pins are rebuilt every frame from `region.label` (`syncPins`; `regionList` entries carry `rid`). Laser + trigger on a pinned card grabs it (the `lblDrag` path of the distance labels, rigid at ray distance), release places it; a 0.5 s long press without moving puts it back. Lit / held card + its leader are drawn on top, the others follow the 「ラベルの隠れ方」 depth rule. The default (unmoved) placement is byte-for-byte the old one.
+- PC / iPad 3D (`comment-3d.js`): an HTML chip in the comment layer + SVG leader + anchor dot; a capture-phase drag moves it in the camera-facing plane at its depth (the camera does not rotate; touch too), double click / tap or the card's button puts it back; moved labels are judged hidden-behind-tissue in the same pass as the dragged distance labels (`.is-behind`), lit / dragging stay on top. Pin / remove / reset buttons in the focused result's card (`analysis-results.js`).
+
+### Why
+- Owner request: labels must be movable in both views, stay connected by a leader line, and the moved place must be saved.
+
+### Follow-up / open questions
+- The VR grab / long-press reset could only be checked statically and by the pure maths (no headset): needs a Quest run.
+- PC pins a label at the result's representative voxel (a point inside it); VR pins at the laser's surface hit. A "pin at the clicked point" gesture on the 3D view is possible later.
+
 ## 2026-10-08 — claude/gpu-debug-diagnostics (build 520: GPU info tab and diagnostic report, debug mode only)
 
 **Agent:** Claude (Sonnet 5.5 worker)
