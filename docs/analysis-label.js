@@ -6,7 +6,7 @@
 //   offset : where the user left the label, as the vector from the anchor in VOXEL units (the same convention as a distance label's labelOffset in measurements.js), so it does not
 //            depend on the model's move / rotation / scale and is the same in VR and on the PC. No offset = the view's default placement (beside the anchor, facing the viewer).
 // A leader line joins a moved label to its anchor (leaderVisible).
-import { stepDelta, offsetFromDelta } from './measure-label.js?v=20261008-build523';
+import { stepDelta, offsetFromDelta } from './measure-label.js?v=20261009-build524';
 
 export const ANALYSIS_LABEL_MAX=1e4; // |component| limit (voxels): anything beyond is a corrupt file, dropped
 const num=(x)=>typeof x==='number'&&Number.isFinite(x)&&Math.abs(x)<=ANALYSIS_LABEL_MAX;
@@ -96,4 +96,19 @@ export function rectEdgePoint(dx,dy,hw,hh){
  if(ax<1e-12&&ay<1e-12)return{x:0,y:-hh};
  const s=Math.min(ax>1e-12?hw/ax:Infinity,ay>1e-12?hh/ay:Infinity);
  return{x:dx*s,y:dy*s};
+}
+
+// ---- the anchor of a label pinned on the PC (build 524) ----
+// A result's inside voxel would put its card INSIDE the tissue in VR (a ghost behind bone), so the PC pins on the result's SURFACE as the current camera sees it: march from the eye
+// (voxel units, {i,j,k}) towards a voxel inside the result and take the first sample that lies in it (contains(i,j,k) on rounded voxel indices). Deterministic, at most maxSteps tests
+// (a long ray is cut to its last maxSteps samples, the part nearest the target). Returns the entry point {i,j,k} (floats), or null when the ray never meets the result.
+export function surfaceAnchor({contains,eye,target,step=.5,maxSteps=6000}){
+ const dx=target.i-eye.i,dy=target.j-eye.j,dz=target.k-eye.k,len=Math.hypot(dx,dy,dz);
+ if(!(len>1e-9)||typeof contains!=='function')return null;
+ const ux=dx/len,uy=dy/len,uz=dz/len,n=Math.min(Math.ceil(len/step)+1,maxSteps),t0=Math.max(0,len-(n-1)*step);
+ for(let s=0;s<n;s++){
+  const t=t0+s*step,p={i:eye.i+ux*t,j:eye.j+uy*t,k:eye.k+uz*t};
+  if(contains(Math.round(p.i),Math.round(p.j),Math.round(p.k)))return p;
+ }
+ return contains(Math.round(target.i),Math.round(target.j),Math.round(target.k))?{i:target.i,j:target.j,k:target.k}:null;
 }

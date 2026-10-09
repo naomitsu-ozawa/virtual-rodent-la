@@ -100,6 +100,21 @@ await pg.evaluate(()=>document.querySelector('.analysis-label-pin').click());awa
 ok('remove-label button removes the chip',(await state()).label===null&&(await state()).chips===0);
 await pg.evaluate(()=>document.querySelector('.analysis-label-pin').click());await pg.waitForTimeout(400);
 const s5=await state();ok('pin button pins it again (at a voxel of the result)',s5.label&&!s5.label.offset&&s5.chips===1,JSON.stringify(s5));
+// build 524: the PC pin is on the result's SURFACE facing the camera (not an inside voxel): the default camera looks from +z (= +k), so the anchor is on the k = 209 face
+ok('pinned anchor is on the surface facing the camera (k near the top face 209, i / j inside the result)',s5.label&&s5.label.anchor.k>=208.4&&s5.label.anchor.k<=209.6&&s5.label.anchor.i>=199.5&&s5.label.anchor.i<=219.5&&s5.label.anchor.j>=199.5&&s5.label.anchor.j<=209.5,JSON.stringify(s5.label));
+// build 524: the chip number is the region id, as the panel's 「解析領域 N」
+ok('chip number = region id',await pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,st=await import('./state.js'+v),e=document.querySelector('.analysis-label-3d:not([hidden])');return !!e&&e.textContent.startsWith(st.analysisRegions[0].id+'.')}));
+// build 524: merging two results keeps the (first) label
+const mg=await pg.evaluate(async()=>{
+ const v=new URL(document.querySelector('script[src*="app.js"]').src).search,im=f=>import('./'+f+v);
+ const [st,ops]=await Promise.all([im('state.js'),im('analysis-ops.js')]),vol=st.current3DVolume||st.volume,runs=new Array(vol.slices).fill(null);
+ for(let z=300;z<=304;z++){const a=[];for(let y=100;y<=104;y++)a.push(y,100,104);runs[z]=new Int32Array(a)}
+ await ops.addAnalysisRegion(vol,{key:'bone',segmentKeys:['bone'],runsBySlice:runs,voxels:125,mm3:1});
+ const first=JSON.parse(JSON.stringify(st.analysisRegions[0].label));for(const r of st.analysisRegions)r.selected=true;
+ await ops.mergeSelectedAnalysisRegions();
+ return{count:st.analysisRegions.length,label:st.analysisRegions[0]?.label?JSON.parse(JSON.stringify(st.analysisRegions[0].label)):null,first};
+});
+ok('merge: one result left, it inherits the first label',mg.count===1&&JSON.stringify(mg.label)===JSON.stringify(mg.first),JSON.stringify(mg));
 // an edit tool owns the pointer: the chip is not draggable then
 await pg.evaluate(async()=>{const v=new URL(document.querySelector('script[src*="app.js"]').src).search,st=await import('./state.js'+v);st.setAnalysisEditTool('lasso')});
 const c6=await chipXY();await pg.mouse.move(c6.x,c6.y);await pg.waitForTimeout(150);

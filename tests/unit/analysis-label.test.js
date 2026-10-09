@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { rectEdgePoint, vrVoxelStep, pcVoxelStep, normalizeAnalysisLabel, hasOffset, leaderVisible, withOffset, labelLocal, offsetForLocal, voxelFromLocalVr, voxelFromLocal3d, clampVoxel, setRegionLabel, setRegionLabelOffset, onAnalysisLabelsChange, labelForProject, sameLabel, ANALYSIS_LABEL_MAX } from '../../docs/analysis-label.js';
+import { surfaceAnchor, rectEdgePoint, vrVoxelStep, pcVoxelStep, normalizeAnalysisLabel, hasOffset, leaderVisible, withOffset, labelLocal, offsetForLocal, voxelFromLocalVr, voxelFromLocal3d, clampVoxel, setRegionLabel, setRegionLabelOffset, onAnalysisLabelsChange, labelForProject, sameLabel, ANALYSIS_LABEL_MAX } from '../../docs/analysis-label.js';
 import { voxelToLocal } from '../../docs/vr-point.js';
 import { voxelToLocal3D } from '../../docs/crosshair.js';
 import { packProject, unpackProject } from '../../docs/project-file.js';
@@ -137,12 +137,58 @@ describe('leader line end on the card edge', () => {
   });
 });
 
+describe('PC pin: the anchor is on the result surface facing the camera (build 524)', () => {
+  const box = { x0: 10, x1: 29, y0: 20, y1: 29, z0: 30, z1: 39 }; // a result: voxels of this box
+  const contains = (i, j, k) => i >= box.x0 && i <= box.x1 && j >= box.y0 && j <= box.y1 && k >= box.z0 && k <= box.z1;
+  const inside = { i: 20, j: 25, k: 35 };
+  it('from the +k side the anchor is on the top (k) face, from -k on the bottom face, from +i on the +i face', () => {
+    const a = surfaceAnchor({ contains, eye: { i: 20, j: 25, k: 500 }, target: inside });
+    expect(a.k).toBeGreaterThanOrEqual(38.9); expect(a.k).toBeLessThanOrEqual(39.5 + 1e-9); expect(a.i).toBeCloseTo(20, 6);
+    const b = surfaceAnchor({ contains, eye: { i: 20, j: 25, k: -400 }, target: inside });
+    expect(b.k).toBeLessThanOrEqual(30.1); expect(b.k).toBeGreaterThanOrEqual(29.5 - 1e-9);
+    const c = surfaceAnchor({ contains, eye: { i: 600, j: 25, k: 35 }, target: inside });
+    expect(c.i).toBeGreaterThanOrEqual(28.9); expect(c.i).toBeLessThanOrEqual(29.5 + 1e-9);
+    expect(contains(Math.round(a.i), Math.round(a.j), Math.round(a.k))).toBe(true); // always a voxel of the result
+  });
+  it('deterministic, cheap for a far eye (at most maxSteps tests), null when nothing is met', () => {
+    let n = 0; const counted = (i, j, k) => { n++; return contains(i, j, k); };
+    const a1 = surfaceAnchor({ contains: counted, eye: { i: 20, j: 25, k: 1e6 }, target: inside }), tests = n;
+    expect(tests).toBeLessThanOrEqual(6001);
+    expect(surfaceAnchor({ contains, eye: { i: 20, j: 25, k: 1e6 }, target: inside })).toEqual(a1);
+    expect(surfaceAnchor({ contains: () => false, eye: { i: 0, j: 0, k: 100 }, target: inside })).toBeNull();
+    expect(surfaceAnchor({ contains, eye: inside, target: inside })).toBeNull(); // no direction
+  });
+  it('an eye inside the result gives the first sample, never a point outside', () => {
+    const a = surfaceAnchor({ contains, eye: { i: 15, j: 25, k: 33 }, target: inside });
+    expect(contains(Math.round(a.i), Math.round(a.j), Math.round(a.k))).toBe(true);
+  });
+});
+
+describe('wiring (static): build 524 fixes', () => {
+  const read = f => readFileSync(new URL('../../docs/' + f, import.meta.url), 'utf8');
+  it('VR: a tap on a pinned card unpins, cards are hit-testable only in the analysis tab and not through tissue, same numbers as the panel, no flicker, scratch objects', () => {
+    const vr = read('vr-view.js');
+    expect(vr).toContain("if(ld0?.pin&&pr.res.kind==='mlabel'){if(rel==='tap'&&!ld0.moved&&!ld0.done)"); expect(vr).toContain('setRegionLabel(reg,null);pulse(c,0.2)');
+    expect(vr).toContain('if(ui.open&&ui.tab===5&&pins.size)mlb=nearerLabel('); expect(vr).toContain('tagBehindTissue(occlusionGpu(),mlb.distance,vh.distance,occEps))mlb=null');
+    expect(vr).toContain("ctx.fillText(r.rid+'. '+"); expect(vr).toContain("label(X+76,y+34,String(r.rid)+'. '+");
+    expect(vr).toContain('lb.m.position.y+=labelScale()*0.045'); // the unlit size: the card does not move when lit
+    expect(vr).toContain('const ridIndex=()=>'); expect(vr).toContain('spacingNoteF'); expect(vr).not.toContain('[...pins]'); expect(vr).not.toContain('hit:tmpPh.clone()');
+    expect(vr).toContain('ld.done=true');
+  });
+  it('PC / project: the chip number is the region id; the surface anchor; merge and split keep the label; a second finger cannot rotate during a label drag', () => {
+    const d3 = read('comment-3d.js'), ops = read('analysis-ops.js'), res = read('analysis-results.js');
+    expect(d3).toContain("e.t1.textContent=r.id+'. '+"); expect(d3).toContain('if(labelDragging){'); expect(d3).toContain('labelDragging=true;');
+    expect(res).toContain('surfaceAnchor({contains:(i,j,k)=>analysisRunsContain(region.runsBySlice,i,j,k)');
+    expect(ops).toContain('selected.find(r=>r.label)?.label'); expect(ops).toContain('split.label=r.label;delete r.label');
+  });
+});
+
 describe('wiring (static): VR pins and the PC chips use the shared region.label', () => {
   const read = f => readFileSync(new URL('../../docs/' + f, import.meta.url), 'utf8');
   it('VR: pins are rebuilt from region.label every frame, can be grabbed (pin ref), long press resets, lit pins draw on top; the project carries the label', () => {
     const vr = read('vr-view.js');
     expect(vr).toContain('const syncPins=()=>'); expect(vr).toContain('syncPins();for(const lb of pins.values()){lb.lit=pinLit.has(lb.rid);placeLabel(lb);pinOcclusion(lb,lb.lit)}');
-    expect(vr).toContain('nearerLabel(vpMeasure.pickLabel('); expect(vr).toContain('if(ld.pin){'); expect(vr).toContain('resetPin(c)');
+    expect(vr).toContain('mlb=nearerLabel(mlb,pickPin('); expect(vr).toContain('if(ld.pin){'); expect(vr).toContain('resetPin(c)');
     expect(vr).toContain('occludedPass(occlusionGpu(),lit)');
     expect(vr).toContain('rid:r.id');
     const ops = read('analysis-ops.js'); expect(ops).toContain('label:labelForProject(r)'); expect(ops).toContain('normalizeAnalysisLabel(e.label)');
