@@ -8,39 +8,39 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261009-build529';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261009-build529';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261009-build529';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261009-build529';
-import { datasetFingerprint } from './project-file.js?v=20261009-build529';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261009-build529';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261009-build529';
-import { buildClsData } from './point-cls.js?v=20261009-build529';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261009-build529';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261009-build529';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261009-build529';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261009-build529';
-import { buildDistanceBytes, combineClassificationDistance, fourthChannelBytes } from './distance-field.js?v=20261009-build529';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261009-build529';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261009-build529';
-import { tr } from './i18n.js?v=20261009-build529';
-import { wrapMenuText, stackMenuRows } from './vr-menu-text.js?v=20261009-build529';
-import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261009-build529';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261009-build529';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261009-build529';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261009-build529';
-import { createVrMeasure, LABEL_LIT_SCALE } from './vr-measure.js?v=20261009-build529';
-import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE, FLING_UNDO_MS, FLING_DEBUG_MS, createVelocityTracker, flingDecision, flingDebugLines, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace } from './vr-section-frame.js?v=20261009-build529';
-import { createUndoButton } from './vr-undo-button.js?v=20261009-build529';
-import { createFlingDebugTag } from './vr-fling-debug.js?v=20261009-build529';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261009-build529';
-import { brickOccupancy, writeBrickOccupancy } from './vr-brick-occupancy.js?v=20261009-build529';
-import { createProbeGate } from './measure-label.js?v=20261009-build529';
-import { setRegionLabel, setRegionLabelOffset, voxelFromLocalVr, clampVoxel, labelLocal, offsetForLocal, vrVoxelStep, rectEdgePoint, leaderVisible } from './analysis-label.js?v=20261009-build529';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261009-build529';
-import { APP_BUILD } from './version.js?v=20261009-build529';
-import { wc, ww } from './ui-shell.js?v=20261009-build529';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261009-build529';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261009-build530';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261009-build530';
+import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261009-build530';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261009-build530';
+import { datasetFingerprint } from './project-file.js?v=20261009-build530';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261009-build530';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261009-build530';
+import { buildClsData } from './point-cls.js?v=20261009-build530';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261009-build530';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261009-build530';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261009-build530';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261009-build530';
+import { buildDistanceBytes, combineClassificationDistance, fourthChannelBytes } from './distance-field.js?v=20261009-build530';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261009-build530';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261009-build530';
+import { tr } from './i18n.js?v=20261009-build530';
+import { wrapMenuText, stackMenuRows } from './vr-menu-text.js?v=20261009-build530';
+import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261009-build530';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261009-build530';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261009-build530';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261009-build530';
+import { createVrMeasure, LABEL_LIT_SCALE } from './vr-measure.js?v=20261009-build530';
+import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE, FLING_UNDO_MS, FLING_DEBUG_MS, createVelocityTracker, flingDecision, flingDebugLines, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace } from './vr-section-frame.js?v=20261009-build530';
+import { createUndoButton } from './vr-undo-button.js?v=20261009-build530';
+import { createFlingDebugTag } from './vr-fling-debug.js?v=20261009-build530';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261009-build530';
+import { brickOccupancy, writeBrickOccupancy } from './vr-brick-occupancy.js?v=20261009-build530';
+import { createProbeGate } from './measure-label.js?v=20261009-build530';
+import { setRegionLabel, setRegionLabelOffset, voxelFromLocalVr, clampVoxel, labelLocal, offsetForLocal, vrVoxelStep, rectEdgePoint, leaderVisible } from './analysis-label.js?v=20261009-build530';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261009-build530';
+import { APP_BUILD } from './version.js?v=20261009-build530';
+import { wc, ww } from './ui-shell.js?v=20261009-build530';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH } from './vr-layout.js?v=20261009-build530';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -2071,12 +2071,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // samples per pixel (build 369): the loop-count diagnostic drawn to a 48×48
  // target from the left eye once a second while 詳細 is open, averaged over
  // the covered pixels (8-bit: steps of 4 samples)
+ // build 424: the same variants without VRL_REGIONS (sharing the uniforms), built on first use by the analysis bench
+ let plain=null;
+ const plainSets=()=>{if(!plain){const base=material.clone();base.uniforms=material.uniforms;base.defines={};const vars=materialVariants(base);plain={vars,ray:rayVariantsOf(vars)}}return plain};
+ // build 528: the VRL_CLS4 twin of each variant while four stored segments are drawn through the combined texture
+ const variantKey=()=>{const u=material.uniforms,k=!(u.distInCls.value>0&&u.useCls.value>0)||(settings.diag|0)?'full':u.planeCount.value===0?'noEvents':'combined';return cls4On?k+'4':k};
  const probeTarget=new THREE.WebGLRenderTarget(48,48,{depthBuffer:false}),probePx=new Uint8Array(48*48*4);let probe=null;
  const measureSamples=()=>{
   if(!mesh||!material||!rayMesh)return;
   const sub=renderer.xr.getCamera().cameras[0]||camera,prev=renderer.getRenderTarget(),wasXr=renderer.xr.enabled,d0=material.uniforms.diag.value,clearC=renderer.getClearColor(new THREE.Color()),clearA=renderer.getClearAlpha();
   material.uniforms.diag.value=5;renderer.xr.enabled=false;renderer.setRenderTarget(probeTarget);renderer.setClearColor(0x000000,0);renderer.clear();
-  scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);rayMesh.material=rayVariants[variantKey()];renderer.render(volScene,sub);renderer.readRenderTargetPixels(probeTarget,0,0,48,48,probePx); // build 529: the variant in use (not the last low-resolution frame's)
+  scene.updateMatrixWorld();rayMesh.matrixWorld.copy(mesh.matrixWorld);rayMesh.material=(diagAn.noRegion?plainSets().ray:rayVariants)[variantKey()];renderer.render(volScene,sub);renderer.readRenderTargetPixels(probeTarget,0,0,48,48,probePx); // build 529: the variant in use (not the last low-resolution frame's)
   renderer.setRenderTarget(prev);renderer.xr.enabled=wasXr;material.uniforms.diag.value=d0;renderer.setClearColor(clearC,clearA);
   // build 483: R = samples (8-bit: steps of 4), G = ray ended by a hit, B = share of the path skipped by jumps; means over the covered pixels
   let sum=0,hit=0,skip=0,n=0;for(let i=0;i<probePx.length;i+=4)if(probePx[i+3]>0){sum+=probePx[i]/255*1024;hit+=probePx[i+1]/255;skip+=probePx[i+2]/255;n++}
@@ -2241,11 +2246,6 @@ export async function startVrView({language='ja',mode='vr'}={}){
    }
   }
   const f=auto?aq.f:(VRES[settings.vres]??1);
-  // build 424: the same variants without VRL_REGIONS (sharing the uniforms), built on first use by the analysis bench
-  let plain=null;
-  const plainSets=()=>{if(!plain){const base=material.clone();base.uniforms=material.uniforms;base.defines={};const vars=materialVariants(base);plain={vars,ray:rayVariantsOf(vars)}}return plain};
-  // build 528: the VRL_CLS4 twin of each variant while four stored segments are drawn through the combined texture
-  const variantKey=()=>{const u=material.uniforms,k=!(u.distInCls.value>0&&u.useCls.value>0)||(settings.diag|0)?'full':u.planeCount.value===0?'noEvents':'combined';return cls4On?k+'4':k};
   if(mesh){
    if(f<1){
     // own pass per eye into the small target, then the composite material
