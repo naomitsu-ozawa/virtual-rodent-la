@@ -1,11 +1,11 @@
 // Classification bytes of the open volume (one channel per shown segment; f = 0.5 + distance-to-the-range-edge / 2048 as a byte, >= 128 means
 // inside). Shared by VR (vr-view.js prepareVrData) and the 3D position-comment markers of the PC / iPad view (vr-point.js pointIsHidden
 // marches over exactly these bytes). Pure: the segment state is passed in. t: {dims:[w,h,d], data: rg8-packed u16 volume}.
-const SEGMENT_ORDER=['bone','soft','fat','lung']; // = segments.js SEGMENT_PRESET_ORDER (kept here so tests need no app state)
+const SEGMENT_ORDER=['bone','soft','fat','lung']; // = the first four of segments.js SEGMENT_PRESET_ORDER (kept here so tests need no app state); the callers pass the GPU slot order (gpuSegmentOrder)
 // classification bytes for a grid of at most 256 (see segmentIndexAt)
-export function buildClsData(t,calibration,edit,segmentState){
+export function buildClsData(t,calibration,edit,segmentState,order=SEGMENT_ORDER){
  const [w,h,d]=t.dims,n=w*h*d,src=t.data,[slope,intercept,bias]=calibration;
- const segs=SEGMENT_ORDER.slice(0,4).map(k=>segmentState[k]);
+ const segs=order.slice(0,4).map(k=>segmentState[k]);
  const chan=[-1,-1,-1,-1];let nc=0;segs.forEach((g,i)=>{if(g?.active&&g.enabled)chan[i]=nc++});
  if(!nc)return null;const C=nc===1?1:nc===2?2:4,out=new Uint8Array(n*C);
  const maskOk=edit.data&&edit.dims.join()===t.dims.join();

@@ -186,7 +186,7 @@ const ok2=check2(r.part2)&&r.part2.filters===0&&check2(r.part3)&&r.part3.filters
 console.log('part3',JSON.stringify(r.part3));
 if(!check2(r.part3))console.error('part 3 (filter on, run path) failed');
 
-const ok=r.drag.cards.join()==='bone,soft,fat'&&r.drag.order.slice(0,3).join()==='bone,soft,fat'&&r.drag.soft[0]===r.drag.softUser[0]&&r.drag.fat[1]<r.drag.softUser[0]&&r.drag.fatNote.length>0&&r.off.both>0&&r.priority.both===0&&r.priority.union===r.priority.fat+r.priority.soft&&r.hidden.soft===r.priority.soft&&r.nested.dropped?.length===1&&r.nested.note.length>0&&JSON.stringify(r.roundTrip.before)===JSON.stringify(r.roundTrip.after)&&r.cards.join()==='bone,fat,soft'&&r.closingBoth===0&&ok2;
+const ok=r.drag.cards.join()==='bone,soft,fat'&&r.drag.order.filter(k=>k!=='contrast').slice(0,3).join()==='bone,soft,fat'&&r.drag.soft[0]===r.drag.softUser[0]&&r.drag.fat[1]<r.drag.softUser[0]&&r.drag.fatNote.length>0&&r.off.both>0&&r.priority.both===0&&r.priority.union===r.priority.fat+r.priority.soft&&r.hidden.soft===r.priority.soft&&r.nested.dropped?.length===1&&r.nested.note.length>0&&JSON.stringify(r.roundTrip.before)===JSON.stringify(r.roundTrip.after)&&r.cards.join()==='bone,fat,soft'&&r.closingBoth===0&&ok2;
 if(!ok2)console.error('part 2 failed');
 await b.close();srv.close();
 if(errors.length||!ok){console.error('exclusive segments check FAILED');process.exit(1)}console.log('exclusive segments check OK');

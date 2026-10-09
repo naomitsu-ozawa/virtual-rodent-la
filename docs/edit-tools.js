@@ -1,14 +1,14 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20261009-build530';
-import { SEGMENT_PRESET_ORDER, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20261009-build530';
-import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisLassoDeselectButton, analysisDeselectAll, analysisEditDeselectAll, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20261009-build530';
-import { tr } from './i18n.js?v=20261009-build530';
-import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20261009-build530';
-import { request3DRender } from './scene3d.js?v=20261009-build530';
+import { analysisFocusedRegionId, sceneState, threeRenderMode, analysisEditTargetKey, analysisEditTool, setAnalysisEditTool, analysisEditTargetMode, analysisCutApplying, analysisPendingCut, setAnalysisEditTargetMode, setAnalysisEditTargetKey, currentLanguage, current3DVolume, volume, cutResultPreviewTimer, incCutResultPreviewRevision, setCutResultPreviewTimer, cutResultPreviewRevision, sourceVolume, analysisRegions } from './state.js?v=20261009-build531';
+import { SEGMENT_PRESET_ORDER, gpuSegmentOrder, segmentState, segmentEditState, segmentEditActive } from './segments.js?v=20261009-build531';
+import { analysisNavigateButton, analysisSelectRegionButton, analysisLassoButton, analysisLassoDeselectButton, analysisDeselectAll, analysisEditDeselectAll, analysisCutButton, analysisLineCutButton, analysisEditRemoveSelected, analysisRemoveSelected, analysisKeepSelected, analysisUndo, analysisRedo, analysisResetEdit, analysisExportSelected, analysisEditTargetSelect, threeEditStatus, analysisCutWidth, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutApply, analysisCutCancel, analysisCutConfirm, analysisCutOffset, threeEditHelp, viewport, state, analysisCutWidthValue, analysisCutDepthValue, analysisCutYawValue, analysisCutPitchValue, analysisCutOffsetValue } from './ui-shell.js?v=20261009-build531';
+import { tr } from './i18n.js?v=20261009-build531';
+import { dispose, buildEditableRunsGroup } from './surface-mesh.js?v=20261009-build531';
+import { request3DRender } from './scene3d.js?v=20261009-build531';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261009-build530';
-import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20261009-build530';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261009-build531';
+import { intersectRunArrays, rowsToRunSlice } from './run-length.js?v=20261009-build531';
 export function analysisRegionById(id){return analysisRegions.find(r=>r.id===id)||null}
 export function configureCutControlRanges(v=current3DVolume||volume){
  if(!v||!analysisCutWidth)return;
@@ -199,7 +199,7 @@ export function scheduleCutResultPreview(delay=180){
     const v=sourceVolume||current3DVolume||volume;
     const cut=cutRunsFromVoxelStroke(v,pending.points,cutWidthMm(),+analysisCutDepth.value||5,+analysisCutYaw.value||0,+analysisCutPitch.value||0,pending.mode,+analysisCutOffset.value||0);
     if(revision!==cutResultPreviewRevision||pending!==analysisPendingCut)return;
-    sceneState.medicalVolume.setPreviewRuns(pending.key,cut,SEGMENT_PRESET_ORDER,v);request3DRender();
+    sceneState.medicalVolume.setPreviewRuns(pending.key,cut,gpuSegmentOrder(),v);request3DRender();
    }catch(e){console.warn('GPU cut preview failed.',e);sceneState?.medicalVolume?.clearPreviewRuns?.()}
   },Math.min(delay,90)));return;
  }

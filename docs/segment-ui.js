@@ -1,16 +1,17 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DStale } from './three-state.js?v=20261009-build530';
-import { $, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261009-build530';
-import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261009-build530';
-import { dispose } from './surface-mesh.js?v=20261009-build530';
-import { request3DRender } from './scene3d.js?v=20261009-build530';
-import { renderAnalysisResults } from './analysis-results.js?v=20261009-build530';
-import { segmentEditState, segmentEditGen, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges } from './segments.js?v=20261009-build530';
-import { tr } from './i18n.js?v=20261009-build530';
-import { niceCtStep, formatCtValue } from './utils.js?v=20261009-build530';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261009-build530';
-import { renderAll } from './mpr-render.js?v=20261009-build530';
+import { mark3DStale } from './three-state.js?v=20261009-build531';
+import { $, footer, threeLabel, ctRangeAuto, ctRangeFull, wc, ww, sigmoidCenter, wcVal, wwVal, sigmoidCenterValue, segmentControls, segmentAddSelect, segmentAddButton } from './ui-shell.js?v=20261009-build531';
+import { sceneState, setAnalysisRegions, setAnalysisFocusedRegionId, setNextAnalysisRegionId, setNextAnalysisColorIndex, volume, segmentRenderTimer, incSourceRenderRevision, threeRenderMode, ctRangeMode, ctRangeProfile, setCtRangeMode, sourceVolume } from './state.js?v=20261009-build531';
+import { dispose } from './surface-mesh.js?v=20261009-build531';
+import { request3DRender } from './scene3d.js?v=20261009-build531';
+import { renderAnalysisResults } from './analysis-results.js?v=20261009-build531';
+import { segmentEditState, segmentEditGen, SEGMENT_PRESET_ORDER, segmentState, segmentExclusive, commitExclusiveRanges, gpuSegmentSignature } from './segments.js?v=20261009-build531';
+import { canEnableSegment } from './segment-slots.js?v=20261009-build531';
+import { tr } from './i18n.js?v=20261009-build531';
+import { niceCtStep, formatCtValue } from './utils.js?v=20261009-build531';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261009-build531';
+import { renderAll } from './mpr-render.js?v=20261009-build531';
 // build 439 (owner: change the card order by dragging): a pointer drag on a card's ⋮⋮ handle (mouse and touch alike)
 // moves the card live; on release the new card order becomes the priority (segment-exclusive.js) and every segment
 // whose range in use changed is recomputed
@@ -38,6 +39,17 @@ export function installSegmentReorder(onCommit){
   window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);
  }
 }
+// build 531: at most 4 segments are enabled (shown) at once (the GPU views have 4 slots, segment-slots.js). True = refused (a message is shown,
+// nothing changes: the user turns one off first; nothing is switched off automatically)
+export function refuseSegmentEnable(key){
+ if(canEnableSegment(SEGMENT_PRESET_ORDER,segmentState,key))return false;
+ footer.textContent=tr('segmentLimit');return true;
+}
+// sets the shown flag; the contrast preset moves between GPU slots, so the GPU edit masks follow when the slot assignment changed
+export function setSegmentEnabled(key,on){
+ const before=gpuSegmentSignature();segmentState[key].enabled=!!on;
+ if(gpuSegmentSignature()!==before&&threeRenderMode==='volume')syncGpuVolumeEdits(sourceVolume||volume);
+}
 export function renderSegmentPresets(){
  const active=new Set(SEGMENT_PRESET_ORDER.filter(key=>segmentState[key].active));
  // build 438: the cards stand in the priority order (top = first), see segment-exclusive.js
@@ -56,9 +68,11 @@ export function renderSegmentPresets(){
 }
 export function addSegmentPreset(key){
  if(!volume||!SEGMENT_PRESET_ORDER.includes(key)||segmentState[key].active)return;
- const seg=segmentState[key];seg.active=true;seg.enabled=true;
+ const seg=segmentState[key];seg.active=true;
+ // build 531: a fifth enabled segment is refused: the card is added, its checkbox stays off (turn another one off, then tick it)
+ const allowed=!refuseSegmentEnable(key);setSegmentEnabled(key,allowed);
  const enabled=$('[data-seg-enabled="'+key+'"]'),color=$('[data-seg-color="'+key+'"]'),min=$('[data-seg-min="'+key+'"]'),max=$('[data-seg-max="'+key+'"]'),opacity=$('[data-seg-opacity="'+key+'"]'),exportBtn=$('[data-seg-export="'+key+'"]'),removeBtn=$('[data-seg-remove="'+key+'"]'),opening=$('[data-seg-opening="'+key+'"]'),closing=$('[data-seg-closing="'+key+'"]'),minComponent=$('[data-seg-min-component="'+key+'"]'),holeFill=$('[data-seg-hole-fill="'+key+'"]');
- enabled.checked=true;enabled.disabled=false;color.disabled=false;min.disabled=false;max.disabled=false;opacity.disabled=false;
+ enabled.checked=allowed;enabled.disabled=false;color.disabled=false;min.disabled=false;max.disabled=false;opacity.disabled=false;
  opening.disabled=false;closing.disabled=false;minComponent.disabled=false;holeFill.disabled=false;
  for(const [attr] of THIN_SLIDERS){const el=$('[data-seg-'+attr+'="'+key+'"]');if(el)el.disabled=false}
  if(exportBtn)exportBtn.disabled=true;if(removeBtn)removeBtn.disabled=false;
