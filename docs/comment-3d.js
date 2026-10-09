@@ -11,22 +11,22 @@
 // view's cut plane included; refreshed at most about 10 times a second while the view moves and once more when it stops
 // (comment-3d-hidden.js). Until the bytes are ready, or when no segment is shown / no source data is in memory, every point is exposed.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane, analysisRegions } from './state.js?v=20261009-build530';
-import { tr } from './i18n.js?v=20261009-build530';
-import { datasetFingerprint } from './project-file.js?v=20261009-build530';
-import { voxelToLocal3D } from './crosshair.js?v=20261009-build530';
-import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261009-build530';
-import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261009-build530';
-import { getMeasurements, setLabelOffset, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261009-build530';
-import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261009-build530';
-import { request3DRender } from './scene3d.js?v=20261009-build530';
-import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261009-build530';
-import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER } from './segments.js?v=20261009-build530';
-import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261009-build530';
-import { planeLabelPlacement, clampLabelCenter, stepDelta, offsetFromDelta, createFocusTracker, LINE_SAMPLES, probeKey, labelPart, lineSamplePoints, lineAlphas, lineStopOffsets, createIdMaker } from './measure-label.js?v=20261009-build530';
-import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261009-build530';
-import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261009-build530';
-import { setRegionLabelOffset, onAnalysisLabelsChange, leaderVisible, labelLocal, offsetForLocal, rectEdgePoint, pcVoxelStep } from './analysis-label.js?v=20261009-build530';
+import { sceneState, volume, activeSeries, volumeAnalysisMode, analysisEditTool, sectionViewOpen, sectionViewPlane, analysisRegions } from './state.js?v=20261009-build531';
+import { tr } from './i18n.js?v=20261009-build531';
+import { datasetFingerprint } from './project-file.js?v=20261009-build531';
+import { voxelToLocal3D } from './crosshair.js?v=20261009-build531';
+import { pointColor, darkFill, inkOn } from './point-colors.js?v=20261009-build531';
+import { getComments, onCommentsChange, commentMatchesSeries, commentTarget, getMarkersShown, onMarkersShownChange } from './comments.js?v=20261009-build531';
+import { getMeasurements, setLabelOffset, onMeasurementsChange, measurementMm, measureLabel, seriesSpacing, spacingLevel, getMeasureStart, onMeasureStartChange, createLongPress } from './measurements.js?v=20261009-build531';
+import { openPointMenu, endMeasureAt, cancelMeasureUi } from './point-menu.js?v=20261009-build531';
+import { request3DRender } from './scene3d.js?v=20261009-build531';
+import { gpuVolumeTarget } from './gpu-volume-data.js?v=20261009-build531';
+import { segmentState, segmentEditState, SEGMENT_PRESET_ORDER, gpuSegmentOrder } from './segments.js?v=20261009-build531';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261009-build531';
+import { planeLabelPlacement, clampLabelCenter, stepDelta, offsetFromDelta, createFocusTracker, LINE_SAMPLES, probeKey, labelPart, lineSamplePoints, lineAlphas, lineStopOffsets, createIdMaker } from './measure-label.js?v=20261009-build531';
+import { planeRelations, boxHalfExtent, clipSegmentNear } from './comment-3d-section.js?v=20261009-build531';
+import { computeHiddenIds, shownChannels, sectionPlaneLocal, createHiddenThrottle } from './comment-3d-hidden.js?v=20261009-build531';
+import { setRegionLabelOffset, onAnalysisLabelsChange, leaderVisible, labelLocal, offsetForLocal, rectEdgePoint, pcVoxelStep } from './analysis-label.js?v=20261009-build531';
 
 // build 523: analysis result labels (analysis-label.js, region.label): a chip (colour, number, segments, volume) at its anchor, MOVABLE by a drag (mouse / pen / touch) in the camera-facing plane through the label's
 // depth; a moved label keeps a leader line to its anchor and is judged hidden-behind-tissue like a dragged distance label (the same pass). Stored in voxel units: the same place in VR and on the PC, saved in the project.
@@ -58,7 +58,7 @@ function showBubble3d(id){
 // segments and their edits, the section plane. A change of it makes the judgement due (throttled); the same string = nothing to do.
 function hiddenSignature(obj,camera,ids,plane,fp){
  const segs=SEGMENT_PRESET_ORDER.map(k=>{const g=segmentState[k]||{};return(g.active?1:0)+''+(g.enabled?1:0)+','+g.min+','+g.max+','+(segmentEditState[k]?.revision|0)}).join(';');
- return fp+'|'+(gpuVolumeTarget()?.filterSignature||'')+'|'+obj.matrixWorld.elements.join(',')+'|'+camera.matrixWorld.elements.join(',')+'|'+ids.join(',')+'|'+segs+'|'+(plane?[plane.x,plane.y,plane.z,plane.w].join(','):'');
+ return fp+'|'+gpuSegmentOrder().join('>')+'|'+(gpuVolumeTarget()?.filterSignature||'')+'|'+obj.matrixWorld.elements.join(',')+'|'+camera.matrixWorld.elements.join(',')+'|'+ids.join(',')+'|'+segs+'|'+(plane?[plane.x,plane.y,plane.z,plane.w].join(','):'');
 }
 const refreshSoon=()=>request3DRender();
 // frees the classification bytes (series change, markers hidden): the next judgement builds them again
@@ -69,12 +69,12 @@ function refreshHidden(obj,camera,pts,plane){
  if(!anyShown||!pts.length){const had=hiddenIds.size>0;hiddenIds=new Set();return had}
  if(vrModFailed)return false; // the builder could not be loaded: every point stays exposed
  if(!vrMod){ // the classification builder lives in vr-view.js: loaded once, on the first need; until then the previous judgement stays
-  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261009-build530').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
+  if(!vrModLoading){vrModLoading=true;import('./vr-view.js?v=20261009-build531').then(m=>{vrMod=m;throttle.reset();refreshSoon()},()=>{vrModFailed=true;if(hiddenIds.size){hiddenIds=new Set();refreshSoon()}})}
   return false;
  }
  const prep=vrMod.hiddenClsFor(()=>{throttle.reset();refreshSoon()});
  if(!prep)return false; // still being built: keep the previous judgement
- const chs=shownChannels(prep?.cls,segmentState,SEGMENT_PRESET_ORDER);
+ const chs=shownChannels(prep?.cls,segmentState,gpuSegmentOrder());
  eye3.setFromMatrixPosition(camera.matrixWorld);obj.worldToLocal(eye3);
  const eye={x:eye3.x,y:eye3.y,z:eye3.z};
  const next=computeHiddenIds(pts,eye,prep,{chs,plane});

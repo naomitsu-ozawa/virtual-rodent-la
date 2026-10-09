@@ -1,26 +1,33 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261009-build530';
-import { hexRgb } from './utils.js?v=20261009-build530';
-import { settings } from './app-settings.js?v=20261009-build530';
-import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261009-build530';
-import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261009-build530';
-import { effectiveRanges } from './segment-exclusive.js?v=20261009-build530';
-import { maskFromAnalysisRuns } from './run-length.js?v=20261009-build530';
-import { sourceFilterStages } from './source-filters.js?v=20261009-build530';
-export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung'];
+import { volume, incNextSegmentMaskVolumeId } from './state.js?v=20261009-build531';
+import { hexRgb } from './utils.js?v=20261009-build531';
+import { settings } from './app-settings.js?v=20261009-build531';
+import { buildThresholdMask, morphMask, fillMaskHoles, removeSmallMaskComponents } from './mask-ops.js?v=20261009-build531';
+import { thinSuppressActive, suppressThinMask } from './thin-suppress.js?v=20261009-build531';
+import { effectiveRanges } from './segment-exclusive.js?v=20261009-build531';
+import { maskFromAnalysisRuns } from './run-length.js?v=20261009-build531';
+import { sourceFilterStages } from './source-filters.js?v=20261009-build531';
+import { gpuSlotOrder, slotSignature } from './segment-slots.js?v=20261009-build531';
+// build 531: 'contrast' (造影領域) is the fifth preset; at most GPU_SEGMENT_SLOTS (4) are enabled at once (segment-slots.js)
+export const SEGMENT_PRESET_ORDER=['bone','soft','fat','lung','contrast'];
 export const segmentEditState=Object.fromEntries(SEGMENT_PRESET_ORDER.map(key=>[key,{baseRuns:null,baseSignature:'',keepRuns:null,excludeRuns:null,cutRuns:null,finalRuns:null,revision:0,undo:[],redo:[],surfaceGroup:null,rawCutSurface:false}]));
 // build 407 (owner): every segment starts at 100 % opacity (translucent segments are heavy to render)
 export const segmentState={
  bone:{active:false,enabled:false,color:'#f3f0e8',opacity:1,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0,_maskCache:null,_maskCacheKey:''},
  soft:{active:false,enabled:false,color:'#d97f7f',opacity:1,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0,_maskCache:null,_maskCacheKey:''},
  fat:{active:false,enabled:false,color:'#e7c85d',opacity:1,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0,_maskCache:null,_maskCacheKey:''},
- lung:{active:false,enabled:false,color:'#6fb8d6',opacity:1,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0,_maskCache:null,_maskCacheKey:''}
+ lung:{active:false,enabled:false,color:'#6fb8d6',opacity:1,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0,_maskCache:null,_maskCacheKey:''},
+ contrast:{active:false,enabled:false,color:'#c026d3',opacity:1,min:0,max:1,opening:0,closing:0,minComponent:0,holeFill:false,surfaceMm:0,thicknessMm:0,_maskCache:null,_maskCacheKey:''}
 };
+// build 531: the segment slots the GPU views (WebGPU volume, VR / AR) use: slot i = the key at index i (segment-slots.js). Every call
+// that hands the segment order to a renderer or a data builder passes this, never SEGMENT_PRESET_ORDER.
+export function gpuSegmentOrder(){return gpuSlotOrder(SEGMENT_PRESET_ORDER,segmentState)}
+export function gpuSegmentSignature(){return slotSignature(SEGMENT_PRESET_ORDER,segmentState)}
 // build 438: non-overlapping segments (segment-exclusive.js). order = the segment cards top → bottom (priority);
 // mode 'priority' (new data) or 'off' (projects saved before 438). seg.userMin / userMax = the sliders; seg.min / max =
 // the range in use. pending = keys whose range in use changed since the last commit (invalidated on slider release).
-export const segmentExclusive={order:['bone','fat','soft','lung'],mode:'priority',pending:new Set(),invalidate:null};
+export const segmentExclusive={order:['contrast','bone','fat','soft','lung'],mode:'priority',pending:new Set(),invalidate:null};
 // build 459 (owner: the higher segment wins; what it adds or removes also moves the segments below it): a segment with
 // post-processing or manual edits is a voxel taker (its final voxels are subtracted from the lower segments voxel by
 // voxel, seg.exclusive.sources lists them for the segment below); a plain one still takes its range (segment-exclusive.js).
@@ -135,7 +142,7 @@ export function sourceMprMemoryView(v){
 export function mprSegmentAlpha(seg){const s=+settings.get('mpr2dAlpha');const k=Number.isFinite(s)&&s>0?Math.min(1,s):0.65;return Math.min(Math.max(.75,k),seg.opacity*k)}
 export function activeMprSegments(){
  const out=[],baseView=volume?.sourceBacked?sourceMprMemoryView(volume):volume;
- for(const key of ['lung','fat','soft','bone']){
+ for(const key of ['lung','fat','soft','bone','contrast']){
   const seg=segmentState[key];if(!seg.active||!seg.enabled)continue;
   const edit=segmentEditState[key],voxel=segmentHasProcessedMask(key),processedMask=baseView&&voxel?getProcessedSegmentMask(baseView,seg,key):null,processedRuns=volume?.sourceBacked&&voxel?(edit.finalRuns||edit.baseRuns):null;
   out.push({key,seg,edit,processedMask,processedRuns,rgb:hexRgb(seg.color),alpha:mprSegmentAlpha(seg)});
