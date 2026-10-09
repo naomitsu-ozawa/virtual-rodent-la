@@ -3,19 +3,19 @@
 // verbatim from app.js; each factory takes the locals they used as parameters.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import { WebGLRenderer } from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { frameYield } from './utils.js?v=20261009-build530';
-import { tr } from './i18n.js?v=20261009-build530';
-import { analysisCutScreen, analysisEditTargetMode, analysisEditTool, current3DVolume, sceneState, sectionViewOpen, sectionViewPlane, setAnalysisCutScreen, setAnalysisEditTargetKey, threeRenderMode, volume } from './state.js?v=20261009-build530';
-import { planes, sectionPosition, threeEditOverlay, viewport } from './ui-shell.js?v=20261009-build530';
-import { adoptRendererGpuDevice, adoptSplitGpuDevices, requestVrlGpuDevice, requestVrlPrimaryGpuDevice, requestVrlSplitRenderDevice, resetSplitGpuDevices } from './gpu-compute.js?v=20261009-build530';
-import { request3DRender } from './scene3d.js?v=20261009-build530';
-import { logGpuError } from './gpu-diagnostics.js?v=20261009-build530';
-import { canvasBackground3d, onCanvasThemeChange } from './canvas-theme.js?v=20261009-build530';
-import { updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261009-build530';
-import { SEGMENT_PRESET_ORDER, segmentState } from './segments.js?v=20261009-build530';
-import { rebindWebGpuSectionClipGroup, sectionLocalPoint, updateSectionClipPlaneWorld, updateSectionViewUi, sectionLocalStep } from './section-view.js?v=20261009-build530';
-import { renderSectionPlaneLive } from './mpr-render.js?v=20261009-build530';
-import { cutPointerVoxel } from './analysis-ops.js?v=20261009-build530';
+import { frameYield } from './utils.js?v=20261009-build531';
+import { tr } from './i18n.js?v=20261009-build531';
+import { analysisCutScreen, analysisEditTargetMode, analysisEditTool, current3DVolume, sceneState, sectionViewOpen, sectionViewPlane, setAnalysisCutScreen, setAnalysisEditTargetKey, threeRenderMode, volume } from './state.js?v=20261009-build531';
+import { planes, sectionPosition, threeEditOverlay, viewport } from './ui-shell.js?v=20261009-build531';
+import { adoptRendererGpuDevice, adoptSplitGpuDevices, requestVrlGpuDevice, requestVrlPrimaryGpuDevice, requestVrlSplitRenderDevice, resetSplitGpuDevices } from './gpu-compute.js?v=20261009-build531';
+import { request3DRender } from './scene3d.js?v=20261009-build531';
+import { logGpuError } from './gpu-diagnostics.js?v=20261009-build531';
+import { canvasBackground3d, onCanvasThemeChange } from './canvas-theme.js?v=20261009-build531';
+import { updateMpr3DPlanePositions } from './mpr3d-overlay.js?v=20261009-build531';
+import { gpuSegmentOrder, segmentState } from './segments.js?v=20261009-build531';
+import { rebindWebGpuSectionClipGroup, sectionLocalPoint, updateSectionClipPlaneWorld, updateSectionViewUi, sectionLocalStep } from './section-view.js?v=20261009-build531';
+import { renderSectionPlaneLive } from './mpr-render.js?v=20261009-build531';
+import { cutPointerVoxel } from './analysis-ops.js?v=20261009-build531';
 // Orientation axes widget attached to the camera (bottom-left XYZ).
 export function makeAxisWidget(camera){
  const axisWidget=new THREE.Group();axisWidget.name='orientation_axes';camera.add(axisWidget);
@@ -226,10 +226,10 @@ export function makeCutTools(renderer,camera){
     const clients=points.map(p=>({clientX:rect.left+p.x,clientY:rect.top+p.y}));
     let picked;
     if(!preferred){
-     const auto=await sceneState.medicalVolume.pickMany(clients,camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,null),first=auto.find(Boolean);preferred=first?.key||null;
+     const auto=await sceneState.medicalVolume.pickMany(clients,camera,sceneState.obj,segmentState,gpuSegmentOrder(),null),first=auto.find(Boolean);preferred=first?.key||null;
      if(!preferred){for(const screen of points)samples.push({screen,surface:null});return 0}
     }
-    picked=await sceneState.medicalVolume.pickMany(clients,camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,preferred);
+    picked=await sceneState.medicalVolume.pickMany(clients,camera,sceneState.obj,segmentState,gpuSegmentOrder(),preferred);
     for(let i=0;i<points.length;i++){const surface=volumeMeta(picked[i],points[i]);samples.push({screen:points[i],surface});if(surface)hitCount++}
    }else{
     for(let i=0;i<points.length;i++){const screen=points[i],surface=cutPointerVoxel({clientX:rect.left+screen.x,clientY:rect.top+screen.y},renderer.domElement,camera,preferred);samples.push({screen,surface});if(surface){hitCount++;if(analysisEditTargetMode==='auto'&&!preferred)preferred=surface.key||null}if((i&63)===63)await frameYield()}

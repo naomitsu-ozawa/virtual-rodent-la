@@ -1,31 +1,31 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { mark3DCurrent, mark3DStale } from './three-state.js?v=20261009-build530';
-import { labelForProject, normalizeAnalysisLabel } from './analysis-label.js?v=20261009-build530';
-import { set3DBusy, set3DBusyLabel } from './three-status.js?v=20261009-build530';
-import { meshSegmentRanges, syncSectionClipParent, applySectionClippingMaterials, refreshEditedSegmentSurface, segmentUsesRunSurface, ensureGpuResidentCpuPositions } from './surface-build.js?v=20261009-build530';
-import { sceneState, setAnalysisFilterSignature, incSourceRenderRevision, sourceRenderRevision, currentLanguage, sectionViewOpen, sectionViewPlane, setAnalysisEditTool, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisCutStroke, setAnalysisCutScreen, setAnalysisPendingCut, current3DVolume, volume, volumeAnalysisMode, analysisRegions, threeRenderMode, threeDDirty, analysisFocusedRegionId, volumeAnalysisBusy, setVolumeAnalysisBusy, setAnalysisRegions, incNextAnalysisRegionId, nextAnalysisColorIndex, incNextAnalysisColorIndex, setNextAnalysisColorIndex, analysisEditTargetKey, sourceVolume, setAnalysisFocusedRegionId, analysisEditTool, analysisEditTargetMode } from './state.js?v=20261009-build530';
+import { mark3DCurrent, mark3DStale } from './three-state.js?v=20261009-build531';
+import { labelForProject, normalizeAnalysisLabel } from './analysis-label.js?v=20261009-build531';
+import { set3DBusy, set3DBusyLabel } from './three-status.js?v=20261009-build531';
+import { meshSegmentRanges, syncSectionClipParent, applySectionClippingMaterials, refreshEditedSegmentSurface, segmentUsesRunSurface, ensureGpuResidentCpuPositions } from './surface-build.js?v=20261009-build531';
+import { sceneState, setAnalysisFilterSignature, incSourceRenderRevision, sourceRenderRevision, currentLanguage, sectionViewOpen, sectionViewPlane, setAnalysisEditTool, setAnalysisEditTargetKey, setAnalysisEditTargetMode, setAnalysisCutStroke, setAnalysisCutScreen, setAnalysisPendingCut, current3DVolume, volume, volumeAnalysisMode, analysisRegions, threeRenderMode, threeDDirty, analysisFocusedRegionId, volumeAnalysisBusy, setVolumeAnalysisBusy, setAnalysisRegions, incNextAnalysisRegionId, nextAnalysisColorIndex, incNextAnalysisColorIndex, setNextAnalysisColorIndex, analysisEditTargetKey, sourceVolume, setAnalysisFocusedRegionId, analysisEditTool, analysisEditTargetMode } from './state.js?v=20261009-build531';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { eachGeometryTriangleRange, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces, groupToBinaryStl } from './mesh-geometry.js?v=20261009-build530';
-import { surfaceSmoothingActive } from './settings.js?v=20261009-build530';
-import { SEGMENT_PRESET_ORDER, segmentState, getProcessedSegmentMask, segmentEditState, segmentEditActive, segmentHasProcessedMask, segmentEditsChanged } from './segments.js?v=20261009-build530';
-import { request3DRender } from './scene3d.js?v=20261009-build530';
-import { threeLabel, footer, analysisEditTargetSelect, selected, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutOffset, threeEditOverlay, volumeAnalysisResult, analysisSummary, threeBusyLabel } from './ui-shell.js?v=20261009-build530';
-import { dispose, buildSmoothIsoMesh, geometryFromSourcePositions, buildEditableRunsGroup } from './surface-mesh.js?v=20261009-build530';
-import { ensureSegmentBaseRuns, getFinalSegmentRuns, sourceAnalysisBlockDepth, sourceSegmentRunBlockGpu, sourceSegmentMaskBlock } from './segment-runs.js?v=20261009-build530';
-import { maskFromAnalysisRuns, unionAnalysisRuns, analysisRunsVoxelCount, unionRunArrays, intersectRunArrays, subtractRunArrays, componentsFromRuns, analysisRunsOverlap, componentsFromRunsAsync, analysisRunsContain, sourceResultToAnalysisRuns, maskToAnalysisRuns, RunUnionFind, consumeGpuAnalysisRuns, sourceRunSlice } from './run-length.js?v=20261009-build530';
-import { frameYield } from './utils.js?v=20261009-build530';
-import { updateSectionClipPlaneWorld } from './section-view.js?v=20261009-build530';
-import { setGpuComputeBackend, ensureGpuFilterDevice, gpuValidationScope, runGpuSourceFilters, gpuFilterRuntime } from './gpu-compute.js?v=20261009-build530';
-import { clearSegmentEditCache, clearAnalysisHighlight } from './segment-ui.js?v=20261009-build530';
-import { clearCutResultPreview, updateThreeEditUi, analysisRegionById, editTargetRegions, cutRunsFromVoxelStroke, cutWidthMm, updateAnalysisEditorControls } from './edit-tools.js?v=20261009-build530';
-import { currentFilterSignature, sourceFilterStages, readMemoryRegion, sourceFilterRuntime, getFilteredSourcePlaneValues, getCachedSourceSlice } from './source-filters.js?v=20261009-build530';
-import { downloadBlob } from './utils.js?v=20261009-build530';
-import { renderAnalysisResults, disposeAnalysisRegionMesh, setAnalysisFocusedRegion } from './analysis-results.js?v=20261009-build530';
-import { tr } from './i18n.js?v=20261009-build530';
-import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261009-build530';
-import { renderAll } from './mpr-render.js?v=20261009-build530';
-import { makeVoxelProjector, polygonBounds, componentFullyInside } from './lasso.js?v=20261009-build530';
+import { eachGeometryTriangleRange, makeSource3DCoordinates, makeVolume3DCoordinates, Float32FaceBuilder, appendAnalysisRunBoundaryFaces, groupToBinaryStl } from './mesh-geometry.js?v=20261009-build531';
+import { surfaceSmoothingActive } from './settings.js?v=20261009-build531';
+import { SEGMENT_PRESET_ORDER, gpuSegmentOrder, segmentState, getProcessedSegmentMask, segmentEditState, segmentEditActive, segmentHasProcessedMask, segmentEditsChanged } from './segments.js?v=20261009-build531';
+import { request3DRender } from './scene3d.js?v=20261009-build531';
+import { threeLabel, footer, analysisEditTargetSelect, selected, analysisCutDepth, analysisCutYaw, analysisCutPitch, analysisCutOffset, threeEditOverlay, volumeAnalysisResult, analysisSummary, threeBusyLabel } from './ui-shell.js?v=20261009-build531';
+import { dispose, buildSmoothIsoMesh, geometryFromSourcePositions, buildEditableRunsGroup } from './surface-mesh.js?v=20261009-build531';
+import { ensureSegmentBaseRuns, getFinalSegmentRuns, sourceAnalysisBlockDepth, sourceSegmentRunBlockGpu, sourceSegmentMaskBlock } from './segment-runs.js?v=20261009-build531';
+import { maskFromAnalysisRuns, unionAnalysisRuns, analysisRunsVoxelCount, unionRunArrays, intersectRunArrays, subtractRunArrays, componentsFromRuns, analysisRunsOverlap, componentsFromRunsAsync, analysisRunsContain, sourceResultToAnalysisRuns, maskToAnalysisRuns, RunUnionFind, consumeGpuAnalysisRuns, sourceRunSlice } from './run-length.js?v=20261009-build531';
+import { frameYield } from './utils.js?v=20261009-build531';
+import { updateSectionClipPlaneWorld } from './section-view.js?v=20261009-build531';
+import { setGpuComputeBackend, ensureGpuFilterDevice, gpuValidationScope, runGpuSourceFilters, gpuFilterRuntime } from './gpu-compute.js?v=20261009-build531';
+import { clearSegmentEditCache, clearAnalysisHighlight } from './segment-ui.js?v=20261009-build531';
+import { clearCutResultPreview, updateThreeEditUi, analysisRegionById, editTargetRegions, cutRunsFromVoxelStroke, cutWidthMm, updateAnalysisEditorControls } from './edit-tools.js?v=20261009-build531';
+import { currentFilterSignature, sourceFilterStages, readMemoryRegion, sourceFilterRuntime, getFilteredSourcePlaneValues, getCachedSourceSlice } from './source-filters.js?v=20261009-build531';
+import { downloadBlob } from './utils.js?v=20261009-build531';
+import { renderAnalysisResults, disposeAnalysisRegionMesh, setAnalysisFocusedRegion } from './analysis-results.js?v=20261009-build531';
+import { tr } from './i18n.js?v=20261009-build531';
+import { syncGpuVolumeEdits } from './gpu-volume-data.js?v=20261009-build531';
+import { renderAll } from './mpr-render.js?v=20261009-build531';
+import { makeVoxelProjector, polygonBounds, componentFullyInside } from './lasso.js?v=20261009-build531';
 export function clearThreeEditOverlay(){const ctx=threeEditOverlay?.getContext('2d');ctx?.clearRect(0,0,threeEditOverlay.width,threeEditOverlay.height)}
 // build 408 (owner): 14 colours (the 8 earlier ones keep their order; VR / AR show up to 14 distinct ones)
 export const ANALYSIS_REGION_COLORS=[0x00d8ff,0xff9f1c,0x7ae582,0xff4d8d,0xf4e409,0x9b5cff,0xff5a5f,0x2ec4b6,0x4361ee,0xf15bb5,0xb5e48c,0xc08552,0x80ffdb,0xe0aaff];
@@ -267,8 +267,8 @@ export async function analyzeEditRegionAtPointer(event,canvas,camera){
  let picked=null;
  if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){
   setGpuComputeBackend('WEBGPU VOLUME PICK');
-  if(preferredKey){const rect=canvas.getBoundingClientRect(),items=await sceneState.medicalVolume.pickMany([{clientX:event.clientX,clientY:event.clientY}],camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER,preferredKey);picked=items?.[0]||null}
-  else picked=await sceneState.medicalVolume.pick(event.clientX,event.clientY,camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER);
+  if(preferredKey){const rect=canvas.getBoundingClientRect(),items=await sceneState.medicalVolume.pickMany([{clientX:event.clientX,clientY:event.clientY}],camera,sceneState.obj,segmentState,gpuSegmentOrder(),preferredKey);picked=items?.[0]||null}
+  else picked=await sceneState.medicalVolume.pick(event.clientX,event.clientY,camera,sceneState.obj,segmentState,gpuSegmentOrder());
   if(!picked){updateThreeEditUi(currentLanguage==='ja'?'選択できる領域がありません':'No selectable region');return}
  }else{
   picked=surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey);
@@ -288,7 +288,7 @@ export async function analyzeVolumeAtPointer(event,canvas,camera){
  let key,x,y,z;
  if(threeRenderMode==='volume'&&sceneState.medicalVolume?.active){
   setGpuComputeBackend('WEBGPU VOLUME PICK');
-  const picked=await sceneState.medicalVolume.pick(event.clientX,event.clientY,camera,sceneState.obj,segmentState,SEGMENT_PRESET_ORDER);
+  const picked=await sceneState.medicalVolume.pick(event.clientX,event.clientY,camera,sceneState.obj,segmentState,gpuSegmentOrder());
   if(!picked){renderAnalysisResults(tr('volumeHint'));return}
   key=picked.key;x=picked.x;y=picked.y;z=picked.z;
  }else{
@@ -520,8 +520,8 @@ export function syncVolumeAnalysisOverlay(){
  if(volumeAnalysisOverlayActive()){
   for(const r of analysisRegions)if(r.meshGroup)r.meshGroup.visible=false;
   const shown=analysisRegions.filter(r=>r.visible&&r.runsBySlice);
-  const base=(mv.seriesId||'')+'|'+(mv.textureDims||[]).join('x')+'|',signature=base+shown.map(r=>r.id+':'+r.color+':'+(r.focused?1:0)+':'+r.voxels).join(','),textureSignature=base+shown.map(r=>r.id+':'+r.voxels).join(',');
-  try{mv.setAnalysisRuns(shown.map(r=>({runs:r.runsBySlice,color:Number(r.color??0x00d8ff),focused:!!r.focused,segments:(r.segmentKeys||[]).map(k=>SEGMENT_PRESET_ORDER.indexOf(k))})),v,signature,textureSignature)}
+  const slotOrder=gpuSegmentOrder(),base=(mv.seriesId||'')+'|'+(mv.textureDims||[]).join('x')+'|',signature=base+slotOrder.join('>')+'|'+shown.map(r=>r.id+':'+r.color+':'+(r.focused?1:0)+':'+r.voxels).join(','),textureSignature=base+shown.map(r=>r.id+':'+r.voxels).join(',');
+  try{mv.setAnalysisRuns(shown.map(r=>({runs:r.runsBySlice,color:Number(r.color??0x00d8ff),focused:!!r.focused,segments:(r.segmentKeys||[]).map(k=>slotOrder.indexOf(k))})),v,signature,textureSignature)}
   // volume view never falls back to meshes (meshes only for STL export): report instead
   catch(e){console.warn('GPU volume analysis overlay failed.',e);mv.clearAnalysisRuns?.();footer.textContent=(currentLanguage==='ja'?'体積解析の3D表示エラー: ':'Volume analysis 3D overlay error: ')+String(e?.message||e)}
   return;
@@ -620,7 +620,7 @@ export async function exportSegmentStl(key){
   blob=currentSegmentToBinaryStl(key);
  }
  if(!blob){footer.textContent='STL: segment is empty';return}
- const names={bone:'bone',soft:'soft-tissue',fat:'fat',lung:'lung'},filename='virtual-rodent-'+(names[key]||key)+'.stl';downloadBlob(blob,filename);footer.textContent=(currentLanguage==='ja'?'STLを書き出しました: ':'STL exported: ')+filename;
+ const names={bone:'bone',soft:'soft-tissue',fat:'fat',lung:'lung',contrast:'contrast'},filename='virtual-rodent-'+(names[key]||key)+'.stl';downloadBlob(blob,filename);footer.textContent=(currentLanguage==='ja'?'STLを書き出しました: ':'STL exported: ')+filename;
 }
 export function cutPointerVoxel(event,canvas,camera,preferredKey=null){
  return surfaceSegmentPointerVoxel(event,canvas,camera,preferredKey);

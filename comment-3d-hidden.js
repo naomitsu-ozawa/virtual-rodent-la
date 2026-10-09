@@ -2,7 +2,7 @@
 // feeds it the points, the camera and the classification bytes. The RULE is VR's, not a copy: vr-point.js pointIsHidden (march half a voxel at a
 // time from the point towards the eye; a voxel of a shown segment (>= 128) on the kept side of every cutting plane before the eye = hidden;
 // the point's own voxel is skipped; segment opacity ignored; nothing shown = exposed). On PC the eye is the camera position.
-import { pointIsHidden } from './vr-point.js?v=20261009-build530';
+import { pointIsHidden } from './vr-point.js?v=20261009-build531';
 
 export const HIDDEN_INTERVAL_MS=100; // while the view moves the judgement is refreshed about 10 times a second, never every frame
 
@@ -17,7 +17,7 @@ export function sectionPlaneLocal(point,normal){
 }
 
 // channels of the segments that are shown now (cls.chan[segment] is the channel, -1 none); shown = active && enabled, like the 3D view
-export function shownChannels(cls,segmentState,order=['bone','soft','fat','lung']){
+export function shownChannels(cls,segmentState,order=['bone','soft','fat','lung']){ // order = the GPU slots (segments.js gpuSegmentOrder)
  const chs=[];if(!cls)return chs;
  order.slice(0,4).forEach((k,i)=>{const g=segmentState?.[k],c=cls.chan[i];if(g?.active&&g.enabled&&c>=0)chs.push(c)});
  return chs;
