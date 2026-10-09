@@ -24,6 +24,7 @@
     "vr-guards": "node tools/vr-gpu-prepare-check.mjs && node tools/vr-render-golden.mjs && node tools/vr-cls-parity.mjs && node tools/vr-depth-check.mjs",
     "progress-modal-check": "node tools/progress-modal-check.mjs",
     "analysis-project-check": "node tools/analysis-project-check.mjs",
+    "analysis-label-3d-check": "node tools/analysis-label-3d-check.mjs",
     "edit-consistency-check": "node tools/edit-consistency-check.mjs",
     "analysis-fringe-check": "node tools/analysis-fringe-check.mjs",
     "result-2d-check": "node tools/result-2d-check.mjs",

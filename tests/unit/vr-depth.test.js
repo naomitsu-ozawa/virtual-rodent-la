@@ -207,9 +207,9 @@ describe('GHOST_ALPHA and the pass rule (build 502)', () => {
     for (const f of ['vr-measure', 'vr-point-markers']) { const t = readFileSync(new URL('../../docs/' + f + '.js', import.meta.url), 'utf8'); expect(t, f).toMatch(/GHOST_ALPHA/); expect(t, f).not.toMatch(/[^_A-Z]0\.15\b|opacity:0\.3\b/); }
   });
   it('vr-view.js: pinned result labels (card + leader) have a ghost too and follow the setting; the hand labels are untouched', () => {
-    expect(has(src, 'const makeLabel=(pin=false)=>{')).toBe(true); expect(has(src, 'const lb=makeLabel(true);lb.anchor.copy(hit.local)')).toBe(true);
-    expect(has(src, 'for(const lb of pins.values()){placeLabel(lb);pinOcclusion(lb)}')).toBe(true);
-    expect(has(src, 'const occ=occludedPass(occlusionGpu(),false);')).toBe(true);
+    expect(has(src, 'const makeLabel=(pin=false)=>{')).toBe(true); expect(has(src, 'lb=makeLabel(true);lb.rid=reg.id;pins.set(reg.id,lb)')).toBe(true);
+    expect(has(src, 'syncPins();for(const lb of pins.values()){lb.lit=pinLit.has(lb.rid);placeLabel(lb);pinOcclusion(lb,lb.lit)}')).toBe(true);
+    expect(has(src, 'const occ=occludedPass(occlusionGpu(),lit);')).toBe(true);
     expect(has(src, 'const hoverLabelOf=c=>c.userData.hoverLabel||=Object.assign(makeLabel(),{hand:c});')).toBe(true);
   });
 });

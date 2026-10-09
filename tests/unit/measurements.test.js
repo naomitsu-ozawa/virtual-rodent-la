@@ -314,8 +314,8 @@ describe('label moves do not rebuild lists; point priority and reset are wired (
   it('the views let a point under the press win over a label, reset on double tap, rebuild the list only for real changes', () => {
     const ui = readFileSync(new URL('../../docs/comment-ui.js', import.meta.url), 'utf8'), d3 = readFileSync(new URL('../../docs/comment-3d.js', import.meta.url), 'utf8'), pm = readFileSync(new URL('../../docs/point-menu.js', import.meta.url), 'utf8');
     expect(ui).toContain('hits[p].some(h=>Math.hypot(h.x-x,h.y-y)<=h.r))return;'); // 2D: a mark under the press wins
-    expect(d3).toContain('if(nearestDot(ev.clientX,ev.clientY)!=null)return;'); // 3D: a dot under the press wins
-    expect(ui).toContain('setLabelOffset(L.id,null)'); expect(d3).toContain('setLabelOffset(id,null)'); // double tap / click
+    expect(d3).toContain('gate()&&nearestDot(x,y)==null'); // 3D: a dot under the press wins (build 523: via allowed(), for both kinds of label)
+    expect(ui).toContain('setLabelOffset(L.id,null)'); expect(d3).toContain('setLabelOffset(h.id,off)'); expect(d3).toContain('setOff(null)'); // double tap / click
     expect(ui).toContain('if(!info?.labelOnly)renderMeasures()');
     expect(pm).toContain("'point-menu-labelreset'"); expect(pm).toContain('setLabelOffset(m.id,null)');
   });

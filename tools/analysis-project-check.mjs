@@ -33,7 +33,7 @@ await pg.click('#sample-demo-button');await pg.click('[data-sample-set="sample1"
 const t0=Date.now();while(Date.now()-t0<180000){const s=await pg.evaluate(()=>window.__vrlBusyModal?.()||{});if(!s.active&&Date.now()-t0>5000)break;await pg.waitForTimeout(250)}
 const r=await pg.evaluate(async(FILTER)=>{
  const v=new URL(document.querySelector('script[src*="app.js"]').src).search,im=f=>import('./'+f+v);
- const [st,ops,dl,pf,seg,sg]=await Promise.all([im('state.js'),im('analysis-ops.js'),im('data-load.js'),im('project-file.js'),im('segment-ui.js'),im('segments.js')]);
+ const [st,ops,dl,pf,seg,sg,al]=await Promise.all([im('state.js'),im('analysis-ops.js'),im('data-load.js'),im('project-file.js'),im('segment-ui.js'),im('segments.js'),im('analysis-label.js')]);
  const add=document.getElementById('segment-add-select'),btn=document.getElementById('segment-add-button');if(add&&!btn.disabled){add.value='bone';add.dispatchEvent(new Event('change'));btn.click()}
  await new Promise(r=>setTimeout(r,500));
  const vol=st.current3DVolume||st.volume;if(!vol)return{error:'no volume'};
@@ -53,7 +53,9 @@ const r=await pg.evaluate(async(FILTER)=>{
  await ops.addAnalysisRegion(vol,{key:'bone',segmentKeys:['bone'],runsBySlice:boxA,voxels:nA,mm3:1});
  await ops.addAnalysisRegion(vol,{key:'bone',segmentKeys:['bone'],runsBySlice:boxB,voxels:nB,mm3:1});
  st.analysisRegions[1].visible=false;
- const before=st.analysisRegions.map(r=>({color:r.color,visible:r.visible,voxels:r.voxels,key:r.key}));
+ // build 523: the first result has a MOVED label (anchor + offset, voxel units), the second a label at its default place; an old project has none
+ al.setRegionLabel(st.analysisRegions[0],{anchor:{i:210,j:205,k:205},offset:{i:12.5,j:-8,k:30}});al.setRegionLabel(st.analysisRegions[1],{anchor:{i:102,j:102,k:302}});
+ const before=st.analysisRegions.map(r=>({color:r.color,visible:r.visible,voxels:r.voxels,key:r.key,label:r.label||null}));
  const {project,binaries}=dl.gatherProject(),bytes=pf.packProject(project,binaries),un=pf.unpackProject(bytes);
  seg.clearAnalysisHighlight();const cleared=st.analysisRegions.length;
  await dl.applyProject(un);
@@ -61,20 +63,22 @@ const r=await pg.evaluate(async(FILTER)=>{
  // the load's own work (filter rebuild, segment recompute) must have ended before the results are compared
  for(let t=Date.now();Date.now()-t<240000;){await new Promise(r=>setTimeout(r,500));if(!window.__vrlBusyModal?.().active&&!document.querySelector('[data-filter-busy]'))break}
  await new Promise(r=>setTimeout(r,3000));
- const after=st.analysisRegions.map(r=>({color:r.color,visible:r.visible,voxels:r.voxels,key:r.key}));
+ const after=st.analysisRegions.map(r=>({color:r.color,visible:r.visible,voxels:r.voxels,key:r.key,label:r.label||null}));
  // deletion linked: exclude half of the first box, trim the results to the edit
  const refs=ops.snapshotAnalysisRegionsForSegment('bone'),es=sg.segmentEditState.bone;es.excludeRuns=box(200,204,200,209,200,219);
- await ops.trimAnalysisRegionsAfterEdit('bone',refs);const trimmed=st.analysisRegions.map(r=>r.voxels);es.excludeRuns=null;
+ await ops.trimAnalysisRegionsAfterEdit('bone',refs);const trimmed=st.analysisRegions.map(r=>r.voxels),trimLabels=st.analysisRegions.map(r=>r.label||null);es.excludeRuns=null;
  // VR: the visible result goes into the region index (one colour), and the programs with VRL_REGIONS compile
  const vr=await im('vr-view.js');const P=await vr.prepareVrData();const g=await vr.prepareVrGpu(P,'vr');
- const reg={ids:P.region?.ids?P.region.ids.reduce((a,x)=>a+(x===1?1:0),0):0,data:!!P.region?.data,colors:P.region?.colors?.length||0,list:P.region?.list?.length||0,set:P.region?.data?P.region.data.reduce((a,x)=>a+(x?1:0),0):0,gpu:!!g,programs:g?.warm?.length||0};
+ const rids=(P.region?.list||[]).map(e=>e.rid),reg={ids:P.region?.ids?P.region.ids.reduce((a,x)=>a+(x===1?1:0),0):0,data:!!P.region?.data,colors:P.region?.colors?.length||0,list:P.region?.list?.length||0,set:P.region?.data?P.region.data.reduce((a,x)=>a+(x?1:0),0):0,gpu:!!g,programs:g?.warm?.length||0};
  // FILTER: a real filter change afterwards must still clear the results (build 418: they no longer match the data)
  let afterChange=null;if(FILTER){const el=document.getElementById('gaussian-strength');const nv=String(+el.value===+el.max?+el.min:+el.max);el.value=nv;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));
   await new Promise(r=>setTimeout(r,2000));for(let t=Date.now();Date.now()-t<240000;){await new Promise(r=>setTimeout(r,500));if(!window.__vrlBusyModal?.().active)break}
   await new Promise(r=>setTimeout(r,3000));afterChange=st.analysisRegions.length}
- return{filter:FILTER,afterChange,filters:st.filterOrder?.slice?.()||null,before,cleared,after,trimmed,reg,files:Object.keys(binaries).filter(k=>k.startsWith('analysis/')),bytes:bytes.byteLength};
+ return{filter:FILTER,afterChange,trimLabels,rids,regionIds:st.analysisRegions.map(r=>r.id),filters:st.filterOrder?.slice?.()||null,before,cleared,after,trimmed,reg,files:Object.keys(binaries).filter(k=>k.startsWith('analysis/')),bytes:bytes.byteLength};
 },!!process.env.FILTER);
 console.log(JSON.stringify(r));
-const ok=!r.error&&r.cleared===0&&JSON.stringify(r.before)===JSON.stringify(r.after)&&r.files.length===2&&JSON.stringify(r.trimmed)===(r.filter?JSON.stringify(r.after.map(x=>x.voxels)):'[1000,125]')&&r.reg.data&&r.reg.colors===1&&r.reg.list===1&&r.reg.gpu&&r.reg.ids===r.reg.set&&(!r.filter||r.afterChange===0);
+const ok=!r.error&&r.cleared===0&&JSON.stringify(r.before)===JSON.stringify(r.after)&&r.files.length===2&&JSON.stringify(r.trimmed)===(r.filter?JSON.stringify(r.after.map(x=>x.voxels)):'[1000,125]')&&r.reg.data&&r.reg.colors===1&&r.reg.list===1&&r.reg.gpu&&r.reg.ids===r.reg.set&&(!r.filter||r.afterChange===0)
+ // build 523: the labels (moved / default) survive save -> load and an edit's trim; VR's list knows each result's region id
+ &&!!r.before[0].label?.offset&&!!r.before[1].label&&!r.before[1].label.offset&&JSON.stringify(r.trimLabels)===JSON.stringify(r.before.map(x=>x.label))&&r.rids.length===1&&r.rids[0]===r.regionIds[0];
 await b.close();srv.close();
 if(errors.length||!ok){console.error('analysis project check FAILED');process.exit(1)}console.log('analysis project check OK');

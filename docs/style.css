@@ -1011,6 +1011,25 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .measure-label-3d.is-behind,.measure-leader-3d.is-behind{opacity:.3}
 .measure-label-3d.is-behind.is-lit,.measure-label-3d.is-behind.is-dragging,.measure-leader-3d.is-behind.is-lit{opacity:1}
 @media (prefers-reduced-motion:reduce){.measure-label-3d,.measure-leader-3d{transition:none}}
+/* build 523: analysis result labels on the 3D view (analysis-label.js): a chip with the result's colour, number, segments and volume, movable by a drag; a moved one has a leader line to its anchor (SVG layer) */
+.analysis-label-3d{position:absolute;left:0;top:0;display:inline-flex;align-items:center;gap:5px;padding:1px 7px 1px 5px;border-radius:999px;border:1px solid rgba(255,255,255,.42);background:rgba(17,23,27,.88);color:#fff;font:700 10px/13px sans-serif;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;will-change:transform;-webkit-user-select:none;user-select:none}
+.analysis-label-3d[hidden]{display:none}
+.analysis-label-3d>i{width:8px;height:8px;border-radius:999px;flex:none;border:1px solid rgba(255,255,255,.42)}
+.analysis-label-3d>span{font-weight:600;opacity:.85}
+.analysis-label-3d.is-dragging{cursor:grabbing}
+.analysis-label-3d.is-lit,.analysis-label-3d.is-dragging{background:#ffe27a;color:#111;border-color:#fff!important;box-shadow:0 0 0 2px rgba(255,255,255,.9),0 0 10px 2px rgba(255,210,61,.85)}
+.analysis-label-3d.is-lit>span,.analysis-label-3d.is-dragging>span{color:#111;opacity:1}
+.vrl-ipad-ui .analysis-label-3d{font-size:12px;line-height:15px}
+.comment-lines-3d .analysis-leader-3d{stroke-width:1.2;stroke-opacity:.85}
+.comment-lines-3d .analysis-leader-3d.is-lit{stroke:#ffe27a!important;stroke-opacity:1;stroke-width:2}
+.comment-lines-3d .analysis-anchor-3d{stroke:#fff;stroke-width:1;stroke-opacity:.9}
+.analysis-label-3d,.analysis-leader-3d{transition:opacity .15s}
+.analysis-label-3d.is-behind,.analysis-leader-3d.is-behind{opacity:.3}
+.analysis-label-3d.is-behind.is-lit,.analysis-label-3d.is-behind.is-dragging,.analysis-leader-3d.is-behind.is-lit{opacity:1}
+@media (prefers-reduced-motion:reduce){.analysis-label-3d,.analysis-leader-3d{transition:none}}
+.analysis-label-actions{display:flex;flex-wrap:wrap;gap:6px}
+.analysis-label-actions button{min-height:32px;border:1px solid rgb(var(--ui-b3));border-radius:7px;background:rgb(var(--ui-s2));color:rgb(var(--ui-t2));padding:5px 8px;font-size:10px;font-weight:750;cursor:pointer;pointer-events:auto}
+.analysis-label-hint{font-size:10px;line-height:1.35;color:rgb(var(--ui-t4))}
 .comment-marker-3d.is-measure-start{box-shadow:0 0 0 3px #ffd23d,0 0 0 4px rgba(0,0,0,.6);animation:vrl-measure-pulse 1.2s ease-in-out infinite}
 @keyframes vrl-measure-pulse{0%,100%{box-shadow:0 0 0 2px #ffd23d,0 0 0 3px rgba(0,0,0,.6)}50%{box-shadow:0 0 0 7px rgba(255,210,61,.7),0 0 0 8px rgba(0,0,0,.5)}}
 @media (prefers-reduced-motion:reduce){.comment-marker-3d.is-measure-start{animation:none}}
