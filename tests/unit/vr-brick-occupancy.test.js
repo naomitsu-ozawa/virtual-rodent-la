@@ -16,9 +16,14 @@ const idx = ([bx, by], i, j, k) => (k * by + j) * bx + i;
 describe('brickOccupancy: nothing to store without a mask-only segment', () => {
  it('null when no mask-only bit, no data or odd dims', () => {
   expect(brickOccupancy({ data: new Uint8Array(8 * 4), dims: [2, 2, 2], maskOnly: 0 }, [1, 1, 1])).toBeNull();
-  expect(brickOccupancy({ data: null, dims: [2, 2, 2], maskOnly: 1 }, [1, 1, 1])).toBeNull();
   expect(brickOccupancy(null, [1, 1, 1])).toBeNull();
-  expect(brickOccupancy({ data: new Uint8Array(4), dims: [2, 2, 2], maskOnly: 1 }, [1, 1, 1])).toBeNull(); // too short
+  expect(brickOccupancy({ data: new Uint8Array(8 * 4), dims: [2, 2, 2], maskOnly: 1 }, null)).toBeNull(); // no brick grid to fill
+ });
+ it('fail-safe: a mask-only segment without usable mask bytes marks every brick with its bits (mixed, never hidden)', () => {
+  expect(Array.from(brickOccupancy({ data: null, dims: [2, 2, 2], maskOnly: 0b0101 }, [2, 1, 2]))).toEqual([5, 5, 5, 5]);
+  expect(Array.from(brickOccupancy({ data: new Uint8Array(4), dims: [2, 2, 2], maskOnly: 1 }, [1, 1, 1]))).toEqual([1]); // too short
+  expect(Array.from(brickOccupancy({ data: new Uint8Array(32), dims: null, maskOnly: 0b1000 }, [1, 2, 1]))).toEqual([8, 8]); // no dims
+  expect(Array.from(brickOccupancy({ data: new Uint8Array(32), dims: [0, 2, 2], maskOnly: 1 }, [1, 1, 1]))).toEqual([1]);
  });
  it('a mask of a segment that is not mask-only is ignored; an empty mask-only mask gives all zero', () => {
   const e = edit([16, 16, 16], 0b0001, (x, y, z) => (x === 3 && y === 3 && z === 3 ? 0b0010 : 0)); // segment 1 set, only segment 0 is mask-only
@@ -99,6 +104,10 @@ describe('brickOccupancy is conservative: every point the shader could classify 
  it('half-size edit grid under the bricks (512^3 data with the 256 mask), sparse mask', () => { const r = check([16, 16, 16], [4, 4, 4], 0.002, 11); expect(r.inside).toBe(0); expect(r.marked).toBeGreaterThan(0); expect(r.marked).toBeLessThan(r.bricks); });
  it('anisotropic grids', () => { const r = check([24, 12, 6], [6, 3, 2], 0.01, 3); expect(r.inside).toBe(0); expect(r.cells).toBeGreaterThan(0); });
  it('dense mask (most bricks marked, the unmarked ones are still clean)', () => { const r = check([16, 16, 16], [4, 4, 4], 0.03, 5); expect(r.inside).toBe(0); });
+ it('non-integer voxels per cell (edit 37 under 5 bricks, 7.4 each; edit 50 under 8 bricks, 6.25 each)', () => {
+  const a = check([37, 37, 37], [5, 5, 5], 0.0008, 13); expect(a.inside).toBe(0); expect(a.marked).toBeGreaterThan(0); expect(a.marked).toBeLessThan(a.bricks);
+  const b = check([50, 20, 11], [8, 3, 2], 0.0015, 17); expect(b.inside).toBe(0); expect(b.marked).toBeGreaterThan(0); expect(b.marked).toBeLessThan(b.bricks);
+ });
 });
 
 describe('writeBrickOccupancy: the B channel of the RGBA32F brick array', () => {
