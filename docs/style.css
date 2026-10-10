@@ -1134,3 +1134,19 @@ html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock="split-full"]>.analysis
 .lp-3d-toggle{pointer-events:auto;touch-action:manipulation}
 .hu-line-3d-armed canvas{cursor:crosshair}
 @media (prefers-reduced-motion:reduce){.lp-live{animation:none}}
+
+/* analysis presets (inside the CT display panel) */
+.analysis-preset-box{display:grid;gap:6px;margin:0 0 12px;padding:8px;border:1px solid rgb(var(--ui-b2));border-radius:8px}
+.analysis-preset-head{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;justify-content:space-between;font-size:12px}
+.analysis-preset-active{font-size:11px;color:rgb(var(--ui-t4))}
+.analysis-preset-active[data-state="clean"]{color:rgb(var(--ui-t2));font-weight:700}
+.analysis-preset-active[data-state="modified"]{color:rgb(var(--ui-t1));font-weight:700;text-decoration:underline dotted}
+.analysis-preset-scale{margin:0;font-size:11px;color:rgb(var(--ui-t3))}
+.analysis-preset-scale[data-state="failed"]{color:rgb(var(--ui-t1));font-weight:700}
+.analysis-preset-row{display:flex;gap:6px;align-items:center}
+.analysis-preset-row .filter-select,.analysis-preset-name{flex:1;min-width:0}
+.analysis-preset-name{min-height:34px;border:1px solid rgb(var(--ui-b3));border-radius:8px;background:rgb(var(--ui-s1));color:rgb(var(--ui-t2));padding:5px 8px;font-size:11px}
+.analysis-preset-row .tool-chip{min-height:34px;padding:5px 8px}
+.analysis-preset-row .tool-chip:disabled{opacity:.45}
+.analysis-preset-tools{flex-wrap:wrap}
+.analysis-preset-hint{margin:0;font-size:10px}

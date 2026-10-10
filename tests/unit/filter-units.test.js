@@ -148,7 +148,10 @@ describe('save and load', () => {
   });
   it('data-load.js: HU values are saved as numbers once, and set once from resolveFilterParams on load', () => {
     expect(dl).toContain('name in (FILTER_UNITS[key]?.params||{})?+el.value:el.value');
-    expect(dl.match(/gatherProject[\s\S]*?return\{project,binaries\}/)[0].match(/params:Object\.fromEntries/g).length).toBe(1);
+    // the gathering is one function (gatherFilterOrder) shared by the project file and the analysis presets
+    expect(dl.match(/params:Object\.fromEntries/g).length).toBe(1);
+    expect(dl.match(/export function gatherFilterOrder[\s\S]*?\n}\n/)[0].match(/params:Object\.fromEntries/g).length).toBe(1);
+    expect(dl.match(/gatherProject[\s\S]*?return\{project,binaries\}/)[0].match(/gatherFilterOrder\(\)/g).length).toBe(1);
     expect(dl).toContain('if(!(name in (FILTER_UNITS[key]?.params||{})))setControlValue(');
     expect(dl.match(/setFilterUnitControl\(key,name,value\)/g).length).toBe(1);
     expect(dl.match(/resolveFilterParams\(key,params,legacyRange\)/g).length).toBe(1);
