@@ -6,25 +6,31 @@
 //   3.5 GB study is never copied. The pass yields to the UI by time, can be cancelled, restarts when the segment settings change
 //   and reads every N-th slice first (a draft) on long volumes. Results: Uint32Array(4096) per segment (histogram.js), cached by
 //   the segment cache key (segment-cache-key.js).
+// - The chart's x range (build 551) is display only (stats are always over all the data): 自動 = a percentile window of the shown segments together (a thin bone tail does not
+//   squeeze the rest), 全体 = min..max, or typed / wheel-zoomed; kept in localStorage. A range line outside it is marked at the edge and still draggable there.
 // - The HU range of every shown segment is a vertical line; dragging it moves the segment's min / max slider through the very
 //   same events as the slider itself (input while moving, change on release), so the segment code runs exactly as for a slider.
-import { volume, current3DVolume, currentLanguage } from './state.js?v=20261010-build544';
-import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build544';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build544';
-import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build544';
-import { getHuMode, effectiveHuSignature, huModeToggle, segmentNeedsRuns } from './effective-hu.js?v=20261010-build544';
-import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build544';
-import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build544';
-import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build544';
-import { tr } from './i18n.js?v=20261010-build544';
-import { frameYield } from './utils.js?v=20261010-build544';
-import { createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine, niceStep, fitWindow, chartSpans } from './histogram.js?v=20261010-build544';
+import { volume, current3DVolume, currentLanguage } from './state.js?v=20261010-build551';
+import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build551';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build551';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build551';
+import { getHuMode, effectiveHuSignature, huModeToggle, segmentNeedsRuns } from './effective-hu.js?v=20261010-build551';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build551';
+import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build551';
+import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build551';
+import { tr } from './i18n.js?v=20261010-build551';
+import { frameYield } from './utils.js?v=20261010-build551';
+import { createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine, niceStep, windowFor, clampWindow, zoomWindow, normalizeRange } from './histogram.js?v=20261010-build551';
 
 const POLL_MS = 400, DRAFT_MIN_SLICES = 240, DRAFT_SLICES = 80, CACHE_MAX = 24, CHART_H = 150, GRAB_PX = 6, PAD = { l: 34, r: 8, t: 14, b: 20 };
+const RANGE_KEY = 'vrl-hist-range-v1';
+// the chart's display range ('auto' = robust to tails, 'full' = min..max, 'manual'): remembered per viewer, never required
+function loadRange() { try { return normalizeRange(JSON.parse(localStorage.getItem(RANGE_KEY))); } catch { return normalizeRange(null); } }
+function saveRange() { try { localStorage.setItem(RANGE_KEY, JSON.stringify(st.range)); } catch { /* private window: the choice just lasts for the session */ } }
 const st = {
   open: false, log: false, timer: 0, job: null, lastRun: '', lastDisp: '', doneSig: '', stopSig: '', message: '', lang: '',
   users: new Set(), listeners: new Set(), sliceMs: 30, // users: other consumers of the results (the VR panel); sliceMs: how long a pass works before it yields
-  cur: {}, totals: new Map(), runCache: new Map(), volIds: new WeakMap(), nextVolId: 1, drag: null, win: null, hover: null,
+  cur: {}, totals: new Map(), runCache: new Map(), volIds: new WeakMap(), nextVolId: 1, drag: null, win: null, hover: null, range: loadRange(), rangeEls: null,
   el: null, canvas: null, table: null, progress: null, status: null, cancelBtn: null, logBtn: null, linBtn: null, hint: null
 };
 
@@ -138,7 +144,16 @@ function resultsFor(v) {
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 function chartWindow(res) {
   if (st.drag && st.win) return st.win;
-  return (st.win = fitWindow(chartSpans(res)));
+  return (st.win = windowFor(res, st.range));
+}
+// the display range only moves what is drawn: stats and the table are always over the whole data
+function setRange(range) { st.range = normalizeRange(range); st.win = null; saveRange(); draw(true); }
+function zoomAt(e) {
+  const v = volume; if (!v || !st.canvas) return;
+  const res = resultsFor(v), r = plotRect(st.canvas), [lo, hi] = chartWindow(res);
+  const x = Math.max(0, Math.min(r.w, e.clientX - st.canvas.getBoundingClientRect().left - r.x)), anchor = xToHu(x, lo, hi, r.w);
+  const w = zoomWindow(lo, hi, anchor, e.deltaY < 0 ? 0.8 : 1.25);
+  if (w) setRange({ mode: 'manual', lo: w[0], hi: w[1] });
 }
 function plotRect(canvas) { return { x: PAD.l, y: PAD.t, w: Math.max(10, canvas.clientWidth - PAD.l - PAD.r), h: CHART_H - PAD.t - PAD.b }; }
 function drawChart(res) {
@@ -176,10 +191,16 @@ function drawChart(res) {
   });
   // HU range lines (draggable)
   ctx.globalAlpha = 1; ctx.lineWidth = 1.5;
+  let edgeL = 0, edgeR = 0;
   for (const s of res.list) {
     const a = s.seg.userMin ?? s.seg.min, b = s.seg.userMax ?? s.seg.max;
     for (const [hu, side] of [[a, 1], [b, -1]]) {
-      if (hu < lo || hu > hi) continue;
+      if (hu < lo || hu > hi) { // outside the visible range: a marker on that edge (still draggable there), stacked so two do not overlap
+        const left = hu < lo, k = left ? edgeL++ : edgeR++, ex = r.x + (left ? 0 : r.w), ey = r.y + 6 + 11 * k, d = left ? 1 : -1;
+        ctx.fillStyle = s.seg.color; ctx.beginPath(); ctx.moveTo(ex - d * 5, ey); ctx.lineTo(ex + d * 3, ey - 4); ctx.lineTo(ex + d * 3, ey + 4); ctx.fill();
+        ctx.fillStyle = fg; ctx.textAlign = left ? 'left' : 'right'; ctx.fillText(String(Math.round(hu)), ex + d * 7, ey);
+        continue;
+      }
       const x = r.x + huToX(hu, lo, hi, r.w);
       ctx.strokeStyle = s.seg.color; ctx.fillStyle = s.seg.color;
       ctx.beginPath(); ctx.moveTo(x, r.y - 2); ctx.lineTo(x, r.y + r.h); ctx.stroke();
@@ -222,7 +243,16 @@ function draw(force = false) {
   drawChart(res); drawTable(res, v);
   if (st.status && !st.job) st.status.textContent = st.message || (enabledKeys().length ? '' : tr('segHistNoSeg'));
   if (st.cancelBtn) { st.cancelBtn.textContent = st.job ? tr('segHistCancel') : tr('segHistRecalc'); st.cancelBtn.disabled = !st.job && !enabledKeysNeedWork(v); }
+  syncRangeUi(res);
   st.logBtn?.classList.toggle('is-active', st.log); st.linBtn?.classList.toggle('is-active', !st.log);
+}
+// the range boxes show the window really drawn (also in auto / full); a box being typed in is left alone
+function syncRangeUi(res) {
+  const e = st.rangeEls; if (!e) return;
+  const [lo, hi] = chartWindow(res);
+  if (document.activeElement !== e.lo) e.lo.value = String(lo);
+  if (document.activeElement !== e.hi) e.hi.value = String(hi);
+  e.auto.classList.toggle('is-active', st.range.mode === 'auto'); e.full.classList.toggle('is-active', st.range.mode === 'full');
 }
 // "Recalculate" is offered when a pass was cancelled / failed for the current settings
 const enabledKeysNeedWork = v => st.doneSig !== runSignature(v);
@@ -241,13 +271,13 @@ function hitLine(e) {
   const v = volume; if (!v || !st.canvas) return null;
   // CSS px: the canvas is drawn through setTransform(dpr), so clientX - rect.left is already in drawing units
   const res = resultsFor(v), r = plotRect(st.canvas), [lo, hi] = chartWindow(res), x = e.clientX - st.canvas.getBoundingClientRect().left;
-  const cand = [];
+  const cand = [], edge = []; // edge: lines outside the visible range, grabbed at the chart edge only when no visible line is under the pointer
   for (const s of res.list) for (const which of ['min', 'max']) {
     const hu = which === 'min' ? (s.seg.userMin ?? s.seg.min) : (s.seg.userMax ?? s.seg.max);
-    cand.push({ key: s.key, which, x: r.x + huToX(hu, lo, hi, r.w) });
+    (hu < lo || hu > hi ? edge : cand).push({ key: s.key, which, x: r.x + (hu < lo ? 0 : hu > hi ? r.w : huToX(hu, lo, hi, r.w)) });
   }
-  const i = nearestLine(cand.map(c => c.x), x, GRAB_PX);
-  return i < 0 ? null : { key: cand[i].key, which: cand[i].which };
+  for (const list of [cand, edge]) { const i = nearestLine(list.map(c => c.x), x, GRAB_PX); if (i >= 0) return { key: list[i].key, which: list[i].which }; }
+  return null;
 }
 function installDrag(canvas) {
   canvas.style.touchAction = 'none';
@@ -271,7 +301,7 @@ function installDrag(canvas) {
     st.win = null; draw(true);
   };
   own('pointerup', end); own('pointercancel', end);
-  canvas.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
+  canvas.addEventListener('wheel', e => { e.stopPropagation(); e.preventDefault(); zoomAt(e); }, { passive: false }); // wheel = zoom the axis around the pointer
 }
 
 // ---- panel ----
@@ -282,6 +312,14 @@ function build() {
   for (const b of [st.linBtn, st.logBtn]) b.type = 'button';
   st.linBtn.onclick = () => { st.log = false; draw(true); }; st.logBtn.onclick = () => { st.log = true; draw(true); };
   bar.append(title, huModeToggle(currentLanguage, filtersActive), st.linBtn, st.logBtn);
+  const row = mk('div', 'seg-hist-range'), num = () => { const i = mk('input', 'seg-hist-num'); i.type = 'number'; i.step = '10'; i.inputMode = 'numeric'; return i; };
+  const lo = num(), hi = num(), auto = mk('button', 'seg-hist-mini', tr('segHistAuto')), full = mk('button', 'seg-hist-mini', tr('segHistFull'));
+  auto.type = full.type = 'button'; lo.setAttribute('aria-label', tr('segHistRange') + ' min'); hi.setAttribute('aria-label', tr('segHistRange') + ' max');
+  const commit = () => { const w = clampWindow(lo.value, hi.value); if (w) { lo.value = String(w[0]); hi.value = String(w[1]); setRange({ mode: 'manual', lo: w[0], hi: w[1] }); } else draw(true); };
+  for (const i of [lo, hi]) { i.onchange = commit; i.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') commit(); }; i.onpointerdown = e => e.stopPropagation(); }
+  auto.onclick = () => setRange({ mode: 'auto' }); full.onclick = () => setRange({ mode: 'full' });
+  row.append(mk('span', '', tr('segHistRange')), lo, mk('span', '', '–'), hi, mk('span', '', 'HU'), auto, full);
+  st.rangeEls = { lo, hi, auto, full };
   st.canvas = mk('canvas', 'seg-hist-canvas'); st.canvas.style.height = CHART_H + 'px'; installDrag(st.canvas);
   const prog = mk('div', 'seg-hist-progress');
   st.progress = document.createElement('progress'); st.progress.max = 1; st.progress.value = 0; st.progress.hidden = true;
@@ -289,7 +327,7 @@ function build() {
   st.cancelBtn.onclick = () => { if (st.job) cancelJob(true); else { st.stopSig = ''; st.message = ''; st.lastRun = ''; tick(true); } };
   prog.append(st.progress, st.status, st.cancelBtn);
   st.table = mk('div', 'seg-hist-tablewrap'); st.hint = mk('div', 'seg-hist-hint', tr('segHistHint'));
-  box.replaceChildren(bar, st.canvas, prog, st.table, st.hint);
+  box.replaceChildren(bar, row, st.canvas, prog, st.table, st.hint);
   st.lang = currentLanguage;
 }
 function tick(force = false) {
@@ -328,7 +366,7 @@ export function releaseHistogram(id) { st.users.delete(id); if (!st.users.size) 
 export function onHistogramChange(fn) { st.listeners.add(fn); return () => st.listeners.delete(fn); }
 export function getHistogramView() {
   const v = volume;
-  return { volume: v || null, res: v ? resultsFor(v) : { list: [], total: null }, busy: !!st.job, message: st.message, log: st.log, noSeg: !enabledKeys().length };
+  return { volume: v || null, range: st.range, res: v ? resultsFor(v) : { list: [], total: null }, busy: !!st.job, message: st.message, log: st.log, noSeg: !enabledKeys().length };
 }
 export function setHistogramLog(on) { st.log = !!on; draw(true); }
 export function installSegmentHistogram() {
