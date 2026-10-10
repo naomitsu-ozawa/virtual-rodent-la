@@ -8,17 +8,17 @@
 //   the segment cache key (segment-cache-key.js).
 // - The HU range of every shown segment is a vertical line; dragging it moves the segment's min / max slider through the very
 //   same events as the slider itself (input while moving, change on release), so the segment code runs exactly as for a slider.
-import { volume, currentLanguage } from './state.js?v=20261010-build538';
-import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build538';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build538';
-import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build538';
-import { getHuMode, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build538';
-import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build538';
-import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build538';
-import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build538';
-import { tr } from './i18n.js?v=20261010-build538';
-import { frameYield } from './utils.js?v=20261010-build538';
-import { HIST_MIN, HIST_MAX, createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine } from './histogram.js?v=20261010-build538';
+import { volume, current3DVolume, currentLanguage } from './state.js?v=20261010-build539';
+import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build539';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build539';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build539';
+import { getHuMode, effectiveHuSignature, huModeToggle, segmentNeedsRuns } from './effective-hu.js?v=20261010-build539';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build539';
+import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build539';
+import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build539';
+import { tr } from './i18n.js?v=20261010-build539';
+import { frameYield } from './utils.js?v=20261010-build539';
+import { HIST_MIN, HIST_MAX, createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine } from './histogram.js?v=20261010-build539';
 
 const POLL_MS = 400, DRAFT_MIN_SLICES = 240, DRAFT_SLICES = 80, CACHE_MAX = 24, CHART_H = 150, GRAB_PX = 6, PAD = { l: 34, r: 8, t: 14, b: 20 };
 const st = {
@@ -32,7 +32,9 @@ const totalKey = v => volId(v) + '|' + effSig();
 const volId = v => { let id = st.volIds.get(v); if (!id) { id = st.nextVolId++; st.volIds.set(v, id); } return id; };
 const enabledKeys = () => SEGMENT_PRESET_ORDER.filter(k => segmentState[k].active && segmentState[k].enabled);
 // does the segment need its final runs (post-processing / edits / takers above / filtered source), or is it a plain range of the raw data?
-const needsRuns = (key, v) => segmentNeedsVoxelMask(key) || (!!v.sourceBacked && sourceFilterStages().length > 0);
+const needsRuns = key => segmentNeedsRuns(segmentNeedsVoxelMask(key), sourceFilterStages().length);
+// the volume the segment code builds a segment from: source-backed = the volume itself; in-memory = the 3D build volume (the filtered one when filters are on)
+const segmentVolume = v => (v.sourceBacked ? v : current3DVolume || v);
 const keySig = (key, v) => { const s = segmentState[key]; return [volId(v), sourceFilterSignature(sourceFilterStages()), effSig(), key, s.min, s.max, s.opening, s.closing, s.minComponent, s.holeFill ? 1 : 0, s.surfaceMm, s.thicknessMm, segmentEditGen[key] | 0, segmentSourceSignature(key, true)].join(','); };
 // what must be (re)computed: the run-based segments and whether the whole-volume histogram is needed
 function runSignature(v) {
@@ -91,7 +93,7 @@ async function runJob(sig) {
     const runs = {};
     for (const k of todo) {
       setProgress(tr('segHistPrepare') + ': ' + (tr(k) || k), 0);
-      runs[k] = await getFinalSegmentRuns(k, v, (d, t) => { if (!job.cancelled) setProgress(tr('segHistPrepare') + ': ' + (tr(k) || k) + ' ' + Math.round(100 * d / Math.max(1, t)) + '%', d / Math.max(1, t)); });
+      runs[k] = await getFinalSegmentRuns(k, segmentVolume(v), (d, t) => { if (!job.cancelled) setProgress(tr('segHistPrepare') + ': ' + (tr(k) || k) + ' ' + Math.round(100 * d / Math.max(1, t)) + '%', d / Math.max(1, t)); });
       if (job.cancelled) return;
     }
     const steps = v.slices >= DRAFT_MIN_SLICES ? [Math.ceil(v.slices / DRAFT_SLICES), 1] : [1];
