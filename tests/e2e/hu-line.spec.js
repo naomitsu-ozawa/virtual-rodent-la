@@ -116,3 +116,70 @@ test('HU line in 3D: with no surface under the pointer and no section plane the 
   expect(Number(await page.locator('#line-profile-result .lp-plot').getAttribute('data-n'))).toBe(0);
   expect(errors).toEqual([]);
 });
+
+// build 542: the GPU volume canvas (medical-volume.js, position:absolute, z-index:0) is appended to the 3D host AFTER the overlay, so on the
+// real WebGPU path it painted over a z-index-less SVG (the line was invisible). The sandbox has no WebGPU, so stand in such a canvas.
+test('HU line in 3D: the overlay stays above a later-appended GPU volume canvas (z-order)', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openStudy(page, true);
+  await page.evaluate(async () => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search;
+    const st = await import('./state.js' + v), m = await import('./hu-line-model.js' + v), vol = st.volume;
+    const host = document.querySelector('#viewport-3d'), c = document.createElement('canvas');
+    Object.assign(c.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', pointerEvents: 'none', zIndex: '0', background: 'rgb(255,0,0)' });
+    host.appendChild(c); // after the svg, like MedicalVolumeRenderer
+    m.setHuLine({ i: vol.columns * 0.3, j: vol.rows * 0.5, k: vol.slices * 0.5 }, { i: vol.columns * 0.7, j: vol.rows * 0.5, k: vol.slices * 0.5 }, 'final', 'e2e');
+  });
+  const svg = page.locator('svg.hu-line-3d');
+  await expect(svg).toHaveAttribute('data-visible', '1');
+  const cb = await page.locator('#viewport-3d').boundingBox();
+  const [ax, ay] = (await svg.getAttribute('data-a')).split(',').map(Number), [bx] = (await svg.getAttribute('data-b')).split(',').map(Number);
+  expect(ax).toBeGreaterThan(0); expect(ax).toBeLessThan(cb.width); expect(ay).toBeGreaterThan(0); expect(ay).toBeLessThan(cb.height); // projected inside the canvas
+  await page.waitForTimeout(200);
+  const shot = await page.screenshot({ clip: { x: cb.x + (ax + bx) / 2 - 1, y: cb.y + ay - 1, width: 3, height: 3 } });
+  const px = await page.evaluate(async b64 => {
+    const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    return [...x.getImageData(0, 0, c.width, c.height).data].reduce((a, v, i) => (i % 4 === 0 ? a.concat([[v]]) : (a[a.length - 1].push(v), a)), []).map(p => p.slice(0, 3));
+  }, shot.toString('base64'));
+  expect(px.some(([r, g, b]) => b > 180 && g > 150 && r < 120)).toBe(true); // the cyan line, not the red canvas
+});
+
+// build 542: with a section (cut) open the 3D pick must land on what is visible (cap on the cut plane / kept side), never on the cut-away half;
+// and the 2D endpoints are the very voxel positions the 3D overlay shows.
+test('HU line in 3D with a section open: picked endpoints are on the kept side; 2D -> 3D endpoints agree', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await openStudy(page, true);
+  await page.locator('#section-view-toggle').click();
+  const arm = page.locator('#line-profile-result .lp-3d-toggle');
+  await expect(arm).toBeEnabled({ timeout: 30_000 });
+  await arm.click();
+  const cb = await page.locator('#viewport-3d').boundingBox();
+  const x0 = cb.x + cb.width * 0.42, x1 = cb.x + cb.width * 0.58, y = cb.y + cb.height * 0.5;
+  await page.mouse.move(x0, y); await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(x0 + (x1 - x0) * i / 6, y, { steps: 2 });
+  await page.mouse.up();
+  await expect(page.locator('svg.hu-line-3d')).toHaveAttribute('data-visible', '1', { timeout: 20_000 });
+  const r = await page.evaluate(async () => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search;
+    const sv = await import('./section-view.js' + v), m = await import('./hu-line-model.js' + v), cr = await import('./crosshair.js' + v), st = await import('./state.js' + v);
+    const L = m.getHuLine(), pt = sv.sectionLocalPoint(), nm = sv.sectionLocalNormal(), vol = st.volume;
+    const d = q => { const l = cr.voxelToLocal3D(q, vol, vol.spacing); return (l.x - pt.x) * nm.x + (l.y - pt.y) * nm.y + (l.z - pt.z) * nm.z; };
+    return { L, da: d(L.a), db: d(L.b), cols: vol.columns };
+  });
+  expect(r.L).not.toBeNull();
+  expect(r.da).toBeGreaterThanOrEqual(-1e-3); expect(r.db).toBeGreaterThanOrEqual(-1e-3);
+  // 2D <-> 3D: a line set from the slice side (voxel coordinates) shows at the same voxel in the model and projects into the 3D canvas
+  await page.evaluate(async () => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search;
+    const m = await import('./hu-line-model.js' + v), st = await import('./state.js' + v), vol = st.volume;
+    m.setHuLine({ i: vol.columns * 0.3, j: vol.rows * 0.5, k: vol.slices * 0.5 }, { i: vol.columns * 0.7, j: vol.rows * 0.5, k: vol.slices * 0.5 }, 'final', '2d');
+  });
+  const svg = page.locator('svg.hu-line-3d');
+  await expect.poll(async () => await svg.getAttribute('data-a')).toMatch(/^\d+,\d+$/);
+  const [ax] = (await svg.getAttribute('data-a')).split(',').map(Number), [bx] = (await svg.getAttribute('data-b')).split(',').map(Number);
+  expect(ax).toBeLessThan(bx);
+  expect(errors).toEqual([]);
+});

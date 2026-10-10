@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
 import dicomParser from 'https://esm.sh/dicom-parser@1.8.21';
-import { canvasBackground3dUnit } from './canvas-theme.js?v=20261010-build541';
+import { canvasBackground3dUnit } from './canvas-theme.js?v=20261010-build542';
 
 const UNCOMPRESSED_TS=new Set(['1.2.840.10008.1.2','1.2.840.10008.1.2.1','1.2.840.10008.1.2.2']);
 const safeWgsl=source=>source.replace(/\bmeta\b/g,'vrlMeta').replace(/\bactive\b/g,'vrlActive').replace(/\btarget\b/g,'vrlTarget');
@@ -1402,6 +1402,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
  }
  render(camera,obj,segmentState,segmentOrder,mpr={}){
   if(!this.active||!this.texture||!this.bindGroup||!obj)return;
+  this.lastMpr=mpr; // build 542: a pick re-renders the frame; it must be the frame on screen (section / MPR planes included), not an uncut one
   this.resize();camera.updateMatrixWorld(true);obj.updateMatrixWorld(true);
   const inv=this.tmpInv.copy(obj.matrixWorld).invert(),origin=camera.getWorldPosition(this.tmpOrigin).applyMatrix4(inv),q=camera.getWorldQuaternion(this.tmpQuat);
   const right=this.tmpRight.set(1,0,0).applyQuaternion(q).transformDirection(inv),up=this.tmpUp.set(0,1,0).applyQuaternion(q).transformDirection(inv),forward=this.tmpForward.set(0,0,-1).applyQuaternion(q).transformDirection(inv);
@@ -1453,7 +1454,7 @@ struct O{@builtin(position) p:vec4<f32>,@location(0) uv:vec2<f32>};
  }
  async pickMany(points,camera,obj,segmentState,segmentOrder,preferredKey=null){
   if(!this.active||!this.texture||!this.bindGroup||!obj||!points?.length)return points?.map(()=>null)||[];
-  this.render(camera,obj,segmentState,segmentOrder);const count=points.length;this.ensurePickCapacity(count);
+  this.render(camera,obj,segmentState,segmentOrder,this.lastMpr||{});const count=points.length;this.ensurePickCapacity(count);
   const rect=this.rendererCanvas.getBoundingClientRect(),data=new Float32Array((count+1)*4);data[0]=count;
   const preferred=preferredKey?segmentOrder.indexOf(preferredKey):-1;
   for(let i=0;i<count;i++){const p=points[i],base=(i+1)*4;data[base]=(p.clientX-rect.left)/Math.max(rect.width,1)*(this.renderW||this.canvas.width);data[base+1]=(p.clientY-rect.top)/Math.max(rect.height,1)*(this.renderH||this.canvas.height);data[base+2]=preferred>=0?preferred+1:0}

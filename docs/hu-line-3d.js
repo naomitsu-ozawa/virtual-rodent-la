@@ -7,14 +7,14 @@
 // canvas handlers (rotate / pan / comment taps) see it; moves and releases are followed on the document. The line is an SVG overlay
 // projected like the comment / measure lines (voxelToLocal3D -> object matrix -> camera), updated after every 3D frame.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { sceneState, volume, current3DVolume, threeRenderMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261010-build541';
-import { voxelToLocal3D } from './crosshair.js?v=20261010-build541';
-import { surfacePointerVoxel } from './analysis-ops.js?v=20261010-build541';
-import { segmentState, gpuSegmentOrder } from './segments.js?v=20261010-build541';
-import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261010-build541';
-import { request3DRender } from './scene3d.js?v=20261010-build541';
-import { getHuLine, setHuLine, clearHuLine, onHuLineChange, getHuLineHover, onHuLineHoverChange, localToVoxel, voxelInside, rayPlaneT } from './hu-line-model.js?v=20261010-build541';
-import { createLiveScheduler } from './hu-line-live.js?v=20261010-build541';
+import { sceneState, volume, current3DVolume, threeRenderMode, analysisEditTool, sectionViewOpen, sectionViewPlane } from './state.js?v=20261010-build542';
+import { voxelToLocal3D } from './crosshair.js?v=20261010-build542';
+import { surfacePointerVoxel } from './analysis-ops.js?v=20261010-build542';
+import { segmentState, gpuSegmentOrder } from './segments.js?v=20261010-build542';
+import { sectionLocalPoint, sectionLocalNormal } from './section-view.js?v=20261010-build542';
+import { request3DRender } from './scene3d.js?v=20261010-build542';
+import { getHuLine, setHuLine, clearHuLine, onHuLineChange, getHuLineHover, onHuLineHoverChange, localToVoxel, voxelInside, rayPlaneT } from './hu-line-model.js?v=20261010-build542';
+import { createLiveScheduler } from './hu-line-live.js?v=20261010-build542';
 
 const DRAG_PX = 6, CYAN = '#35e0ff', ORANGE = '#ffb13b';
 let host = null, svg = null, armed = false;
@@ -64,10 +64,26 @@ function pickSectionPlane(canvas, x, y) {
   const vox = localToVoxel({ x: o.x + d.x * t, y: o.y + d.y * t, z: o.z + d.z * t }, dimsOf(v), v.spacing);
   return voxelInside(vox, dimsOf(v)) ? vox : null;
 }
+// With a section (cut) open, the picks above see the UNCUT volume / mesh (the GPU pick and the mesh ray cast ignore the cut): a press on the
+// cut face would land on tissue that was cut away, far from what the user points at. What is visible there is: seen from the cut side
+// (camera on the removed side) the cap on the plane; seen from the kept side the first surface, which must itself be on the kept side.
+function keptSideOf(obj, camera, hit, vol) {
+  const pt = sectionLocalPoint(), nm = sectionLocalNormal(); if (!pt || !nm) return null;
+  const inv = obj.matrixWorld.clone().invert(), e = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld).applyMatrix4(inv);
+  const dist = q => (q.x - pt.x) * nm.x + (q.y - pt.y) * nm.y + (q.z - pt.z) * nm.z;
+  const l = hit ? voxelToLocal3D(hit, dimsOf(vol), vol.spacing) : null;
+  return { eyeKept: dist(e) >= 0, hitKept: l ? dist(l) >= -1e-6 : false };
+}
 export async function pickHuLinePoint(canvas, x, y) {
   if (!volume || !sceneState?.obj || !sceneState.camera) return null;
   let p = null;
   try { p = await pickSurface(canvas, x, y); } catch (e) { console.warn('HU line 3D pick failed', e); }
+  if (sectionViewOpen && sectionViewPlane) {
+    const plane = pickSectionPlane(canvas, x, y), k = keptSideOf(sceneState.obj, sceneState.camera, p, volume);
+    if (!k) return p || plane;
+    if (!k.eyeKept && plane) return plane;
+    return p && k.hitKept ? p : plane;
+  }
   return p || pickSectionPlane(canvas, x, y);
 }
 
@@ -170,7 +186,7 @@ export function installHuLine3d(viewportEl) {
   if (host || !viewportEl) return;
   host = viewportEl;
   svg = mkSvg('svg', { class: 'hu-line-3d', 'aria-hidden': 'true' });
-  Object.assign(svg.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible', display: 'none' });
+  Object.assign(svg.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible', display: 'none', zIndex: '6' }); // above the GPU volume canvas (appended later, z-index 0): the comment layer's rule
   el.halo = mkSvg('line', { stroke: 'rgba(0,0,0,.6)', 'stroke-width': '4.5', 'stroke-linecap': 'round' });
   el.line = mkSvg('line', { stroke: CYAN, 'stroke-width': '2', 'stroke-linecap': 'round' });
   el.a = mkSvg('circle', { fill: CYAN, stroke: 'rgba(0,0,0,.7)', 'stroke-width': '2' }); el.b = mkSvg('circle', { fill: CYAN, stroke: 'rgba(0,0,0,.7)', 'stroke-width': '2' });
