@@ -1,21 +1,23 @@
 // HU line in VR (build 545): armed from the menu, trigger on the volume = START, held = the line stretches along the laser, release = END.
 // The line lives in the SAME model as the 2D / 3D screens (hu-line-model.js, voxel coordinates), so a line drawn here shows on the PC views and
 // the other way round. The values are the same effective (filtered / raw) HU as on the PC (effective-hu*.js, line-profile.js, hu-line-live.js):
-// while dragging a COARSE preview (<= 192 samples, only data already in memory) about 12 times a second, the full read on release.
+// while dragging a COARSE preview (<= 192 samples) about 12 times a second, read from the CPU copy of the data the VR texture is built from
+// (filtered slices when filters are on; approximate when that grid is reduced, and then labelled so), the exact full read on release.
 // vr-view.js owns the controllers, the laser pick and the menu; this module owns the line mesh, the hand panel and the gesture.
 //   createVrHuLine(THREE, env) -> { start(c), end(c), update(now), setArmed, isArmed, clear, hasLine, dispose, ... }
-//   env: { mesh(): the volume mesh | null, halfExt(), dims(), pick(c, out): voxel {i,j,k} | null (the laser's), pulse(c, amp, ms), flash(text), refresh(), language }
-// Frame cost: nothing is allocated while idle or dragging (vectors / arrays are reused); the panel canvas is redrawn only when a sample arrives
-// (<= 12.5 Hz), its texture has no mipmaps. The pick runs once per frame only while the trigger is held.
-import { getHuLine, setHuLine, clearHuLine, onHuLineChange } from './hu-line-model.js?v=20261010-build545';
-import { lineSamples, sampleLine, profileStats } from './line-profile.js?v=20261010-build545';
-import { liveProfile, LIVE_MAX_SAMPLES } from './hu-line-live.js?v=20261010-build545';
-import { getHuMode, onHuModeChange, resolveHuMode } from './effective-hu.js?v=20261010-build545';
-import { readEffectiveSlice, rawHuVolume, peekEffectiveReaders } from './effective-hu-source.js?v=20261010-build545';
-import { sourceFilterStages } from './source-filters.js?v=20261010-build545';
-import { frameYield } from './utils.js?v=20261010-build545';
-import { HAPTIC } from './vr-point.js?v=20261010-build545';
-import { createHuPanelGate, HU_MIN_LENGTH_VOXELS, voxelToLocalInto, voxelDistanceMm, sameGrid, PANEL_W, PANEL_H, PANEL_WORLD_W, panelLayout, huRange, plotPoints, panelTexts, huMenuTexts } from './vr-hu-line-core.js?v=20261010-build545';
+//   env: { mesh(), halfExt(), dims(), texture(): the VR texture's CPU copy | null, pick(c, out): out | null (the laser's voxel), pulse(c, amp, ms), flash(text), refresh(), language }
+// Frame cost: update() allocates nothing while idle or dragging (vectors, buffers and the pick scratch are reused; the pick itself is supplied by
+// vr-view.js from the hit its controller loop already computed that frame). The sampling tick (<= 12.5 Hz, not per frame) allocates the small sample
+// arrays and the statistics. The panel canvas is redrawn only when a sample arrives, its texture has no mipmaps.
+import { getHuLine, setHuLine, clearHuLine, onHuLineChange } from './hu-line-model.js?v=20261010-build546';
+import { lineSamples, sampleLine, profileStats } from './line-profile.js?v=20261010-build546';
+import { liveProfile, LIVE_MAX_SAMPLES } from './hu-line-live.js?v=20261010-build546';
+import { getHuMode, onHuModeChange, resolveHuMode } from './effective-hu.js?v=20261010-build546';
+import { readEffectiveSlice, rawHuVolume, peekEffectiveReaders } from './effective-hu-source.js?v=20261010-build546';
+import { sourceFilterStages } from './source-filters.js?v=20261010-build546';
+import { frameYield } from './utils.js?v=20261010-build546';
+import { HAPTIC } from './vr-point.js?v=20261010-build546';
+import { createHuPanelGate, HU_MIN_LENGTH_VOXELS, voxelToLocalInto, voxelDistanceMm, sameGrid, sampleTexture, textureMatchesMode, textureIsReduced, readErrorText, PANEL_W, PANEL_H, PANEL_WORLD_W, panelLayout, huRange, plotPoints, panelTexts, huMenuTexts } from './vr-hu-line-core.js?v=20261010-build546';
 
 const LINE_COLOR = 0x35e0ff, START_COLOR = 0x7dffb0, TUBE_R_M = 0.0010, DOT_R_M = 0.0026; // thin tube (1 mm radius at real size) + end markers, in world metres
 const PANEL_POS = [0, 0.12, -0.05], PANEL_TILT = -0.5; // in the controller's frame: above the hand, tilted up towards the eyes
@@ -23,7 +25,7 @@ const PANEL_POS = [0, 0.12, -0.05], PANEL_TILT = -0.5; // in the controller's fr
 export function createVrHuLine(THREE, env) {
   const t = () => huMenuTexts(env.language);
   const gate = createHuPanelGate(), layout = panelLayout(), plotBuf = new Float32Array(2 * 4096);
-  let armed = false, g = null, token = 0, tubeDirty = true, scaleCache = 0, fullBusy = false, res = null, panelHand = null, panelOn = false, disposed = false;
+  let armed = false, g = null, token = 0, tubeDirty = true, scaleCache = 0, fullBusy = false, failed = false, res = null, panelHand = null, panelOn = false, disposed = false;
   const a = { i: 0, j: 0, k: 0 }, b = { i: 0, j: 0, k: 0 }, pick = { i: 0, j: 0, k: 0 }; // the shown endpoints (reused), the pick scratch
   const pa = new THREE.Vector3(), pb = new THREE.Vector3(), dir = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tmpS = new THREE.Vector3();
   let shown = false; // the line is currently drawn (model line or the one being dragged)
@@ -47,7 +49,7 @@ export function createVrHuLine(THREE, env) {
     if (disposed) return;
     const W = PANEL_W, H = PANEL_H, st = res?.stats, L = layout, v = rawHuVolume();
     const lengthMm = res && v ? voxelDistanceMm(res.a, res.b, v.spacing) : 0;
-    const tx = panelTexts(env.language, { stats: st, lengthMm, modeKey: modeKey(), live: !!res?.live, busy: fullBusy && !res?.live, empty: !res });
+    const tx = panelTexts(env.language, { stats: st, lengthMm, modeKey: modeKey(), live: !!res?.live, approx: !!res?.approx, failed, busy: fullBusy && !res?.live, empty: !res });
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = 'rgba(14,20,27,.92)'; ctx.beginPath(); ctx.roundRect(0, 0, W, H, 22); ctx.fill();
     ctx.strokeStyle = res?.live ? '#ffd23d' : '#35e0ff'; ctx.lineWidth = 4; ctx.stroke();
@@ -84,20 +86,32 @@ export function createVrHuLine(THREE, env) {
   // ---- sampling (the same functions as the PC panel) ----
   function liveSample() {
     const v = rawHuVolume(); if (!v || !g) return;
-    const r = liveProfile(g.a, g.b, v.spacing, { columns: v.columns, rows: v.rows, slices: v.slices }, peekEffectiveReaders({ mode: getHuMode(), volume: v }), LIVE_MAX_SAMPLES);
-    if (r) res = { samples: r.samples, values: r.values, stats: profileStats(r.values), a: { i: g.a.i, j: g.a.j, k: g.a.k }, b: { i: g.b.i, j: g.b.j, k: g.b.k }, live: true };
+    const dims = { columns: v.columns, rows: v.rows, slices: v.slices }, tex = env.texture?.() || null;
+    let r = null;
+    if (textureMatchesMode(tex, modeKey())) { // the VR texture's CPU copy: always resident, filtered when filters are on
+      const samples = lineSamples(g.a, g.b, v.spacing, LIVE_MAX_SAMPLES);
+      r = { samples, values: sampleTexture(samples, tex, dims, new Float64Array(samples.n)), approx: textureIsReduced(tex, dims) };
+    } else { // texture of the other kind (e.g. Raw asked while the texture is filtered): only what the 2D side already has in memory
+      const p = liveProfile(g.a, g.b, v.spacing, dims, peekEffectiveReaders({ mode: getHuMode(), volume: v }), LIVE_MAX_SAMPLES);
+      if (p) r = { samples: p.samples, values: p.values, approx: false };
+    }
+    if (r) res = { samples: r.samples, values: r.values, stats: profileStats(r.values), a: { i: g.a.i, j: g.a.j, k: g.a.k }, b: { i: g.b.i, j: g.b.j, k: g.b.k }, live: true, approx: r.approx };
     drawPanel();
   }
   async function fullRead(la, lb) {
     const v = rawHuVolume(); if (!v) return;
     const tok = ++token, mode = getHuMode(), dims = { columns: v.columns, rows: v.rows, slices: v.slices };
-    fullBusy = true; if (panelOn) drawPanel();
+    fullBusy = true; failed = false; if (panelOn) drawPanel();
     try {
       const samples = lineSamples(la, lb, v.spacing);
+      // yieldMs 6: between samples the loop gives the frame back once 6 ms have passed (PC panel: 30 ms). It cannot bound ONE slice read: a slice that is
+      // not cached yet (decode / filter run in readEffectiveSlice) is a single await, and its synchronous parts can still take longer than a frame.
       const values = await sampleLine(samples, dims, z => readEffectiveSlice(z, { mode, volume: v }), { cancelled: () => tok !== token || disposed, yieldFn: frameYield, yieldMs: 6 });
       if (!values || tok !== token) return;
-      res = { samples, values, stats: profileStats(values), a: la, b: lb, live: false };
-    } catch (e) { console.warn('VR HU line read failed', e); if (tok === token) env.flash((env.language === 'en' ? 'HU line read failed: ' : 'HU線の読み取りに失敗: ') + String(e?.message || e)); }
+      res = { samples, values, stats: profileStats(values), a: la, b: lb, live: false, approx: false };
+    } catch (e) {
+      if (tok === token) { const msg = readErrorText(env.language, e); if (msg) { console.warn('VR HU line read failed', e); failed = true; env.flash(msg); } } // never silent (the live values stay on the panel, marked)
+    }
     finally { if (tok === token) { fullBusy = false; if (panelOn) drawPanel(); } }
   }
 
@@ -108,6 +122,7 @@ export function createVrHuLine(THREE, env) {
     shown = true; tubeDirty = true; grp.userData.withB = !!withB;
   }
   function hideLine() { shown = false; grp.visible = false; }
+  function placeTube(o, len, r) { o.position.copy(pa).addScaledVector(dir, len / 2); o.quaternion.setFromUnitVectors(up, dir); o.scale.set(r, len, r); }
   function layoutLine() {
     const m = env.mesh(), he = env.halfExt(), dims = env.dims();
     if (!m || !he || !dims || !shown) { grp.visible = false; return; }
@@ -124,7 +139,7 @@ export function createVrHuLine(THREE, env) {
       dir.subVectors(pb, pa); const len = dir.length();
       if (len > 1e-9) {
         dir.multiplyScalar(1 / len);
-        for (const o of [tube, halo]) { o.position.copy(pa).addScaledVector(dir, len / 2); o.quaternion.setFromUnitVectors(up, dir); o.scale.set(o === halo ? rt * 2.4 : rt, len, o === halo ? rt * 2.4 : rt); }
+        placeTube(tube, len, rt); placeTube(halo, len, rt * 2.4);
       } else tube.visible = halo.visible = false;
     }
     grp.visible = true;
@@ -137,7 +152,7 @@ export function createVrHuLine(THREE, env) {
     const v = rawHuVolume(), dims = env.dims();
     if (!v || !sameGrid(v, dims)) { env.flash(t().gridFlash); return false; }
     if (!env.pick(c, pick)) return false; // the laser is on neither tissue nor a section: the trigger keeps its normal action
-    token++; fullBusy = false; // an older full read is stale now
+    token++; fullBusy = false; failed = false; // an older full read is stale now
     g = { c, a: { i: pick.i, j: pick.j, k: pick.k }, b: { i: pick.i, j: pick.j, k: pick.k }, moved: false, prevShown: shown };
     res = null; gate.reset();
     setEnds(g.a, g.b, false); showPanel(c); drawPanel();
@@ -164,9 +179,9 @@ export function createVrHuLine(THREE, env) {
     if (disposed) return;
     if (g) { // the pick follows the laser every frame (smooth line); the sampling + panel at <= 12.5 Hz
       if (env.pick(g.c, pick) && (pick.i !== g.b.i || pick.j !== g.b.j || pick.k !== g.b.k)) {
-        g.b.i = pick.i; g.b.j = pick.j; g.b.k = pick.k; g.moved = true; b.i = pick.i; b.j = pick.j; b.k = pick.k; grp.userData.withB = true; tubeDirty = true;
+        g.b.i = pick.i; g.b.j = pick.j; g.b.k = pick.k; g.moved = true; failed = false; b.i = pick.i; b.j = pick.j; b.k = pick.k; grp.userData.withB = true; tubeDirty = true;
       }
-      if (gate.step(now, g.moved).run) { g.moved = false; liveSample(); }
+      if (gate.ready(now, g.moved)) { g.moved = false; liveSample(); }
     }
     if (shown) layoutLine();
   }

@@ -1,14 +1,14 @@
 // Settings dialog (build 280). Tabs: 描画 (rendering) and デバッグ (debug);
 // add a tab button + panel in ui-shell.js to extend it.
-import { settings } from './app-settings.js?v=20261010-build545';
-import { request3DRender } from './scene3d.js?v=20261010-build545';
-import { updateGpuStatus } from './gpu-compute.js?v=20261010-build545';
-import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261010-build545';
-import { tr } from './i18n.js?v=20261010-build545';
-import { fmt } from './utils.js?v=20261010-build545';
-import { gpuPreferenceSupported, gpuEffectivePreference, gpuHybridModeSupported, gpuEffectiveHybridMode } from './gpu-preference.js?v=20261010-build545';
-import { initGpuDiagnosticsUi } from './gpu-diagnostics-ui.js?v=20261010-build545';
-import { collectGpuDiagnostics } from './gpu-diagnostics-collect.js?v=20261010-build545';
+import { settings } from './app-settings.js?v=20261010-build546';
+import { request3DRender } from './scene3d.js?v=20261010-build546';
+import { updateGpuStatus } from './gpu-compute.js?v=20261010-build546';
+import { volumeCache, updateVolumeCacheControl, volumeCacheBudget } from './gpu-volume-data.js?v=20261010-build546';
+import { tr } from './i18n.js?v=20261010-build546';
+import { fmt } from './utils.js?v=20261010-build546';
+import { gpuPreferenceSupported, gpuEffectivePreference, gpuHybridModeSupported, gpuEffectiveHybridMode } from './gpu-preference.js?v=20261010-build546';
+import { initGpuDiagnosticsUi } from './gpu-diagnostics-ui.js?v=20261010-build546';
+import { collectGpuDiagnostics } from './gpu-diagnostics-collect.js?v=20261010-build546';
 export function initSettingsDialog(){
  const dlg=document.getElementById('settings-dialog'),open=document.getElementById('settings-open');if(!dlg||!open)return;
  open.onclick=()=>{sync();dlg.showModal?dlg.showModal():dlg.setAttribute('open','')};
