@@ -1,8 +1,9 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { currentLanguage, setCurrentLanguage } from './state.js?v=20261010-build542';
+import { currentLanguage, setCurrentLanguage } from './state.js?v=20261010-build547';
 export const I18N={
  ja:{
+  presetTitle:'解析プリセット',presetApply:'適用',presetSave:'現在の設定を保存',presetRename:'名前変更',presetDelete:'削除',presetExport:'書き出し',presetImport:'読み込み',presetBuiltin:'組み込み',presetUser:'ユーザー',presetNone:'プリセット: なし',presetActive:'プリセット: ',presetModified:'（変更あり）',presetNamePlaceholder:'保存する名前',presetNameNeeded:'名前を入力してください',presetNameBuiltin:'組み込みプリセットと同じ名前は使えません',presetNameDuplicate:'同じ名前のプリセットがあります',presetOverwriteAsk:'上書きしますか: ',presetDeleteAsk:'削除しますか: ',presetApplied:'プリセットを適用しました: ',presetSaved:'プリセットを保存しました: ',presetNoStorage:'（この環境では保存領域が使えないため、再読み込みで消えます）',presetRenamed:'名前を変更しました: ',presetDeleted:'削除しました: ',presetImported:'プリセットを読み込みました:',presetSkipped:'無効',presetImportFailed:'プリセットのファイルを読み込めませんでした',presetHint:'画像フィルター・CT表示範囲・セグメントのHU範囲をまとめて切り替えます。フィルターはHU値そのものを変えるため、ヒストグラムやHU線もフィルター後の値になります。値は初期案です。',
   subtitle:'マウス・実験動物画像のためのブラウザDICOM CTビューワー',
   gpuChecking:'WEBGPU 確認中',
   demo:'公開マウスCTデモ',openFolder:'DICOMフォルダを開く',
@@ -35,6 +36,7 @@ export const I18N={
   demoCache:'公開デモ: キャッシュ済みデータを使用',demoDone:'公開デモ: ダウンロード完了。端末キャッシュへ保存中'
  },
  en:{
+  presetTitle:'Analysis presets',presetApply:'Apply',presetSave:'Save current settings',presetRename:'Rename',presetDelete:'Delete',presetExport:'Export',presetImport:'Import',presetBuiltin:'Built-in',presetUser:'User',presetNone:'Preset: none',presetActive:'Preset: ',presetModified:' (modified)',presetNamePlaceholder:'Name to save as',presetNameNeeded:'Enter a name',presetNameBuiltin:'That name is used by a built-in preset',presetNameDuplicate:'A preset with that name exists',presetOverwriteAsk:'Overwrite: ',presetDeleteAsk:'Delete: ',presetApplied:'Preset applied: ',presetSaved:'Preset saved: ',presetNoStorage:' (storage is unavailable here: it is lost on reload)',presetRenamed:'Renamed: ',presetDeleted:'Deleted: ',presetImported:'Presets imported:',presetSkipped:'invalid',presetImportFailed:'Could not read the preset file',presetHint:'Switches the image filters, the CT range and the segment HU ranges together. Filters change the HU values themselves, so the histogram and the HU line use the filtered values. The values are a draft.',
   subtitle:'Browser-based DICOM CT viewer for mouse and laboratory-animal imaging',
   gpuChecking:'WEBGPU CHECKING',
   demo:'Public mouse CT demo',openFolder:'Open DICOM folder',
