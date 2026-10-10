@@ -11,7 +11,6 @@
 // max b starts at the next float32 above b, so a filtered (non-integer) value can never fall into a gap between them.
 // When a higher range lies strictly inside a lower one, two pieces remain; the app holds one range per segment, so the
 // piece containing the middle of the user range is kept (else the larger) and the dropped piece is reported.
-export const EXCLUSIVE_MODES=['off','priority'];
 const f32=new Float32Array(1),u32=new Uint32Array(f32.buffer);
 // next float32 above / below x (x finite)
 export function nextUp(x){f32[0]=x;if(f32[0]<=x){if(f32[0]===0){u32[0]=1}else if(f32[0]>0)u32[0]+=1;else u32[0]-=1}return f32[0]}

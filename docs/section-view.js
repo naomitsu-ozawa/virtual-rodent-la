@@ -1,9 +1,9 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { sectionViewPlane, volume, sectionViewReverse, sceneState, sectionViewOpen, sectionCapEnabled } from './state.js?v=20261010-build542';
-import { planes, sectionViewToggle, sectionViewResult, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionCapEnabledControl, sectionCapOpacityControl, sectionCapHatchControl, sectionViewReadout } from './ui-shell.js?v=20261010-build542';
+import { sectionViewPlane, volume, sectionViewReverse, sceneState, sectionViewOpen, sectionCapEnabled } from './state.js?v=20261010-build549';
+import { planes, sectionViewToggle, sectionViewResult, sectionPosition, sectionPositionValue, sectionReverse, sectionSliceImageControl, sectionCapEnabledControl, sectionCapOpacityControl, sectionCapHatchControl, sectionViewReadout } from './ui-shell.js?v=20261010-build549';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js';
-import { tr } from './i18n.js?v=20261010-build542';
+import { tr } from './i18n.js?v=20261010-build549';
 export function sectionPlaneLabel(p){return p?p[0].toUpperCase()+p.slice(1):''}
 export function updateSectionViewUi(){
  if(!sectionViewToggle)return;
@@ -55,8 +55,4 @@ export function rebindWebGpuSectionClipGroup(){
 export function sectionLocalStep(p=sectionViewPlane){
  if(!volume||!p)return null;const[sx,sy,sz]=volume.spacing,w=volume.columns,h=volume.rows,d=volume.slices,scale=3.3/Math.max(w*sx,h*sy,d*sz,1);
  return p==='axial'?new THREE.Vector3(0,0,sz*scale):p==='coronal'?new THREE.Vector3(0,-sy*scale,0):new THREE.Vector3(sx*scale,0,0);
-}
-export function sectionLocalPlane(){
- if(!volume||!sectionViewPlane)return null;
- const point=sectionLocalPoint(),normal=sectionLocalNormal();return new THREE.Plane(normal,-normal.dot(point));
 }

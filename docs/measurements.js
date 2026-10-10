@@ -2,9 +2,9 @@
 // The distance is NOT stored: it is computed from the two voxel positions and the volume's voxel spacing (the adopted spacing, series.spacingX/Y/Z),
 // so moving a point changes the value by itself. Pure data + a small in-memory store, no DOM / three.js (the VR and PC / iPad views share it).
 // Saved in the project as `measurements` (an unknown field for older apps: they ignore it, so the project version is not bumped).
-import { getComments, onCommentsChange, commentVoxel, commentMatchesSeries } from './comments.js?v=20261010-build542';
-import { compareFingerprints } from './project-file.js?v=20261010-build542';
-import { spacingWarningText } from './slice-spacing.js?v=20261010-build542';
+import { getComments, onCommentsChange, commentVoxel, commentMatchesSeries } from './comments.js?v=20261010-build549';
+import { compareFingerprints } from './project-file.js?v=20261010-build549';
+import { spacingWarningText } from './slice-spacing.js?v=20261010-build549';
 
 export const MEASURE_MAX=500;
 
@@ -100,8 +100,6 @@ export function setLabelOffset(id,offset){
  if((old?old.i+','+old.j+','+old.k:'')===(lo?lo.i+','+lo.j+','+lo.k:''))return true;
  const{labelOffset:_o,...rest}=list[i];list=list.map((m,n)=>n===i?withOffset(rest,lo):m);emit({labelOnly:true});return true;
 }
-export const restoreMeasurement=m=>restoreMeasurements([m]);
-export function setMeasurements(next){list=sanitizeMeasurements(next,new Set(getComments().map(c=>c.id)));emit()}
 // deleting a point deletes its measurements (the 2D list, VR and a project load all end here); a pending start that vanished is dropped too
 onCommentsChange(cs=>{
  const ids=new Set(cs.map(c=>c.id)),n=list.length;
@@ -145,7 +143,6 @@ export function hasUnsavedMeasurements(){
  for(const id of saved.keys())if(!ids.has(id))return true;
  return false;
 }
-export const resetMeasurementsSaved=()=>saved.clear();
 
 // ---- the shared flow: 距離 on a point -> that point is the START -> the next point picked is the END ----
 // One state for the VR and the PC / iPad views (the same UX). start(id) arms it; pick(id) -> {kind:'created'|'existed'|'same'|'refused', ...}; cancel().

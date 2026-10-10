@@ -6,14 +6,12 @@
 //   offset : where the user left the label, as the vector from the anchor in VOXEL units (the same convention as a distance label's labelOffset in measurements.js), so it does not
 //            depend on the model's move / rotation / scale and is the same in VR and on the PC. No offset = the view's default placement (beside the anchor, facing the viewer).
 // A leader line joins a moved label to its anchor (leaderVisible).
-import { stepDelta, offsetFromDelta } from './measure-label.js?v=20261010-build542';
+import { stepDelta, offsetFromDelta } from './measure-label.js?v=20261010-build549';
 
 export const ANALYSIS_LABEL_MAX=1e4; // |component| limit (voxels): anything beyond is a corrupt file, dropped
 const num=(x)=>typeof x==='number'&&Number.isFinite(x)&&Math.abs(x)<=ANALYSIS_LABEL_MAX;
 const r3=x=>Math.round(x*1000)/1000;
 const vec=o=>{if(!o||typeof o!=='object')return null;const{i,j,k}=o;return num(i)&&num(j)&&num(k)?{i:r3(i),j:r3(j),k:r3(k)}:null};
-export const normalizeAnchor=vec;
-export const normalizeOffset=vec;
 // untrusted input (a project file) or a fresh label -> a clean label, or null (no / invalid anchor = no label; an invalid offset = the default placement)
 export function normalizeAnalysisLabel(l){
  const anchor=vec(l?.anchor);if(!anchor)return null;

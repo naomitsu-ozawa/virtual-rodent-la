@@ -21,7 +21,6 @@ export const WHEEL_ITEMS=[
 ];
 export const WHEEL_IDS=WHEEL_ITEMS.map(i=>i.id);
 export const DEFAULT_WHEEL=Object.freeze(['mode-section','mode-surface','undo','section-toggle','section-add','section-flip']);
-export const WHEEL_SETTINGS_KEY='wheel';
 
 // anything -> a new array of WHEEL_SLOTS ids / nulls (unknown ids and later duplicates become null; nothing usable = the default)
 export function normalizeWheelItems(raw){
