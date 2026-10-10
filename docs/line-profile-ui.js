@@ -11,22 +11,22 @@
 //   at most 192 samples from data already in memory, about 13 Hz, never blocking); on release the full read replaces it.
 // - The 3D analysis overlay is pointer-events:none (style.css); the dock re-enables it. Interactive elements here also stop the pointer
 //   events so the 3D view does not rotate (the Phase 1 lesson).
-import { volume, currentLanguage } from './state.js?v=20261010-build542';
-import { planes } from './ui-shell.js?v=20261010-build542';
-import { tr } from './i18n.js?v=20261010-build542';
-import { frameYield } from './utils.js?v=20261010-build542';
-import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build542';
-import { getHuMode, onHuModeChange, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build542';
-import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build542';
-import { setExtraOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261010-build542';
-import { clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, formatHu } from './crosshair.js?v=20261010-build542';
-import { distanceMm, formatMm } from './measurements.js?v=20261010-build542';
-import { rebinHist } from './histogram.js?v=20261010-build542';
-import { lineSamples, sampleLine, profileStats, nearestSample } from './line-profile.js?v=20261010-build542';
-import { getHuLine, setHuLine, clearHuLine, onHuLineChange, getHuLineHover, setHuLineHover, onHuLineHoverChange, lineOnPlane, planeFraction, voxelOnSlice } from './hu-line-model.js?v=20261010-build542';
-import { liveProfile, createLiveScheduler } from './hu-line-live.js?v=20261010-build542';
-import { peekEffectiveReaders } from './effective-hu-source.js?v=20261010-build542';
-import { isHuLine3dArmed, setHuLine3dArmed, onHuLine3dArmedChange, huLine3dAvailable } from './hu-line-3d.js?v=20261010-build542';
+import { volume, currentLanguage } from './state.js?v=20261010-build546';
+import { planes } from './ui-shell.js?v=20261010-build546';
+import { tr } from './i18n.js?v=20261010-build546';
+import { frameYield } from './utils.js?v=20261010-build546';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build546';
+import { getHuMode, onHuModeChange, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build546';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build546';
+import { setExtraOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261010-build546';
+import { clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, formatHu } from './crosshair.js?v=20261010-build546';
+import { distanceMm, formatMm } from './measurements.js?v=20261010-build546';
+import { rebinHist } from './histogram.js?v=20261010-build546';
+import { lineSamples, sampleLine, profileStats, nearestSample } from './line-profile.js?v=20261010-build546';
+import { getHuLine, setHuLine, clearHuLine, onHuLineChange, getHuLineHover, setHuLineHover, onHuLineHoverChange, isHuLineDeferred, onHuLineDeferChange, lineOnPlane, planeFraction, voxelOnSlice } from './hu-line-model.js?v=20261010-build546';
+import { liveProfile, createLiveScheduler } from './hu-line-live.js?v=20261010-build546';
+import { peekEffectiveReaders } from './effective-hu-source.js?v=20261010-build546';
+import { isHuLine3dArmed, setHuLine3dArmed, onHuLine3dArmedChange, huLine3dAvailable } from './hu-line-3d.js?v=20261010-build546';
 
 const PLOT_H = 130, HIST_H = 90, PAD = { l: 38, r: 8, t: 12, b: 20 }, DRAG_PX = 6;
 const st = {
@@ -48,6 +48,7 @@ function setProgress(text, fraction) {
   if (st.status) st.status.textContent = text || '';
 }
 async function compute() {
+  if (isHuLineDeferred()) { st.deferred = true; return; } // an immersive session is on (build 546): the read waits until it ends
   cancelJob(false);
   const v = rawVolume(), L = getHuLine();
   if (!v || !L) return;
@@ -333,4 +334,5 @@ export function installLineProfile() {
     sync3dButton(); recomputeIfStale();
   }, 600);
   onHuModeChange(() => recomputeIfStale());
+  onHuLineDeferChange(on => { if (!on && st.deferred) { st.deferred = false; if (st.open && getHuLine()) void compute(); } });
 }

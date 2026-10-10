@@ -3,7 +3,7 @@
 // profile panel all read and write this model, so a line drawn in 2D shows in 3D and vice versa; VR can reuse it later (no VR code
 // here). Pure module: no DOM, no three.js, no app state (unit-tested in tests/unit/hu-line-model.test.js).
 // A change carries a phase: 'live' (the line is being dragged: coarse preview), 'final' (released: full-resolution read), 'clear'.
-import { planeDims } from './crosshair.js?v=20261010-build542';
+import { planeDims } from './crosshair.js?v=20261010-build546';
 
 const store = { a: null, b: null, hover: null, listeners: new Set(), hoverListeners: new Set() };
 const cp = v => (v ? { i: +v.i, j: +v.j, k: +v.k } : null);
@@ -35,6 +35,19 @@ export function setHuLineHover(v) {
   for (const fn of [...store.hoverListeners]) { try { fn(cp(n)); } catch (e) { console.error(e); } }
 }
 export const onHuLineHoverChange = fn => { store.hoverListeners.add(fn); return () => store.hoverListeners.delete(fn); };
+
+// ---- heavy work deferral (build 546) ----
+// While an immersive (VR / AR) session is on, the PC views' full-resolution line reads (line-profile-ui.js compute: slice reads + filter runs, a
+// 30 ms main-thread budget per chunk) must not run: they would break the headset's frame rate and double the filtered-plane work the VR line
+// already does. vr-view.js sets this for the session; the panel runs its pending read when it is cleared.
+const defer = { on: false, listeners: new Set() };
+export const isHuLineDeferred = () => defer.on;
+export function setHuLineDeferred(on) {
+  const v = !!on; if (v === defer.on) return;
+  defer.on = v;
+  for (const fn of [...defer.listeners]) { try { fn(v); } catch (e) { console.error(e); } }
+}
+export const onHuLineDeferChange = fn => { defer.listeners.add(fn); return () => defer.listeners.delete(fn); };
 
 // ---- geometry ----
 // the scene-local position (voxelToLocal3D's frame) -> voxel index coordinates (the inverse of crosshair.js voxelToLocal3D)
