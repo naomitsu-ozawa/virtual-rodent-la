@@ -128,6 +128,16 @@ export function niceStep(span, maxTicks) {
   for (const s of [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000]) if (span / s <= maxTicks) return s;
   return 2000;
 }
+// the HU spans that decide the chart window: every segment's data extent and range line, and the whole-volume extent
+export function chartSpans(res) {
+  const spans = [];
+  for (const r of res.list) {
+    const e = r.hist && histExtent(r.hist); if (e) spans.push(e);
+    spans.push([r.seg.userMin ?? r.seg.min, r.seg.userMax ?? r.seg.max]);
+  }
+  if (res.total) { const e = histExtent(res.total.hist); if (e) spans.push(e); }
+  return spans;
+}
 // the HU window [lo, hi] a chart shows: the union of `spans` ([a, b] pairs: data extents and segment ranges), a little padding,
 // clamped to the histogram range and at least 50 HU wide; no span at all gives the default soft-tissue window
 export function fitWindow(spans) {

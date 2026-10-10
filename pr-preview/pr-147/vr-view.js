@@ -8,42 +8,43 @@
 // segment test, 6-step hit refinement, gradient normal and shading constants.
 // Not shown yet: processed edits, cuts, section view, MPR planes.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js';
-import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261010-build543';
-import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261010-build543';
-import { SEGMENT_PRESET_ORDER, gpuSegmentOrder, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261010-build543';
-import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261010-build543';
-import { datasetFingerprint } from './project-file.js?v=20261010-build543';
-import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261010-build543';
-import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261010-build543';
-import { buildClsData } from './point-cls.js?v=20261010-build543';
-import { createHiddenClsManager } from './hidden-cls-state.js?v=20261010-build543';
-import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261010-build543';
-import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261010-build543';
-import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261010-build543';
-import { buildDistanceBytes, combineClassificationDistance, fourthChannelBytes } from './distance-field.js?v=20261010-build543';
-import { marchClassificationHitInfo } from './vr-pick.js?v=20261010-build543';
-import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261010-build543';
-import { tr } from './i18n.js?v=20261010-build543';
-import { wrapMenuText, stackMenuRows } from './vr-menu-text.js?v=20261010-build543';
-import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261010-build543';
-import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261010-build543';
-import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261010-build543';
-import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261010-build543';
-import { createVrMeasure, LABEL_LIT_SCALE } from './vr-measure.js?v=20261010-build543';
-import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE, FLING_UNDO_MS, FLING_DEBUG_MS, createVelocityTracker, flingDecision, flingDebugLines, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace } from './vr-section-frame.js?v=20261010-build543';
-import { createUndoButton } from './vr-undo-button.js?v=20261010-build543';
-import { createFlingDebugTag } from './vr-fling-debug.js?v=20261010-build543';
-import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261010-build543';
-import { brickOccupancy, writeBrickOccupancy } from './vr-brick-occupancy.js?v=20261010-build543';
-import { createProbeGate } from './measure-label.js?v=20261010-build543';
-import { setRegionLabel, setRegionLabelOffset, voxelFromLocalVr, clampVoxel, labelLocal, offsetForLocal, vrVoxelStep, rectEdgePoint, leaderVisible } from './analysis-label.js?v=20261010-build543';
-import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261010-build543';
-import { APP_BUILD } from './version.js?v=20261010-build543';
-import { wc, ww } from './ui-shell.js?v=20261010-build543';
-import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH, HIST_OFFSET, HIST_WIDTH } from './vr-layout.js?v=20261010-build543';
-import { acquireHistogram, releaseHistogram, onHistogramChange, getHistogramView, setHistogramLog } from './histogram-ui.js?v=20261010-build543';
-import { getHuMode, setHuMode, HU_MODE_FILTERED, HU_MODE_RAW } from './effective-hu.js?v=20261010-build543';
-import { createVrHistogramPanel } from './vr-histogram-panel.js?v=20261010-build543';
+import { volumeTexturePlan, reduceSliceArea, packedRgSlice, packCtSlice, gpuRunsForTexture } from './medical-volume.js?v=20261010-build544';
+import { gpuVolumeTarget, gpuVolumeEditDescriptors } from './gpu-volume-data.js?v=20261010-build544';
+import { SEGMENT_PRESET_ORDER, gpuSegmentOrder, segmentState, segmentEditState, segmentSourceSignature } from './segments.js?v=20261010-build544';
+import { sceneState, analysisRegions, activeSeries } from './state.js?v=20261010-build544';
+import { datasetFingerprint } from './project-file.js?v=20261010-build544';
+import { sectionRayHit, recordVrPoint, resolveTriggerTarget, createTriggerPress, dragShouldStart, DRAG_RECORD, sectionFollowStart, sectionFollowStep, snapPlaneCenterIntoBox, chooseSectionForRay, rayLocalPlaneX, squareBandContains, createHoverPulse, qMul, qInv, qRot, qAngleDeg, clampPlaneCenter, HAPTIC, normalizePointMode, surfaceVoxelFromHit, voxelToLocal, voxelSize, createStickGate, deleteSelected, createUndoStack, applyUndo, pointIsHidden } from './vr-point.js?v=20261010-build544';
+import { createVrPointMarkers, createSurfaceCursor } from './vr-point-markers.js?v=20261010-build544';
+import { buildClsData } from './point-cls.js?v=20261010-build544';
+import { createHiddenClsManager } from './hidden-cls-state.js?v=20261010-build544';
+import { WHEEL_ITEMS, DEFAULT_WHEEL, normalizeWheelItems, migrateWheelSectionFlip, setWheelItem, moveWheelItem, clearWheelItem, createRingMenu, createWheelStick, createButtonPress } from './vr-ring.js?v=20261010-build544';
+import { getComments, onCommentsChange, commentMatchesSeries, removeComment, restoreComment, updateCommentPosition, updateCommentText, updateCommentColor } from './comments.js?v=20261010-build544';
+import { POINT_PALETTE, pointColor, normalizeColor } from './point-colors.js?v=20261010-build544';
+import { buildDistanceBytes, combineClassificationDistance, fourthChannelBytes } from './distance-field.js?v=20261010-build544';
+import { marchClassificationHitInfo } from './vr-pick.js?v=20261010-build544';
+import { setBusySlot, reportBusyProgress } from './progress-modal.js?v=20261010-build544';
+import { tr } from './i18n.js?v=20261010-build544';
+import { wrapMenuText, stackMenuRows } from './vr-menu-text.js?v=20261010-build544';
+import { VIEW_TOGGLE_ID, VIEW_TOGGLE_BUTTON, SECTION_DELETE_ID, createViewToggle, createDoublePress, ringIdsFor } from './vr-view-toggle.js?v=20261010-build544';
+import { vrSpacingNote, vrVolumeText } from './vr-spacing-note.js?v=20261010-build544';
+import { physicalExtentsMm, longestMm, realMagnification, realHolderScale, startHolderScale, magnificationText, createScaleTag, clampScale, pinchScale, scaleLimits, oversizeNote, planeFrameLocalScale, planeTagLocalScale, scaleLineText } from './vr-real-scale.js?v=20261010-build544';
+import { createAutoQuality, autoFloor, STEP_LEVELS } from './vr-auto-quality.js?v=20261010-build544';
+import { createVrMeasure, LABEL_LIT_SCALE } from './vr-measure.js?v=20261010-build544';
+import { MAX_SECTION_PLANES, nextPlaneColor, frameDepthTest, ARROW_LEN, ARROW_FLASH_MS, arrowFade, arrowShown, tagBehindTissue, sectionPage, pageOfPlane, SECTION_ROWS_PER_PAGE, FLING_UNDO_MS, FLING_DEBUG_MS, createVelocityTracker, flingDecision, flingDebugLines, capVelocity, flyStep, makeSectionSnapshot, restorePlan, createSectionUndo, undoButtonPlace } from './vr-section-frame.js?v=20261010-build544';
+import { createUndoButton } from './vr-undo-button.js?v=20261010-build544';
+import { createFlingDebugTag } from './vr-fling-debug.js?v=20261010-build544';
+import { LABEL_HIDE_DEFAULT, normalizeLabelHide, gpuOcclusionActive, depthVoxelSize, boardVisible, GHOST_ALPHA, occludedPass } from './vr-depth.js?v=20261010-build544';
+import { brickOccupancy, writeBrickOccupancy } from './vr-brick-occupancy.js?v=20261010-build544';
+import { createProbeGate } from './measure-label.js?v=20261010-build544';
+import { setRegionLabel, setRegionLabelOffset, voxelFromLocalVr, clampVoxel, labelLocal, offsetForLocal, vrVoxelStep, rectEdgePoint, leaderVisible } from './analysis-label.js?v=20261010-build544';
+import { getMeasureStart, startMeasure, cancelMeasure, pickMeasureEnd, onMeasureStartChange, removeMeasurement, restoreMeasurements, measurementsOfPoint, seriesSpacing } from './measurements.js?v=20261010-build544';
+import { APP_BUILD } from './version.js?v=20261010-build544';
+import { wc, ww } from './ui-shell.js?v=20261010-build544';
+import { VOLUME_FWD, VOLUME_DOWN, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH, HIST_OFFSET, HIST_WIDTH } from './vr-layout.js?v=20261010-build544';
+import { acquireHistogram, releaseHistogram, onHistogramChange, getHistogramView, getHistogramLog, setHistogramLog } from './histogram-ui.js?v=20261010-build544';
+import { getHuMode, setHuMode, resolveHuMode, HU_MODE_FILTERED, HU_MODE_RAW } from './effective-hu.js?v=20261010-build544';
+import { filtersActive } from './effective-hu-source.js?v=20261010-build544';
+import { createVrHistogramPanel } from './vr-histogram-panel.js?v=20261010-build544';
 
 const BG=new THREE.Color(0.035,0.045,0.05);
 const BRICK=8;
@@ -1088,15 +1089,17 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const helpHit=c=>{if(!help.mesh.visible||help.mesh.parent===c)return null;setRay(c);return raycaster.intersectObject(help.mesh,false)[0]||null};
  // build 543: HU histogram board (vr-histogram-panel.js): opened from the 表示 tab, follows lazily like the help board; its bars are redrawn only when the data
  // or a segment range changes, its range lines are quads moved every frame (see the header of vr-histogram-panel.js)
- const hist=createVrHistogramPanel(THREE,{keys:SEGMENT_PRESET_ORDER,segs:segmentState,getView:getHistogramView,nameOf:k=>tr(k)||k,log:()=>getHistogramView().log,widthM:HIST_WIDTH,
-  modeText:()=>(getHuMode()===HU_MODE_RAW?L.histR:L.histF)+' · '+(getHistogramView().log?L.histLog:L.histLin),L:{title:L.histTitle,whole:L.histWhole,busy:L.histBusy,noSeg:L.histNoSeg,window:L.histWin,empty:L.histEmpty,cols:L.histCols}});
+ const hist=createVrHistogramPanel(THREE,{keys:SEGMENT_PRESET_ORDER,segs:segmentState,getView:getHistogramView,nameOf:k=>tr(k)||k,log:getHistogramLog,widthM:HIST_WIDTH,
+  modeText:()=>(huShown()===HU_MODE_RAW?L.histR:L.histF)+' · '+(getHistogramLog()?L.histLog:L.histLin),L:{title:L.histTitle,whole:L.histWhole,busy:L.histBusy,noSeg:L.histNoSeg,window:L.histWin,empty:L.histEmpty,cols:L.histCols}});
  scene.add(hist.group);
+ const huShown=()=>resolveHuMode(getHuMode(),filtersActive()?1:0); // the values really read: Filtered only when an image filter is on (as the PC toggle)
  const histTarget=new THREE.Vector3();let histMoving=false,histPlaced=false;
  const computeHistTarget=()=>{histTarget.copy(head).addScaledVector(headFwd,HIST_OFFSET.fwd).addScaledVector(headLeft,HIST_OFFSET.left);histTarget.y-=HIST_OFFSET.down};
  const placeHistNow=()=>{readHead();computeHistTarget();hist.group.position.copy(histTarget);hist.group.lookAt(head);histPlaced=true;histMoving=false};
- const histHit=c=>{if(!hist.isOpen)return null;setRay(c);return raycaster.intersectObject(hist.board,false)[0]||null}; // the laser stops on the board (it has no widgets)
+ const histRes=[]; // reused: the laser test of the board allocates no result array
+ const histHit=c=>{if(!hist.isOpen)return null;setRay(c);histRes.length=0;return raycaster.intersectObject(hist.board,false,histRes)[0]||null}; // the laser stops on the board (it has no widgets)
  const unsubHist=onHistogramChange(()=>hist.invalidate());
- const setHistOpen=on=>{if(on===hist.isOpen)return;hist.setOpen(on);if(on){acquireHistogram('vr',{sliceMs:5});if(poseAt)placeHistNow();else histPlaced=false}else releaseHistogram('vr')}; // the pass yields every 5 ms (PC: 30 ms) so a frame is never blocked
+ const setHistOpen=on=>{if(on===hist.isOpen)return;hist.setOpen(on);if(on){acquireHistogram('vr',{sliceMs:5});if(poseAt)placeHistNow();else histPlaced=false}else releaseHistogram('vr')}; // the binning loop yields every 5 ms (PC: 30 ms); the slice read (readEffectiveSlice) and the segment runs (getFinalSegmentRuns: on the CPU fallback it yields only every 64 blocks) are not bounded, so FPS with image filters on and uncached segments is a real-device check
  // build 468: ring menus (vr-ring.js): the quick ring around the hand (A/X short) and the point ring (long press on a point)
  const wheel=createRingMenu(THREE),pointWheel=createRingMenu(THREE);scene.add(wheel.mesh);scene.add(pointWheel.mesh);
  // build 489 (Issue #88 item 3): 実寸 (real size). scaleTag: 「×N（実寸比）」 under the volume's lowest bounding-box corner; the 実寸 button (表示 tab) sets 1x.
@@ -1609,6 +1612,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   c.addEventListener('squeezestart',()=>{
    if(ui.open&&!menuHeld&&boardHits(c).menu){c.attach(menu.mesh);menuHeld=c;menuMoving=false;settings.menuMode=1;saveSettings(settings);pulse(c);menu.refresh();return}
    if(!helpHeld&&c.userData.helpHit){c.attach(help.mesh);helpHeld=c;helpMoving=false;settings.help=2;saveSettings(settings);pulse(c);menu.refresh();return}
+   if(c.userData.histHit)return; // build 543: the grip aimed at the histogram board does not take the volume (the laser stops there too)
    grabbing.add(c);regrab(); // build 468: the grip always moves the volume (it never takes a section)
   });
   c.addEventListener('squeezeend',()=>{
@@ -1913,13 +1917,13 @@ export async function startVrView({language='ja',mode='vr'}={}){
    const yb=MENU_H-110;
    // build 365: 持ち方 moved here from the 断面 tab (room for the snap row)
    choice(yb-370,L.helpT,L.helpModes.map((t,i)=>({label:t,value:i})),settings.help|0,v=>{settings.help=v;saveSettings(settings);if(v===1)helpMoving=true});
-   {const hy=yb-455,hm=getHuMode();btn(X,hy,230,L.hist,hist.isOpen,()=>setHistOpen(!hist.isOpen),{size:28});btn(X+242,hy,190,L.histF,hm===HU_MODE_FILTERED,()=>{setHuMode(HU_MODE_FILTERED);hist.invalidate()},{size:26});btn(X+440,hy,150,L.histR,hm===HU_MODE_RAW,()=>{setHuMode(HU_MODE_RAW);hist.invalidate()},{size:26});
-    const lg=getHistogramView().log;btn(X+602,hy,130,L.histLin,!lg,()=>{setHistogramLog(false);hist.invalidate()},{size:26});btn(X+740,hy,130,L.histLog,lg,()=>{setHistogramLog(true);hist.invalidate()},{size:26})}
+   {const hy=yb-455,hm=huShown();btn(X,hy,230,L.hist,hist.isOpen,()=>setHistOpen(!hist.isOpen),{size:28});btn(X+242,hy,190,L.histF,hm===HU_MODE_FILTERED,()=>{setHuMode(HU_MODE_FILTERED);hist.invalidate()},{size:26});btn(X+440,hy,150,L.histR,hm===HU_MODE_RAW,()=>{setHuMode(HU_MODE_RAW);hist.invalidate()},{size:26});
+    const lg=getHistogramLog();btn(X+602,hy,130,L.histLin,!lg,()=>{setHistogramLog(false);hist.invalidate()},{size:26});btn(X+740,hy,130,L.histLog,lg,()=>{setHistogramLog(true);hist.invalidate()},{size:26})}
    btn(X,yb-280,520,L.wheelEdit,false,()=>{ui.tab=7;menu.refresh()},{size:28});
    {const lk=scaleLimits(realLongMm()).locked;btn(X+540,yb-280,MENU_W-2*X-540,lk?L.realSizeNo:L.realSize,false,()=>setRealSize(),{size:lk?22:28,disabled:lk})}
    choice(yb-190,L.menuPos,[{label:L.follow,value:0},{label:L.fixed,value:1}],settings.menuMode,v=>{settings.menuMode=v;saveSettings(settings)});
    label(X,yb-96,L.menuKey,{size:26,color:'#9fb3c3'});label(X,yb-60,L.menuGrab,{size:26,color:'#9fb3c3'});
-   btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow();placeHelpNow()});btn(X+320,yb,320,L.shot,false,()=>{shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
+   btn(X,yb,300,L.home,false,()=>{bringVolumeFront();placeMenuNow();placeHelpNow();if(hist.isOpen)placeHistNow()});btn(X+320,yb,320,L.shot,false,()=>{shotRequested=true});btn(MENU_W-X-260,yb,260,L.exit,true,()=>session.end(),{color:'#b33'});
   }else if(ui.tab===1){
    choice(y0,L.sec,[{label:L.offOn[0],value:false},{label:L.offOn[1],value:true}],section.on,v=>{if(v!==section.on)setSection(v)});
    if(planes.length<MAX_PLANES)btn(800,y0,184,L.addPlane,false,()=>{addPlane()},{size:26});
@@ -2145,7 +2149,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
     if(surfaceActive()||labelMode()||anyOk)vh=volumeHit(c); // build 470: in 断面 mode too, to tell "laser on the 3D object" (no section grab) from empty space
     if(!surfaceActive()&&selOk)sh=sectionPointOf(c);
    }
-   c.userData.volHit=vh;c.userData.helpHit=!!hh;
+   c.userData.volHit=vh;c.userData.helpHit=!!hh;c.userData.histHit=!!bd.hist;
    // build 484: how much nearer than the plane the object surface must be to hide it (0.75 voxel in world metres: the surface march and the plane meet at a cut face)
    let occEps=1e-4;if(vh&&(sh||tab)&&vrHalfExt&&vrDims&&mesh?.parent){const vs=voxelSize(vrHalfExt,vrDims);mesh.getWorldScale(tmpSs);occEps=0.75*Math.min(vs[0]*tmpSs.x,vs[1]*tmpSs.y,vs[2]*tmpSs.z)}
    // build 509: under 「実際に隠す」 a number tag the tissue covers (the frame is not drawn there) is not there for the laser or the trigger: the tag is picked before everything else (resolveTriggerTarget), so
