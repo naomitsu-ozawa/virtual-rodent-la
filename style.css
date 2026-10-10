@@ -1062,3 +1062,69 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .seg-hist-swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .lp-canvas{display:block;width:100%;pointer-events:auto;touch-action:none;color:rgb(var(--ui-t2))}.lp-plot{cursor:crosshair}
 .seg-hist-hint{font-size:10px;line-height:1.35;color:rgb(var(--ui-t4))}
+
+/* Build 540: analysis dock (analysis-dock.js). One container for the HU histogram and HU line-profile cards.
+   3D only: floats over the 3D card (bottom-left) or is pinned under it; 2D only / split: takes its own grid track under (or beside) the slices. */
+.ipad-analysis-tools{display:none}
+html.vrl-ipad-ui .ipad-analysis-tools{display:flex;align-items:center;gap:5px;margin-left:8px}
+html.vrl-ipad-ui .ipad-analysis-tools button{
+  min-height:40px;border:1px solid rgb(var(--ui-b2));border-radius:9px;background:rgb(var(--ui-s3));color:rgb(var(--ui-t2));
+  padding:7px 11px;font-size:12px;font-weight:800;touch-action:manipulation;
+}
+html.vrl-ipad-ui .ipad-analysis-tools button.is-active{background:rgb(var(--ui-blue-bg));border-color:rgb(var(--ui-blue-bd));color:rgb(var(--ui-blue-tx))}
+html.vrl-ipad-ui .ipad-analysis-tools button:disabled{opacity:.45}
+
+.analysis-dock{
+  position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;box-sizing:border-box;overflow:hidden;
+  border:1px solid rgb(var(--ui-b2));border-radius:12px;background:rgb(var(--ui-s1));color:rgb(var(--ui-t2));
+  pointer-events:auto;touch-action:manipulation;
+}
+.analysis-dock.is-hidden{display:none!important}
+.analysis-dock-head{display:flex;align-items:center;gap:6px;flex:none;box-sizing:border-box;min-height:34px;padding:4px 8px;border-bottom:1px solid rgb(var(--ui-b1))}
+.analysis-dock-head strong{flex:1;font-size:12px}
+.analysis-dock-body{flex:1;min-height:0;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:8px;padding:8px;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}
+.analysis-dock.is-collapsed .analysis-dock-body{display:none}
+.analysis-dock.is-collapsed .analysis-dock-head{border-bottom:0}
+html .analysis-dock *{pointer-events:auto}
+.analysis-dock .analysis-dock-body>.volume-analysis-result{flex:1 1 340px;min-width:0;max-width:none;width:auto;box-sizing:border-box;background:rgb(var(--ui-s0) / 0.6)}
+.analysis-dock-grip{position:absolute;z-index:3;touch-action:none;background:transparent}
+.analysis-dock-grip::after{content:"";position:absolute;background:rgb(var(--ui-b3));border-radius:2px;opacity:.7}
+.analysis-dock:hover .analysis-dock-grip::after,.analysis-dock.is-resizing .analysis-dock-grip::after{opacity:1;background:rgb(var(--ui-blue-bd))}
+.analysis-dock[data-place="below"] .analysis-dock-grip,
+.analysis-dock[data-place="under2d"] .analysis-dock-grip,
+.analysis-dock[data-place="full"] .analysis-dock-grip{left:0;right:0;top:0;height:8px;cursor:ns-resize}
+.analysis-dock[data-place="below"] .analysis-dock-grip::after,
+.analysis-dock[data-place="under2d"] .analysis-dock-grip::after,
+.analysis-dock[data-place="full"] .analysis-dock-grip::after{left:50%;top:2px;width:40px;height:3px;margin-left:-20px}
+.analysis-dock[data-place="side"] .analysis-dock-grip{top:0;bottom:0;left:0;width:8px;cursor:ew-resize}
+.analysis-dock[data-place="side"] .analysis-dock-grip::after{top:50%;left:2px;height:40px;width:3px;margin-top:-20px}
+.analysis-dock[data-place="side"]{padding-left:4px}
+.analysis-dock[data-place="overlay"] .analysis-dock-grip{top:0;right:0;width:20px;height:20px;cursor:nesw-resize}
+.analysis-dock[data-place="overlay"] .analysis-dock-grip::after{top:4px;right:4px;width:10px;height:10px;background:transparent;border-top:3px solid rgb(var(--ui-b3));border-right:3px solid rgb(var(--ui-b3));border-radius:0}
+.analysis-dock.is-collapsed .analysis-dock-grip{display:none}
+.analysis-dock[data-place="overlay"]{position:absolute;z-index:8;left:10px;bottom:10px;min-width:170px;max-width:calc(100% - 20px);background:rgb(var(--ui-s0) / 0.94);box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.analysis-dock[data-place="overlay"] .analysis-dock-head{padding-right:26px}
+.analysis-dock.is-collapsed[data-place="side"] .analysis-dock-head>:not([data-dock-act="collapse"]){display:none}
+.analysis-dock.is-collapsed[data-place="side"] .analysis-dock-head{padding:4px}
+
+html.vrl-ipad-ui .ipad-mode-2d .viewer-grid[data-dock="2d-below"]{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) var(--dock-h,240px)}
+html.vrl-ipad-ui .ipad-mode-2d .viewer-grid[data-dock="2d-below"] #sub-view-slots{grid-column:1;grid-row:1}
+html.vrl-ipad-ui .ipad-mode-2d .viewer-grid[data-dock="2d-below"]>.analysis-dock{grid-column:1;grid-row:2}
+html.vrl-ipad-ui .ipad-mode-2d .viewer-grid[data-dock="2d-side"]{grid-template-columns:minmax(0,1fr) var(--dock-w,380px);grid-template-rows:minmax(0,1fr)}
+html.vrl-ipad-ui .ipad-mode-2d .viewer-grid[data-dock="2d-side"] #sub-view-slots{grid-column:1;grid-row:1}
+html.vrl-ipad-ui .ipad-mode-2d .viewer-grid[data-dock="2d-side"]>.analysis-dock{grid-column:2;grid-row:1}
+html.vrl-ipad-ui .ipad-mode-3d .viewer-grid[data-dock="3d-below"]{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) var(--dock-h,240px)}
+html.vrl-ipad-ui .ipad-mode-3d .viewer-grid[data-dock="3d-below"] #main-view-slot{grid-column:1;grid-row:1}
+html.vrl-ipad-ui .ipad-mode-3d .viewer-grid[data-dock="3d-below"]>.analysis-dock{grid-column:1;grid-row:2}
+html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock^="split-"]{grid-template-rows:minmax(0,1fr) var(--dock-h,240px)}
+html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock^="split-"] #sub-view-slots{grid-column:2;grid-row:1}
+html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock="split-under2d"] #main-view-slot{grid-column:1;grid-row:1 / span 2}
+html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock="split-under2d"]>.analysis-dock{grid-column:2;grid-row:2}
+html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock="split-full"] #main-view-slot{grid-column:1;grid-row:1}
+html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock="split-full"]>.analysis-dock{grid-column:1 / -1;grid-row:2}
+@media (orientation:portrait){
+ html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock^="split-"]{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1.2fr) minmax(220px,.8fr) var(--dock-h,240px)}
+ html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock^="split-"] #main-view-slot{grid-column:1;grid-row:1}
+ html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock^="split-"] #sub-view-slots{grid-column:1;grid-row:2}
+ html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock^="split-"]>.analysis-dock{grid-column:1;grid-row:3}
+}

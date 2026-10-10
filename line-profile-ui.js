@@ -1,25 +1,25 @@
 // Line profile panel (build 537, PC only; nothing here touches the GPU shaders or VR).
 // "HU線プロファイル" arms a two-point pick on the MPR / 2D slice views (press-drag-release, or click then click): the line is sampled
-// at about the smallest voxel spacing with trilinear interpolation of the effective HU (line-profile.js) and shown in the analysis overlay
+// at about the smallest voxel spacing with trilinear interpolation of the effective HU (line-profile.js) and shown in the analysis dock (analysis-dock.js)
 // as a plot (HU vs distance, hover = value + marker on the line in the view), a histogram of the sampled values and the same
 // statistics as the segment histogram (mean, SD, min, max, percentiles; histogram.js).
 // - The HU values come through readEffectiveSlice (effective-hu.js): the FILTERED axial planes the 2D cards show (default) or the raw
 //   source values (toggle "フィルター後 / 元の値", shared with the histogram); at most two slices at a time, never a full copy; async,
 //   with progress and cancel. The line is recomputed when the filter settings or the toggle change.
-// - The analysis overlay is pointer-events:none (style.css): every interactive element here re-enables it and stops the pointer
+// - The 3D analysis overlay is pointer-events:none (style.css); the dock re-enables it. Interactive elements here also stop the pointer
 //   events so the 3D view does not rotate (the Phase 1 lesson).
-import { volume, currentLanguage } from './state.js?v=20261010-build539';
-import { planes } from './ui-shell.js?v=20261010-build539';
-import { tr } from './i18n.js?v=20261010-build539';
-import { frameYield } from './utils.js?v=20261010-build539';
-import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build539';
-import { getHuMode, onHuModeChange, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build539';
-import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build539';
-import { setExtraOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261010-build539';
-import { clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, formatHu } from './crosshair.js?v=20261010-build539';
-import { distanceMm, formatMm } from './measurements.js?v=20261010-build539';
-import { rebinHist } from './histogram.js?v=20261010-build539';
-import { lineSamples, sampleLine, profileStats, nearestSample } from './line-profile.js?v=20261010-build539';
+import { volume, currentLanguage } from './state.js?v=20261010-build540';
+import { planes } from './ui-shell.js?v=20261010-build540';
+import { tr } from './i18n.js?v=20261010-build540';
+import { frameYield } from './utils.js?v=20261010-build540';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build540';
+import { getHuMode, onHuModeChange, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build540';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build540';
+import { setExtraOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261010-build540';
+import { clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, formatHu } from './crosshair.js?v=20261010-build540';
+import { distanceMm, formatMm } from './measurements.js?v=20261010-build540';
+import { rebinHist } from './histogram.js?v=20261010-build540';
+import { lineSamples, sampleLine, profileStats, nearestSample } from './line-profile.js?v=20261010-build540';
 
 const PLOT_H = 130, HIST_H = 90, PAD = { l: 38, r: 8, t: 12, b: 20 }, DRAG_PX = 6;
 const st = {
@@ -256,8 +256,7 @@ function build() {
 function setOpen(on) {
   st.open = !!on; st.el.classList.toggle('is-hidden', !st.open); st.btn.classList.toggle('is-active', st.open);
   if (st.open) {
-    // the result lives in the 3D card: from the 2D-only view switch to the 3D + 2D split so the plot is on screen next to the slice
-    if (!st.el.offsetParent) document.querySelector('[data-ipad-view-mode="split"]')?.click();
+    // the result card lives in the analysis dock (analysis-dock.js), which shows it in every view mode: no view switch needed
     build(); requestAnimationFrame(() => { draw(); }); }
   else { cancelJob(false); st.stage = 'idle'; st.a = st.b = st.plane = null; st.result = null; st.hover = -1; }
   requestOverlayDraw();
