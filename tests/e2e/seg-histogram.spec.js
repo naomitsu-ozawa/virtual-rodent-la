@@ -37,3 +37,37 @@ test('HU histogram: dragging a range line moves the segment slider, not the 3D v
   await expect.poll(async () => Number(await minSlider.inputValue())).toBeGreaterThan(before);
   expect(errors).toEqual([]);
 });
+
+// build 540: the histogram card also lives in the analysis dock; in 2D-only it is reachable from the toolbar and never covers a slice view.
+test('HU histogram in 2D-only mode: toolbar button opens it in the dock, chart takes the pointer, dock resizes', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await page.locator('#folder-input').setInputFiles(dicomFolder());
+  await page.locator('#series-list .series-card').first().click({ timeout: 30_000 });
+  await expect(page.locator('.ready-badge').first()).toContainText(/ready/i, { timeout: 60_000 });
+  await page.evaluate(() => {
+    const sel = document.getElementById('segment-add-select'), btn = document.getElementById('segment-add-button');
+    sel.value = 'soft'; sel.dispatchEvent(new Event('change')); btn.click();
+  });
+  await page.locator('[data-ipad-view-mode="2d"]').click();
+  await page.locator('[data-dock-tool="hist"]').click();
+  const dock = page.locator('#analysis-dock');
+  await expect(dock).toBeVisible();
+  const canvas = dock.locator('.seg-hist-canvas');
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.classList.contains('seg-hist-canvas'), [box.x + box.width / 2, box.y + 60])).toBe(true);
+  const d = await dock.boundingBox(), a = await page.locator('#sub-view-slots').boundingBox();
+  expect(!(d.x + d.width <= a.x + 1 || a.x + a.width <= d.x + 1 || d.y + d.height <= a.y + 1 || a.y + a.height <= d.y + 1)).toBe(false);
+  // drag the free edge: the dock grows and the size is remembered for this mode
+  const place = await dock.getAttribute('data-place'), grip = await dock.locator('.analysis-dock-grip').boundingBox();
+  const gx = grip.x + (place === 'side' ? 3 : grip.width / 2), gy = grip.y + (place === 'side' ? grip.height / 2 : 3);
+  await page.mouse.move(gx, gy);
+  await page.mouse.down(); await page.mouse.move(place === 'side' ? gx - 60 : gx, place === 'side' ? gy : gy - 60, { steps: 6 }); await page.mouse.up();
+  const d2 = await dock.boundingBox();
+  expect(place === 'side' ? d2.width : d2.height).toBeGreaterThan((place === 'side' ? d.width : d.height) + 20);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vrl-analysis-dock-v1'))['2d'].open)).toBe(true);
+  expect(errors).toEqual([]);
+});
