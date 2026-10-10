@@ -2,7 +2,7 @@
 // The board is one canvas texture (bars, axes, stats table) that is redrawn only when the data or the segment ranges change, plus a few
 // small quads for the HU range lines that are only moved. Everything the two share lives here: the pixel layout of the canvas, the
 // HU -> position mapping (metres on the board, for the quads), the chart window and the redraw policy.
-import { histExtent, histStats, huToX, fitWindow } from './histogram.js?v=20261010-build543';
+import { histStats, huToX, voxelsToMm3 } from './histogram.js?v=20261010-build544';
 
 // canvas size and the plot rectangle inside it (px)
 export const PANEL_W = 1024, PANEL_H = 768;
@@ -26,17 +26,6 @@ export const columnsFor = (lo, hi) => Math.max(1, Math.min(Math.round(hi - lo + 
 // 0..1 bar height for a count
 export const barFraction = (count, ymax, log) => (ymax > 0 && count > 0 ? (log ? Math.log10(1 + count) / Math.log10(1 + ymax) : count / ymax) : 0);
 export const countLabel = n => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n));
-
-// the chart window [lo, hi] of a results object ({list:[{seg,hist}], total}): the same rule as the PC chart (histogram.js fitWindow)
-export function windowOf(res) {
-  const spans = [];
-  for (const r of res.list) {
-    const e = r.hist && histExtent(r.hist); if (e) spans.push(e);
-    spans.push([r.seg.userMin ?? r.seg.min, r.seg.userMax ?? r.seg.max]);
-  }
-  if (res.total) { const e = histExtent(res.total.hist); if (e) spans.push(e); }
-  return fitWindow(spans);
-}
 
 // x of an HU on the board for the line quads: out.x in metres from the board centre, out.visible false when the HU is outside the window
 // (writes into `out`, so the per-frame caller allocates nothing)
@@ -84,7 +73,7 @@ export function tableColumns(hasVolume) {
 export function statsCells(stats, spacing, hasVolume) {
   if (!stats) return null;
   const c = { count: stats.count.toLocaleString('en-US'), mean: fmt(stats.mean), sd: fmt(stats.sd), p50: fmt(stats.percentiles?.[50], 0), min: fmt(stats.min, 0), max: fmt(stats.max, 0) };
-  if (hasVolume) { const v = spacing && spacing.length >= 3 ? stats.count * (+spacing[0]) * (+spacing[1]) * (+spacing[2]) : NaN; c.volume = Number.isFinite(v) ? v.toLocaleString('en-US', { maximumFractionDigits: 1 }) : '—'; }
+  if (hasVolume) { const v = voxelsToMm3(stats.count, spacing); c.volume = v == null ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: 1 }); }
   return c;
 }
 // the rows of the table: [{key, name, color, draft, stats}] — every shown segment, or the whole volume when no segment is shown; capped to TABLE.maxRows

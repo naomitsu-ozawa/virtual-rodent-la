@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { PANEL_W, PANEL_H, PLOT, SETTLE_MS, MIN_GAP_MS, boardHeightM, pxToLocalX, pxToLocalY, columnsFor, barFraction, countLabel, windowOf, lineLayout, plotMetrics, labelCenterX, shouldRedraw, snapshotRanges, tableColumns, statsCells, tableRows, LABEL_W_M } from '../../docs/vr-histogram-layout.js';
-import { createHist, binValues, fitWindow, niceStep, HIST_MIN, HIST_MAX } from '../../docs/histogram.js';
+import { PANEL_W, PANEL_H, PLOT, SETTLE_MS, MIN_GAP_MS, boardHeightM, pxToLocalX, pxToLocalY, columnsFor, barFraction, countLabel, lineLayout, plotMetrics, labelCenterX, shouldRedraw, snapshotRanges, tableColumns, statsCells, tableRows, LABEL_W_M } from '../../docs/vr-histogram-layout.js';
+import { createHist, binValues, fitWindow, chartSpans, niceStep, HIST_MIN, HIST_MAX } from '../../docs/histogram.js';
 
 const W = 0.46;
+const windowOf = res => fitWindow(chartSpans(res));
 const histOf = values => binValues(createHist(), Float32Array.from(values));
 
 describe('canvas px -> board metres', () => {

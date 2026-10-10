@@ -8,17 +8,17 @@
 //   the segment cache key (segment-cache-key.js).
 // - The HU range of every shown segment is a vertical line; dragging it moves the segment's min / max slider through the very
 //   same events as the slider itself (input while moving, change on release), so the segment code runs exactly as for a slider.
-import { volume, current3DVolume, currentLanguage } from './state.js?v=20261010-build543';
-import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build543';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build543';
-import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build543';
-import { getHuMode, effectiveHuSignature, huModeToggle, segmentNeedsRuns } from './effective-hu.js?v=20261010-build543';
-import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build543';
-import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build543';
-import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build543';
-import { tr } from './i18n.js?v=20261010-build543';
-import { frameYield } from './utils.js?v=20261010-build543';
-import { createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine, niceStep, fitWindow } from './histogram.js?v=20261010-build543';
+import { volume, current3DVolume, currentLanguage } from './state.js?v=20261010-build544';
+import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build544';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build544';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build544';
+import { getHuMode, effectiveHuSignature, huModeToggle, segmentNeedsRuns } from './effective-hu.js?v=20261010-build544';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build544';
+import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build544';
+import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build544';
+import { tr } from './i18n.js?v=20261010-build544';
+import { frameYield } from './utils.js?v=20261010-build544';
+import { createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine, niceStep, fitWindow, chartSpans } from './histogram.js?v=20261010-build544';
 
 const POLL_MS = 400, DRAFT_MIN_SLICES = 240, DRAFT_SLICES = 80, CACHE_MAX = 24, CHART_H = 150, GRAB_PX = 6, PAD = { l: 34, r: 8, t: 14, b: 20 };
 const st = {
@@ -136,16 +136,6 @@ function resultsFor(v) {
 
 // ---- chart ----
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-// the HU spans that decide the chart window: every segment's data extent and range line, and the whole-volume extent
-export function chartSpans(res) {
-  const spans = [];
-  for (const r of res.list) {
-    const e = r.hist && histExtent(r.hist); if (e) spans.push(e);
-    spans.push([r.seg.userMin ?? r.seg.min, r.seg.userMax ?? r.seg.max]);
-  }
-  if (res.total) { const e = histExtent(res.total.hist); if (e) spans.push(e); }
-  return spans;
-}
 function chartWindow(res) {
   if (st.drag && st.win) return st.win;
   return (st.win = fitWindow(chartSpans(res)));
@@ -332,6 +322,7 @@ function emit() { for (const fn of st.listeners) { try { fn(); } catch (e) { con
 // ---- results for other consumers (the VR histogram panel, docs/vr-histogram-panel.js): the same pass, cache, filtered / raw mode and chart rules ----
 // acquireHistogram(id) keeps the pass running (without the PC card) until releaseHistogram(id); onHistogramChange(fn) is called whenever the
 // drawn results may have changed (cheap: set a flag in fn, read getHistogramView() later); sliceMs = how long a pass works before it yields.
+export const getHistogramLog = () => st.log;
 export function acquireHistogram(id, { sliceMs } = {}) { st.users.add(id); if (sliceMs > 0) st.sliceMs = sliceMs; if (!st.timer) restart(); }
 export function releaseHistogram(id) { st.users.delete(id); if (!st.users.size) st.sliceMs = 30; if (!active()) restart(); }
 export function onHistogramChange(fn) { st.listeners.add(fn); return () => st.listeners.delete(fn); }
