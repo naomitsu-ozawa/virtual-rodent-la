@@ -22,8 +22,10 @@ async function loadAndApply(page, dir, preset) {
   await expect(page.locator('.ready-badge').first()).toContainText(/ready/i, { timeout: 90_000 });
   await expect(page.locator('#analysis-preset-apply')).toBeEnabled({ timeout: 30_000 });
   await page.locator('#analysis-preset-select').selectOption(preset);
+  const t0 = Date.now();
   await page.locator('#analysis-preset-apply').click();
   await expect(page.locator('#analysis-preset-scale')).toHaveAttribute('data-state', 'ok', { timeout: 60_000 });
+  test.info().annotations.push({ type: 'scale estimate + apply', description: (Date.now() - t0) + ' ms' });
   return (await page.locator('#analysis-preset-scale').textContent()).match(/空気 (-?\d+) \/ 軟部 (-?\d+)/).slice(1).map(Number);
 }
 const near = (v, target, tol) => expect(Math.abs(v - target), `${v} vs ${target}`).toBeLessThanOrEqual(tol);

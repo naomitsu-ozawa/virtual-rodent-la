@@ -49,6 +49,16 @@ describe('estimateHuScale', () => {
     expect(r.ok).toBe(true);
     expect(Math.abs(r.soft - 150)).toBeLessThanOrEqual(5);
   });
+  it('keeps soft tissue when a contrast-enhanced organ forms a peak above it', () => {
+    const r = estimate(volume([[-1030, 40, 40000], [-100, 40, 9000], [150, 40, 30000], [400, 40, 12000]]));
+    expect(r.ok).toBe(true);
+    expect(Math.abs(r.soft - 150)).toBeLessThanOrEqual(5);
+  });
+  it('a fat-rich scan with contrast still finds soft tissue (not the contrast peak)', () => {
+    const r = estimate(volume([[-1030, 40, 40000], [-100, 40, 30000], [150, 40, 15000], [400, 40, 6000]]));
+    expect(r.ok).toBe(true);
+    expect(Math.abs(r.soft - 150)).toBeLessThanOrEqual(5);
+  });
   it('fails without air in the field of view, and on constant (synthetic) values', () => {
     expect(estimate(volume([[-100, 40, 20000], [150, 40, 60000]])).ok).toBe(false);
     const spikes = Float32Array.from({ length: 30000 }, (_, i) => -1024 + (i % 7) * 600);
