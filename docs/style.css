@@ -1128,3 +1128,9 @@ html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock="split-full"]>.analysis
  html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock^="split-"] #sub-view-slots{grid-column:1;grid-row:2}
  html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock^="split-"]>.analysis-dock{grid-column:1;grid-row:3}
 }
+.lp-live{font-size:10px;font-weight:700;color:rgb(var(--ui-blue-tx));padding:1px 6px;border-radius:9px;background:rgb(var(--ui-blue-bg));border:1px solid rgb(var(--ui-blue-bd));opacity:.9;animation:lp-live-pulse 1s ease-in-out infinite}.lp-live[hidden]{display:none}
+@keyframes lp-live-pulse{50%{opacity:.55}}
+.lp-plot[data-live="1"]{outline:1px dashed rgb(var(--ui-blue-bd));outline-offset:-1px}
+.lp-3d-toggle{pointer-events:auto;touch-action:manipulation}
+.hu-line-3d-armed canvas{cursor:crosshair}
+@media (prefers-reduced-motion:reduce){.lp-live{animation:none}}
