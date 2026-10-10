@@ -1,22 +1,25 @@
 // Line profile panel (build 537, PC only; nothing here touches the GPU shaders or VR).
 // "HU線プロファイル" arms a two-point pick on the MPR / 2D slice views (press-drag-release, or click then click): the line is sampled
-// at about the smallest voxel spacing with trilinear interpolation of the RAW HU (line-profile.js) and shown in the analysis overlay
+// at about the smallest voxel spacing with trilinear interpolation of the effective HU (line-profile.js) and shown in the analysis overlay
 // as a plot (HU vs distance, hover = value + marker on the line in the view), a histogram of the sampled values and the same
 // statistics as the segment histogram (mean, SD, min, max, percentiles; histogram.js).
-// - The HU values come from the original data (sourceVolume): the array when the volume is in memory, else slice by slice through
-//   getCachedSourceSlice (never a full copy); async, with progress and cancel.
+// - The HU values come through readEffectiveSlice (effective-hu.js): the FILTERED axial planes the 2D cards show (default) or the raw
+//   source values (toggle "フィルター後 / 元の値", shared with the histogram); at most two slices at a time, never a full copy; async,
+//   with progress and cancel. The line is recomputed when the filter settings or the toggle change.
 // - The analysis overlay is pointer-events:none (style.css): every interactive element here re-enables it and stops the pointer
 //   events so the 3D view does not rotate (the Phase 1 lesson).
-import { volume, sourceVolume, currentLanguage } from './state.js?v=20261010-build537';
-import { planes } from './ui-shell.js?v=20261010-build537';
-import { tr } from './i18n.js?v=20261010-build537';
-import { frameYield } from './utils.js?v=20261010-build537';
-import { getCachedSourceSlice } from './source-filters.js?v=20261010-build537';
-import { setExtraOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261010-build537';
-import { clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, formatHu } from './crosshair.js?v=20261010-build537';
-import { distanceMm, formatMm } from './measurements.js?v=20261010-build537';
-import { rebinHist } from './histogram.js?v=20261010-build537';
-import { lineSamples, sampleLine, profileStats, nearestSample } from './line-profile.js?v=20261010-build537';
+import { volume, currentLanguage } from './state.js?v=20261010-build539';
+import { planes } from './ui-shell.js?v=20261010-build539';
+import { tr } from './i18n.js?v=20261010-build539';
+import { frameYield } from './utils.js?v=20261010-build539';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build539';
+import { getHuMode, onHuModeChange, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build539';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build539';
+import { setExtraOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261010-build539';
+import { clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, formatHu } from './crosshair.js?v=20261010-build539';
+import { distanceMm, formatMm } from './measurements.js?v=20261010-build539';
+import { rebinHist } from './histogram.js?v=20261010-build539';
+import { lineSamples, sampleLine, profileStats, nearestSample } from './line-profile.js?v=20261010-build539';
 
 const PLOT_H = 130, HIST_H = 90, PAD = { l: 38, r: 8, t: 12, b: 20 }, DRAG_PX = 6;
 const st = {
@@ -24,17 +27,12 @@ const st = {
   el: null, btn: null, plot: null, hist: null, table: null, progress: null, status: null, hint: null, cancelBtn: null
 };
 const dimsOf = v => ({ columns: v.columns, rows: v.rows, slices: v.slices });
-const rawVolume = () => sourceVolume || volume;
+const rawVolume = rawHuVolume;
 const nice = span => { const p = Math.pow(10, Math.floor(Math.log10(Math.max(1e-9, span / 5)))); for (const m of [1, 2, 5, 10]) if (span / (m * p) <= 6) return m * p; return 10 * p; };
 const fmt = (x, d = 1) => (x == null || !Number.isFinite(x) ? '—' : x.toFixed(d));
 
-// ---- raw HU reader (memory array, or one decoded slice at a time from the source) ----
-function sliceReader(v) {
-  const plane = v.columns * v.rows, arr = v.data || v.mprData;
-  if (arr && arr.length >= plane * v.slices) return z => arr.subarray(z * plane, (z + 1) * plane);
-  if (v.sourceBacked && v.series?.slices) return z => getCachedSourceSlice(v.series.slices[z]);
-  return null;
-}
+// the effective HU (filtered / raw) currently selected: part of the result's identity
+const effSig = () => { const stages = sourceFilterStages(); return effectiveHuSignature(getHuMode(), stages.length, stages.length ? sourceFilterSignature(stages) : ''); };
 
 // ---- the computation ----
 function setProgress(text, fraction) {
@@ -46,19 +44,19 @@ async function compute() {
   cancelJob(false);
   const v = rawVolume(), a = st.a, b = st.b;
   if (!v || !a || !b) return;
-  const reader = sliceReader(v);
-  const job = { cancelled: false };
+  const mode = getHuMode(), sig = effSig();
+  const reader = z => readEffectiveSlice(z, { mode, volume: v });
+  const job = { cancelled: false, sig };
   st.job = job; st.message = ''; st.result = null; st.hover = -1;
   draw();
   try {
-    if (!reader) throw new Error('no source');
     const samples = lineSamples(a, b, v.spacing);
     const values = await sampleLine(samples, dimsOf(v), reader, {
       cancelled: () => job.cancelled, yieldFn: frameYield,
       onProgress: (d, t) => { if (!job.cancelled) setProgress(tr('lpReading') + ' ' + Math.round(100 * d / Math.max(1, t)) + '%', d / Math.max(1, t)); }
     });
     if (!values || job.cancelled) return;
-    st.result = { samples, values, stats: profileStats(values), a, b };
+    st.result = { samples, values, stats: profileStats(values), a, b, sig };
   } catch (e) {
     if (!job.cancelled) st.message = tr('lpError') + ': ' + String(e?.message || e);
   } finally {
@@ -70,6 +68,12 @@ function cancelJob(userAsked) {
   const job = st.job; if (!job) return;
   job.cancelled = true; st.job = null; if (userAsked) st.message = tr('lpCancelled');
   setProgress('', null); draw();
+}
+// the filter settings or the Filtered / Raw toggle changed since the line was read: read it again (an in-flight read is cancelled first)
+function recomputeIfStale() {
+  if (!st.open || !st.a || !st.b || st.stage === 'drag' || st.stage === 'second') return;
+  const sig = effSig();
+  if (st.job ? st.job.sig !== sig : (st.result && st.result.sig !== sig)) void compute();
 }
 function clearLine() { cancelJob(false); st.a = st.b = st.plane = null; st.stage = 'idle'; st.result = null; st.message = ''; st.hover = -1; draw(); requestOverlayDraw(); }
 
@@ -236,7 +240,7 @@ function installBlock(el) { // charts / table that take no pointer action themse
 // ---- panel ----
 function build() {
   const box = st.el, mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-  const bar = mk('div', 'seg-hist-bar'); bar.append(mk('strong', '', tr('lpTitle')));
+  const bar = mk('div', 'seg-hist-bar'); bar.append(mk('strong', '', tr('lpTitle')), huModeToggle(currentLanguage, filtersActive));
   st.plot = mk('canvas', 'lp-canvas lp-plot'); st.plot.style.height = PLOT_H + 'px'; installPlot(st.plot);
   st.hist = mk('canvas', 'lp-canvas lp-hist'); st.hist.style.height = HIST_H + 'px'; installBlock(st.hist);
   const prog = mk('div', 'seg-hist-progress');
@@ -273,5 +277,7 @@ export function installLineProfile() {
     btn.disabled = !volume;
     if (rawVolume() !== lastVol) { lastVol = rawVolume(); if (st.open) setOpen(false); }
     if (st.open && st.lang !== currentLanguage) { build(); draw(); }
+    recomputeIfStale();
   }, 600);
+  onHuModeChange(() => recomputeIfStale());
 }
