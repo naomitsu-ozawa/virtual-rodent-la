@@ -1051,9 +1051,10 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .seg-hist-mini{min-height:24px;padding:2px 8px;border:1px solid rgb(var(--ui-b3));border-radius:6px;background:rgb(var(--ui-s3));color:rgb(var(--ui-t2));font-size:10px}
 .seg-hist-mini.is-active{border-color:rgb(var(--ui-blue-bd));background:rgb(var(--ui-blue-bg));color:rgb(var(--ui-blue-tx))}
 .seg-hist-mini:disabled{opacity:.45}
-.seg-hist-canvas{display:block;width:100%;touch-action:none;color:rgb(var(--ui-t2))}
+/* the overlay is pointer-events:none (3D rotation passes through, see "Keep 3D rotation available" above): the chart (line drag) and the table (horizontal scroll) must take input */
+.seg-hist-canvas{display:block;width:100%;pointer-events:auto;touch-action:none;color:rgb(var(--ui-t2))}
 .seg-hist-progress{display:flex;align-items:center;gap:6px;font-size:10px;color:rgb(var(--ui-t3))}.seg-hist-progress progress{width:90px;height:8px}.seg-hist-status{flex:1;overflow-wrap:anywhere}
-.seg-hist-tablewrap{overflow-x:auto}
+.seg-hist-tablewrap{overflow-x:auto;pointer-events:auto}
 .seg-hist-table{border-collapse:collapse;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .seg-hist-table th,.seg-hist-table td{padding:2px 6px;text-align:right;border-bottom:1px solid rgb(var(--ui-b2))}
 .seg-hist-table th:first-child,.seg-hist-table td:first-child{text-align:left}
