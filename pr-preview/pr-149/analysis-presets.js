@@ -26,8 +26,21 @@
 // sample2 fat 42.2 -> 24.2, soft 43.1 -> 25.2, lung 62.8 -> 48.8) and moves no tissue mean by more than 3 HU, while the
 // 10-90 % edge rise stays the same (fat/soft 3.29 -> 3.25 voxels on sample1, 4.24 -> 4.24 on sample2; bone 3.01 -> 2.99,
 // 3.21 -> 3.19). The weaker variants of the previous draft (strength 0.3 / sigma 0.8 / 1 pass, or 30 HU) left the SD at
-// 25-37 HU and gained no edge sharpness. The sigmoid is not used: it shifted the sample1 fat mean by 40 HU (-104 -> -144) and,
-// with its default centre 0 on sample2's soft-tissue peak, raised the sample2 soft-tissue SD from 25 to 64 HU.
+// 25-37 HU and gained no edge sharpness.
+// Fat preset only (build 553): bilateral, then the sigmoid (strength 0.5, width 300, centre 0 = the fat / soft-tissue segment
+// bound), its centre and width mapped to the loaded scan with the ranges (hu-calibration.js; sample2: centre -277, width 510).
+// Measured on 40-slice slabs (bilateral alone -> bilateral + mapped sigmoid, filtered values in the tissue cores):
+//   sample1 fat SD 19.9 -> 5.9, soft SD 22.2 -> 14.9, fat / soft 10-90 % rise 3.22 -> 3.14 voxels, edge gradient 85 -> 106 %;
+//   sample2 fat SD 22.2 -> 7.0, soft SD 25.9 -> 19.8, rise 4.26 -> 3.79 voxels, edge gradient 89 -> 109 %.
+// The sigmoid is monotonic and keeps its centre and every value outside centre +- width/2, and the fat and soft-tissue bounds
+// lie exactly there, so the fat and soft-tissue MASKS are identical to the bilateral-only ones (0 differing voxels on both
+// samples); what changes is the displayed image and the values read from it: fat reads about -145 on sample1 (-105 without the
+// sigmoid) and about -518 on sample2 (-431), i.e. fat is shown as one flat dark grey with a steep border. The earlier failure
+// on sample2 (soft-tissue SD 25 -> 65 HU, edge gradient 76 %) came from the UNMAPPED centre 0, which sits on that scan's
+// soft-tissue peak (-8) and split it in two; with the mapped centre it does not occur. If the scale cannot be estimated, the
+// centre stays 0 (the masks are still unchanged, only the image may look like that). The other presets keep the bilateral
+// alone: in the soft-tissue window the sigmoid flattens the soft tissue between the bound and +150 onto one grey (its lower
+// SD there is that flattening, not less noise) and hides the differences between organs that preset is for.
 
 export const PRESET_FORMAT = 'vrl-analysis-presets';
 export const PRESET_VERSION = 1;
@@ -54,6 +67,10 @@ const HU_TOP = 65535;
 // The bilateral filter at its own defaults (the slider values in ui-shell.js / FILTER_UNITS.bilateral.sigmaHU.def)
 const DEFAULT_BILATERAL = { key: 'bilateral', params: { strength: 0.8, spatialSigma: 1.2, sigmaHU: 50, passes: 2 } };
 const filtersDefault = () => [JSON.parse(JSON.stringify(DEFAULT_BILATERAL))];
+// Bilateral, then the sigmoid at its own defaults (strength 0.5, width 300) with its centre ON the fat / soft-tissue segment
+// bound (0 on sample1's scale). The order matters: the S-curve is applied to the denoised values.
+const FAT_SIGMOID = { key: 'sigmoid', params: { strength: 0.5, center: 0, width: 300 } };
+const filtersFat = () => [...filtersDefault(), JSON.parse(JSON.stringify(FAT_SIGMOID))];
 
 export const BUILTIN_PRESETS = [
   {
@@ -70,10 +87,12 @@ export const BUILTIN_PRESETS = [
   {
     id: 'fat',
     name: { ja: '脂肪', en: 'Fat' },
-    filters: filtersDefault(),
+    filters: filtersFat(),
     // sample1: fat peak -98, soft-tissue peak +158, valley between them at +8 (flat from about -40 to +20); -250 lies in the
     // nearly empty gap between air and fat (-550 .. -250). The range holds 96 % of sample1's fat region (the app's default
     // -250 .. -50 held 83 %, the previous draft -190 .. -30 90 %). On sample2 the mapping gives -702 .. -277 (its fat peak is -442).
+    // The sigmoid's centre is the upper bound 0 and the lower bound -250 lies below its window (-150 .. 150), so the range is the
+    // same before and after the sigmoid (see the notes at the top); keep them equal when changing either.
     display: { windowCenter: 0, windowWidth: 500 },       // -250 .. 250: fat dark grey, soft tissue light grey
     segments: { fat: { min: -250, max: 0 } },
   },

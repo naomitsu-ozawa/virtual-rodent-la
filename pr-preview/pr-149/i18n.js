@@ -1,6 +1,6 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Depends only on the imports below; never imports from app.js (no cycles).
-import { currentLanguage, setCurrentLanguage } from './state.js?v=20261010-build550';
+import { currentLanguage, setCurrentLanguage } from './state.js?v=20261010-build553';
 export const I18N={
  ja:{
   presetTitle:'解析プリセット',presetScaleEstimating:'目盛り推定中…',presetScaleFrom:'空気 {air} / 軟部 {soft} から換算',presetScaleFailed:'目盛り推定できず：標準値を使用',presetScaleUser:'ユーザープリセット：保存したHU値をそのまま使用',presetApply:'適用',presetSave:'現在の設定を保存',presetRename:'名前変更',presetDelete:'削除',presetExport:'書き出し',presetImport:'読み込み',presetBuiltin:'組み込み',presetUser:'ユーザー',presetNone:'プリセット: なし',presetActive:'プリセット: ',presetModified:'（変更あり）',presetNamePlaceholder:'保存する名前',presetNameNeeded:'名前を入力してください',presetNameBuiltin:'組み込みプリセットと同じ名前は使えません',presetNameDuplicate:'同じ名前のプリセットがあります',presetOverwriteAsk:'上書きしますか: ',presetDeleteAsk:'削除しますか: ',presetApplied:'プリセットを適用しました: ',presetSaved:'プリセットを保存しました: ',presetNoStorage:'（この環境では保存領域が使えないため、再読み込みで消えます）',presetRenamed:'名前を変更しました: ',presetDeleted:'削除しました: ',presetImported:'プリセットを読み込みました:',presetSkipped:'無効',presetImportFailed:'プリセットのファイルを読み込めませんでした',presetHint:'画像フィルター・CT表示範囲・セグメントのHU範囲をまとめて切り替えます。フィルターはHU値そのものを変えるため、ヒストグラムやHU線もフィルター後の値になります。組み込みプリセットのHU範囲は、読み込んだデータの空気と軟部のピークから目盛りを推定して換算します（基準は練習データ「ラット」）。',
