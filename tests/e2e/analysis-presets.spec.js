@@ -87,6 +87,17 @@ test('user presets: save, apply, overwrite, export / import, delete, and they su
   page.on('dialog', d => d.accept());
   await loadSeries(page);
   await applyPreset(page, 'b:fat');
+  // build 553: the fat preset is the bilateral, then the sigmoid centred on the fat / soft-tissue bound (no scale estimate on
+  // this synthetic series: the reference values, centre 0 / width 300)
+  // pipeline order: the bilateral first (its "up" button disabled), the sigmoid last (its "down" button disabled)
+  await expect(page.locator('.filter-control-card:not(.is-hidden)')).toHaveCount(2);
+  await expect(card(page, 'bilateral').locator('[data-filter-move="up"]')).toBeDisabled();
+  await expect(card(page, 'sigmoid').locator('[data-filter-move="down"]')).toBeDisabled();
+  await expect(card(page, 'sigmoid').locator('[data-filter-move="up"]')).toBeEnabled();
+  expect(await value(page, '#sigmoid-strength')).toBeCloseTo(0.5, 5);
+  expect(await value(page, '#sigmoid-center')).toBe(0);
+  expect(await value(page, '#sigmoid-width')).toBe(300);
+  expect(await value(page, '[data-seg-max="fat"]')).toBe(0);
   // tweak, then save under a name
   await page.locator('#bilateral-intensity').evaluate(el => { el.value = '33'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.locator('#analysis-preset-name').fill('マイ脂肪');

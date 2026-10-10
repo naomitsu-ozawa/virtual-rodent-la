@@ -90,6 +90,16 @@ describe('mapping the built-in presets', () => {
     expect(JSON.stringify(soft)).toBe(before);
     const fat = calibrateSnapshot(normalizeSnapshot(builtinPresetById('fat')), mouse);
     expect(fat.segments.fat).toEqual({ min: -702, max: -277 }); // the mouse fat peak (-442) lies inside
+    // the fat preset's sigmoid follows the scale: its centre stays on the fat / soft bound, its width is scaled (step 10)
+    const sig = fat.filters.find(f => f.key === 'sigmoid').params;
+    expect(sig).toEqual({ strength: 0.5, center: -277, width: 510 });
+    expect(sig.center).toBe(fat.segments.fat.max);
+    expect(fat.filters[0]).toEqual(normalizeSnapshot(builtinPresetById('fat')).filters[0]); // the bilateral is not mapped
+  });
+  it('clamps the mapped sigmoid width to the slider range (20 .. 1000)', () => {
+    const s = { filters: [{ key: 'sigmoid', params: { strength: 0.5, center: 0, width: 300 } }], display: null, segments: {} };
+    expect(calibrateSnapshot(s, { air: -1018, soft: 152 + 1170 * 4 }).filters[0].params.width).toBe(1000);
+    expect(calibrateSnapshot(s, { air: -1018, soft: -1018 + 30 }).filters[0].params.width).toBe(20);
   });
   it('every built-in preset stays valid after mapping', () => {
     for (const p of BUILTIN_PRESETS) {

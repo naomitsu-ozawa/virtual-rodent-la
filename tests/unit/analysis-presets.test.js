@@ -36,12 +36,27 @@ describe('built-in presets', () => {
     }
   });
 
-  it('every preset uses the bilateral filter at its own default parameters (and no sigmoid)', () => {
+  it('every preset starts with the bilateral filter at its own defaults; only the fat preset adds the sigmoid after it', () => {
+    const bil = { key: 'bilateral', params: { strength: 0.8, spatialSigma: 1.2, sigmaHU: FILTER_UNITS.bilateral.params.sigmaHU.def, passes: 2 } };
     for (const p of BUILTIN_PRESETS) {
-      expect(p.filters, p.id).toEqual([{ key: 'bilateral', params: { strength: 0.8, spatialSigma: 1.2, sigmaHU: FILTER_UNITS.bilateral.params.sigmaHU.def, passes: 2 } }]);
+      expect(p.filters[0], p.id).toEqual(bil);
+      if (p.id === 'fat') expect(p.filters, p.id).toEqual([bil, { key: 'sigmoid', params: { strength: 0.5, center: 0, width: 300 } }]);
+      else expect(p.filters, p.id).toEqual([bil]);
     }
     // each preset holds its own copy (applying / editing one never changes another)
     expect(builtinPresetById('lung').filters[0]).not.toBe(builtinPresetById('fat').filters[0]);
+  });
+
+  it('the fat sigmoid leaves the fat mask unchanged: its centre is the fat / soft bound, the other bound lies outside its window', async () => {
+    const fat = builtinPresetById('fat'), sig = fat.filters[1].params;
+    // the sigmoid is monotonic and keeps its centre and everything outside centre +- width/2, so a bound there is a fixed point
+    expect(sig.center).toBe(fat.segments.fat.max);
+    expect(fat.segments.fat.min).toBeLessThanOrEqual(sig.center - sig.width / 2);
+    const { cpuSigmoid } = await import('../../docs/cpu-filters.js');
+    const xs = Float32Array.from({ length: 2001 }, (_, i) => i - 1000);
+    const { data: ys } = await cpuSigmoid({ data: xs }, sig);
+    const inFat = (v, r = fat.segments.fat) => v >= r.min && v <= r.max;
+    for (let i = 0; i < xs.length; i++) expect(inFat(ys[i]), `x=${xs[i]}`).toBe(inFat(xs[i]));
   });
 
   it('segment ranges follow the measured sample1 valleys (fat / soft at 0, soft / bone at 350)', () => {

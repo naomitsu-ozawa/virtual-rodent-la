@@ -92,9 +92,18 @@ export function mapHu(v, scale, ref = REFERENCE_SCALE) {
   return scale.air + (v - ref.air) * (scale.soft - scale.air) / (ref.soft - ref.air);
 }
 
+// Sigmoid width slider (ui-shell.js #sigmoid-width): min 20, max 1000, step 10
+export const SIGMOID_WIDTH_MIN = 20;
+export const SIGMOID_WIDTH_MAX = 1000;
+export const SIGMOID_WIDTH_STEP = 10;
+
 // A preset snapshot mapped to `scale`: the window centre and the segment bounds are mapped, the window width scaled, all
-// rounded to whole HU. Bounds at or above `openTop` ("no upper limit") are kept. Filters are not touched: their HU parameters
-// act on the noise, which is about the same on both practice scans (SD about 40 HU) although their scales differ.
+// rounded to whole HU. Bounds at or above `openTop` ("no upper limit") are kept.
+// Filters: the sigmoid works on tissue positions, so its centre is mapped like a segment bound (the fat preset puts it exactly
+// on the fat / soft-tissue bound, and both go through the same mapping, so they stay equal on every scale) and its width is
+// scaled like the window width (snapped to the slider's step of 10 and clamped to 20 .. 1000; a scan whose scale factor is
+// above 3.3 would clamp the fat preset's 300). The other filters are not touched: their HU parameters act on the noise, which
+// is about the same on both practice scans (SD about 40 HU) although their scales differ.
 export function calibrateSnapshot(snap, scale, { openTop = 65535, ref = REFERENCE_SCALE } = {}) {
   if (!snap || !scale) return snap;
   const k = (scale.soft - scale.air) / (ref.soft - ref.air);
@@ -102,5 +111,11 @@ export function calibrateSnapshot(snap, scale, { openTop = 65535, ref = REFERENC
   const segments = {};
   for (const [key, r] of Object.entries(snap.segments || {})) segments[key] = { min: m(r.min), max: m(r.max) };
   const display = snap.display ? { windowCenter: Math.round(mapHu(snap.display.windowCenter, scale, ref)), windowWidth: Math.max(1, Math.round(snap.display.windowWidth * k)) } : null;
-  return { filters: JSON.parse(JSON.stringify(snap.filters || [])), display, segments };
+  const filters = JSON.parse(JSON.stringify(snap.filters || []));
+  for (const f of filters) {
+    if (f.key !== 'sigmoid' || !f.params) continue;
+    if (Number.isFinite(+f.params.center)) f.params.center = Math.round(mapHu(+f.params.center, scale, ref));
+    if (Number.isFinite(+f.params.width)) f.params.width = Math.min(SIGMOID_WIDTH_MAX, Math.max(SIGMOID_WIDTH_MIN, Math.round(+f.params.width * k / SIGMOID_WIDTH_STEP) * SIGMOID_WIDTH_STEP));
+  }
+  return { filters, display, segments };
 }

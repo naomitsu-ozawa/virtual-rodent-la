@@ -2,18 +2,18 @@
 // shows which preset is active / modified. The values and the pure logic live in analysis-presets.js; nothing here adds a
 // second way of changing a filter or a range: filters go through applyFilterOrder (shared with the project file), the CT
 // window and the segment ranges through setControlValue (the same input / change events a slider drag sends).
-import { $, wc, ww, footer } from './ui-shell.js?v=20261010-build550';
-import { volume, sourceVolume, activeId, activeSeries, ctRangeMode, ctRangeProfile, currentLanguage } from './state.js?v=20261010-build550';
-import { decodeSourceSlice } from './volume-io.js?v=20261010-build550';
-import { createWideHist, addWideValues, estimateHuScale, calibrateSnapshot } from './hu-calibration.js?v=20261010-build550';
-import { tr } from './i18n.js?v=20261010-build550';
-import { SEGMENT_PRESET_ORDER, segmentState, commitExclusiveRanges } from './segments.js?v=20261010-build550';
-import { addSegmentPreset, applyCtRangeMode, segmentControl, setControlValue, updateSegmentOutputs } from './segment-ui.js?v=20261010-build550';
-import { gatherFilterOrder, applyFilterOrder } from './data-load.js?v=20261010-build550';
+import { $, wc, ww, footer } from './ui-shell.js?v=20261010-build553';
+import { volume, sourceVolume, activeId, activeSeries, ctRangeMode, ctRangeProfile, currentLanguage } from './state.js?v=20261010-build553';
+import { decodeSourceSlice } from './volume-io.js?v=20261010-build553';
+import { createWideHist, addWideValues, estimateHuScale, calibrateSnapshot } from './hu-calibration.js?v=20261010-build553';
+import { tr } from './i18n.js?v=20261010-build553';
+import { SEGMENT_PRESET_ORDER, segmentState, commitExclusiveRanges } from './segments.js?v=20261010-build553';
+import { addSegmentPreset, applyCtRangeMode, segmentControl, setControlValue, updateSegmentOutputs } from './segment-ui.js?v=20261010-build553';
+import { gatherFilterOrder, applyFilterOrder } from './data-load.js?v=20261010-build553';
 import {
   BUILTIN_PRESETS, builtinPresetById, builtinPresetName, normalizeSnapshot, isModified, saveUserPreset, renameUserPreset,
   deleteUserPreset, serializeUserPresets, parseUserPresets, mergeImportedPresets, loadUserPresets, persistUserPresets, cleanPresetName,
-} from './analysis-presets.js?v=20261010-build550';
+} from './analysis-presets.js?v=20261010-build553';
 
 // ---- HU scale of the loaded series (build 550) ------------------------------------------------------------------------
 // Built-in presets are written on the rat practice scan's scale and mapped to the loaded scan through its air and soft-tissue

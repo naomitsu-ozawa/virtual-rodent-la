@@ -28,6 +28,15 @@ async function loadAndApply(page, dir, preset) {
   test.info().annotations.push({ type: 'scale estimate + apply', description: (Date.now() - t0) + ' ms' });
   return (await page.locator('#analysis-preset-scale').textContent()).match(/空気 (-?\d+) \/ 軟部 (-?\d+)/).slice(1).map(Number);
 }
+const card = (page, key) => page.locator(`.filter-control-card[data-filter-key="${key}"]`);
+// bilateral, then sigmoid in the pipeline (filterOrder). The cards are laid out in catalog order, so the order is read from the
+// move buttons, which follow the pipeline index.
+async function expectBilateralThenSigmoid(page) {
+  await expect(page.locator('.filter-control-card:not(.is-hidden)')).toHaveCount(2);
+  await expect(card(page, 'bilateral').locator('[data-filter-move="up"]')).toBeDisabled();
+  await expect(card(page, 'sigmoid').locator('[data-filter-move="down"]')).toBeDisabled();
+  await expect(card(page, 'sigmoid').locator('[data-filter-move="up"]')).toBeEnabled();
+}
 const near = (v, target, tol) => expect(Math.abs(v - target), `${v} vs ${target}`).toBeLessThanOrEqual(tol);
 
 test.skip(!existsSync(join(DEMO, 'sample1', 'index.json')) || !existsSync(join(DEMO, 'sample2', 'index.json')), 'practice data not checked out');
@@ -39,6 +48,10 @@ test('rat practice scan: the fat preset keeps the reference ranges (air about -1
   // fat peak -98 and soft-tissue peak +158 on this scan: the fat range is -250 .. 0 here
   near(await value(page, '[data-seg-min="fat"]'), -250, 30);
   near(await value(page, '[data-seg-max="fat"]'), 0, 20);
+  // build 553: bilateral, then the sigmoid with its centre on the fat / soft-tissue bound (0) and its own width 300 on this scale
+  await expectBilateralThenSigmoid(page);
+  near(await value(page, '#sigmoid-center'), await value(page, '[data-seg-max="fat"]'), 2);
+  near(await value(page, '#sigmoid-width'), 300, 20);
 });
 
 test('mouse practice scan: the fat and lung presets are mapped to its scale (air about -2008, soft tissue about -18)', async ({ page }) => {
@@ -49,6 +62,11 @@ test('mouse practice scan: the fat and lung presets are mapped to its scale (air
   const fatMin = await value(page, '[data-seg-min="fat"]'), fatMax = await value(page, '[data-seg-max="fat"]');
   near(fatMin, -702, 50); near(fatMax, -277, 40);
   expect(fatMin).toBeLessThan(-442); expect(fatMax).toBeGreaterThan(-442);
+  // build 553: the sigmoid is mapped with the ranges: centre on the fat / soft-tissue bound (about -277, NOT 0, which is this
+  // scan's soft-tissue peak), width 300 x 1.70 = 510
+  await expectBilateralThenSigmoid(page);
+  near(await value(page, '#sigmoid-center'), fatMax, 2);
+  near(await value(page, '#sigmoid-width'), 510, 30);
   // lung: the mouse lung peak (-925) lies inside the mapped range
   await page.locator('#analysis-preset-select').selectOption('b:lung');
   await page.locator('#analysis-preset-apply').click();
@@ -56,4 +74,5 @@ test('mouse practice scan: the fat and lung presets are mapped to its scale (air
   const lungMin = await value(page, '[data-seg-min="lung"]'), lungMax = await value(page, '[data-seg-max="lung"]');
   near(lungMin, -1467, 60); near(lungMax, -532, 40);
   expect(lungMin).toBeLessThan(-925); expect(lungMax).toBeGreaterThan(-925);
+  await expect(card(page, 'sigmoid')).toHaveClass(/is-hidden/); // only the fat preset uses the sigmoid
 });
