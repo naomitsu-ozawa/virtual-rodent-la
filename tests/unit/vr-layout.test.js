@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { VOLUME_FWD, MENU_OFFSET, HELP_OFFSET, MENU_WIDTH, HELP_WIDTH, boardDistance, placeFromHead, volumeFromHead } from '../../docs/vr-layout.js';
+import { VOLUME_FWD, MENU_OFFSET, HELP_OFFSET, HIST_OFFSET, HIST_WIDTH, MENU_WIDTH, HELP_WIDTH, boardDistance, placeFromHead, volumeFromHead } from '../../docs/vr-layout.js';
 
+import { PANEL_W, PANEL_H } from '../../docs/vr-histogram-layout.js';
+const HELP_W = 820, HELP_H = 560; // the help board canvas (makeMenu(820,560,...) in vr-view.js)
 const head = { x: 1, y: 1.6, z: 2 }, fwd = { x: 0, z: -1 }, left = { x: -1, z: 0 };
 describe('default VR/AR layout', () => {
   it('volume 0.6-0.7 m ahead, a little below the eyes', () => {
@@ -26,5 +28,17 @@ describe('default VR/AR layout', () => {
   it('vr-view.js uses these constants, not literals', () => {
     const s = readFileSync('docs/vr-view.js', 'utf8');
     expect(s).toMatch(/MENU_OFFSET\.fwd/); expect(s).toMatch(/HELP_OFFSET\.fwd/); expect(s).toMatch(/VOLUME_FWD/); expect(s).toMatch(/makeMenu\(MENU_W,MENU_H,MENU_WIDTH\)/);
+  });
+  it('histogram board (build 543): right of the volume like the help board, at reading distance, clear of the volume and above the help board', () => {
+    expect(boardDistance(HIST_OFFSET)).toBeGreaterThanOrEqual(0.8); expect(boardDistance(HIST_OFFSET)).toBeLessThanOrEqual(1.0);
+    expect(HIST_OFFSET.left).toBeLessThan(0);
+    expect(Math.atan((Math.abs(HIST_OFFSET.left) - HIST_WIDTH / 2) / HIST_OFFSET.fwd)).toBeGreaterThan(Math.atan(0.1 / VOLUME_FWD));
+    const histBottom = HIST_OFFSET.down + HIST_WIDTH * PANEL_H / PANEL_W / 2, helpTop = HELP_OFFSET.down - HELP_WIDTH * HELP_H / HELP_W / 2;
+    expect(histBottom).toBeLessThan(helpTop);
+  });
+  it('vr-view.js wires the histogram board: menu button, shared HU mode, release on exit', () => {
+    const s = readFileSync('docs/vr-view.js', 'utf8');
+    expect(s).toMatch(/createVrHistogramPanel\(THREE/); expect(s).toMatch(/acquireHistogram\('vr'/); expect(s).toMatch(/releaseHistogram\('vr'\)/);
+    expect(s).toMatch(/setHuMode\(HU_MODE_FILTERED\)/); expect(s).toMatch(/setHuMode\(HU_MODE_RAW\)/); expect(s).toMatch(/hist\.update\(/); expect(s).toMatch(/o\.hist=histHit\(c\)/); expect(s).toMatch(/bd\.help\|\|bd\.hist/);
   });
 });

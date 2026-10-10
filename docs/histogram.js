@@ -5,6 +5,10 @@ export const HIST_MIN = -1024;
 export const HIST_MAX = 3071;
 export const HIST_BINS = HIST_MAX - HIST_MIN + 1;
 export const HIST_PERCENTILES = [5, 25, 50, 75, 95];
+export const ROBUST_LO_P = 0.5, ROBUST_HI_P = 99.5; // the percentile window of the robust (auto) chart range
+export const ROBUST_MIN_FRAC = 0.03; // ... whose ends are then trimmed to the bins that reach this fraction of the highest bin (a shorter bar is a sliver of a few pixels on the chart)
+export const MIN_WINDOW = 50; // the narrowest chart window (HU)
+const AUTO_RANGE = { mode: 'auto', lo: 0, hi: 0 };
 
 export const createHist = () => new Uint32Array(HIST_BINS);
 // HU (any number) -> bin index, rounded to the nearest HU and clamped
@@ -120,4 +124,96 @@ export function nearestLine(xs, x, tol = 6) {
   let best = -1, bd = tol + 1e-9;
   xs.forEach((lx, i) => { const d = Math.abs(lx - x); if (d < bd) { bd = d; best = i; } });
   return best;
+}
+
+// ---- chart helpers shared by the PC chart (histogram-ui.js) and the VR panel (vr-histogram-layout.js) ----
+// a tick step (HU) that keeps the axis to at most maxTicks labels
+export function niceStep(span, maxTicks) {
+  for (const s of [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000]) if (span / s <= maxTicks) return s;
+  return 2000;
+}
+// the HU extent of the data of `hists` taken together that a chart needs: the loP-th to the hiP-th percentile (nearest rank, % of all their voxels), with
+// both ends trimmed in to the first / last bin that reaches minFrac of the highest bin; null when empty. A long thin tail (bone in a soft-tissue study)
+// no longer decides the chart window. No allocation.
+export function histsPercentileSpan(hists, loP = ROBUST_LO_P, hiP = ROBUST_HI_P, minFrac = 0) {
+  let count = 0;
+  for (const h of hists) count += histCount(h);
+  if (!count) return null;
+  const tLo = Math.max(1, Math.ceil(count * loP / 100)), tHi = Math.max(1, Math.ceil(count * hiP / 100));
+  let cum = 0, a = -1, b = HIST_BINS - 1, peak = 0;
+  for (let i = 0; i < HIST_BINS; i++) {
+    let c = 0;
+    for (let k = 0; k < hists.length; k++) c += hists[k][i];
+    if (c > peak) peak = c;
+    cum += c;
+    if (a < 0 && cum >= tLo) a = i;
+    if (b === HIST_BINS - 1 && cum >= tHi) b = i;
+  }
+  a = Math.max(0, a);
+  if (minFrac > 0) {
+    const thr = peak * minFrac, at = i => { let c = 0; for (let k = 0; k < hists.length; k++) c += hists[k][i]; return c; };
+    let a2 = a, b2 = b;
+    while (a2 < b2 && at(a2) < thr) a2++;
+    while (b2 > a2 && at(b2) < thr) b2--;
+    if (at(a2) >= thr) { a = a2; b = b2; }
+  }
+  return [binToHu(a), binToHu(b)];
+}
+export const histPercentileSpan = (hist, loP, hiP, minFrac) => histsPercentileSpan([hist], loP, hiP, minFrac);
+// the HU spans that decide the chart window. robust = false: every segment's data extent (min..max) and range line, and the whole-volume extent.
+// robust = true: ONE percentile span of all the segments' voxels together (a segment with few voxels, like bone, cannot stretch the axis; its
+// range line is then marked at the chart edge), the range line of a segment that has no data yet, and the whole volume only when no segment has data.
+export function chartSpans(res, robust = false) {
+  const spans = [];
+  if (robust) {
+    const hists = [];
+    for (const r of res.list) { if (r.hist && histCount(r.hist)) hists.push(r.hist); else spans.push([r.seg.userMin ?? r.seg.min, r.seg.userMax ?? r.seg.max]); }
+    const e = histsPercentileSpan(hists.length || !res.total ? hists : [res.total.hist], ROBUST_LO_P, ROBUST_HI_P, ROBUST_MIN_FRAC);
+    if (e) spans.push(e);
+    return spans;
+  }
+  for (const r of res.list) {
+    const e = r.hist && histExtent(r.hist); if (e) spans.push(e);
+    spans.push([r.seg.userMin ?? r.seg.min, r.seg.userMax ?? r.seg.max]);
+  }
+  if (res.total) { const e = histExtent(res.total.hist); if (e) spans.push(e); }
+  return spans;
+}
+// the HU window [lo, hi] a chart shows: the union of `spans` ([a, b] pairs: data extents and segment ranges), a little padding,
+// clamped to the histogram range and at least 50 HU wide; no span at all gives the default soft-tissue window
+export function fitWindow(spans) {
+  let lo = Infinity, hi = -Infinity;
+  for (const s of spans) { if (s[0] < lo) lo = s[0]; if (s[1] > hi) hi = s[1]; }
+  if (!(hi > lo)) { lo = -200; hi = 400; }
+  lo = Math.max(HIST_MIN, Math.min(HIST_MAX, lo)); hi = Math.max(HIST_MIN, Math.min(HIST_MAX, hi));
+  const pad = Math.max(10, (hi - lo) * 0.04);
+  lo = Math.max(HIST_MIN, Math.floor(lo - pad)); hi = Math.min(HIST_MAX, Math.ceil(hi + pad));
+  if (hi - lo < MIN_WINDOW) hi = lo + MIN_WINDOW;
+  return [lo, hi];
+}
+// ---- the adjustable display range (display only: the stats are always computed over the whole data) ----
+// a manual window: ordered, whole HU, inside the histogram range and at least MIN_WINDOW wide; null for a non-finite input
+export function clampWindow(lo, hi) {
+  lo = +lo; hi = +hi;
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  if (lo > hi) { const t = lo; lo = hi; hi = t; }
+  lo = Math.max(HIST_MIN, Math.min(HIST_MAX - MIN_WINDOW, Math.round(lo)));
+  hi = Math.min(HIST_MAX, Math.max(lo + MIN_WINDOW, Math.round(hi)));
+  return [lo, hi];
+}
+// the window zoomed by `factor` (< 1 zooms in) around the HU `anchor`; null for non-finite input
+export function zoomWindow(lo, hi, anchor, factor) {
+  return clampWindow(anchor - (anchor - lo) * factor, anchor + (hi - anchor) * factor);
+}
+// a stored / typed range -> { mode: 'auto' | 'full' | 'manual', lo, hi }; anything unusable is 'auto'
+export function normalizeRange(r) {
+  const mode = r && (r.mode === 'full' || r.mode === 'manual') ? r.mode : 'auto';
+  if (mode === 'manual') { const w = clampWindow(r.lo, r.hi); if (w) return { mode, lo: w[0], hi: w[1] }; return { mode: 'auto', lo: 0, hi: 0 }; }
+  return { mode, lo: 0, hi: 0 };
+}
+// the HU window a chart shows for `range` (see normalizeRange): manual = as set, full = min..max of the data, auto = robust to tails
+export function windowFor(res, range) {
+  const r = range || AUTO_RANGE;
+  if (r.mode === 'manual') { const w = clampWindow(r.lo, r.hi); if (w) return w; }
+  return fitWindow(chartSpans(res, r.mode !== 'full'));
 }
