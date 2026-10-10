@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { I18N } from '../../docs/i18n.js';
-import { HIST_MIN, HIST_MAX, HIST_BINS, createHist, huToBin, binToHu, binValues, binRuns, mergeHist, scaleHist, histInRange, histCount, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu } from '../../docs/histogram.js';
+import { HIST_MIN, HIST_MAX, HIST_BINS, createHist, huToBin, binToHu, binValues, binRuns, mergeHist, scaleHist, histInRange, histCount, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine } from '../../docs/histogram.js';
 
 describe('histogram bins', () => {
   it('has 4096 one-HU bins from -1024 to 3071', () => {
@@ -52,6 +52,20 @@ describe('rebin for display', () => {
     expect(histExtent(createHist())).toBe(null);
     expect(histExtent(binValues(createHist(), [-30, 40, 7]))).toEqual([-30, 40]);
     expect(xToHu(huToX(123, -100, 400, 500), -100, 400, 500)).toBeCloseTo(123);
+  });
+});
+
+describe('nearestLine (grab tolerance)', () => {
+  it('picks the closest line within 6 px, else -1', () => {
+    expect(nearestLine([100, 140, 300], 143)).toBe(1);
+    expect(nearestLine([100, 140, 300], 106)).toBe(0);
+    expect(nearestLine([100, 140, 300], 107)).toBe(-1);
+    expect(nearestLine([], 5)).toBe(-1);
+    expect(nearestLine([100, 104], 102.5)).toBe(1);
+  });
+  it('the canvas keeps pointer events away from the 3D controls', () => {
+    const s = readFileSync(new URL('../../docs/histogram-ui.js', import.meta.url), 'utf8');
+    expect(s).toContain('stopPropagation'); expect(s).toContain("touchAction = 'none'"); expect(s).toContain('setPointerCapture');
   });
 });
 

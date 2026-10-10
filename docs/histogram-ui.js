@@ -7,17 +7,17 @@
 //   the segment cache key (segment-cache-key.js).
 // - The HU range of every shown segment is a vertical line; dragging it moves the segment's min / max slider through the very
 //   same events as the slider itself (input while moving, change on release), so the segment code runs exactly as for a slider.
-import { volume, currentLanguage } from './state.js?v=20261009-build534';
-import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261009-build534';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261009-build534';
-import { sourceFilterStages, sourceFilterSignature, getCachedSourceSlice } from './source-filters.js?v=20261009-build534';
-import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261009-build534';
-import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261009-build534';
-import { tr } from './i18n.js?v=20261009-build534';
-import { frameYield } from './utils.js?v=20261009-build534';
-import { HIST_MIN, HIST_MAX, createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu } from './histogram.js?v=20261009-build534';
+import { volume, currentLanguage } from './state.js?v=20261010-build535';
+import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build535';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build535';
+import { sourceFilterStages, sourceFilterSignature, getCachedSourceSlice } from './source-filters.js?v=20261010-build535';
+import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build535';
+import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build535';
+import { tr } from './i18n.js?v=20261010-build535';
+import { frameYield } from './utils.js?v=20261010-build535';
+import { HIST_MIN, HIST_MAX, createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine } from './histogram.js?v=20261010-build535';
 
-const POLL_MS = 400, DRAFT_MIN_SLICES = 240, DRAFT_SLICES = 80, CACHE_MAX = 24, CHART_H = 150, PAD = { l: 34, r: 8, t: 14, b: 20 };
+const POLL_MS = 400, DRAFT_MIN_SLICES = 240, DRAFT_SLICES = 80, CACHE_MAX = 24, CHART_H = 150, GRAB_PX = 6, PAD = { l: 34, r: 8, t: 14, b: 20 };
 const st = {
   open: false, log: false, timer: 0, job: null, lastRun: '', lastDisp: '', doneSig: '', stopSig: '', message: '', lang: '',
   cur: {}, totals: new WeakMap(), runCache: new Map(), volIds: new WeakMap(), nextVolId: 1, drag: null, win: null, hover: null,
@@ -246,21 +246,26 @@ function setSlider(key, which, hu) {
 }
 function hitLine(e) {
   const v = volume; if (!v || !st.canvas) return null;
-  const res = resultsFor(v), r = plotRect(st.canvas), [lo, hi] = chartWindow(res), box = st.canvas.getBoundingClientRect(), x = e.clientX - box.left;
-  let best = null, bd = 9;
+  // CSS px: the canvas is drawn through setTransform(dpr), so clientX - rect.left is already in drawing units
+  const res = resultsFor(v), r = plotRect(st.canvas), [lo, hi] = chartWindow(res), x = e.clientX - st.canvas.getBoundingClientRect().left;
+  const cand = [];
   for (const s of res.list) for (const which of ['min', 'max']) {
-    const hu = which === 'min' ? (s.seg.userMin ?? s.seg.min) : (s.seg.userMax ?? s.seg.max), d = Math.abs(r.x + huToX(hu, lo, hi, r.w) - x);
-    if (d < bd) { bd = d; best = { key: s.key, which }; }
+    const hu = which === 'min' ? (s.seg.userMin ?? s.seg.min) : (s.seg.userMax ?? s.seg.max);
+    cand.push({ key: s.key, which, x: r.x + huToX(hu, lo, hi, r.w) });
   }
-  return best;
+  const i = nearestLine(cand.map(c => c.x), x, GRAB_PX);
+  return i < 0 ? null : { key: cand[i].key, which: cand[i].which };
 }
 function installDrag(canvas) {
   canvas.style.touchAction = 'none';
-  canvas.addEventListener('pointerdown', e => {
+  // the 3D camera controls must not see these events: stop them here (as the 3D view buttons do in scene-view.js)
+  const own = (type, fn) => canvas.addEventListener(type, e => { e.stopPropagation(); fn(e); });
+  own('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     const hit = hitLine(e); if (!hit) return;
     const v = volume; st.drag = hit; st.win = chartWindow(resultsFor(v)); canvas.setPointerCapture?.(e.pointerId); e.preventDefault();
   });
-  canvas.addEventListener('pointermove', e => {
+  own('pointermove', e => {
     if (!st.drag) { canvas.style.cursor = hitLine(e) ? 'ew-resize' : ''; return; }
     const r = plotRect(canvas), [lo, hi] = st.win, box = canvas.getBoundingClientRect();
     setSlider(st.drag.key, st.drag.which, xToHu(e.clientX - box.left - r.x, lo, hi, r.w));
@@ -272,7 +277,8 @@ function installDrag(canvas) {
     segmentControl(which, key)?.dispatchEvent(new Event('change', { bubbles: true })); // on release, like the slider
     st.win = null; draw(true);
   };
-  canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+  own('pointerup', end); own('pointercancel', end);
+  canvas.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
 }
 
 // ---- panel ----

@@ -115,3 +115,9 @@ export function voxelsToMm3(count, spacing) {
 // pixel <-> HU for the chart (window [lo, hi], plot width w)
 export const huToX = (hu, lo, hi, w) => (hu - lo) / Math.max(1, hi - lo) * w;
 export const xToHu = (x, lo, hi, w) => lo + x / Math.max(1, w) * (hi - lo);
+// nearest line to a pointer x (CSS px, same space as xs); -1 when none is within tol px
+export function nearestLine(xs, x, tol = 6) {
+  let best = -1, bd = tol + 1e-9;
+  xs.forEach((lx, i) => { const d = Math.abs(lx - x); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
