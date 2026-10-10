@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { localToVoxelInto, voxelToLocalInto, voxelFromHits, voxelDistanceMm, sameGrid, panelLayout, huRange, plotPoints, panelTexts, huMenuTexts, createHuPanelGate, HU_PANEL_INTERVAL_MS, PANEL_W, PANEL_H } from '../../docs/vr-hu-line-core.js';
+import { localToVoxelInto, voxelToLocalInto, voxelFromHits, voxelDistanceMm, sameGrid, panelLayout, huRange, plotPoints, panelTexts, huMenuTexts, createHuPanelGate, sampleTexture, textureMatchesMode, textureIsReduced, readErrorText, HU_PANEL_INTERVAL_MS, PANEL_W, PANEL_H } from '../../docs/vr-hu-line-core.js';
 import { voxelToLocal } from '../../docs/vr-point.js';
+import { lineSamples } from '../../docs/line-profile.js';
+import { isHuLineDeferred, setHuLineDeferred, onHuLineDeferChange } from '../../docs/hu-line-model.js';
 
 const dims = { columns: 64, rows: 48, slices: 32 }, he = [0.5, 0.375, 0.25];
 
@@ -28,11 +30,11 @@ describe('vr-hu-line-core: ray hit -> voxel', () => {
   });
   it('prefers the tissue hit, falls back to the section plane, null when neither is inside', () => {
     const out = { i: 0, j: 0, k: 0 }, vh = { local: { x: 0.1, y: 0, z: 0 } }, sh = { point: { x: -0.2, y: 0, z: 0 } };
-    expect(voxelFromHits(vh, sh, he, dims, out).via).toBe('volume');
+    expect(voxelFromHits(vh, sh, he, dims, out)).toBe('volume');
     const a = out.i;
-    expect(voxelFromHits(null, sh, he, dims, out).via).toBe('section');
+    expect(voxelFromHits(null, sh, he, dims, out)).toBe('section');
     expect(out.i).toBeLessThan(a);
-    expect(voxelFromHits({ local: { x: 5, y: 0, z: 0 } }, sh, he, dims, out).via).toBe('section'); // a tissue hit outside the box is not used
+    expect(voxelFromHits({ local: { x: 5, y: 0, z: 0 } }, sh, he, dims, out)).toBe('section'); // a tissue hit outside the box is not used
     expect(voxelFromHits(null, null, he, dims, out)).toBeNull();
     expect(voxelFromHits(null, { point: { x: 9, y: 9, z: 9 } }, he, dims, out)).toBeNull();
   });
@@ -47,14 +49,14 @@ describe('vr-hu-line-core: ray hit -> voxel', () => {
 });
 
 describe('vr-hu-line-core: throttle', () => {
-  it('runs about 12.5 Hz while dirty and never when idle', () => {
+  it('runs about 12.5 Hz while dirty and never when idle (and returns a plain boolean: no per-frame object)', () => {
     expect(HU_PANEL_INTERVAL_MS).toBeGreaterThanOrEqual(66); expect(HU_PANEL_INTERVAL_MS).toBeLessThanOrEqual(100); // 10-15 Hz
     const g = createHuPanelGate();
     let runs = 0;
-    for (let t = 0; t < 1000; t += 1000 / 72) if (g.step(t, true).run) runs++; // 72 fps frames, always dirty
+    for (let t = 0; t < 1000; t += 1000 / 72) { const r = g.ready(t, true); expect(typeof r).toBe('boolean'); if (r) runs++; } // 72 fps frames, always dirty
     expect(runs).toBeGreaterThanOrEqual(10); expect(runs).toBeLessThanOrEqual(15);
-    expect(g.step(5000, false)).toEqual({ run: false, wait: 0 });
-    g.reset(); expect(g.step(5001, true).run).toBe(true); // a new press samples at once
+    expect(g.ready(5000, false)).toBe(false);
+    g.reset(); expect(g.ready(5001, true)).toBe(true); // a new press samples at once
   });
 });
 
@@ -94,6 +96,62 @@ describe('vr-hu-line-core: panel layout and plot', () => {
   });
 });
 
+// packs HU values of a w x h x d grid like vr-view.js buildVolumeData (rg8 little-endian u16, bias 32768 = signed, slope 1, intercept 0)
+const packTex = (w, h, d, f, filtered = true) => { const data = new Uint8Array(w * h * d * 2); for (let z = 0; z < d; z++) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const u = Math.round(f(x, y, z)) + 32768, o = ((z * h + y) * w + x) * 2; data[o] = u & 255; data[o + 1] = u >> 8; } return { data, dims: [w, h, d], calibration: [1, 0, 32768], filtered }; };
+describe('vr-hu-line-core: live values from the VR texture copy (also with filters on, where the 2D caches are empty)', () => {
+  const src = { columns: 16, rows: 12, slices: 8 }, f = (x, y, z) => -200 + 10 * x + 3 * y + 25 * z;
+  it('reads the HU back exactly on the same grid, oblique lines included (no NaN)', () => {
+    const tex = packTex(16, 12, 8, f), a = { i: 1, j: 2, k: 1 }, b = { i: 14, j: 9, k: 6 }, s = lineSamples(a, b, [1, 1, 1], 192), out = new Float64Array(s.n);
+    sampleTexture(s, tex, src, out);
+    for (let q = 0; q < s.n; q++) { expect(Number.isFinite(out[q])).toBe(true); expect(out[q]).toBeCloseTo(f(s.x[q], s.y[q], s.z[q]), 0); } // linear field: trilinear is exact up to the 1-HU packing
+    expect(textureIsReduced(tex, src)).toBe(false);
+  });
+  it('a reduced grid is flagged approximate and still finite, within the field\'s slope', () => {
+    const tex = packTex(8, 6, 4, (x, y, z) => f(2 * x + 0.5, 2 * y + 0.5, 2 * z + 0.5)), s = lineSamples({ i: 0, j: 0, k: 0 }, { i: 15, j: 11, k: 7 }, [1, 1, 1], 64), out = new Float64Array(s.n);
+    sampleTexture(s, tex, src, out);
+    expect(textureIsReduced(tex, src)).toBe(true);
+    for (let q = 0; q < s.n; q++) { expect(Number.isFinite(out[q])).toBe(true); expect(Math.abs(out[q] - f(s.x[q], s.y[q], s.z[q]))).toBeLessThan(40); }
+  });
+  it('honours slope / intercept / bias', () => {
+    const tex = { data: new Uint8Array([100, 0, 100, 0]), dims: [2, 1, 1], calibration: [2, -1000, 0], filtered: false }, s = lineSamples({ i: 0, j: 0, k: 0 }, { i: 1, j: 0, k: 0 }, [1, 1, 1], 5), out = new Float64Array(s.n);
+    sampleTexture(s, tex, { columns: 2, rows: 1, slices: 1 }, out);
+    expect([...out].every(v => v === -800)).toBe(true);
+  });
+  it('is used only when its kind (filtered / raw) is the one asked for', () => {
+    const t = { data: new Uint8Array(2), filtered: true };
+    expect(textureMatchesMode(t, 'filtered')).toBe(true); expect(textureMatchesMode(t, 'raw')).toBe(false);
+    expect(textureMatchesMode({ ...t, filtered: false }, 'raw')).toBe(true); expect(textureMatchesMode(null, 'raw')).toBe(false);
+  });
+});
+
+describe('vr-hu-line-core: read errors are clear, never a bare code', () => {
+  it('WebGPU missing, superseded, other', () => {
+    expect(readErrorText('ja', new Error('__GPU_UNAVAILABLE__'))).toContain('WebGPU');
+    expect(readErrorText('en', new Error('__GPU_UNAVAILABLE__'))).toContain('Raw');
+    expect(readErrorText('en', new Error('__SUPERSEDED__'))).toBe('');
+    expect(readErrorText('en', new Error('boom'))).toContain('boom');
+    expect(readErrorText('ja', 'x')).not.toContain('__');
+  });
+  it('the panel title says when the full read failed', () => {
+    expect(panelTexts('en', { stats: null, lengthMm: 1, modeKey: 'filtered', failed: true }).title).toContain('failed');
+    expect(panelTexts('en', { stats: null, lengthMm: 1, modeKey: 'filtered', live: true, approx: true }).title).toContain('approx');
+  });
+});
+
+describe('hu-line-model: heavy work deferral while an immersive session is on', () => {
+  it('toggles, notifies once per change, and unsubscribes', () => {
+    const seen = []; const off = onHuLineDeferChange(v => seen.push(v));
+    expect(isHuLineDeferred()).toBe(false);
+    setHuLineDeferred(true); setHuLineDeferred(true); setHuLineDeferred(false);
+    expect(seen).toEqual([true, false]); off(); setHuLineDeferred(true); setHuLineDeferred(false); expect(seen.length).toBe(2);
+  });
+  it('the PC panel defers its read and runs it when the session ends (source guard)', () => {
+    const ui = readFileSync(new URL('../../docs/line-profile-ui.js', import.meta.url), 'utf8');
+    expect(ui).toContain('if (isHuLineDeferred()) { st.deferred = true; return; }');
+    expect(ui).toContain('onHuLineDeferChange(on => { if (!on && st.deferred)');
+  });
+});
+
 describe('vr-view.js wiring of the HU line (source guard; the file is a WebXR module, not run in node)', () => {
   const src = readFileSync(new URL('../../docs/vr-view.js', import.meta.url), 'utf8');
   it('the trigger hands over to the HU line only when armed, after the menu / ring / board checks, and the release ends it first', () => {
@@ -106,12 +164,25 @@ describe('vr-view.js wiring of the HU line (source guard; the file is a WebXR mo
   });
   it('is updated in the frame loop, disposed on exit, and has its own tab id that does not collide with the quick-ring editor (7)', () => {
     expect(src).toContain('huLine.update(js0)'); expect(src).toContain('huLine.dispose()');
+    expect(src).toContain('setHuLineDeferred(true)'); expect(src).toContain('setHuLineDeferred(false)');
     expect(src).toContain('TAB_IDS=[0,1,2,3,4,5,6,8]'); expect(src).toContain('ui.tab===8'); expect(src).toContain('ui.tab===7');
+  });
+  it('the pick reuses the controller loop\'s hit (no second march) and runs after that loop', () => {
+    const iUpd = src.indexOf('huLine.update(js0)'), iLoop = src.indexOf('for(const c of controllers){\n   // build 468: this hand');
+    expect(iLoop).toBeGreaterThan(0); expect(iUpd).toBeGreaterThan(src.indexOf('c.userData.gate.update(')); // after the whole controller loop body
+    expect(src).toContain('u.vhFrame===frameNo?u.volHit:volumeHit(c)'); expect(src).toContain('c.userData.vhFrame=frameNo'); expect(src).toContain('c.userData.secHit=sh');
+  });
+  it('keeps move / mlabel triggers, silences hover haptics while dragging, and shrinks long menu labels', () => {
+    expect(src).toContain("res.kind!=='move'&&res.kind!=='mlabel'&&huLine.start(c)");
+    expect(src).toContain('!huLine.isDragging()){const hpz=');
+    expect(src).toContain('ctx.fillText(w.label,w.x+w.w/2,w.y+w.h/2+1,Math.max(10,w.w-8))');
   });
   it('the HU-line module allocates no per-frame objects in update() and uses a mipmap-free canvas texture', () => {
     const m = readFileSync(new URL('../../docs/vr-hu-line.js', import.meta.url), 'utf8');
     expect(m).toContain('generateMipmaps = false');
     const u = m.slice(m.indexOf('function update(now)'), m.indexOf('// ---- shared state'));
-    expect(u).not.toMatch(/new THREE\.|new Float|\.map\(|\.filter\(|\[\.\.\./);
+    expect(u).not.toMatch(/new THREE\.|new Float|\.map\(|\.filter\(|\[\.\.\.|\bfor \(const \w+ of \[/);
+    const lay = m.slice(m.indexOf('function placeTube'), m.indexOf('const showModelLine'));
+    expect(lay).not.toMatch(/new THREE\.|new Float|\.map\(|for \(const \w+ of \[/);
   });
 });

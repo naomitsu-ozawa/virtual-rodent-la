@@ -4,7 +4,9 @@ import { dicomFolder } from '../helpers/dicom-folder.js';
 // build 545: the HU line in VR (docs/vr-hu-line.js). A headset is not available here, so the real module is driven in the page with a scripted
 // laser (env.pick) and fake controllers: press = start, frames while held = the line stretches (panel redrawn <= 12.5 Hz), release = end.
 // What is checked: the shared model gets the endpoints (so the PC panel / 3D view show them), the hand panel gets the live + final values,
-// the line mesh follows, clear / disarm behave, and no frame allocates while dragging (update() is called with a counter on the panel canvas).
+// the line mesh follows, clear / disarm behave, the panel is redrawn at about 12.5 Hz (not per frame), and with an image filter ON the live values
+// are real numbers (the VR texture copy), where the 2D caches the old live path needed are empty. The laser pick is a stub here (vr-view.js is not
+// run), so allocation-freedom of the real pick is covered by the unit tests' source guards, not by this file.
 async function openStudy(page) {
   await page.goto('/');
   await page.locator('#folder-input').setInputFiles(dicomFolder());
@@ -25,7 +27,7 @@ const SETUP = `
   const scene = new THREE.Scene(), volMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial()); scene.add(volMesh); volMesh.updateMatrixWorld(true);
   const hand = new THREE.Group(); scene.add(hand);
   const target = { i: 0, j: 0, k: 0 }, flashes = [], pulses = []; let miss = false, refreshes = 0;
-  const huLine = mod.createVrHuLine(THREE, { mesh: () => volMesh, halfExt: () => he, dims: () => dims, language: 'en', pulse: (c, a, ms) => pulses.push([a, ms]), flash: t => flashes.push(t), refresh: () => refreshes++,
+  const huLine = mod.createVrHuLine(THREE, { mesh: () => volMesh, halfExt: () => he, dims: () => dims, language: 'en', pulse: (c, a, ms) => pulses.push([a, ms]), flash: t => flashes.push(t), refresh: () => refreshes++, texture: () => window.__tex || null,
     pick: (c, out) => { if (miss) return null; out.i = target.i; out.j = target.j; out.k = target.k; return out; } });
   window.__vr = { THREE, st, model, core, vol, dims, he, volMesh, hand, target, huLine, flashes, pulses, setMiss: m => { miss = m; }, refreshes: () => refreshes };
 `;
@@ -113,5 +115,72 @@ test('VR HU line: armed press-drag-release shares the line with the PC views, li
   await page.evaluate(() => window.__vr.huLine.setArmed(false));
   expect(await page.evaluate(() => window.__vr.huLine.start(window.__vr.hand))).toBe(false);
   await page.evaluate(() => window.__vr.huLine.dispose());
+  expect(errors).toEqual([]);
+});
+
+// Root cause of "live panel empty": with an image filter on, the 2D side holds no filtered planes in an immersive session, so the cache-only live path
+// returned nothing. The live values now come from the VR texture's CPU copy (here: a stand-in packed like vr-view.js buildVolumeData, marked filtered).
+test('VR HU line with a filter ON: live values are numbers (not NaN) while dragging; the cache-only path would have none', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await openStudy(page);
+  await page.evaluate(`(async () => { ${SETUP} })()`);
+  const r = await page.evaluate(async () => {
+    const w = window.__vr, v = new URL(document.querySelector('script[src*="app.js"]').src).search;
+    const sf = await import('./source-filters.js' + v), eff = await import('./effective-hu-source.js' + v), lp = await import('./hu-line-live.js' + v);
+    const vol = w.vol, { columns: cw, rows: ch, slices: cd } = w.dims, out = {};
+    sf.filterState.gaussian = true; w.st.filterOrder.push('gaussian'); // a filter stage ON (no rebuild is scheduled): the effective mode resolves to 'filtered'
+    out.stages = sf.sourceFilterStages().length;
+    // the texture stand-in: raw HU packed as rg8 u16 (bias 32768, slope 1), full grid, flagged filtered like a filtered VR texture
+    const data = new Uint8Array(cw * ch * cd * 2);
+    for (let z = 0; z < cd; z++) { const sl = await eff.readEffectiveSlice(z, { mode: 'raw', volume: vol }); for (let i = 0; i < cw * ch; i++) { const u = Math.round(sl[i]) + 32768, o = (z * cw * ch + i) * 2; data[o] = u & 255; data[o + 1] = u >> 8; } }
+    // the old cache-only path, on an oblique line, with the filtered planes uncached
+    const a = { i: 4, j: 4, k: 1 }, b = { i: cw - 5, j: ch - 5, k: cd - 2 };
+    out.cacheOnly = lp.liveProfile(a, b, vol.spacing, w.dims, eff.peekEffectiveReaders({ mode: 'filtered', volume: vol }));
+    window.__tex = { data, dims: [cw, ch, cd], calibration: [1, 0, 32768], filtered: true };
+    const h = w.huLine; h.setArmed(true);
+    w.target.i = a.i; w.target.j = a.j; w.target.k = a.k; out.started = h.start(w.hand);
+    let t = 1000;
+    for (let f = 0; f < 40; f++, t += 14) { const q = f / 39; w.target.i = Math.round(a.i + (b.i - a.i) * q); w.target.j = Math.round(a.j + (b.j - a.j) * q); w.target.k = Math.round(a.k + (b.k - a.k) * q); h.update(t); }
+    const st = h.stats(); out.live = st ? { count: st.count, mean: st.mean, min: st.min, max: st.max } : null;
+    out.ended = h.end(w.hand);
+    sf.filterState.gaussian = false; w.st.filterOrder.splice(w.st.filterOrder.indexOf('gaussian'), 1);
+    return out;
+  });
+  expect(r.stages).toBe(1);
+  expect(r.cacheOnly).toBeNull();                 // before: nothing to show for the whole drag
+  expect(r.started).toBe(true);
+  expect(r.live).not.toBeNull();
+  expect(r.live.count).toBeGreaterThan(2);        // after: real values
+  expect(Number.isFinite(r.live.mean) && Number.isFinite(r.live.min) && Number.isFinite(r.live.max)).toBe(true);
+  expect(r.live.min).toBeLessThanOrEqual(r.live.max);
+  expect(r.ended).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+// While the headset session is on (setHuLineDeferred), committing a line must not start the PC panel's full read (30 ms main-thread chunks);
+// it runs when the session ends.
+test('VR HU line: the PC panel read is deferred during the immersive session and runs afterwards', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await openStudy(page);
+  await page.evaluate(`(async () => { ${SETUP} })()`);
+  const plot = page.locator('#line-profile-result .lp-plot');
+  await page.evaluate(() => { const w = window.__vr; w.model.setHuLine({ i: 3, j: 8, k: 2 }, { i: 20, j: 8, k: 2 }, 'final', 'vr'); });
+  await expect.poll(async () => Number(await plot.getAttribute('data-n')), { timeout: 30_000 }).toBeGreaterThan(2); // control: not deferred = it reads
+  await page.evaluate(async () => {
+    (await import('./hu-line-model.js' + new URL(document.querySelector('script[src*="app.js"]').src).search)).clearHuLine('x');
+  });
+  await expect.poll(async () => Number(await plot.getAttribute('data-n')), { timeout: 10_000 }).toBe(0);
+  await page.evaluate(async () => {
+    const v = new URL(document.querySelector('script[src*="app.js"]').src).search, m = await import('./hu-line-model.js' + v);
+    m.setHuLineDeferred(true); m.setHuLine({ i: 3, j: 8, k: 2 }, { i: 20, j: 8, k: 2 }, 'final', 'vr');
+  });
+  await page.waitForTimeout(1500); // longer than the panel's 600 ms stale check
+  expect(Number(await plot.getAttribute('data-n'))).toBe(0);
+  await page.evaluate(async () => (await import('./hu-line-model.js' + new URL(document.querySelector('script[src*="app.js"]').src).search)).setHuLineDeferred(false));
+  await expect.poll(async () => Number(await plot.getAttribute('data-n')), { timeout: 30_000 }).toBeGreaterThan(2);
   expect(errors).toEqual([]);
 });
