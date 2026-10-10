@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { HU_MODE_FILTERED, HU_MODE_RAW, getHuMode, setHuMode, onHuModeChange, resolveHuMode, effectiveHuSignature, createEffectiveReader } from '../../docs/effective-hu.js';
+import { HU_MODE_FILTERED, HU_MODE_RAW, getHuMode, setHuMode, onHuModeChange, resolveHuMode, effectiveHuSignature, createEffectiveReader, segmentNeedsRuns } from '../../docs/effective-hu.js';
 
 const mkReader = stages => {
   const calls = [];
@@ -52,5 +52,18 @@ describe('HU units (source check)', () => {
     const wiring = readFileSync(new URL('../../docs/effective-hu-source.js', import.meta.url), 'utf8');
     expect(wiring).toMatch(/getFilteredSourcePlaneValues\('axial'/);
     expect(wiring).not.toMatch(/slope|intercept|\* ?255/);
+  });
+});
+
+describe('plain-range fast path', () => {
+  it('is used only when no filter stage is active (in-memory volumes included), so membership and values share the same data', () => {
+    expect(segmentNeedsRuns(false, 0)).toBe(false); // unfiltered plain range: slice of the total
+    expect(segmentNeedsRuns(false, 2)).toBe(true); // filters on (in-memory or source-backed): final runs
+    expect(segmentNeedsRuns(true, 0)).toBe(true); // post-processing / edits
+  });
+  it('histogram-ui routes by segmentNeedsRuns, not by sourceBacked', () => {
+    const src = readFileSync(new URL('../../docs/histogram-ui.js', import.meta.url), 'utf8');
+    expect(src).toMatch(/segmentNeedsRuns\(segmentNeedsVoxelMask\(key\), sourceFilterStages\(\)\.length\)/);
+    expect(src).not.toMatch(/sourceBacked && sourceFilterStages/);
   });
 });

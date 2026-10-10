@@ -8,18 +8,18 @@
 //   with progress and cancel. The line is recomputed when the filter settings or the toggle change.
 // - The analysis overlay is pointer-events:none (style.css): every interactive element here re-enables it and stops the pointer
 //   events so the 3D view does not rotate (the Phase 1 lesson).
-import { volume, currentLanguage } from './state.js?v=20261010-build538';
-import { planes } from './ui-shell.js?v=20261010-build538';
-import { tr } from './i18n.js?v=20261010-build538';
-import { frameYield } from './utils.js?v=20261010-build538';
-import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build538';
-import { getHuMode, onHuModeChange, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build538';
-import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build538';
-import { setExtraOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261010-build538';
-import { clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, formatHu } from './crosshair.js?v=20261010-build538';
-import { distanceMm, formatMm } from './measurements.js?v=20261010-build538';
-import { rebinHist } from './histogram.js?v=20261010-build538';
-import { lineSamples, sampleLine, profileStats, nearestSample } from './line-profile.js?v=20261010-build538';
+import { volume, currentLanguage } from './state.js?v=20261010-build539';
+import { planes } from './ui-shell.js?v=20261010-build539';
+import { tr } from './i18n.js?v=20261010-build539';
+import { frameYield } from './utils.js?v=20261010-build539';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build539';
+import { getHuMode, onHuModeChange, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build539';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build539';
+import { setExtraOverlayPainter, requestOverlayDraw } from './crosshair-ui.js?v=20261010-build539';
+import { clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, formatHu } from './crosshair.js?v=20261010-build539';
+import { distanceMm, formatMm } from './measurements.js?v=20261010-build539';
+import { rebinHist } from './histogram.js?v=20261010-build539';
+import { lineSamples, sampleLine, profileStats, nearestSample } from './line-profile.js?v=20261010-build539';
 
 const PLOT_H = 130, HIST_H = 90, PAD = { l: 38, r: 8, t: 12, b: 20 }, DRAG_PX = 6;
 const st = {

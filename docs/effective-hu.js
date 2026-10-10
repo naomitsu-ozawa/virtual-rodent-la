@@ -18,6 +18,12 @@ export const resolveHuMode = (mode, stageCount) => (mode === HU_MODE_RAW || !(st
 // part of every cache key: the filter signature (only when it matters) + the mode actually read
 export const effectiveHuSignature = (mode, stageCount, filterSignature) => (resolveHuMode(mode, stageCount) === HU_MODE_FILTERED ? 'f:' + filterSignature : 'r');
 
+// Does a segment need its final runs (instead of being a plain [min,max] slice of the whole-volume histogram)? The slice is only valid
+// when the histogram values and the segment's own voxel test see the same data: with image filters active the segment is built from
+// filtered data (source-backed: filtered blocks; in-memory: the filtered 3D volume), so membership must come from the final runs,
+// for in-memory volumes too (build 539; before, only source-backed volumes were routed to the runs).
+export const segmentNeedsRuns = (needsVoxelMask, stageCount) => !!needsVoxelMask || stageCount > 0;
+
 // deps: { stageCount(): number, rawSlice(z, v): Float32Array|Int16Array|Promise, filteredSlice(z, v): Float32Array|Promise }
 // readEffectiveSlice(z, { mode, volume }) -> the slice values in HU (row-major, columns x rows). Never copies the volume.
 export function createEffectiveReader(deps) {
