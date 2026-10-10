@@ -94,7 +94,7 @@ export function createVrHuLine(THREE, env) {
     fullBusy = true; if (panelOn) drawPanel();
     try {
       const samples = lineSamples(la, lb, v.spacing);
-      const values = await sampleLine(samples, dims, z => readEffectiveSlice(z, { mode, volume: v }), { cancelled: () => tok !== token || disposed, yieldFn: frameYield });
+      const values = await sampleLine(samples, dims, z => readEffectiveSlice(z, { mode, volume: v }), { cancelled: () => tok !== token || disposed, yieldFn: frameYield, yieldMs: 6 });
       if (!values || tok !== token) return;
       res = { samples, values, stats: profileStats(values), a: la, b: lb, live: false };
     } catch (e) { console.warn('VR HU line read failed', e); if (tok === token) env.flash((env.language === 'en' ? 'HU line read failed: ' : 'HU線の読み取りに失敗: ') + String(e?.message || e)); }
