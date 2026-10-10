@@ -41,8 +41,8 @@ const HALF_WINDOW = 40;  // HU around a peak used for its mass and its centroid
 // - The padding value (the exact minimum value holding >= 0.5 % of the samples: the outside of the reconstruction circle) is
 //   ignored, and so is any "peak" whose mass sits in one 1-HU bin (synthetic / constant data, not a noisy tissue).
 // - Air is the lowest peak holding >= 1 % of the samples; soft tissue the highest-count peak at least MIN_SEPARATION above it.
-//   If that peak is fat (a fat-rich animal), a taller-than-25 % peak above it at the fat position (70-86 % of the way from
-//   air) is taken as soft tissue instead.
+//   If that peak is fat (a fat-rich animal: the tallest peak is also the lowest above air), a peak above it with >= 25 % of
+//   its height that puts it at the fat position (70-86 % of the way from air) is taken as soft tissue instead.
 export function estimateHuScale(hist) {
   const h = Float64Array.from(hist);
   h[0] = 0; h[WIDE_BINS - 1] = 0; // clamped values are not data
@@ -77,7 +77,10 @@ export function estimateHuScale(hist) {
   const above = peaks.filter(p => p.hu >= air.hu + MIN_SEPARATION && p.share >= 0.002);
   if (!above.length) return { ok: false, reason: 'no-soft' };
   let soft = above.reduce((a, b) => (b.height > a.height ? b : a));
-  const higher = above.find(p => p.hu > soft.hu && p.height >= soft.height * 0.25 && (soft.hu - air.hu) / (p.hu - air.hu) >= 0.70 && (soft.hu - air.hu) / (p.hu - air.hu) <= 0.86);
+  // Fat is the first tissue peak above air, so the swap is only allowed when the tallest peak is also the lowest one: an enhanced
+  // organ above a correctly found soft-tissue peak must not take its place. (A lean scan whose fat holds < 0.2 % of the samples
+  // loses this guard: its fat is not a candidate at all.)
+  const higher = above[0] === soft && above.find(p => p.hu > soft.hu && p.height >= soft.height * 0.25 && (soft.hu - air.hu) / (p.hu - air.hu) >= 0.70 && (soft.hu - air.hu) / (p.hu - air.hu) <= 0.86);
   if (higher) soft = higher;
   const sep = soft.hu - air.hu;
   if (sep < MIN_SEPARATION || sep > MAX_SEPARATION) return { ok: false, reason: 'separation' };
