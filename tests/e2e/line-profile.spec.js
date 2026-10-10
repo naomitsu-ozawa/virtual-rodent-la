@@ -30,5 +30,12 @@ test('line profile: draw a line on the axial view, plot + stats appear, hovering
   expect(await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.classList.contains('lp-plot'), [x, y])).toBe(true);
   await page.mouse.move(x, y);
   await expect.poll(async () => (await plot.getAttribute('data-hover')) || '').toMatch(/^[\d.]+\|-?[\d.]+$/);
+  // build 538: the Filtered / Raw toggle is clickable (pointer-events:auto inside the analysis overlay) and shared by the panels
+  const raw = page.locator('#line-profile-result .hu-mode-toggle [data-hu-mode="raw"]');
+  await raw.click();
+  await expect(raw).toHaveClass(/is-active/);
+  await expect(page.locator('#line-profile-result .hu-mode-toggle [data-hu-mode="filtered"]')).not.toHaveClass(/is-active/);
+  await expect.poll(async () => Number(await plot.getAttribute('data-n')), { timeout: 30_000 }).toBeGreaterThan(2);
+  await page.locator('#line-profile-result .hu-mode-toggle [data-hu-mode="filtered"]').click();
   expect(errors).toEqual([]);
 });
