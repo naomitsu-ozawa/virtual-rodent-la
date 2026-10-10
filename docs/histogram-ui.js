@@ -1,38 +1,43 @@
 // Per-segment HU histogram panel of the 3D view's analysis overlay (build 534, PC only; nothing here touches the GPU shaders or VR).
 // - The voxels of a segment are its FINAL runs (getFinalSegmentRuns: filter-aware, post-processing, edits, voxel takers above).
 //   A segment that is a plain HU range on unfiltered data needs no pass of its own: it is a slice of the whole-volume histogram.
-// - The HU values are read slice by slice (getCachedSourceSlice on a source-backed volume; the array itself when it exists), so a
+// - The HU values are read slice by slice through readEffectiveSlice (effective-hu.js): the FILTERED axial planes (what the 2D cards show)
+//   by default, or the raw source values (toggle "フィルター後 / 元の値"); never a full copy of the volume, so a
 //   3.5 GB study is never copied. The pass yields to the UI by time, can be cancelled, restarts when the segment settings change
 //   and reads every N-th slice first (a draft) on long volumes. Results: Uint32Array(4096) per segment (histogram.js), cached by
 //   the segment cache key (segment-cache-key.js).
 // - The HU range of every shown segment is a vertical line; dragging it moves the segment's min / max slider through the very
 //   same events as the slider itself (input while moving, change on release), so the segment code runs exactly as for a slider.
-import { volume, currentLanguage } from './state.js?v=20261010-build537';
-import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build537';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build537';
-import { sourceFilterStages, sourceFilterSignature, getCachedSourceSlice } from './source-filters.js?v=20261010-build537';
-import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build537';
-import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build537';
-import { tr } from './i18n.js?v=20261010-build537';
-import { frameYield } from './utils.js?v=20261010-build537';
-import { HIST_MIN, HIST_MAX, createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine } from './histogram.js?v=20261010-build537';
+import { volume, currentLanguage } from './state.js?v=20261010-build538';
+import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build538';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build538';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build538';
+import { getHuMode, effectiveHuSignature, huModeToggle } from './effective-hu.js?v=20261010-build538';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build538';
+import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build538';
+import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build538';
+import { tr } from './i18n.js?v=20261010-build538';
+import { frameYield } from './utils.js?v=20261010-build538';
+import { HIST_MIN, HIST_MAX, createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine } from './histogram.js?v=20261010-build538';
 
 const POLL_MS = 400, DRAFT_MIN_SLICES = 240, DRAFT_SLICES = 80, CACHE_MAX = 24, CHART_H = 150, GRAB_PX = 6, PAD = { l: 34, r: 8, t: 14, b: 20 };
 const st = {
   open: false, log: false, timer: 0, job: null, lastRun: '', lastDisp: '', doneSig: '', stopSig: '', message: '', lang: '',
-  cur: {}, totals: new WeakMap(), runCache: new Map(), volIds: new WeakMap(), nextVolId: 1, drag: null, win: null, hover: null,
+  cur: {}, totals: new Map(), runCache: new Map(), volIds: new WeakMap(), nextVolId: 1, drag: null, win: null, hover: null,
   el: null, canvas: null, table: null, progress: null, status: null, cancelBtn: null, logBtn: null, linBtn: null, hint: null
 };
 
+const effSig = () => { const stages = sourceFilterStages(); return effectiveHuSignature(getHuMode(), stages.length, stages.length ? sourceFilterSignature(stages) : ''); };
+const totalKey = v => volId(v) + '|' + effSig();
 const volId = v => { let id = st.volIds.get(v); if (!id) { id = st.nextVolId++; st.volIds.set(v, id); } return id; };
 const enabledKeys = () => SEGMENT_PRESET_ORDER.filter(k => segmentState[k].active && segmentState[k].enabled);
 // does the segment need its final runs (post-processing / edits / takers above / filtered source), or is it a plain range of the raw data?
 const needsRuns = (key, v) => segmentNeedsVoxelMask(key) || (!!v.sourceBacked && sourceFilterStages().length > 0);
-const keySig = (key, v) => { const s = segmentState[key]; return [volId(v), sourceFilterSignature(sourceFilterStages()), key, s.min, s.max, s.opening, s.closing, s.minComponent, s.holeFill ? 1 : 0, s.surfaceMm, s.thicknessMm, segmentEditGen[key] | 0, segmentSourceSignature(key, true)].join(','); };
+const keySig = (key, v) => { const s = segmentState[key]; return [volId(v), sourceFilterSignature(sourceFilterStages()), effSig(), key, s.min, s.max, s.opening, s.closing, s.minComponent, s.holeFill ? 1 : 0, s.surfaceMm, s.thicknessMm, segmentEditGen[key] | 0, segmentSourceSignature(key, true)].join(','); };
 // what must be (re)computed: the run-based segments and whether the whole-volume histogram is needed
 function runSignature(v) {
   const keys = enabledKeys(), runKeys = keys.filter(k => needsRuns(k, v)), needTotal = !keys.length || runKeys.length < keys.length;
-  return volId(v) + '|' + (needTotal ? 'T' : '-') + '|' + runKeys.map(k => keySig(k, v)).join(';');
+  return volId(v) + '|' + effSig() + '|' + (needTotal ? 'T' : '-') + '|' + runKeys.map(k => keySig(k, v)).join(';');
 }
 // what is drawn: every shown segment's range as well (cheap: a plain range is a slice of the total)
 const displaySignature = v => runSignature(v) + '|' + enabledKeys().map(k => { const s = segmentState[k]; return [k, s.min, s.max, s.userMin, s.userMax, s.color].join(','); }).join(';') + '|' + st.log + '|' + currentLanguage + '|' + (st.job ? 1 : 0) + st.message;
@@ -42,7 +47,7 @@ function remember(ck, entry) {
   while (st.runCache.size > CACHE_MAX) st.runCache.delete(st.runCache.keys().next().value);
 }
 async function cacheKeyFor(v, key) {
-  const seg = segmentState[key], extra = { hist: 1, vol: volId(v), gen: segmentEditGen[key] | 0, src: segmentSourceSignature(key, true) };
+  const seg = segmentState[key], extra = { hist: 1, vol: volId(v), gen: segmentEditGen[key] | 0, src: segmentSourceSignature(key, true), hu: effSig() };
   try { return await segmentRunsCacheKey(v.series, sourceFilterSignature(sourceFilterStages()), seg, extra); } catch { return keySig(key, v); }
 }
 
@@ -54,13 +59,13 @@ function setProgress(text, fraction) {
   if (st.status) st.status.textContent = text || '';
 }
 async function streamPass(job, v, runs, todo, wantTotal, step, label) {
-  const n = v.slices, plane = v.columns * v.rows, w = v.columns;
+  const n = v.slices, w = v.columns;
   const total = wantTotal ? createHist() : null, hists = todo.map(() => createHist());
-  const mem = v.data && v.data.length >= plane * n ? v.data : null;
+  const raw = rawHuVolume(), mode = getHuMode();
   let last = performance.now(), sampled = 0;
   for (let z = 0; z < n; z += step) {
     if (job.cancelled) return null;
-    const values = mem ? mem.subarray(z * plane, (z + 1) * plane) : await getCachedSourceSlice(v.series.slices[z]);
+    const values = await readEffectiveSlice(z, { mode, volume: raw });
     if (job.cancelled) return null;
     if (total) binValues(total, values);
     for (let i = 0; i < todo.length; i++) binRuns(hists[i], values, runs[todo[i]]?.[z], w);
@@ -80,7 +85,7 @@ async function runJob(sig) {
     const cks = await Promise.all(runKeys.map(k => cacheKeyFor(v, k)));
     runKeys.forEach((k, i) => { st.cur[k] = { ks: keySig(k, v), ck: cks[i] }; });
     const todo = runKeys.filter((k, i) => { const c = st.runCache.get(cks[i]); return !c || c.draft; });
-    const tot = st.totals.get(v), wantTotal = (!keys.length || runKeys.length < keys.length) && (!tot || tot.draft);
+    const tot = st.totals.get(totalKey(v)), wantTotal = (!keys.length || runKeys.length < keys.length) && (!tot || tot.draft);
     const finish = () => { if (job.cancelled) return false; st.doneSig = sig; return true; };
     if (!todo.length && !wantTotal) { finish(); return; }
     const runs = {};
@@ -93,7 +98,7 @@ async function runJob(sig) {
     for (const step of steps) {
       const r = await streamPass(job, v, runs, todo, wantTotal, step, step > 1 ? tr('segHistDraft') : tr('segHistReading'));
       if (!r) return;
-      if (r.total) st.totals.set(v, { hist: r.total, draft: r.draft });
+      if (r.total) { const tk = totalKey(v); st.totals.delete(tk); st.totals.set(tk, { hist: r.total, draft: r.draft }); while (st.totals.size > 6) st.totals.delete(st.totals.keys().next().value); }
       todo.forEach((k, i) => remember(st.cur[k].ck, { hist: r.hists[i], draft: r.draft }));
       draw(true);
     }
@@ -115,7 +120,7 @@ function cancelJob(userAsked) {
 
 // ---- results as drawn ----
 function resultsFor(v) {
-  const out = [], tot = st.totals.get(v);
+  const out = [], tot = st.totals.get(totalKey(v));
   for (const key of enabledKeys()) {
     const seg = segmentState[key];
     let hist = null, draft = false;
@@ -288,7 +293,7 @@ function build() {
   st.linBtn = mk('button', 'seg-hist-mini', tr('segHistLinear')); st.logBtn = mk('button', 'seg-hist-mini', tr('segHistLog'));
   for (const b of [st.linBtn, st.logBtn]) b.type = 'button';
   st.linBtn.onclick = () => { st.log = false; draw(true); }; st.logBtn.onclick = () => { st.log = true; draw(true); };
-  bar.append(title, st.linBtn, st.logBtn);
+  bar.append(title, huModeToggle(currentLanguage, filtersActive), st.linBtn, st.logBtn);
   st.canvas = mk('canvas', 'seg-hist-canvas'); st.canvas.style.height = CHART_H + 'px'; installDrag(st.canvas);
   const prog = mk('div', 'seg-hist-progress');
   st.progress = document.createElement('progress'); st.progress.max = 1; st.progress.value = 0; st.progress.hidden = true;
