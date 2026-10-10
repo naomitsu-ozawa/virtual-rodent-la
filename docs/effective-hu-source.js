@@ -1,8 +1,8 @@
 // App wiring of effective-hu.js (build 538): the real readers. Raw = the source slice (or the resident array); filtered = the
 // filtered axial plane from source-filters.js (cached by filter signature / plane / index, the same path the MPR cards use).
-import { sourceVolume, volume } from './state.js?v=20261010-build539';
-import { sourceFilterStages, getFilteredSourcePlaneValues, getFilteredMemoryPlaneValues, getCachedSourceSlice } from './source-filters.js?v=20261010-build539';
-import { createEffectiveReader } from './effective-hu.js?v=20261010-build539';
+import { sourceVolume, volume } from './state.js?v=20261010-build540';
+import { sourceFilterStages, getFilteredSourcePlaneValues, getFilteredMemoryPlaneValues, getCachedSourceSlice } from './source-filters.js?v=20261010-build540';
+import { createEffectiveReader } from './effective-hu.js?v=20261010-build540';
 
 // the unfiltered volume the filters work on (memory volume: sourceVolume; source-backed: the volume itself)
 export const rawHuVolume = () => sourceVolume || volume;
