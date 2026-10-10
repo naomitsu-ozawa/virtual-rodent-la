@@ -2,16 +2,45 @@
 // shows which preset is active / modified. The values and the pure logic live in analysis-presets.js; nothing here adds a
 // second way of changing a filter or a range: filters go through applyFilterOrder (shared with the project file), the CT
 // window and the segment ranges through setControlValue (the same input / change events a slider drag sends).
-import { $, wc, ww, footer } from './ui-shell.js?v=20261010-build548';
-import { volume, sourceVolume, activeId, ctRangeMode, ctRangeProfile, currentLanguage } from './state.js?v=20261010-build548';
-import { tr } from './i18n.js?v=20261010-build548';
-import { SEGMENT_PRESET_ORDER, segmentState, commitExclusiveRanges } from './segments.js?v=20261010-build548';
-import { addSegmentPreset, applyCtRangeMode, segmentControl, setControlValue, updateSegmentOutputs } from './segment-ui.js?v=20261010-build548';
-import { gatherFilterOrder, applyFilterOrder } from './data-load.js?v=20261010-build548';
+import { $, wc, ww, footer } from './ui-shell.js?v=20261010-build550';
+import { volume, sourceVolume, activeId, activeSeries, ctRangeMode, ctRangeProfile, currentLanguage } from './state.js?v=20261010-build550';
+import { decodeSourceSlice } from './volume-io.js?v=20261010-build550';
+import { createWideHist, addWideValues, estimateHuScale, calibrateSnapshot } from './hu-calibration.js?v=20261010-build550';
+import { tr } from './i18n.js?v=20261010-build550';
+import { SEGMENT_PRESET_ORDER, segmentState, commitExclusiveRanges } from './segments.js?v=20261010-build550';
+import { addSegmentPreset, applyCtRangeMode, segmentControl, setControlValue, updateSegmentOutputs } from './segment-ui.js?v=20261010-build550';
+import { gatherFilterOrder, applyFilterOrder } from './data-load.js?v=20261010-build550';
 import {
   BUILTIN_PRESETS, builtinPresetById, builtinPresetName, normalizeSnapshot, isModified, saveUserPreset, renameUserPreset,
   deleteUserPreset, serializeUserPresets, parseUserPresets, mergeImportedPresets, loadUserPresets, persistUserPresets, cleanPresetName,
-} from './analysis-presets.js?v=20261010-build548';
+} from './analysis-presets.js?v=20261010-build550';
+
+// ---- HU scale of the loaded series (build 550) ------------------------------------------------------------------------
+// Built-in presets are written on the rat practice scan's scale and mapped to the loaded scan through its air and soft-tissue
+// peaks (hu-calibration.js). The peaks come from a sparse sample of the source slices (24 slices spread over the series,
+// every 2nd pixel of every 2nd row: about 1.6 M values for 512 x 512), read from the DICOM source the same way for in-memory
+// and source-backed series, so it works while volume.data is null. One estimate per series object (a reload is a new one);
+// the work yields to the UI every 4 slices.
+const SCALE_SLICES = 24, SCALE_STRIDE = 2;
+const scaleCache = new WeakMap();
+export function estimateSeriesScale(series) {
+  if (!series?.slices?.length) return Promise.resolve({ ok: false, reason: 'no-data' });
+  let p = scaleCache.get(series);
+  if (!p) {
+    p = (async () => {
+      const hist = createWideHist(), d = series.slices.length, n = Math.min(SCALE_SLICES, d);
+      for (let j = 0; j < n; j++) {
+        const meta = series.slices[Math.min(d - 1, Math.floor((j + 0.5) * d / n))];
+        const values = await decodeSourceSlice(meta), w = meta.columns, h = meta.rows;
+        for (let y = 0; y < h; y += SCALE_STRIDE) addWideValues(hist, values, y * w, y * w + w, SCALE_STRIDE);
+        if (j % 4 === 3) await new Promise(r => setTimeout(r, 0));
+      }
+      return estimateHuScale(hist);
+    })().catch(error => { console.warn('HU scale estimate failed:', error); return { ok: false, reason: 'read' }; });
+    scaleCache.set(series, p);
+  }
+  return p;
+}
 
 const store = () => { try { return window.localStorage; } catch { return null; } };
 
@@ -52,11 +81,13 @@ export function initAnalysisPresets() {
   if (!root) return;
   const sel = $('#analysis-preset-select'), nameInput = $('#analysis-preset-name'), activeEl = $('#analysis-preset-active');
   const applyBtn = $('#analysis-preset-apply'), saveBtn = $('#analysis-preset-save'), renameBtn = $('#analysis-preset-rename'), deleteBtn = $('#analysis-preset-delete');
+  const scaleEl = $('#analysis-preset-scale');
   const exportBtn = $('#analysis-preset-export'), importBtn = $('#analysis-preset-import'), importFile = $('#analysis-preset-import-file');
 
   let userPresets = loadUserPresets(store());
   let active = null;     // { kind: 'builtin' | 'user', id, name, baseline }
   let applying = false;
+  let estimating = false;
   let seriesKey = null;
   let lastRender = '';
 
@@ -97,12 +128,13 @@ export function initAnalysisPresets() {
     // the option list follows the language and the user list
     const optKey = lang() + '#' + userPresets.map(p => p.id + p.name).join('|');
     if (optKey !== lastRender) { lastRender = optKey; buildOptions(sel.value); }
+    renderScale();
     const cur = selected();
     const a = activeLabel();
     if (activeEl.textContent !== a.text) activeEl.textContent = a.text;
     activeEl.dataset.state = a.state;
     const isUser = cur?.kind === 'user';
-    sel.disabled = !volume; applyBtn.disabled = !ready || !cur;
+    sel.disabled = !volume; applyBtn.disabled = !ready || !cur || estimating;
     saveBtn.disabled = !ready; nameInput.placeholder = tr('presetNamePlaceholder');
     renameBtn.disabled = !isUser; deleteBtn.disabled = !isUser;
     exportBtn.disabled = !userPresets.length; importBtn.disabled = false;
@@ -112,15 +144,39 @@ export function initAnalysisPresets() {
     if (applying) return;
     // a different data set: the preset was applied to the previous one
     const k = activeId + ':' + (sourceVolume ? 1 : 0);
-    if (seriesKey !== k) { seriesKey = k; active = null; }
+    if (seriesKey !== k) { seriesKey = k; active = null; setScale(null); }
     render();
   }
 
-  function apply(cur) {
-    if (!cur?.snap) return;
+  // the line under the selector that says how the last preset's HU values were obtained (re-rendered on a language change)
+  let scaleInfo = null; // { state: 'busy' | 'ok' | 'failed' | 'user', air, soft }
+  function setScale(info) { scaleInfo = info; renderScale(); }
+  function renderScale() {
+    if (!scaleEl) return;
+    const i = scaleInfo;
+    const text = !i ? '' : i.state === 'busy' ? tr('presetScaleEstimating') : i.state === 'ok' ? tr('presetScaleFrom').replace('{air}', i.air).replace('{soft}', i.soft) : i.state === 'failed' ? tr('presetScaleFailed') : tr('presetScaleUser');
+    if (scaleEl.textContent !== text) scaleEl.textContent = text;
+    scaleEl.dataset.state = i?.state || 'none'; scaleEl.classList.toggle('is-hidden', !text);
+  }
+
+  // user presets hold absolute HU and are applied as they are; built-in presets are mapped to the loaded scan's HU scale
+  async function apply(cur) {
+    if (!cur?.snap || estimating) return;
+    let snap = cur.snap;
+    if (cur.kind === 'builtin') {
+      const series = activeSeries, vol = sourceVolume;
+      estimating = true; setScale({ state: 'busy' }); render();
+      let scale;
+      try { scale = await estimateSeriesScale(series); } finally { estimating = false; }
+      if (activeSeries !== series || sourceVolume !== vol) { setScale(null); render(); return; } // the data changed meanwhile
+      if (scale?.ok) {
+        snap = calibrateSnapshot(cur.snap, scale);
+        setScale({ state: 'ok', air: scale.air, soft: scale.soft });
+      } else setScale({ state: 'failed' });
+    } else setScale({ state: 'user' });
     applying = true;
     try {
-      if (!applySettings(cur.snap)) return;
+      if (!applySettings(snap)) return;
       // the baseline is what the controls hold after the apply (a slider may have snapped or clamped a value)
       active = { kind: cur.kind, id: cur.id, name: cur.name, baseline: captureSettings() };
       footer.textContent = tr('presetApplied') + cur.name;
@@ -129,7 +185,7 @@ export function initAnalysisPresets() {
   }
 
   sel.addEventListener('change', () => { const c = selected(); if (c?.kind === 'user') nameInput.value = c.name; render(); });
-  applyBtn.addEventListener('click', () => apply(selected()));
+  applyBtn.addEventListener('click', () => { void apply(selected()); });
   saveBtn.addEventListener('click', () => {
     const snap = captureSettings(); const name = cleanPresetName(nameInput.value);
     if (!snap) return;

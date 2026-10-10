@@ -1141,6 +1141,8 @@ html.vrl-ipad-ui .ipad-mode-split .viewer-grid[data-dock="split-full"]>.analysis
 .analysis-preset-active{font-size:11px;color:rgb(var(--ui-t4))}
 .analysis-preset-active[data-state="clean"]{color:rgb(var(--ui-t2));font-weight:700}
 .analysis-preset-active[data-state="modified"]{color:rgb(var(--ui-t1));font-weight:700;text-decoration:underline dotted}
+.analysis-preset-scale{margin:0;font-size:11px;color:rgb(var(--ui-t3))}
+.analysis-preset-scale[data-state="failed"]{color:rgb(var(--ui-t1));font-weight:700}
 .analysis-preset-row{display:flex;gap:6px;align-items:center}
 .analysis-preset-row .filter-select,.analysis-preset-name{flex:1;min-width:0}
 .analysis-preset-name{min-height:34px;border:1px solid rgb(var(--ui-b3));border-radius:8px;background:rgb(var(--ui-s1));color:rgb(var(--ui-t2));padding:5px 8px;font-size:11px}

@@ -15,8 +15,11 @@
 //   sample2 (mouse torso, 0.118 mm): air -2012, fat -442, soft tissue -8, noise SD about 42 HU; lung (z < 60) -925.
 // The two scans are on DIFFERENT HU SCALES: sample2 = 1.692 x sample1 - 274 (fitted on air and soft tissue; it predicts the
 // sample2 fat peak at -439, measured -442; fat sits at 78.5 % / 78.3 % of the way from air to soft tissue on both). No single
-// fixed HU range fits both, so the ranges below are on sample1's scale (the scale of the app's default segment ranges, and
-// air close to -1000). On sample2 they must be adjusted (see each preset).
+// fixed HU range fits both, so the ranges below are written on sample1's scale and, when a built-in preset is applied, mapped
+// to the loaded scan through its own air and soft-tissue peaks (hu-calibration.js: REFERENCE_SCALE is sample1's estimate,
+// air -1018 / soft tissue +152 with the app's sampling; sample2 gives -2008 / -18). If the peaks are not found the values below
+// are used as they are. User presets hold absolute HU and are never mapped. The "sample2" figures in the comments below are
+// what the mapping gives on that scan.
 //
 // Filters: every preset uses the bilateral filter at its own default parameters (strength 0.8, spatial sigma 1.2, 50 HU,
 // 2 passes). With noise about 40 HU on both scans it halves the noise SD (sample1 fat 39.5 -> 20.4, soft 40.8 -> 22.6;
@@ -60,7 +63,7 @@ export const BUILTIN_PRESETS = [
     // Only sample2 has lung (its lower thorax). Measured there on its own scale: parenchyma peak -925, range about
     // -1100 .. -600, valley to fat / soft tissue at about -525. Transferred to sample1's scale with the fitted map: peak -385,
     // valley -148; the lower edge -700 is the midpoint between air and the lung peak (sample2 -1468 -> -706). This range is
-    // DERIVED BY TRANSFER, not measured: no scan on sample1's scale has a thorax. On sample2 itself use about -1450 .. -530.
+    // DERIVED BY TRANSFER, not measured: no scan on sample1's scale has a thorax. On sample2 the mapping gives -1467 .. -532.
     display: { windowCenter: -450, windowWidth: 1200 },   // -1050 .. 150: air (-1028) black, soft tissue (+158) white
     segments: { lung: { min: -700, max: -150 } },
   },
@@ -70,7 +73,7 @@ export const BUILTIN_PRESETS = [
     filters: filtersDefault(),
     // sample1: fat peak -98, soft-tissue peak +158, valley between them at +8 (flat from about -40 to +20); -250 lies in the
     // nearly empty gap between air and fat (-550 .. -250). The range holds 96 % of sample1's fat region (the app's default
-    // -250 .. -50 held 83 %, the previous draft -190 .. -30 90 %). On sample2 the fat peak is -442: use about -700 .. -275.
+    // -250 .. -50 held 83 %, the previous draft -190 .. -30 90 %). On sample2 the mapping gives -702 .. -277 (its fat peak is -442).
     display: { windowCenter: 0, windowWidth: 500 },       // -250 .. 250: fat dark grey, soft tissue light grey
     segments: { fat: { min: -250, max: 0 } },
   },
@@ -79,8 +82,8 @@ export const BUILTIN_PRESETS = [
     name: { ja: '骨', en: 'Bone' },
     filters: filtersDefault(),
     // Soft tissue ends below 350 on sample1 (99.9th percentile of its local mean 258; above about 350 the count stays flat at
-    // the bone partial-volume level); no soft-tissue core voxel reaches 350, with or without the filter. The same edge maps to
-    // 318 on sample2, where its soft tissue ends at 124 and the flat level starts at about 340: this lower edge works on both.
+    // the bone partial-volume level); no soft-tissue core voxel reaches 350, with or without the filter. The mapping gives 319
+    // on sample2, where its soft tissue ends at 124 and the flat level starts at about 340: this lower edge works on both.
     display: { windowCenter: 900, windowWidth: 2000 },    // -100 .. 1900: bone voxels on sample1 have median 1104, 90th pct. 1664
     segments: { bone: { min: 350, max: HU_TOP } },
   },
@@ -90,8 +93,8 @@ export const BUILTIN_PRESETS = [
     filters: filtersDefault(),
     // Soft tissue from the fat / soft valley (+8 on sample1, rounded to 0) to the bone edge 350 (above the 99.9th percentile
     // 258). Neither sample has contrast-enhanced tissue (nothing between the soft-tissue tail and bone), so the contrast range
-    // simply continues above 350 and is NOT validated. On sample2 soft tissue is -250 .. 318 (peak -8), and its holder tube
-    // reads -40 .. 0, inside that range.
+    // simply continues above 350 and is NOT validated. On sample2 the mapping gives soft tissue -277 .. 319 (peak -8); its holder
+    // tube reads -40 .. 0, inside that range.
     display: { windowCenter: 150, windowWidth: 500 },     // -100 .. 400: fat dark, soft tissue (+158) mid grey
     segments: { soft: { min: 0, max: 350 }, contrast: { min: 350, max: HU_TOP } },
   },
