@@ -121,3 +121,22 @@ export function nearestLine(xs, x, tol = 6) {
   xs.forEach((lx, i) => { const d = Math.abs(lx - x); if (d < bd) { bd = d; best = i; } });
   return best;
 }
+
+// ---- chart helpers shared by the PC chart (histogram-ui.js) and the VR panel (vr-histogram-layout.js) ----
+// a tick step (HU) that keeps the axis to at most maxTicks labels
+export function niceStep(span, maxTicks) {
+  for (const s of [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000]) if (span / s <= maxTicks) return s;
+  return 2000;
+}
+// the HU window [lo, hi] a chart shows: the union of `spans` ([a, b] pairs: data extents and segment ranges), a little padding,
+// clamped to the histogram range and at least 50 HU wide; no span at all gives the default soft-tissue window
+export function fitWindow(spans) {
+  let lo = Infinity, hi = -Infinity;
+  for (const s of spans) { if (s[0] < lo) lo = s[0]; if (s[1] > hi) hi = s[1]; }
+  if (!(hi > lo)) { lo = -200; hi = 400; }
+  lo = Math.max(HIST_MIN, Math.min(HIST_MAX, lo)); hi = Math.max(HIST_MIN, Math.min(HIST_MAX, hi));
+  const pad = Math.max(10, (hi - lo) * 0.04);
+  lo = Math.max(HIST_MIN, Math.floor(lo - pad)); hi = Math.min(HIST_MAX, Math.ceil(hi + pad));
+  if (hi - lo < 50) hi = lo + 50;
+  return [lo, hi];
+}

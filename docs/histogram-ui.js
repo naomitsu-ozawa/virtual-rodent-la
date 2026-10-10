@@ -8,21 +8,22 @@
 //   the segment cache key (segment-cache-key.js).
 // - The HU range of every shown segment is a vertical line; dragging it moves the segment's min / max slider through the very
 //   same events as the slider itself (input while moving, change on release), so the segment code runs exactly as for a slider.
-import { volume, current3DVolume, currentLanguage } from './state.js?v=20261010-build542';
-import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build542';
-import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build542';
-import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build542';
-import { getHuMode, effectiveHuSignature, huModeToggle, segmentNeedsRuns } from './effective-hu.js?v=20261010-build542';
-import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build542';
-import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build542';
-import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build542';
-import { tr } from './i18n.js?v=20261010-build542';
-import { frameYield } from './utils.js?v=20261010-build542';
-import { HIST_MIN, HIST_MAX, createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine } from './histogram.js?v=20261010-build542';
+import { volume, current3DVolume, currentLanguage } from './state.js?v=20261010-build543';
+import { segmentState, SEGMENT_PRESET_ORDER, segmentNeedsVoxelMask, segmentEditGen, segmentSourceSignature } from './segments.js?v=20261010-build543';
+import { getFinalSegmentRuns } from './segment-runs.js?v=20261010-build543';
+import { sourceFilterStages, sourceFilterSignature } from './source-filters.js?v=20261010-build543';
+import { getHuMode, effectiveHuSignature, huModeToggle, segmentNeedsRuns } from './effective-hu.js?v=20261010-build543';
+import { readEffectiveSlice, rawHuVolume, filtersActive } from './effective-hu-source.js?v=20261010-build543';
+import { segmentRunsCacheKey } from './segment-cache-key.js?v=20261010-build543';
+import { setCtSliderRange, ctSliderFullBounds, segmentControl } from './segment-ui.js?v=20261010-build543';
+import { tr } from './i18n.js?v=20261010-build543';
+import { frameYield } from './utils.js?v=20261010-build543';
+import { createHist, binValues, binRuns, scaleHist, histInRange, rebinHist, histExtent, histStats, voxelsToMm3, huToX, xToHu, nearestLine, niceStep, fitWindow } from './histogram.js?v=20261010-build543';
 
 const POLL_MS = 400, DRAFT_MIN_SLICES = 240, DRAFT_SLICES = 80, CACHE_MAX = 24, CHART_H = 150, GRAB_PX = 6, PAD = { l: 34, r: 8, t: 14, b: 20 };
 const st = {
   open: false, log: false, timer: 0, job: null, lastRun: '', lastDisp: '', doneSig: '', stopSig: '', message: '', lang: '',
+  users: new Set(), listeners: new Set(), sliceMs: 30, // users: other consumers of the results (the VR panel); sliceMs: how long a pass works before it yields
   cur: {}, totals: new Map(), runCache: new Map(), volIds: new WeakMap(), nextVolId: 1, drag: null, win: null, hover: null,
   el: null, canvas: null, table: null, progress: null, status: null, cancelBtn: null, logBtn: null, linBtn: null, hint: null
 };
@@ -72,7 +73,7 @@ async function streamPass(job, v, runs, todo, wantTotal, step, label) {
     if (total) binValues(total, values);
     for (let i = 0; i < todo.length; i++) binRuns(hists[i], values, runs[todo[i]]?.[z], w);
     sampled++;
-    if (performance.now() - last > 30) { setProgress(label + ' ' + Math.round(100 * z / n) + '%', z / n); await frameYield(); last = performance.now(); }
+    if (performance.now() - last > st.sliceMs) { setProgress(label + ' ' + Math.round(100 * z / n) + '%', z / n); await frameYield(); last = performance.now(); }
   }
   const k = sampled ? n / sampled : 1;
   return { total: total && (k === 1 ? total : scaleHist(total, k)), hists: hists.map(h => (k === 1 ? h : scaleHist(h, k))), draft: step > 1 };
@@ -135,25 +136,19 @@ function resultsFor(v) {
 
 // ---- chart ----
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-function niceStep(span, maxTicks) {
-  for (const s of [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000]) if (span / s <= maxTicks) return s;
-  return 2000;
+// the HU spans that decide the chart window: every segment's data extent and range line, and the whole-volume extent
+export function chartSpans(res) {
+  const spans = [];
+  for (const r of res.list) {
+    const e = r.hist && histExtent(r.hist); if (e) spans.push(e);
+    spans.push([r.seg.userMin ?? r.seg.min, r.seg.userMax ?? r.seg.max]);
+  }
+  if (res.total) { const e = histExtent(res.total.hist); if (e) spans.push(e); }
+  return spans;
 }
 function chartWindow(res) {
   if (st.drag && st.win) return st.win;
-  let lo = Infinity, hi = -Infinity;
-  const add = (a, b) => { if (a < lo) lo = a; if (b > hi) hi = b; };
-  for (const r of res.list) {
-    const e = r.hist && histExtent(r.hist); if (e) add(e[0], e[1]);
-    add(r.seg.userMin ?? r.seg.min, r.seg.userMax ?? r.seg.max);
-  }
-  if (res.total) { const e = histExtent(res.total.hist); if (e) add(e[0], e[1]); }
-  if (!(hi > lo)) { lo = -200; hi = 400; }
-  lo = clamp(lo, HIST_MIN, HIST_MAX); hi = clamp(hi, HIST_MIN, HIST_MAX);
-  const pad = Math.max(10, (hi - lo) * 0.04);
-  lo = Math.max(HIST_MIN, Math.floor(lo - pad)); hi = Math.min(HIST_MAX, Math.ceil(hi + pad));
-  if (hi - lo < 50) hi = lo + 50;
-  return (st.win = [lo, hi]);
+  return (st.win = fitWindow(chartSpans(res)));
 }
 function plotRect(canvas) { return { x: PAD.l, y: PAD.t, w: Math.max(10, canvas.clientWidth - PAD.l - PAD.r), h: CHART_H - PAD.t - PAD.b }; }
 function drawChart(res) {
@@ -228,6 +223,7 @@ function drawTable(res, v) {
   t.replaceChildren(table);
 }
 function draw(force = false) {
+  emit();
   if (!st.open || !st.el) return;
   const v = volume;
   if (!v) { st.table?.replaceChildren(); return; }
@@ -308,8 +304,8 @@ function build() {
 }
 function tick(force = false) {
   const v = volume;
-  if (!st.open || !v) { if (st.job && !v) cancelJob(false); return; }
-  if (st.lang !== currentLanguage) { build(); draw(true); }
+  if (!active() || !v) { if (st.job && !v) cancelJob(false); return; }
+  if (st.lang !== currentLanguage) { if (st.open) build(); else st.lang = currentLanguage; draw(true); }
   const run = runSignature(v), disp = displaySignature(v);
   if (disp !== st.lastDisp) { st.lastDisp = disp; draw(true); }
   if (run !== st.lastRun) {
@@ -320,10 +316,30 @@ function tick(force = false) {
 }
 function setOpen(on, btn) {
   st.open = !!on; st.el.classList.toggle('is-hidden', !st.open); btn.classList.toggle('is-active', st.open);
-  clearInterval(st.timer); st.timer = 0;
-  if (st.open) { build(); st.lastRun = ''; st.lastDisp = ''; st.timer = setInterval(tick, POLL_MS); tick(true); requestAnimationFrame(() => draw(true)); }
-  else cancelJob(false);
+  restart();
+  if (st.open) requestAnimationFrame(() => draw(true));
 }
+// (re)start the poll while the PC card is open or another consumer (the VR panel) holds the results; stop it, and the pass, when nobody does
+function restart() {
+  clearInterval(st.timer); st.timer = 0;
+  if (!active()) { cancelJob(false); return; }
+  if (st.open) build();
+  st.lastRun = ''; st.lastDisp = ''; st.timer = setInterval(tick, POLL_MS); tick(true);
+}
+const active = () => st.open || st.users.size > 0;
+function emit() { for (const fn of st.listeners) { try { fn(); } catch (e) { console.error(e); } } }
+
+// ---- results for other consumers (the VR histogram panel, docs/vr-histogram-panel.js): the same pass, cache, filtered / raw mode and chart rules ----
+// acquireHistogram(id) keeps the pass running (without the PC card) until releaseHistogram(id); onHistogramChange(fn) is called whenever the
+// drawn results may have changed (cheap: set a flag in fn, read getHistogramView() later); sliceMs = how long a pass works before it yields.
+export function acquireHistogram(id, { sliceMs } = {}) { st.users.add(id); if (sliceMs > 0) st.sliceMs = sliceMs; if (!st.timer) restart(); }
+export function releaseHistogram(id) { st.users.delete(id); if (!st.users.size) st.sliceMs = 30; if (!active()) restart(); }
+export function onHistogramChange(fn) { st.listeners.add(fn); return () => st.listeners.delete(fn); }
+export function getHistogramView() {
+  const v = volume;
+  return { volume: v || null, res: v ? resultsFor(v) : { list: [], total: null }, busy: !!st.job, message: st.message, log: st.log, noSeg: !enabledKeys().length };
+}
+export function setHistogramLog(on) { st.log = !!on; draw(true); }
 export function installSegmentHistogram() {
   const btn = document.getElementById('seg-hist-toggle'), box = document.getElementById('seg-hist-result');
   if (!btn || !box) return;

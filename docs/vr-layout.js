@@ -10,6 +10,9 @@ export const MENU_OFFSET = { fwd: 0.78, left: 0.45, down: 0.2 };
 export const HELP_OFFSET = { fwd: 0.78, left: -0.45, down: 0.2 };
 // board widths in metres: unchanged from before (not scaled with the distance)
 export const MENU_WIDTH = 0.5, HELP_WIDTH = 0.32;
+// build 543: the HU histogram board sits above the help board (front-right, mirrored from the menu) and is 0.46 m wide.
+export const HIST_OFFSET = { fwd: 0.78, left: -0.45, down: -0.1 };
+export const HIST_WIDTH = 0.46;
 export const boardDistance = o => Math.hypot(o.fwd, o.left, o.down);
 // head: {x,y,z}; fwd / left: unit horizontal vectors {x,z}
 export const placeFromHead = (head, fwd, left, o) => ({ x: head.x + fwd.x * o.fwd + left.x * o.left, y: head.y - o.down, z: head.z + fwd.z * o.fwd + left.z * o.left });
