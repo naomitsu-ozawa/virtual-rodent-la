@@ -97,10 +97,10 @@ describe('the menu / help boards (build 500): a board covered by the tissue is n
     expect(boardVisible({ distance: 1.0 }, 1.0)).toBe(true); // a tie keeps the board
     expect(boardVisible(null, 0.5)).toBe(false); expect(boardVisible(null, null)).toBe(false);
   });
-  it('vr-view.js: boardHits drops the menu / help hit by that rule (rings keep theirs: no depth test); the boards stay depth tested', () => {
+  it('vr-view.js: boardHits drops the menu / help / histogram-board hit by that rule (rings keep theirs: no depth test); the boards stay depth tested', () => {
     const bh = src.slice(src.indexOf('const boardHits=c=>{'), src.indexOf('help.onDraw('));
-    expect(has(bh, 'o.menu=menuHit(c);o.help=helpHit(c);o.wheel=ringHit(c,wheel);o.pwheel=ringHit(c,pointWheel);')).toBe(true);
-    expect(has(bh, 'if(o.menu||o.help){const tv=volumeHit(c)?.distance;if(!boardVisible(o.menu,tv))o.menu=null;if(!boardVisible(o.help,tv))o.help=null}')).toBe(true);
+    expect(has(bh, 'o.menu=menuHit(c);o.help=helpHit(c);o.hist=histHit(c);o.wheel=ringHit(c,wheel);o.pwheel=ringHit(c,pointWheel);')).toBe(true);
+    expect(has(bh, 'if(o.menu||o.help||o.hist){const tv=volumeHit(c)?.distance;if(!boardVisible(o.menu,tv))o.menu=null;if(!boardVisible(o.help,tv))o.help=null;if(!boardVisible(o.hist,tv))o.hist=null}')).toBe(true);
     expect(bh.indexOf('boardVisible(o.menu')).toBeLessThan(bh.indexOf('let bd=Infinity')); // before the nearest board is chosen
     expect(bh).not.toMatch(/boardVisible\(o\.(wheel|pwheel)/);
     expect(has(src, 'new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false}));let widgets=[]')).toBe(true);

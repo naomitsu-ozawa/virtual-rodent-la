@@ -37,6 +37,6 @@ describe('default VR/AR layout', () => {
   it('vr-view.js wires the histogram board: menu button, shared HU mode, release on exit', () => {
     const s = readFileSync('docs/vr-view.js', 'utf8');
     expect(s).toMatch(/createVrHistogramPanel\(THREE/); expect(s).toMatch(/acquireHistogram\('vr'/); expect(s).toMatch(/releaseHistogram\('vr'\)/);
-    expect(s).toMatch(/setHuMode\(HU_MODE_FILTERED\)/); expect(s).toMatch(/setHuMode\(HU_MODE_RAW\)/); expect(s).toMatch(/hist\.update\(/);
+    expect(s).toMatch(/setHuMode\(HU_MODE_FILTERED\)/); expect(s).toMatch(/setHuMode\(HU_MODE_RAW\)/); expect(s).toMatch(/hist\.update\(/); expect(s).toMatch(/o\.hist=histHit\(c\)/); expect(s).toMatch(/bd\.help\|\|bd\.hist/);
   });
 });

@@ -1094,6 +1094,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
  const histTarget=new THREE.Vector3();let histMoving=false,histPlaced=false;
  const computeHistTarget=()=>{histTarget.copy(head).addScaledVector(headFwd,HIST_OFFSET.fwd).addScaledVector(headLeft,HIST_OFFSET.left);histTarget.y-=HIST_OFFSET.down};
  const placeHistNow=()=>{readHead();computeHistTarget();hist.group.position.copy(histTarget);hist.group.lookAt(head);histPlaced=true;histMoving=false};
+ const histHit=c=>{if(!hist.isOpen)return null;setRay(c);return raycaster.intersectObject(hist.board,false)[0]||null}; // the laser stops on the board (it has no widgets)
  const unsubHist=onHistogramChange(()=>hist.invalidate());
  const setHistOpen=on=>{if(on===hist.isOpen)return;hist.setOpen(on);if(on){acquireHistogram('vr',{sliceMs:5});if(poseAt)placeHistNow();else histPlaced=false}else releaseHistogram('vr')}; // the pass yields every 5 ms (PC: 30 ms) so a frame is never blocked
  // build 468: ring menus (vr-ring.js): the quick ring around the hand (A/X short) and the point ring (long press on a point)
@@ -1111,14 +1112,14 @@ export async function startVrView({language='ja',mode='vr'}={}){
  // Nothing behind the disc is hit while the ray is inside it (menu / help / points / planes / volume).
  const ringHit=(c,ring)=>{if(!ring.mesh.visible)return null;setRay(c);const x=raycaster.intersectObject(ring.mesh,false)[0];if(!x||!x.uv)return null;const k=ring.slotFromUv(x.uv);return k===null&&!ring.inDisk(x.uv)?null:{distance:x.distance,slot:k}};
  // the nearest of the menu, the help board and the ring items along the ray wins; {menu,help,wheel,pwheel}
- const bhOut={menu:null,help:null,wheel:null,pwheel:null,undoBtn:null}; // reused (read at once by the caller, never kept)
+ const bhOut={menu:null,help:null,hist:null,wheel:null,pwheel:null,undoBtn:null}; // reused (read at once by the caller, never kept)
  const boardHits=c=>{
-  const o=bhOut;o.menu=menuHit(c);o.help=helpHit(c);o.wheel=ringHit(c,wheel);o.pwheel=ringHit(c,pointWheel);o.undoBtn=undoBtn.mesh.visible?(setRay(c),undoBtn.hit(raycaster)):null; // build 521: drawn without a depth test, like the rings: not hidden by tissue
+  const o=bhOut;o.menu=menuHit(c);o.help=helpHit(c);o.hist=histHit(c);o.wheel=ringHit(c,wheel);o.pwheel=ringHit(c,pointWheel);o.undoBtn=undoBtn.mesh.visible?(setRay(c),undoBtn.hit(raycaster)):null; // build 521: drawn without a depth test, like the rings: not hidden by tissue
   // build 500: the boards are depth tested, so tissue in front of a board hides it (build 497): a board the volume surface covers along the ray is not hit (no invisible buttons, the laser goes on to the tissue).
   // The rings are drawn without a depth test and stay hit. (the surface hit is marched only when a board is under the ray)
-  if(o.menu||o.help){const tv=volumeHit(c)?.distance;if(!boardVisible(o.menu,tv))o.menu=null;if(!boardVisible(o.help,tv))o.help=null}
-  let bd=Infinity,bk=null;for(const k of ['menu','help','wheel','pwheel','undoBtn']){const x=o[k];if(x&&x.distance<bd){bd=x.distance;bk=k}}
-  for(const k of ['menu','help','wheel','pwheel','undoBtn'])if(k!==bk)o[k]=null;
+  if(o.menu||o.help||o.hist){const tv=volumeHit(c)?.distance;if(!boardVisible(o.menu,tv))o.menu=null;if(!boardVisible(o.help,tv))o.help=null;if(!boardVisible(o.hist,tv))o.hist=null}
+  let bd=Infinity,bk=null;for(const k of ['menu','help','hist','wheel','pwheel','undoBtn']){const x=o[k];if(x&&x.distance<bd){bd=x.distance;bk=k}}
+  for(const k of ['menu','help','hist','wheel','pwheel','undoBtn'])if(k!==bk)o[k]=null;
   return o};
  help.onDraw(()=>{
   const w=[],lines=section.on?L.helpSec.slice():L.helpBasic.slice();
@@ -1625,7 +1626,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
    if(bd.wheel&&bd.wheel.slot!==null){confirmWheel(bd.wheel.slot,c);return}
    if(bd.pwheel&&bd.pwheel.slot!==null){confirmPoint(bd.pwheel.slot,c);return}
    if(bd.undoBtn){restoreSection(c);return} // build 521: 「元に戻す」 after a section was deleted
-   if(bd.help)return;
+   if(bd.help||bd.hist)return; // build 543: the histogram board has no buttons; a press on it does nothing and does not reach what is behind it
    if((bd.wheel||bd.pwheel)&&wheelOwner!==c&&pw?.c!==c)return; // blank part of a ring disc, not this hand's ring: nothing, and it does not pass through
    const r0=c.userData.res,res=r0&&r0.kind!=='board'?r0:{kind:'none',ref:null},now=performance.now(),hp=handInHolder(c);
    // this hand's ring is open: the press confirms the lit item, or only closes the ring
@@ -2131,7 +2132,7 @@ export async function startVrView({language='ja',mode='vr'}={}){
   for(const c of controllers){
    // build 468: this hand's candidates (the press uses the values of the previous frame: c.userData.res); a section's plane is not a candidate
    // (only its thin frame band and number tag), so it can no longer take the laser from what is behind it
-   const bd=boardHits(c),h=bd.menu,hh=bd.help,rh=bd.wheel||bd.pwheel,board=h||hh||bd.undoBtn||(rh&&rh.slot!==null?rh:null),ray=c.userData.ray,nowF=performance.now();
+   const bd=boardHits(c),h=bd.menu,hh=bd.help,rh=bd.wheel||bd.pwheel,board=h||hh||bd.hist||bd.undoBtn||(rh&&rh.slot!==null?rh:null),ray=c.userData.ray,nowF=performance.now();
    if(bd.undoBtn)undoLit=true;
    let tab=null,pt=null,mlb=null,band=null,vh=null,sh=null;
    const selOk=!!(section.on&&section.selected&&!draggedBy(section.selected,c)),anyOk=section.on&&planes.some(p=>!draggedBy(p,c));

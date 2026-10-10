@@ -36,6 +36,7 @@ export function createVrHistogramPanel(THREE, opts) {
   for (let i = 0; i < keys.length; i++) slots.push(mkSlot(-1, LINE_W_M), mkSlot(1, LINE_W_M));
   const winSlots = [mkSlot(-1, LINE_WIN_W_M), mkSlot(1, LINE_WIN_W_M)];
   const tmp = { x: 0, visible: false }, snap = new Float64Array(3 * keys.length);
+  const rd = { dataDirty: false, rangeDirty: false, now: 0, lastDraw: 0, rangeAt: 0 }; // the argument of shouldRedraw, reused every frame
   let open = false, dataDirty = false, rangeDirty = false, rangeAt = 0, lastDraw = -1e9, drawCount = 0, haveWindow = false, lo = 0, hi = 1, ver = 0;
 
   const drawLabel = (s, hu, color) => {
@@ -112,7 +113,7 @@ export function createVrHistogramPanel(THREE, opts) {
   };
 
   return {
-    group,
+    group, board,
     get drawCount() { return drawCount; },
     get isOpen() { return open; },
     setOpen(on) {
@@ -125,7 +126,8 @@ export function createVrHistogramPanel(THREE, opts) {
     update(now, winLo, winHi) {
       if (!open) return;
       if (snapshotRanges(keys, segs, snap)) { rangeDirty = true; rangeAt = now; }
-      if (shouldRedraw({ dataDirty, rangeDirty, now, lastDraw, rangeAt })) redraw(now);
+      rd.dataDirty = dataDirty; rd.rangeDirty = rangeDirty; rd.now = now; rd.lastDraw = lastDraw; rd.rangeAt = rangeAt;
+      if (shouldRedraw(rd)) redraw(now);
       for (let i = 0; i < keys.length; i++) {
         const s = segs[keys[i]], on = !!(s && s.active && s.enabled);
         place(slots[2 * i], on, on ? +(s.userMin ?? s.min) : NaN, on ? s.color : '');
