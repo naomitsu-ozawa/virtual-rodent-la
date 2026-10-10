@@ -29,6 +29,8 @@ const value = (page, sel) => page.locator(sel).evaluate(el => +el.value);
 const applyPreset = async (page, optionValue) => {
   await page.locator('#analysis-preset-select').selectOption(optionValue);
   await page.locator('#analysis-preset-apply').click();
+  // a built-in preset first estimates the HU scale (asynchronous); wait until it has been applied
+  await expect(page.locator('#analysis-preset-scale')).not.toHaveAttribute('data-state', 'busy', { timeout: 30_000 });
 };
 const card = (page, key) => page.locator(`.filter-control-card[data-filter-key="${key}"]`);
 
@@ -40,6 +42,8 @@ test('applying a built-in preset switches filters, CT window and segment range; 
 
   await applyPreset(page, 'b:lung');
   await expect(active).toHaveText('プリセット: 肺');
+  // the synthetic series has no noisy air / soft-tissue peaks: the standard (reference-scale) values are used, and it says so
+  await expect(page.locator('#analysis-preset-scale')).toHaveText('目盛り推定できず：標準値を使用');
   await expect(card(page, 'bilateral')).not.toHaveClass(/is-hidden/);
   await expect(card(page, 'sigmoid')).toHaveClass(/is-hidden/);
   // every built-in preset uses the bilateral filter at its own defaults
@@ -74,6 +78,7 @@ test('applying a built-in preset switches filters, CT window and segment range; 
   await expect(active).toHaveText('プリセット: 軟部・造影（変更あり）');
   // applying again clears it
   await page.locator('#analysis-preset-apply').click();
+  await expect(page.locator('#analysis-preset-scale')).not.toHaveAttribute('data-state', 'busy', { timeout: 30_000 });
   await expect(active).toHaveText('プリセット: 軟部・造影');
   expect(await value(page, '#bilateral-intensity')).toBe(50);
 });
@@ -94,6 +99,8 @@ test('user presets: save, apply, overwrite, export / import, delete, and they su
   expect(await value(page, '#wc')).toBe(900);
   const userValue = await page.locator('#analysis-preset-select option[value^="u:"]').getAttribute('value');
   await applyPreset(page, userValue);
+  // a user preset is applied with its saved HU values (never mapped)
+  await expect(page.locator('#analysis-preset-scale')).toHaveText('ユーザープリセット：保存したHU値をそのまま使用');
   expect(await value(page, '#bilateral-intensity')).toBe(33);
   expect(await value(page, '#wc')).toBe(0);
   expect(await value(page, '#ww')).toBe(500);
