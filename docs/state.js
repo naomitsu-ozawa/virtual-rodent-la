@@ -1,4 +1,4 @@
-import { clampVoxel, sameVoxel, withSliceIndex } from './crosshair.js?v=20261010-build542';
+import { clampVoxel, sameVoxel, withSliceIndex } from './crosshair.js?v=20261010-build549';
 // Shared mutable application state, moved out of app.js by
 // tools/state-codemod.mjs. Read these bindings directly (imports are live);
 // write them only through the setters (imported bindings are read-only).
@@ -22,7 +22,6 @@ export function setVolumeAnalysisMode(v){return volumeAnalysisMode=v}
 export let volumeAnalysisBusy=false;
 export function setVolumeAnalysisBusy(v){return volumeAnalysisBusy=v}
 export let sourceRenderRevision=0;
-export function setSourceRenderRevision(v){return sourceRenderRevision=v}
 export function incSourceRenderRevision(prefix){return prefix?++sourceRenderRevision:sourceRenderRevision++}
 export let sectionViewOpen=false;
 export function setSectionViewOpen(v){return sectionViewOpen=v}
@@ -96,17 +95,15 @@ export function setFilterOrder(v){return filterOrder=v}
 export let filterRebuildTimer=null;
 export function setFilterRebuildTimer(v){return filterRebuildTimer=v}
 export let filterRebuildRevision=0;
-export function setFilterRebuildRevision(v){return filterRebuildRevision=v}
 export function incFilterRebuildRevision(prefix){return prefix?++filterRebuildRevision:filterRebuildRevision++}
 export let segmentRenderTimer=null;
-export function setSegmentRenderTimer(v){return segmentRenderTimer=v}
 export let threeRenderMode='surface';
 export function setThreeRenderMode(v){return threeRenderMode=v}
 export let cutControlPreviewRaf=0;
 export function setCutControlPreviewRaf(v){return cutControlPreviewRaf=v}
 export let smoothingRefreshTimer=null;
 export function setSmoothingRefreshTimer(v){return smoothingRefreshTimer=v}
-import { settings } from './app-settings.js?v=20261010-build542';
+import { settings } from './app-settings.js?v=20261010-build549';
 // 3D volume in-plane size, remembered in the settings (build 280); full size
 // (0) is desktop-only, so an iPad falls back to 512
 export let ipadGpuTargetSide=(()=>{const v=+settings.get('gpuSide');const touch=typeof navigator!=='undefined'&&/Android|OculusBrowser|Quest/i.test(navigator.userAgent||''),ipad=typeof navigator!=='undefined'&&(/iPad/i.test(navigator.userAgent||'')||((navigator.maxTouchPoints||0)>1&&/Mac/i.test(navigator.platform||'')));return v===768?768:v===0&&!ipad&&!touch?0:512})(); // build 368/371: full size stays desktop-only; iPad, Android tablets and the Quest browser fall back to 512
@@ -114,7 +111,6 @@ export function setIpadGpuTargetSide(v){return ipadGpuTargetSide=v}
 export let residentMprReadbackDisabled=false;
 export function setResidentMprReadbackDisabled(v){return residentMprReadbackDisabled=v}
 export let residentMprEpoch=0;
-export function setResidentMprEpoch(v){return residentMprEpoch=v}
 export function incResidentMprEpoch(prefix){return prefix?++residentMprEpoch:residentMprEpoch++}
 export let residentGpuUploadSeriesId=null;
 export function setResidentGpuUploadSeriesId(v){return residentGpuUploadSeriesId=v}
@@ -130,24 +126,16 @@ export function setSourceOrthogonalPlaneCacheBytes(v){return sourceOrthogonalPla
 export let mpr3DWindowLutKey='';
 export function setMpr3DWindowLutKey(v){return mpr3DWindowLutKey=v}
 export let mpr3DWindowLutTable=new Uint32Array(256);
-export function setMpr3DWindowLutTable(v){return mpr3DWindowLutTable=v}
 export let nextSegmentMaskVolumeId=1;
-export function setNextSegmentMaskVolumeId(v){return nextSegmentMaskVolumeId=v}
 export function incNextSegmentMaskVolumeId(prefix){return prefix?++nextSegmentMaskVolumeId:nextSegmentMaskVolumeId++}
 export let sourceMprWarmupToken=0;
-export function setSourceMprWarmupToken(v){return sourceMprWarmupToken=v}
 export function incSourceMprWarmupToken(prefix){return prefix?++sourceMprWarmupToken:sourceMprWarmupToken++}
 export let sourceMprWarmupPlane=null;
 export function setSourceMprWarmupPlane(v){return sourceMprWarmupPlane=v}
 export let cutResultPreviewRevision=0;
-export function setCutResultPreviewRevision(v){return cutResultPreviewRevision=v}
 export function incCutResultPreviewRevision(prefix){return prefix?++cutResultPreviewRevision:cutResultPreviewRevision++}
 export let cutResultPreviewTimer=null;
 export function setCutResultPreviewTimer(v){return cutResultPreviewTimer=v}
-export let cutBvhModulePromise=null;
-export function setCutBvhModulePromise(v){return cutBvhModulePromise=v}
-export let cutRaycastMaterial=null;
-export function setCutRaycastMaterial(v){return cutRaycastMaterial=v}
 
 // Linked crosshair (build 458). One shared position in VOXEL indices {i,j,k} (integers inside volume.columns/rows/slices; see
 // crosshair.js for why not millimetres). JSON-ready: a later stage can store it in a comment or the project file.

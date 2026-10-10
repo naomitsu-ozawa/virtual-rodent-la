@@ -1,8 +1,8 @@
 // Extracted verbatim from app.js by tools/extract-module.mjs.
 // Self-contained: depends only on the imports below (no module state).
-import { morphMask } from './mask-ops.js?v=20261010-build542';
-import { frameYield } from './utils.js?v=20261010-build542';
-import { thinSuppressActive, suppressThinStack } from './thin-suppress.js?v=20261010-build542';
+import { morphMask } from './mask-ops.js?v=20261010-build549';
+import { frameYield } from './utils.js?v=20261010-build549';
+import { thinSuppressActive, suppressThinStack } from './thin-suppress.js?v=20261010-build549';
 export class RunUnionFind{
  constructor(capacity=65536){this.parent=new Uint32Array(capacity);this.size=new Uint32Array(capacity);this.count=0}
  grow(){
@@ -83,16 +83,6 @@ export function consumeGpuAnalysisRuns(items,zStart,depth,w,h,seed,uf,prevRows,s
   const z=zStart+local,result=sourceRunSliceFromRanges(bySlice[local],w,h,z,seed,uf,rows);sliceRuns[z]=result.records;rows=result.rows;
  }
  return rows;
-}
-export function sourceComponentSliceState(records,w,h,root,uf){
- const mask=new Uint8Array(w*h),blocks=[],blockSize=16384;let block=new Uint32Array(blockSize),used=0;
- const push=i=>{if(used===block.length){blocks.push(block);block=new Uint32Array(blockSize);used=0}block[used++]=i};
- if(records)for(let r=0;r<records.length;r+=4){
-  const y=records[r],x0=records[r+1],x1=records[r+2],label=records[r+3];if(uf.find(label)!==root)continue;
-  const start=y*w+x0;mask.fill(1,start,start+(x1-x0+1));for(let x=x0;x<=x1;x++)push(y*w+x);
- }
- if(used)blocks.push(block.subarray(0,used));
- return{mask,blocks};
 }
 export function maskToAnalysisRuns(mask,w,h,d){
  const slices=new Array(d);
@@ -306,18 +296,6 @@ export async function componentsFromRunsAsync(runs,w,h,d,onProgress=null){
  }
  onProgress?.('collect',d,d);
  return [...groups.values()].map(g=>{g.runsBySlice=g.runsBySlice.map(a=>new Uint32Array(a));g.voxels=uf.size[uf.find(g.root)];return g}).sort((a,b)=>b.voxels-a.voxels);
-}
-export function componentAtVoxel(runs,w,h,d,x,y,z){
- const comps=componentsFromRuns(runs,w,h,d);return comps.find(comp=>analysisRunsContain(comp.runsBySlice,x,y,z))||null;
-}
-export function analysisRunSliceState(records,w,h){
- const mask=new Uint8Array(w*h),blocks=[],blockSize=16384;let block=new Uint32Array(blockSize),used=0;
- const push=i=>{if(used===block.length){blocks.push(block);block=new Uint32Array(blockSize);used=0}block[used++]=i};
- if(records)for(let r=0;r<records.length;r+=3){
-  const y=records[r],x0=records[r+1],x1=records[r+2],start=y*w+x0;mask.fill(1,start,start+x1-x0+1);
-  for(let x=x0;x<=x1;x++)push(y*w+x);
- }
- if(used)blocks.push(block.subarray(0,used));return{mask,blocks};
 }
 export function analysisRunRows(records){
  const rows=new Map();
