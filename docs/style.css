@@ -1059,4 +1059,5 @@ html.vrl-ipad-ui .point-menu-btn{min-height:44px;min-width:64px;font-size:15px}
 .seg-hist-table th,.seg-hist-table td{padding:2px 6px;text-align:right;border-bottom:1px solid rgb(var(--ui-b2))}
 .seg-hist-table th:first-child,.seg-hist-table td:first-child{text-align:left}
 .seg-hist-swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.lp-canvas{display:block;width:100%;pointer-events:auto;touch-action:none;color:rgb(var(--ui-t2))}.lp-plot{cursor:crosshair}
 .seg-hist-hint{font-size:10px;line-height:1.35;color:rgb(var(--ui-t4))}

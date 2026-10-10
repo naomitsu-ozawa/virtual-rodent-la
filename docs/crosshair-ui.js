@@ -2,17 +2,19 @@
 // own overlay canvases (NOT the slice canvases: those must keep their pixels, tools/theme-image-check.mjs compares them) and the
 // small HU / position readout. The position itself lives in state.js (setCrosshair / getCrosshair / clearCrosshair); the
 // geometry is in crosshair.js. Scope of this stage: crosshair, HU readout and the position API only.
-import { planes } from './ui-shell.js?v=20261010-build536';
-import { volume, sourceVolume, getCrosshair, setCrosshair, clearCrosshair, onCrosshairChange } from './state.js?v=20261010-build536';
-import { tr } from './i18n.js?v=20261010-build536';
-import { schedulePlaneRender } from './mpr-render.js?v=20261010-build536';
-import { sourceSliceCache } from './volume-io.js?v=20261010-build536';
-import { sourceFilterStages, sourceFilterSignature, sourceFilterCacheGet } from './source-filters.js?v=20261010-build536';
-import { CROSSHAIR_PLANES, clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, voxelToMm, sampleHu, formatHu, formatMm } from './crosshair.js?v=20261010-build536';
+import { planes } from './ui-shell.js?v=20261010-build537';
+import { volume, sourceVolume, getCrosshair, setCrosshair, clearCrosshair, onCrosshairChange } from './state.js?v=20261010-build537';
+import { tr } from './i18n.js?v=20261010-build537';
+import { schedulePlaneRender } from './mpr-render.js?v=20261010-build537';
+import { sourceSliceCache } from './volume-io.js?v=20261010-build537';
+import { sourceFilterStages, sourceFilterSignature, sourceFilterCacheGet } from './source-filters.js?v=20261010-build537';
+import { CROSSHAIR_PLANES, clientToFraction, voxelFromPlanePoint, planePointFromVoxel, sliceIndexFor, voxelToMm, sampleHu, formatHu, formatMm } from './crosshair.js?v=20261010-build537';
 
 let overlayPainter=null;
 // other overlays (the comment markers) paint on the same canvases: fn(ctx,plane,{x0,y0,w,h,dpr,cssW,cssH}) with the transform set to CSS px
 export const setOverlayPainter=fn=>{overlayPainter=fn};
+// a second painter (the line profile line, build 537): drawn after the markers, under the crosshair
+let extraPainter=null;export const setExtraOverlayPainter=fn=>{extraPainter=fn};
 export const requestOverlayDraw=()=>scheduleDraw();
 let mode=false,drag=null,activePlane='axial',drawQueued=false,huRetries=0,huTimer=null;
 const COLOR='#ffe14d'; // drawn over a dark halo (same recipe as the cut stroke of PR #92), so it reads on light and dark themes
@@ -77,10 +79,12 @@ function drawPlane(p){
  const ctx=cv.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);
  const c=getCrosshair(),dims=dimsOf();
  const cr=cv.getBoundingClientRect(),ir=img.getBoundingClientRect();
- if(!dims||ir.width<2||ir.height<2){overlayPainter?.(null,p);return}
+ if(!dims||ir.width<2||ir.height<2){overlayPainter?.(null,p);extraPainter?.(null,p);return}
  const x0=ir.left-cr.left,y0=ir.top-cr.top;
  ctx.setTransform(dpr,0,0,dpr,0,0);
- if(overlayPainter)overlayPainter(ctx,p,{x0,y0,w:ir.width,h:ir.height,dpr}); // markers first: the crosshair stays on top
+ const geo={x0,y0,w:ir.width,h:ir.height,dpr};
+ if(overlayPainter)overlayPainter(ctx,p,geo); // markers first: the crosshair stays on top
+ if(extraPainter)extraPainter(ctx,p,geo);
  if(!c)return;
  const{fx,fy}=planePointFromVoxel(p,c,dims),x=x0+fx*ir.width,y=y0+fy*ir.height;
  ctx.lineCap='butt';
