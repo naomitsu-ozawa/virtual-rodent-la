@@ -26,6 +26,7 @@ test('VR histogram board: same results as the PC card, redrawn only on data / ra
     let view = null;
     for (let i = 0; i < 200; i++) { view = H.getHistogramView(); const r = view.res.list[0]; if (r?.hist && !r.draft && !view.busy) break; await new Promise(r => setTimeout(r, 100)); }
     const keys = S.SEGMENT_PRESET_ORDER, segs = S.segmentState;
+    segs.soft.userMin = -600; // the board's default window is robust to tails (as the PC chart): put the line inside the data window so the drag is visible
     const panel = P.createVrHistogramPanel(THREE, { keys, segs, getView: H.getHistogramView, nameOf: k => k, modeText: () => 'm', log: () => false, widthM: 0.46,
       L: { title: 't', whole: 'all', busy: 'busy', noSeg: 'none', window: 'w', empty: 'e', cols: {} } });
     panel.setOpen(true);

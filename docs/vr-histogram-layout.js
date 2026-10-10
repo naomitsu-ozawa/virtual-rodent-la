@@ -2,7 +2,7 @@
 // The board is one canvas texture (bars, axes, stats table) that is redrawn only when the data or the segment ranges change, plus a few
 // small quads for the HU range lines that are only moved. Everything the two share lives here: the pixel layout of the canvas, the
 // HU -> position mapping (metres on the board, for the quads), the chart window and the redraw policy.
-import { histStats, huToX, voxelsToMm3 } from './histogram.js?v=20261010-build544';
+import { histStats, huToX, voxelsToMm3 } from './histogram.js?v=20261010-build551';
 
 // canvas size and the plot rectangle inside it (px)
 export const PANEL_W = 1024, PANEL_H = 768;

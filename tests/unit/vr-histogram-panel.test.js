@@ -13,10 +13,10 @@ beforeEach(() => {
 });
 
 const KEYS = ['bone', 'soft'], W = 0.46;
-const mk = () => {
+const mk = (range = { mode: 'full' }) => { // 'full' = the whole min..max window, so every segment line is inside it
   const segs = { bone: { active: true, enabled: true, min: 200, max: 1500, color: '#e0d0a0' }, soft: { active: true, enabled: true, min: -100, max: 100, color: '#c06060' } };
   const hist = binValues(createHist(), Float32Array.from([-50, 0, 40, 60, 250, 400, 900]));
-  const view = { volume: { spacing: [1, 1, 1] }, res: { list: KEYS.map(key => ({ key, seg: segs[key], hist, draft: false })), total: null }, busy: false, message: '', noSeg: false };
+  const view = { volume: { spacing: [1, 1, 1] }, res: { list: KEYS.map(key => ({ key, seg: segs[key], hist, draft: false })), total: null }, busy: false, message: '', noSeg: false, range };
   const getView = vi.fn(() => view);
   const panel = createVrHistogramPanel(THREE, { keys: KEYS, segs, getView, nameOf: k => k, modeText: () => 'Filtered · Linear', log: () => false, widthM: W,
     L: { title: 'T', whole: 'All', busy: '…', noSeg: 'none', window: 'win', empty: 'empty', cols: { name: 'n', count: 'c', volume: 'v', mean: 'm', sd: 's', p50: 'p', min: 'a', max: 'b' } } });
@@ -55,6 +55,16 @@ describe('VR histogram panel: redraw only on data / range change', () => {
     const win = lines(panel).slice(-2), a = win[0].position.x; let t = 1000;
     for (let i = 0; i < 60; i++) { t += 14; panel.update(t, i, 400 + i); }
     expect(win[0].position.x).not.toBe(a); expect(panel.drawCount).toBe(1);
+  });
+});
+
+describe('VR histogram panel: display range', () => {
+  it('auto (robust) window leaves a far bone line outside; the PC manual range moves it back in, with no extra allocation path', () => {
+    const { panel, view } = mk({ mode: 'auto' }); panel.setOpen(true); panel.update(1000, NaN, NaN);
+    const [bmin, bmax, smin, smax] = lines(panel);
+    expect(smax.visible).toBe(true); expect(bmax.visible).toBe(false); // bone max 1500 is far above the percentile window of the data
+    view.range = { mode: 'manual', lo: -200, hi: 1600 }; panel.invalidate(); panel.update(1000 + MIN_GAP_MS, NaN, NaN);
+    expect(bmin.visible && bmax.visible && smin.visible).toBe(true);
   });
 });
 

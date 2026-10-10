@@ -7,8 +7,8 @@
 //    with what it placed last and moves a quad when one differs, so a dragged slider moves its line every frame with no bar-texture work.
 //    Each line's number is a tiny (120x48) canvas that is redrawn only when the rounded HU or the colour changes, so a drag costs at most one small upload per HU step per line.
 //  - nothing is allocated in update(); every object it touches is created in createVrHistogramPanel.
-import { rebinHist, niceStep, huToX, fitWindow, chartSpans } from './histogram.js?v=20261010-build544';
-import { PANEL_W, PANEL_H, PLOT, TABLE, STATUS_Y, LINE_W_M, LINE_WIN_W_M, LABEL_W_M, LABEL_H_M, LABEL_PX, boardHeightM, columnsFor, barFraction, countLabel, lineLayout, plotMetrics, labelCenterX, shouldRedraw, snapshotRanges, tableColumns, statsCells, tableRows } from './vr-histogram-layout.js?v=20261010-build544';
+import { rebinHist, niceStep, huToX, windowFor } from './histogram.js?v=20261010-build551';
+import { PANEL_W, PANEL_H, PLOT, TABLE, STATUS_Y, LINE_W_M, LINE_WIN_W_M, LABEL_W_M, LABEL_H_M, LABEL_PX, boardHeightM, columnsFor, barFraction, countLabel, lineLayout, plotMetrics, labelCenterX, shouldRedraw, snapshotRanges, tableColumns, statsCells, tableRows } from './vr-histogram-layout.js?v=20261010-build551';
 
 const WIN_COLOR = '#ffffff';
 // opts: keys (segment ids), segs (segmentState), getView() -> {volume, res, busy, message, noSeg}, nameOf(key), modeText() (e.g. "Filtered · Linear"),
@@ -69,7 +69,7 @@ export function createVrHistogramPanel(THREE, opts) {
     ctx.textAlign = 'right'; ctx.fillStyle = '#9fb3c3'; ctx.font = '24px system-ui,sans-serif'; ctx.fillText(modeText(), W - 24, 44);
     const view = getView();
     if (!view.volume) { haveWindow = false; ctx.textAlign = 'left'; ctx.fillText(L.empty, 24, 140); tex.needsUpdate = true; ver++; return; }
-    const res = view.res, win = fitWindow(chartSpans(res)); lo = win[0]; hi = win[1]; haveWindow = true; ver++;
+    const res = view.res, win = windowFor(res, view.range); lo = win[0]; hi = win[1]; haveWindow = true; ver++;
     const series = res.list.filter(s => s.hist);
     if (!res.list.length && res.total) series.push({ key: 'all', seg: { color: '#8c969c' }, hist: res.total.hist });
     const cols = columnsFor(lo, hi), bars = series.map(s => rebinHist(s.hist, lo, hi, cols));
