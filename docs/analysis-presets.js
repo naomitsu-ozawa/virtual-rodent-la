@@ -7,8 +7,24 @@
 //     segments: { bone: { min, max }, ... } }                  // segment HU ranges (only the segments the preset names)
 // The shapes match the project file (display / filters.order / segments), so the same controls are driven the same way.
 //
-// THE BUILT-IN VALUES ARE A DRAFT ("たたき台"): reasoned starting points, not validated on real data yet. They are meant to be
-// tuned on real scans. Every value below has a one-line reason; none of them cites a reference.
+// THE BUILT-IN VALUES ARE FITTED TO THE TWO PRACTICE DATA SETS (docs/demo, build 548). Every number below names the measurement
+// it comes from; nothing cites literature. Measurements: tissue peaks of the 5x5x5 local mean in homogeneous regions, noise SD
+// in the cores of those regions, and the 10-90 % rise distance of the mean edge profile across fat / soft tissue and bone
+// edges (the app's own CPU filter kernels from source-filters.js, run on 40-slice slabs of each sample).
+//   sample1 (rat abdomen, 0.148 mm): air -1028, fat -98, soft tissue +158, noise SD about 40 HU (raw voxels). No thorax.
+//   sample2 (mouse torso, 0.118 mm): air -2012, fat -442, soft tissue -8, noise SD about 42 HU; lung (z < 60) -925.
+// The two scans are on DIFFERENT HU SCALES: sample2 = 1.692 x sample1 - 274 (fitted on air and soft tissue; it predicts the
+// sample2 fat peak at -439, measured -442; fat sits at 78.5 % / 78.3 % of the way from air to soft tissue on both). No single
+// fixed HU range fits both, so the ranges below are on sample1's scale (the scale of the app's default segment ranges, and
+// air close to -1000). On sample2 they must be adjusted (see each preset).
+//
+// Filters: every preset uses the bilateral filter at its own default parameters (strength 0.8, spatial sigma 1.2, 50 HU,
+// 2 passes). With noise about 40 HU on both scans it halves the noise SD (sample1 fat 39.5 -> 20.4, soft 40.8 -> 22.6;
+// sample2 fat 42.2 -> 24.2, soft 43.1 -> 25.2, lung 62.8 -> 48.8) and moves no tissue mean by more than 3 HU, while the
+// 10-90 % edge rise stays the same (fat/soft 3.29 -> 3.25 voxels on sample1, 4.24 -> 4.24 on sample2; bone 3.01 -> 2.99,
+// 3.21 -> 3.19). The weaker variants of the previous draft (strength 0.3 / sigma 0.8 / 1 pass, or 30 HU) left the SD at
+// 25-37 HU and gained no edge sharpness. The sigmoid is not used: it shifted the sample1 fat mean by 40 HU (-104 -> -144) and,
+// with its default centre 0 on sample2's soft-tissue peak, raised the sample2 soft-tissue SD from 25 to 64 HU.
 
 export const PRESET_FORMAT = 'vrl-analysis-presets';
 export const PRESET_VERSION = 1;
@@ -28,59 +44,56 @@ export const FILTER_PARAM_NAMES = {
   unsharp: ['radius', 'amount', 'thresholdHU'],
 };
 
-// Upper end of "no upper limit" segments (bone): the control clamps it to the data's maximum.
-const HU_TOP = 3000;
+// Upper end of "no upper limit" segments (bone, contrast). It was 3000, which cut off 7 % of sample2's bone voxels (its
+// densest bone reaches 6226 on that scan's scale); 65535 lies above any value a 16-bit scan can hold.
+const HU_TOP = 65535;
+
+// The bilateral filter at its own defaults (the slider values in ui-shell.js / FILTER_UNITS.bilateral.sigmaHU.def)
+const DEFAULT_BILATERAL = { key: 'bilateral', params: { strength: 0.8, spatialSigma: 1.2, sigmaHU: 50, passes: 2 } };
+const filtersDefault = () => [JSON.parse(JSON.stringify(DEFAULT_BILATERAL))];
 
 export const BUILTIN_PRESETS = [
   {
     id: 'lung',
     name: { ja: '肺', en: 'Lung' },
-    // Weak edge-preserving smoothing only: strong smoothing pulls the values of the fine vessel / airway structure and of the
-    // parenchyma toward each other, and moves the share of voxels below a fixed threshold (LAA%-type analysis, about -950 HU),
-    // so the filter must bias the histogram as little as possible. Spatial sigma 0.8 and one pass stay inside the voxel;
-    // sigma 100 HU is far below the air / tissue step (several hundred HU), so edges are kept.
-    filters: [{ key: 'bilateral', params: { strength: 0.3, spatialSigma: 0.8, sigmaHU: 100, passes: 1 } }],
-    // Lung window: the usual wide window centred between aerated lung (-800 .. -850) and vessels (about -400 and above).
-    display: { windowCenter: -600, windowWidth: 1500 },
-    // Same as the app's default lung segment: -950 keeps the outside air (-1000) out; -300 keeps the chest wall out.
-    segments: { lung: { min: -950, max: -300 } },
+    filters: filtersDefault(),
+    // Only sample2 has lung (its lower thorax). Measured there on its own scale: parenchyma peak -925, range about
+    // -1100 .. -600, valley to fat / soft tissue at about -525. Transferred to sample1's scale with the fitted map: peak -385,
+    // valley -148; the lower edge -700 is the midpoint between air and the lung peak (sample2 -1468 -> -706). This range is
+    // DERIVED BY TRANSFER, not measured: no scan on sample1's scale has a thorax. On sample2 itself use about -1450 .. -530.
+    display: { windowCenter: -450, windowWidth: 1200 },   // -1050 .. 150: air (-1028) black, soft tissue (+158) white
+    segments: { lung: { min: -700, max: -150 } },
   },
   {
     id: 'fat',
     name: { ja: '脂肪', en: 'Fat' },
-    // Fat is only about 80-100 HU away from water-like soft tissue, so the intensity sigma must stay below that gap (30 HU):
-    // noise inside fat is averaged, the fat / soft-tissue boundary is kept. Two passes of the default spatial sigma.
-    filters: [{ key: 'bilateral', params: { strength: 0.8, spatialSigma: 1.2, sigmaHU: 30, passes: 2 } }],
-    // Window -190 .. -30 HU (centre -110, width 160): the typical fat range, widely used for fat segmentation.
-    display: { windowCenter: -110, windowWidth: 160 },
-    segments: { fat: { min: -190, max: -30 } },
+    filters: filtersDefault(),
+    // sample1: fat peak -98, soft-tissue peak +158, valley between them at +8 (flat from about -40 to +20); -250 lies in the
+    // nearly empty gap between air and fat (-550 .. -250). The range holds 96 % of sample1's fat region (the app's default
+    // -250 .. -50 held 83 %, the previous draft -190 .. -30 90 %). On sample2 the fat peak is -442: use about -700 .. -275.
+    display: { windowCenter: 0, windowWidth: 500 },       // -250 .. 250: fat dark grey, soft tissue light grey
+    segments: { fat: { min: -250, max: 0 } },
   },
   {
     id: 'bone',
     name: { ja: '骨', en: 'Bone' },
-    // Edge priority, minimal smoothing: bone edges (cortex) are thin and their steps are 500 HU and more; sigma 250 HU keeps
-    // them, a single weak pass only takes the noise off the marrow / soft-tissue side. No sigmoid / unsharp: the threshold
-    // analysis should see the data, not an enhanced image.
-    filters: [{ key: 'bilateral', params: { strength: 0.3, spatialSigma: 0.8, sigmaHU: 250, passes: 1 } }],
-    // High window: centre 400, width 1800 shows trabecular detail and dense cortex in one image.
-    display: { windowCenter: 400, windowWidth: 1800 },
-    // Same lower bound as the app's default bone segment (350 HU); no upper limit (clamped to the data's maximum).
+    filters: filtersDefault(),
+    // Soft tissue ends below 350 on sample1 (99.9th percentile of its local mean 258; above about 350 the count stays flat at
+    // the bone partial-volume level); no soft-tissue core voxel reaches 350, with or without the filter. The same edge maps to
+    // 318 on sample2, where its soft tissue ends at 124 and the flat level starts at about 340: this lower edge works on both.
+    display: { windowCenter: 900, windowWidth: 2000 },    // -100 .. 1900: bone voxels on sample1 have median 1104, 90th pct. 1664
     segments: { bone: { min: 350, max: HU_TOP } },
   },
   {
     id: 'soft',
     name: { ja: '軟部・造影', en: 'Soft tissue / contrast' },
-    // The app's usual working combination: bilateral (strength 0.8, sigma 1.2 voxel, 50 HU, 2 passes) to reduce the noise while
-    // keeping organ boundaries, then a sigmoid (0 HU centre, width 300 HU, strength 0.5) that stretches the contrast of soft
-    // tissue and enhanced vessels. These are the filters' own default parameter values.
-    filters: [
-      { key: 'bilateral', params: { strength: 0.8, spatialSigma: 1.2, sigmaHU: 50, passes: 2 } },
-      { key: 'sigmoid', params: { strength: 0.5, center: 0, width: 300 } },
-    ],
-    // Abdominal soft-tissue window (centre 40, width 400) shows soft tissue and a contrast-enhanced vessel (100-400 HU).
-    display: { windowCenter: 40, windowWidth: 400 },
-    // Same as the app's default soft / contrast segments.
-    segments: { soft: { min: -50, max: 350 }, contrast: { min: 300, max: HU_TOP } },
+    filters: filtersDefault(),
+    // Soft tissue from the fat / soft valley (+8 on sample1, rounded to 0) to the bone edge 350 (above the 99.9th percentile
+    // 258). Neither sample has contrast-enhanced tissue (nothing between the soft-tissue tail and bone), so the contrast range
+    // simply continues above 350 and is NOT validated. On sample2 soft tissue is -250 .. 318 (peak -8), and its holder tube
+    // reads -40 .. 0, inside that range.
+    display: { windowCenter: 150, windowWidth: 500 },     // -100 .. 400: fat dark, soft tissue (+158) mid grey
+    segments: { soft: { min: 0, max: 350 }, contrast: { min: 350, max: HU_TOP } },
   },
 ];
 

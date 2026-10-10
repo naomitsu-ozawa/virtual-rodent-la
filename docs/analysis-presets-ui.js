@@ -2,16 +2,16 @@
 // shows which preset is active / modified. The values and the pure logic live in analysis-presets.js; nothing here adds a
 // second way of changing a filter or a range: filters go through applyFilterOrder (shared with the project file), the CT
 // window and the segment ranges through setControlValue (the same input / change events a slider drag sends).
-import { $, wc, ww, footer } from './ui-shell.js?v=20261010-build547';
-import { volume, sourceVolume, activeId, ctRangeMode, ctRangeProfile, currentLanguage } from './state.js?v=20261010-build547';
-import { tr } from './i18n.js?v=20261010-build547';
-import { SEGMENT_PRESET_ORDER, segmentState, commitExclusiveRanges } from './segments.js?v=20261010-build547';
-import { addSegmentPreset, applyCtRangeMode, segmentControl, setControlValue, updateSegmentOutputs } from './segment-ui.js?v=20261010-build547';
-import { gatherFilterOrder, applyFilterOrder } from './data-load.js?v=20261010-build547';
+import { $, wc, ww, footer } from './ui-shell.js?v=20261010-build548';
+import { volume, sourceVolume, activeId, ctRangeMode, ctRangeProfile, currentLanguage } from './state.js?v=20261010-build548';
+import { tr } from './i18n.js?v=20261010-build548';
+import { SEGMENT_PRESET_ORDER, segmentState, commitExclusiveRanges } from './segments.js?v=20261010-build548';
+import { addSegmentPreset, applyCtRangeMode, segmentControl, setControlValue, updateSegmentOutputs } from './segment-ui.js?v=20261010-build548';
+import { gatherFilterOrder, applyFilterOrder } from './data-load.js?v=20261010-build548';
 import {
   BUILTIN_PRESETS, builtinPresetById, builtinPresetName, normalizeSnapshot, isModified, saveUserPreset, renameUserPreset,
   deleteUserPreset, serializeUserPresets, parseUserPresets, mergeImportedPresets, loadUserPresets, persistUserPresets, cleanPresetName,
-} from './analysis-presets.js?v=20261010-build547';
+} from './analysis-presets.js?v=20261010-build548';
 
 const store = () => { try { return window.localStorage; } catch { return null; } };
 

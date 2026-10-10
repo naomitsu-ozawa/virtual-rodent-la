@@ -8,6 +8,7 @@ import { makeCtSlice } from '../helpers/synthetic-dicom.js';
 // preset is shown (and marked modified once a setting changes); user presets are saved, applied, exported and deleted.
 
 // 16x16x12 series spanning -1024 .. 2576 HU, so every built-in window (lung, fat, bone, soft tissue) fits the data
+// (the bone window -100 .. 1900 included)
 function wideFolder() {
   const dir = mkdtempSync(join(tmpdir(), 'vrl-presets-'));
   for (let z = 0; z < 12; z++) {
@@ -41,25 +42,32 @@ test('applying a built-in preset switches filters, CT window and segment range; 
   await expect(active).toHaveText('プリセット: 肺');
   await expect(card(page, 'bilateral')).not.toHaveClass(/is-hidden/);
   await expect(card(page, 'sigmoid')).toHaveClass(/is-hidden/);
-  expect(await value(page, '#bilateral-strength')).toBeCloseTo(0.3, 5);
-  expect(await value(page, '#bilateral-intensity')).toBe(100);
-  expect(await value(page, '#bilateral-passes')).toBe(1);
-  expect(await value(page, '#wc')).toBe(-600);
-  expect(await value(page, '#ww')).toBe(1500);
+  // every built-in preset uses the bilateral filter at its own defaults
+  expect(await value(page, '#bilateral-strength')).toBeCloseTo(0.8, 5);
+  expect(await value(page, '#bilateral-intensity')).toBe(50);
+  expect(await value(page, '#bilateral-passes')).toBe(2);
+  expect(await value(page, '#wc')).toBe(-450);
+  expect(await value(page, '#ww')).toBe(1200);
   await expect(page.locator('[data-segment="lung"]')).not.toHaveClass(/is-hidden/);
-  expect(await value(page, '[data-seg-min="lung"]')).toBe(-950);
-  expect(await value(page, '[data-seg-max="lung"]')).toBe(-300);
+  expect(await value(page, '[data-seg-min="lung"]')).toBe(-700);
+  expect(await value(page, '[data-seg-max="lung"]')).toBe(-150);
   // the CT range mode stays Auto (re-centred on the new window)
   await expect(page.locator('#ct-range-auto')).toHaveClass(/is-active/);
 
-  // a different preset replaces the filter set (lung had no sigmoid) and the window
+  // a filter added by hand is removed when a preset is applied (the preset replaces the filter set), and the window changes
+  await page.selectOption('#filter-add-select', 'sigmoid');
+  await page.locator('#filter-add-button').click();
+  await expect(card(page, 'sigmoid')).not.toHaveClass(/is-hidden/);
+  await expect(active).toHaveText('プリセット: 肺（変更あり）');
   await applyPreset(page, 'b:soft');
   await expect(active).toHaveText('プリセット: 軟部・造影');
-  await expect(card(page, 'sigmoid')).not.toHaveClass(/is-hidden/);
-  expect(await value(page, '#bilateral-strength')).toBeCloseTo(0.8, 5);
+  await expect(card(page, 'sigmoid')).toHaveClass(/is-hidden/);
+  await expect(card(page, 'bilateral')).not.toHaveClass(/is-hidden/);
   expect(await value(page, '#bilateral-intensity')).toBe(50);
-  expect(await value(page, '#wc')).toBe(40);
-  expect(await value(page, '#ww')).toBe(400);
+  expect(await value(page, '#wc')).toBe(150);
+  expect(await value(page, '#ww')).toBe(500);
+  expect(await value(page, '[data-seg-min="soft"]')).toBe(0);
+  expect(await value(page, '[data-seg-max="soft"]')).toBe(350);
 
   // any later change shows as modified
   await page.locator('#bilateral-intensity').evaluate(el => { el.value = '77'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
@@ -83,12 +91,12 @@ test('user presets: save, apply, overwrite, export / import, delete, and they su
 
   // another preset, then back to the saved one
   await applyPreset(page, 'b:bone');
-  expect(await value(page, '#wc')).toBe(400);
+  expect(await value(page, '#wc')).toBe(900);
   const userValue = await page.locator('#analysis-preset-select option[value^="u:"]').getAttribute('value');
   await applyPreset(page, userValue);
   expect(await value(page, '#bilateral-intensity')).toBe(33);
-  expect(await value(page, '#wc')).toBe(-110);
-  expect(await value(page, '#ww')).toBe(160);
+  expect(await value(page, '#wc')).toBe(0);
+  expect(await value(page, '#ww')).toBe(500);
   await expect(page.locator('#analysis-preset-active')).toHaveText('プリセット: マイ脂肪');
 
   // overwrite by saving the same name again: still one user preset, with the new value

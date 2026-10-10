@@ -36,17 +36,28 @@ describe('built-in presets', () => {
     }
   });
 
-  it('the fat window and segment are -190 .. -30 HU', () => {
-    const fat = builtinPresetById('fat');
-    expect(fat.display.windowCenter - fat.display.windowWidth / 2).toBe(-190);
-    expect(fat.display.windowCenter + fat.display.windowWidth / 2).toBe(-30);
-    expect(fat.segments.fat).toEqual({ min: -190, max: -30 });
+  it('every preset uses the bilateral filter at its own default parameters (and no sigmoid)', () => {
+    for (const p of BUILTIN_PRESETS) {
+      expect(p.filters, p.id).toEqual([{ key: 'bilateral', params: { strength: 0.8, spatialSigma: 1.2, sigmaHU: FILTER_UNITS.bilateral.params.sigmaHU.def, passes: 2 } }]);
+    }
+    // each preset holds its own copy (applying / editing one never changes another)
+    expect(builtinPresetById('lung').filters[0]).not.toBe(builtinPresetById('fat').filters[0]);
   });
 
-  it('lung smooths weaker than the soft-tissue preset (it must not bias LAA%-type thresholds)', () => {
-    const lung = builtinPresetById('lung').filters[0].params, soft = builtinPresetById('soft').filters[0].params;
-    expect(lung.strength).toBeLessThan(soft.strength);
-    expect(lung.passes).toBeLessThanOrEqual(soft.passes);
+  it('segment ranges follow the measured sample1 valleys (fat / soft at 0, soft / bone at 350)', () => {
+    expect(builtinPresetById('fat').segments.fat).toEqual({ min: -250, max: 0 });
+    expect(builtinPresetById('soft').segments.soft).toEqual({ min: 0, max: 350 });
+    expect(builtinPresetById('bone').segments.bone.min).toBe(350);
+    expect(builtinPresetById('lung').segments.lung).toEqual({ min: -700, max: -150 });
+    // the fat window brackets the fat (-98) and soft-tissue (+158) peaks
+    const fat = builtinPresetById('fat').display;
+    expect(fat.windowCenter - fat.windowWidth / 2).toBe(-250);
+    expect(fat.windowCenter + fat.windowWidth / 2).toBe(250);
+  });
+
+  it('"no upper limit" segments are not capped at 3000 (sample2 bone reaches 6226)', () => {
+    expect(builtinPresetById('bone').segments.bone.max).toBeGreaterThan(6226);
+    expect(builtinPresetById('soft').segments.contrast.max).toBeGreaterThan(6226);
   });
 });
 
